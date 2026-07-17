@@ -40,7 +40,6 @@ def test_prepare_for_hash_excludes_content_hash_and_signature() -> None:
 
     assert "content_hash" not in hashed_payload
     assert "signature" not in hashed_payload
-    assert "signatures" not in hashed_payload
     # Everything else survives.
     assert hashed_payload["id"] == _OBJECT["id"]
     assert hashed_payload["assertion"] == _OBJECT["assertion"]
@@ -50,10 +49,28 @@ def test_prepare_for_signature_excludes_only_signature_and_keeps_content_hash() 
     signed_payload = prepare_for_signature(_OBJECT)
 
     assert "signature" not in signed_payload
-    assert "signatures" not in signed_payload
     # content_hash IS part of the signed payload (section 1.3: "the signature
     # covers the canonical payload and content hash").
     assert signed_payload["content_hash"] == _OBJECT["content_hash"]
+
+
+def test_prepare_for_hash_and_signature_do_not_exclude_a_plural_signatures_field() -> None:
+    """schemas/common.schema.json defines only a singular `signature` field —
+    no schema defines `signatures`. Excluding that name too would be inventing
+    domain behavior (AGENTS.md rule 3) and would silently drop a future,
+    legitimately-named `signatures` field out of hash coverage. This test
+    documents the deliberate choice: an object carrying a `signatures` field
+    keeps it in both the hashed and signed payloads, exactly like any other
+    unrecognized field.
+    """
+    obj_with_plural_field = dict(_OBJECT)
+    obj_with_plural_field["signatures"] = ["not-a-defined-schema-field"]
+
+    hashed_payload = prepare_for_hash(obj_with_plural_field)
+    signed_payload = prepare_for_signature(obj_with_plural_field)
+
+    assert hashed_payload["signatures"] == obj_with_plural_field["signatures"]
+    assert signed_payload["signatures"] == obj_with_plural_field["signatures"]
 
 
 def test_prepare_for_hash_and_signature_do_not_mutate_input() -> None:

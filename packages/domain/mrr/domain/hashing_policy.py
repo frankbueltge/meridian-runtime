@@ -3,16 +3,25 @@ docs/spec/02_DOMAIN_MODEL.md sections 1.2-1.3.
 
 Every first-class MRR object carries its own ``content_hash`` field
 (schemas/common.schema.json ``$defs.baseObject``), and cross-practice objects
-carry a ``signature`` (singular) or, where more than one practice signs the
-same object, a ``signatures`` field. Two different byte strings are derived
-from the same object:
+carry a ``signature`` field (``$defs.signature``). Two different byte strings
+are derived from the same object:
 
-- the **hashed payload**: the object with ``content_hash`` and
-  ``signature``/``signatures`` excluded (section 1.2 — "Content hashes are
-  computed over canonical JSON with signatures ... excluded");
-- the **signed payload**: the object with only ``signature``/``signatures``
-  excluded, so ``content_hash`` remains present (section 1.3 — "The
-  signature covers the canonical payload and content hash").
+- the **hashed payload**: the object with ``content_hash`` and ``signature``
+  excluded (section 1.2 — "Content hashes are computed over canonical JSON
+  with signatures ... excluded");
+- the **signed payload**: the object with only ``signature`` excluded, so
+  ``content_hash`` remains present (section 1.3 — "The signature covers the
+  canonical payload and content hash").
+
+The excluded field names are exactly the ones schemas/common.schema.json
+defines today (``content_hash``, ``signature``) — nothing broader. No schema
+in schemas/ defines a plural ``signatures`` field, so this module does not
+exclude one: excluding a field name the schema does not define would be
+inventing domain behavior (AGENTS.md rule 3), and would silently drop any
+future, legitimately-named ``signatures`` field out of hash coverage
+(mutable-without-hash-change). If a future object shape needs a
+multi-signature field, that requires a specification amendment (a new
+``$defs`` entry and an update to this module), not a defensive guess here.
 
 Both exclusions are shallow (top-level fields of the object being hashed or
 signed only). A nested reference such as an ``artifactRef.content_hash``
@@ -40,25 +49,26 @@ from mrr.crypto.hashing import content_hash as _content_hash
 from mrr.crypto.signatures import sign as _sign
 from mrr.crypto.signatures import verify as _verify
 
-#: Fields excluded when building the payload that gets *hashed*.
-_HASH_EXCLUDED_FIELDS = frozenset({"content_hash", "signature", "signatures"})
+#: Fields excluded when building the payload that gets *hashed*. Exactly the
+#: field names schemas/common.schema.json defines today — see the module
+#: docstring for why this is not broadened to a plural `signatures`.
+_HASH_EXCLUDED_FIELDS = frozenset({"content_hash", "signature"})
 
 #: Fields excluded when building the payload that gets *signed*. Unlike the
 #: hashed payload, `content_hash` is deliberately kept — the signature must
 #: cover it (docs/spec/02_DOMAIN_MODEL.md section 1.3).
-_SIGNATURE_EXCLUDED_FIELDS = frozenset({"signature", "signatures"})
+_SIGNATURE_EXCLUDED_FIELDS = frozenset({"signature"})
 
 
 def prepare_for_hash(obj: Mapping[str, JSONValue]) -> dict[str, JSONValue]:
     """Return a shallow copy of ``obj`` without its ``content_hash`` or
-    ``signature``/``signatures`` fields.
+    ``signature`` fields.
     """
     return {key: value for key, value in obj.items() if key not in _HASH_EXCLUDED_FIELDS}
 
 
 def prepare_for_signature(obj: Mapping[str, JSONValue]) -> dict[str, JSONValue]:
-    """Return a shallow copy of ``obj`` without only its
-    ``signature``/``signatures`` field(s).
+    """Return a shallow copy of ``obj`` without only its ``signature`` field.
 
     ``content_hash`` is intentionally retained: per
     docs/spec/02_DOMAIN_MODEL.md section 1.3, "the signature covers the
