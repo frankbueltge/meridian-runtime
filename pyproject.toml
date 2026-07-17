@@ -1,0 +1,108 @@
+[project]
+name = "mrr"
+version = "0.1.0"
+description = "Meridian Research Runtime — contracts and domain kernel monorepo."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE.md" }
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "import-linter>=2.1",
+  "pip-audit>=2.7",
+  "bandit>=1.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The distribution ships one PEP 420 namespace package, `mrr`, merged at build
+# time from six independent package roots under packages/. Each root owns a
+# leaf subpackage (mrr.domain, mrr.crypto, ...) and none of the intermediate
+# `mrr` directories carry an __init__.py, which is what makes the merge a
+# namespace package instead of six competing regular packages.
+[tool.hatch.build.targets.wheel]
+only-include = [
+  "packages/domain/mrr",
+  "packages/crypto/mrr",
+  "packages/contracts/mrr",
+  "packages/policy/mrr",
+  "packages/provenance/mrr",
+  "packages/observability/mrr",
+]
+
+# The regular wheel build above merges the six roots via path remapping.
+# Editable installs (uv sync / pip install -e) instead add each root
+# directly to sys.path so PEP 420 merges them into one `mrr` namespace
+# package at import time; `sources` remapping (below) is not honored in
+# dev mode, hence the separate `dev-mode-dirs` list.
+dev-mode-dirs = [
+  "packages/domain",
+  "packages/crypto",
+  "packages/contracts",
+  "packages/policy",
+  "packages/provenance",
+  "packages/observability",
+]
+
+[tool.hatch.build.targets.wheel.sources]
+"packages/domain" = ""
+"packages/crypto" = ""
+"packages/contracts" = ""
+"packages/policy" = ""
+"packages/provenance" = ""
+"packages/observability" = ""
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.mypy]
+strict = true
+namespace_packages = true
+explicit_package_bases = true
+files = ["packages", "tests", "scripts"]
+mypy_path = [
+  "packages/domain",
+  "packages/crypto",
+  "packages/contracts",
+  "packages/policy",
+  "packages/provenance",
+  "packages/observability",
+]
+
+[tool.importlinter]
+root_packages = ["mrr"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Core packages stay framework- and provider-free (MRR-NFR-010)"
+type = "forbidden"
+source_modules = [
+  "mrr.domain",
+  "mrr.crypto",
+  "mrr.contracts",
+  "mrr.policy",
+  "mrr.provenance",
+  "mrr.observability",
+]
+forbidden_modules = [
+  "fastapi",
+  "starlette",
+  "temporalio",
+  "openai",
+  "anthropic",
+  "boto3",
+  "botocore",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests"]

@@ -1,0 +1,10 @@
+# Tiers listed here are declared empty on purpose (no tier directory yet, or
+# a directory with no collectible tests). scripts/run_test_tier.py treats
+# that as EXPECTED EMPTY, never as feature completion. A task that populates
+# a tier removes its line in the same diff that adds the tests.
+property
+contract
+integration
+e2e
+adversarial
+meridianbench
