@@ -1,0 +1,70 @@
+task_id: E1-T04
+title: Implement the state-machine library and domain errors
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from the state machines in docs/spec/01_SYSTEM_SPEC.md section 6;
+  approved by the repository owner's direction to continue (2026-07-18).
+objective: >
+  Provide a framework-independent state-machine library encoding the four
+  lifecycles defined in the system specification (ResearchScore, TaskBundle,
+  Claim, CorrectionEvent) with typed domain errors, so later services enforce
+  legal transitions from one shared definition instead of inventing them.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#6-state-machines
+  - schemas/research-score.schema.json
+  - schemas/claim.schema.json
+  - schemas/correction-event.schema.json
+requirements:
+  - MRR-FR-004
+  - MRR-FR-062
+  - MRR-FR-063
+  - MRR-FR-092
+allowed_paths:
+  - packages/domain/**
+  - tests/unit/**
+  - tests/property/**
+  - pyproject.toml
+forbidden_changes:
+  - persistence or database code
+  - API endpoints
+  - schema semantics
+  - contract models (packages/contracts)
+  - workflow-engine integration
+invariants:
+  - state names match the owning JSON schema's status enum exactly, including
+    casing, where such an enum exists (ResearchScore and CorrectionEvent are
+    uppercase, Claim is lowercase); TaskBundle has no schema enum and uses the
+    section-6 diagram names verbatim
+  - only transitions drawn in section 6, plus its explicit universal Claim
+    rules, are legal; nothing else is inferred
+  - invalid transitions raise a typed error carrying machine, from-state, and
+    to-state, and create no partial state
+  - the transition core is pure, deterministic, and framework-free
+  - undrawn but plausible transitions (for example a SUSPENDED resume path,
+    outgoing edges from review_required or legacy_unverified beyond the
+    universal rules) are reported as open specification questions, never
+    implemented
+acceptance_tests:
+  - every drawn edge is accepted for its machine
+  - property test - randomly generated undrawn transitions never succeed
+  - claim universal rules hold (nonterminal to review_required, any status to
+    withdrawn and superseded)
+  - states without drawn outgoing edges reject every transition
+  - the typed error exposes machine, from-state, and to-state
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+required_output:
+  - implementation summary
+  - changed files
+  - the exact edge list derived from the section-6 diagrams, stated per machine
+  - tests and command results
+  - open specification questions
+stop_conditions:
+  - a diagram edge contradicts a schema status enum
+  - a diagram is too ambiguous to derive a defensible edge list
+  - implementation requires changes outside allowed paths
