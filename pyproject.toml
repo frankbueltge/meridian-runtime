@@ -9,6 +9,7 @@ dependencies = [
   "rfc8785>=0.1.4",
   "cryptography>=43.0",
   "python-ulid>=2.7",
+  "pydantic>=2.9",
 ]
 
 [dependency-groups]
@@ -20,6 +21,9 @@ dev = [
   "pip-audit>=2.7",
   "bandit>=1.7",
   "hypothesis>=6.112",
+  "jsonschema>=4.26.0",
+  "referencing>=0.37.0",
+  "types-jsonschema>=4.26.0.20260518",
 ]
 
 [build-system]
