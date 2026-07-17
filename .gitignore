@@ -17,6 +17,7 @@ dist/
 .hypothesis/
 .coverage
 htmlcov/
+.security-check-requirements.txt
 
 # OS / editor
 .DS_Store
