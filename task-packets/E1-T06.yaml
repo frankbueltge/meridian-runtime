@@ -1,0 +1,89 @@
+task_id: E1-T06
+title: Implement the append-only domain event log and transactional outbox
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from MRR-NFR-001/002, docs/spec/06_IMPLEMENTATION_PLAN.md
+  section 2 item 4 and the E1 backlog row, and the AGENTS.md
+  source-of-truth discipline; approved by the repository owner's direction
+  to continue (2026-07-18).
+objective: >
+  Provide the authoritative audit backbone - an append-only, tamper-evident
+  domain event log whose entries carry full transition provenance, coupled
+  to state changes through a transactional outbox so that state and event
+  cannot diverge, plus framework-free interfaces in the provenance layer.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#2-architecture-decisions-for-v1
+  - docs/spec/02_DOMAIN_MODEL.md#1-identity-revision-and-hashing
+requirements:
+  - MRR-NFR-001
+  - MRR-NFR-002
+allowed_paths:
+  - packages/provenance/**
+  - packages/persistence/**
+  - packages/domain/**
+  - migrations/**
+  - tests/unit/**
+  - tests/property/**
+  - tests/integration/**
+  - pyproject.toml
+forbidden_changes:
+  - API endpoints
+  - workflow-engine integration
+  - artifact/object storage (E1-T07)
+  - external message brokers or delivery transports (dispatch stays an
+    interface plus an in-process reference implementation)
+  - schema semantics
+  - contract models (packages/contracts)
+derived_decisions: >
+  Event dataclass and interfaces live in packages/provenance (framework-free,
+  already covered by the import-linter core contract); the PostgreSQL
+  implementation lives in packages/persistence; Alembic migration 0002 adds
+  the two tables. Tamper evidence is a hash chain - every event carries a
+  content hash computed with the existing mrr.domain.hashing_policy tooling
+  plus the hash of the preceding event in the log; appends are serialized
+  with a PostgreSQL advisory lock so the chain has a single writer.
+invariants:
+  - every event records actor, occurred-at, policy version, causation id,
+    correlation id, object id, and object revision (MRR-NFR-001) - none of
+    these are optional except causation for root events
+  - the log is append-only - no public interface updates or deletes an
+    event row (MRR-NFR-002)
+  - tamper evidence holds - altering any persisted event payload breaks the
+    hash chain verification from that point on
+  - state change, event append, and outbox row are one transaction - an
+    injected failure after any of the three leaves none of them persisted
+  - outbox dispatch is at-least-once and idempotent-marking - a dispatched
+    row is never re-created, a failed dispatch stays pending
+  - interfaces in packages/provenance import no SQLAlchemy, driver, or
+    framework
+acceptance_tests:
+  - alembic upgrade head applies migration 0002 on top of 0001
+  - appended events read back in order with intact provenance fields
+  - chain verification passes on an untampered log and fails after a raw-SQL
+    payload alteration (bypassing the public interface)
+  - injected failure between state write and event append rolls back both
+    (and the outbox row) - state and event cannot diverge
+  - concurrent appends from two connections both succeed serialized and the
+    chain remains valid
+  - pending outbox rows are dispatched exactly once by the reference
+    dispatcher; a dispatcher error leaves the row pending
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - changed files and migration list
+  - tests and command results, including the CI run for the integration tier
+  - security implications
+  - open specification questions
+stop_conditions:
+  - tamper evidence cannot be provided without changing prior migrations
+  - atomicity cannot be guaranteed through the existing engine/transaction
+    handling
+  - implementation requires changes outside allowed paths
