@@ -1,12 +1,13 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Six hand-written Pydantic v2 models mirror the six entity schemas in
-schemas/ (E1-T03): ``ResearchScore``, ``NodeManifest``, ``TaskBundle``,
-``Claim``, ``EvidenceCrate``, ``CorrectionEvent``. Shared building blocks
-mirroring ``schemas/common.schema.json`` live in ``mrr.contracts.common``
-and are re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``,
-``Budget``, ``BaseObject``, ``MRRModel``).
+Seven hand-written Pydantic v2 models mirror the seven entity schemas in
+schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``, ``Claim``,
+``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), and ``RunManifest``
+(E2-T05). Shared building blocks mirroring ``schemas/common.schema.json``
+live in ``mrr.contracts.common`` and are re-exported here too
+(``Signature``, ``ArtifactRef``, ``Scope``, ``Budget``, ``BaseObject``,
+``MRRModel``).
 
 These models are hand-written rather than generated from the JSON Schemas
 (see the PR body for the full rationale): the claim schema's conditional
@@ -60,6 +61,7 @@ from mrr.contracts.research_score import (
     ResearchScore,
     ResearchScoreStatus,
 )
+from mrr.contracts.run_manifest import RunCost, RunManifest, RunResourceUsage
 from mrr.contracts.task_bundle import (
     CapabilityRef,
     DataAccessMode,
@@ -106,6 +108,9 @@ __all__ = [
     "ResearchScore",
     "ResearchScoreStatus",
     "ResourceLimits",
+    "RunCost",
+    "RunManifest",
+    "RunResourceUsage",
     "RunState",
     "Scope",
     "Sha256",
