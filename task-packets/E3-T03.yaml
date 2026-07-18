@@ -1,0 +1,96 @@
+task_id: E3-T03
+title: Implement the SourceFamily representation
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/02_DOMAIN_MODEL.md section 2.10 (SourceFamily),
+  MRR-FR-065 (source count is not evidence independence), and MRR-NFR-001;
+  approved by the repository owner's direction to continue (2026-07-19).
+  Third task of Epic E3. Authorizes a NEW entity schema (source-family)
+  derived faithfully from the domain model.
+objective: >
+  Provide the SourceFamily: a schema, contract, and persistence service that
+  represents evidence dependence between sources (copy, syndication, shared
+  dataset, shared press release, direct derivation, or uncertain), so that
+  source COUNT is never mistaken for evidence INDEPENDENCE. Family confidence
+  changes independence calculations and presentation; it never silently
+  deletes a source.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/02_DOMAIN_MODEL.md#210-sourcefamily
+  - docs/spec/01_SYSTEM_SPEC.md#47-stage-7--claim-graph
+  - schemas/common.schema.json
+  - schemas/source-record.schema.json
+requirements:
+  - MRR-FR-065
+  - MRR-NFR-001
+allowed_paths:
+  - schemas/**
+  - examples/**
+  - packages/contracts/**
+  - packages/domain/**
+  - services/**
+  - scripts/check_contracts.py
+  - tests/**
+  - pyproject.toml
+forbidden_changes:
+  - the independence validator itself (E3-T05 consumes SourceFamily; this
+    task only represents and persists families)
+  - verification/review records (E3-T04)
+  - correction events (E3-T06)
+  - changing existing schemas' semantics
+  - HTTP/FastAPI endpoints
+derived_decisions: >
+  One new entity schema (source-family) derived faithfully from domain 2.10,
+  mirroring existing conventions (allOf baseObject, unevaluatedProperties:
+  false, urn/timestamp $defs), added to check_contracts (now ten entities).
+  A SourceFamily links member SourceRecords (E3-T01) by urn and carries the
+  relationship type, confidence, rationale, detecting method, and reviewer.
+  The service persists via the E1-T06 unit of work (revision + event),
+  consistent with the E2/E3 services; the object is unsigned (no signature in
+  2.10), so like Claim its lifecycle is plain append-only revisions. This
+  task REPRESENTS families only; the independence CALCULATION that consumes
+  them (adjusting effective evidence weight, never deleting sources) is
+  E3-T05.
+invariants:
+  - a SourceFamily never removes or deletes a member source - it only records
+    dependence; representation is additive (domain 2.10: family confidence is
+    not used to silently delete sources)
+  - the relationship type is one of the domain-2.10 values (copy, syndication,
+    shared_dataset, shared_press_release, direct_derivation, uncertain); an
+    out-of-vocabulary value is rejected (fails closed)
+  - member sources are referenced by urn (SourceRecord ids), not embedded, so
+    a source belongs to a family without the family owning its content
+  - every example validates against schema AND Pydantic and round-trips
+    (E1-T03 invariant extended to the tenth entity)
+  - persisting a family writes exactly one domain event with full NFR-001
+    provenance, atomically with the revision
+acceptance_tests:
+  - the source-family schema passes Draft 2020-12 validation; its example
+    validates against schema and Pydantic and round-trips
+  - each relationship-type value validates; an unknown value fails both
+    validators
+  - a malformed fixture (bad urn, unknown relationship type) fails both
+    validators
+  - creating a family persists one revision + one event atomically
+    (integration, real PostgreSQL)
+  - a family referencing member source urns leaves those SourceRecords
+    untouched (no deletion/mutation) - representation is additive
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+required_output:
+  - implementation summary
+  - the derived source-family schema and how it maps to domain 2.10
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications
+  - open specification questions
+stop_conditions:
+  - domain 2.10 cannot be represented as a schema without inventing semantics
+  - the additive-representation invariant cannot be enforced
+  - implementation requires changes outside allowed paths
