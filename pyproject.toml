@@ -34,10 +34,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 # The distribution ships one PEP 420 namespace package, `mrr`, merged at build
-# time from seven independent package roots under packages/. Each root owns a
-# leaf subpackage (mrr.domain, mrr.crypto, ...) and none of the intermediate
-# `mrr` directories carry an __init__.py, which is what makes the merge a
-# namespace package instead of seven competing regular packages.
+# time from eight independent package roots under packages/ and adapters/.
+# Each root owns a leaf subpackage (mrr.domain, mrr.crypto, ...,
+# mrr.adapters.object_store) and none of the intermediate `mrr` directories
+# (nor, for the adapters root, the intermediate `mrr.adapters` directory)
+# carry an __init__.py, which is what makes the merge a namespace package
+# instead of competing regular packages.
 [tool.hatch.build.targets.wheel]
 only-include = [
   "packages/domain/mrr",
@@ -47,9 +49,10 @@ only-include = [
   "packages/provenance/mrr",
   "packages/observability/mrr",
   "packages/persistence/mrr",
+  "adapters/object_store/mrr",
 ]
 
-# The regular wheel build above merges the seven roots via path remapping.
+# The regular wheel build above merges the eight roots via path remapping.
 # Editable installs (uv sync / pip install -e) instead add each root
 # directly to sys.path so PEP 420 merges them into one `mrr` namespace
 # package at import time; `sources` remapping (below) is not honored in
@@ -62,6 +65,7 @@ dev-mode-dirs = [
   "packages/provenance",
   "packages/observability",
   "packages/persistence",
+  "adapters/object_store",
 ]
 
 [tool.hatch.build.targets.wheel.sources]
@@ -72,6 +76,7 @@ dev-mode-dirs = [
 "packages/provenance" = ""
 "packages/observability" = ""
 "packages/persistence" = ""
+"adapters/object_store" = ""
 
 [tool.ruff]
 target-version = "py312"
@@ -84,7 +89,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 strict = true
 namespace_packages = true
 explicit_package_bases = true
-files = ["packages", "tests", "scripts"]
+files = ["packages", "adapters", "tests", "scripts"]
 mypy_path = [
   "packages/domain",
   "packages/crypto",
@@ -93,6 +98,7 @@ mypy_path = [
   "packages/provenance",
   "packages/observability",
   "packages/persistence",
+  "adapters/object_store",
   "tests/property",
 ]
 
@@ -111,6 +117,7 @@ source_modules = [
   "mrr.provenance",
   "mrr.observability",
   "mrr.persistence",
+  "mrr.adapters.object_store",
 ]
 forbidden_modules = [
   "fastapi",

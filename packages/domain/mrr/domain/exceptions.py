@@ -90,3 +90,52 @@ class ObjectNotFoundError(DomainError):
             super().__init__(f"no object found for id {id!r}")
         else:
             super().__init__(f"no object found for id {id!r} at revision {revision!r}")
+
+
+class InvalidContentHashError(DomainError):
+    """Raised when a ``content_hash`` argument does not match the exact
+    ``$defs.sha256`` pattern (``mrr.crypto.hashing.SHA256_PATTERN``,
+    ``sha256:<64 lowercase hex>``).
+
+    Checked before any store lookup happens (``mrr.domain.artifacts.
+    require_valid_content_hash``), so a malformed key fails closed instead of
+    being silently treated as "not found" — collapsing "malformed input" and
+    "absent key" into one generic error is exactly what AGENTS.md's
+    prohibited-shortcuts list warns against ("collapsing `unknown`,
+    `not_found`, `contradicted`, and `failed` into one generic error").
+    """
+
+    def __init__(self, content_hash: str) -> None:
+        self.content_hash = content_hash
+        super().__init__(f"not a valid sha256: content hash: {content_hash!r}")
+
+
+class ArtifactNotFoundError(DomainError):
+    """Raised by ``mrr.domain.artifacts.ArtifactStore.get`` and ``stat`` when
+    no stored artifact exists for the requested (well-formed) content hash.
+    Carries ``content_hash``. Never returns ``None`` or a boolean for a
+    missing artifact.
+    """
+
+    def __init__(self, content_hash: str) -> None:
+        self.content_hash = content_hash
+        super().__init__(f"no artifact found for content hash {content_hash!r}")
+
+
+class ArtifactIntegrityError(DomainError):
+    """Raised by ``mrr.domain.artifacts.ArtifactStore.get``/``stat``/``put``
+    when a stored artifact's bytes no longer hash to its key — corruption,
+    bit rot, or tampering (docs/spec/01_SYSTEM_SPEC.md MRR-FR-056 acceptance,
+    "Recomputing a sealed artifact hash yields the stored value"). Carries
+    ``expected`` (the requested/claimed key) and ``actual`` (the hash
+    actually recomputed from the on-disk bytes). Reads fail closed: this is
+    raised instead of returning the mismatched bytes.
+    """
+
+    def __init__(self, expected: str, actual: str) -> None:
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"artifact integrity check failed: expected content hash {expected!r}, "
+            f"computed {actual!r} from stored bytes"
+        )
