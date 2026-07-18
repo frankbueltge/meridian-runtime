@@ -1,0 +1,112 @@
+task_id: E2-T07
+title: Implement the CLI flow for a complete local run (E2E-001, E2 scope)
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md Epic E2 exit criteria and
+  docs/spec/05_EVALUATION_AND_ACCEPTANCE.md E2E-001; approved by the
+  repository owner's direction to continue (2026-07-18). Seventh and final
+  task of Epic E2 - the capstone that wires the single-node slice together.
+objective: >
+  Provide the `mrr` CLI that drives a complete local run end to end with no
+  model/LLM dependency - approve a Research Score, offer and accept a
+  deterministic Task Bundle, execute it, record the Run Manifest, and seal the
+  Evidence Crate - and an E2E-001 (E2-scope) test proving the whole loop runs,
+  every hash resolves, deterministic replay succeeds, and the policy-denied
+  and timed-out paths are explicit terminal outcomes.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#3-epic-sequence
+  - docs/spec/05_EVALUATION_AND_ACCEPTANCE.md#e2e-001-single-node-evidence-loop
+  - docs/spec/01_SYSTEM_SPEC.md#45-stage-5--local-execution
+requirements:
+  - MRR-FR-001
+  - MRR-FR-030
+  - MRR-FR-042
+  - MRR-FR-050
+  - MRR-NFR-001
+  - MRR-NFR-012
+allowed_paths:
+  - services/**
+  - packages/domain/**
+  - tests/e2e/**
+  - tests/integration/**
+  - tests/EMPTY_TIERS.txt
+  - pyproject.toml
+  - README.md
+forbidden_changes:
+  - claim graph, independent verification, and claim status (E2E-001 steps
+    6-8 are E3; out of scope here)
+  - hypothesis-forest branch generation (stage 2; the CLI references a
+    branch_id but does not generate branches)
+  - RO-Crate / portable export (E2E-001 step 9 is E8; out of scope)
+  - model/LLM invocation (the run MUST be LLM-free - that is the point)
+  - schema semantics and persistence/event/crypto internals (reuse)
+  - HTTP/FastAPI endpoints (this is a CLI)
+derived_decisions: >
+  The `mrr` CLI is a thin composition layer over the merged E2 services
+  (ResearchScoreService, CapabilityRegistry, TaskBundleService +
+  NodeTaskDecisionService, ReferenceTaskExecutor, RunManifestRecorder,
+  EvidenceCrateSealer). It lives under the services/ layering (a cli leaf,
+  e.g. services/control_plane/mrr/services/cli/ to avoid a new namespace
+  root, or a dedicated root if cleaner - register it wherever it lands) and
+  is exposed as a console script `mrr` in pyproject. It wires real
+  dependencies (PostgreSQL engine, LocalFilesystemArtifactStore, caller-
+  supplied Ed25519 keys). Because the E2E-001 loop needs a database, the
+  E2E-001 test lives in tests/e2e/ (graduate the e2e line from EMPTY_TIERS)
+  and runs in CI against the PostgreSQL service, skipping visibly with the
+  same guard as the integration tier when no database is present. Steps 6-9
+  of the specified E2E-001 (claim, verification, claim status, export) belong
+  to E3/E8 and are explicitly out of scope; this task delivers the E2 portion
+  of the loop (approve score through sealed crate) plus deterministic replay
+  and the explicit policy-denied/timeout paths, and documents the remaining
+  steps as pending later epics.
+invariants:
+  - the full flow runs with NO model/LLM dependency (MRR-NFR-012 explicit
+    degradation, not fabricated substitutes); the reference task is
+    deterministic
+  - every object the flow produces resolves by hash - the crate's run_id
+    resolves to the recorded RunManifest, artifact hashes recompute to stored
+    bytes, and the sealed crate's node signature verifies
+  - deterministic replay: running the same approved score + task bundle twice
+    yields the same executor output hash (the deterministic-replay gate)
+  - the policy-denied and timed-out paths each surface as an explicit terminal
+    outcome and a sealed (failure) crate, never a silent success or a generic
+    error (MRR-FR-050 / MRR-FR-043)
+  - an unapproved score blocks the run at the gate (MRR-FR-001) - the CLI
+    refuses to start work, deterministically
+  - the CLI composes services only; it introduces no new domain behavior and
+    no core package imports it (layering contract holds)
+acceptance_tests:
+  - E2E-001 (E2 scope): approve score -> register node -> create/offer/accept
+    task -> execute -> record run manifest -> seal crate, end to end, with no
+    LLM, asserting the sealed crate exists and references the run and task,
+    all hashes resolve, and the node signature verifies (integration/e2e,
+    real PostgreSQL)
+  - deterministic replay: the loop run twice produces the same output hash
+  - an unapproved score aborts the run at the gate with the deterministic
+    typed error
+  - a policy-denied run and a timed-out run each seal an explicit failure
+    crate carrying that terminal state
+  - `mrr` console script is invocable and drives the flow (a smoke
+    invocation, e.g. --help and a dry sub-command, works)
+  - the services layering and core import contracts still hold
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+  - make test-e2e
+required_output:
+  - implementation summary
+  - the CLI surface and how it composes the E2 services
+  - changed files
+  - tests and command results, including the CI e2e/integration runs
+  - security implications
+  - open specification questions (which E2E-001 steps remain for E3/E8)
+stop_conditions:
+  - the end-to-end loop cannot be composed from the merged services without
+    new domain behavior
+  - deterministic replay cannot be demonstrated
+  - implementation requires changes outside allowed paths
