@@ -6,9 +6,26 @@ of the three leaves none of them persisted").
 
 ``PostgresObjectRepository.insert_revision_with_connection`` and
 ``PostgresEventLog.append`` are both connection-accepting (E1-T06's addition
-to the E1-T05 repository); this module's one function is the reason those
-variants exist — it opens exactly one ``Engine.begin()`` transaction and
-threads the same ``Connection`` through both writes.
+to the E1-T05 repository); this module's first function,
+``record_object_revision_with_event``, is the reason those variants exist —
+it opens exactly one ``Engine.begin()`` transaction and threads the same
+``Connection`` through both writes. This is the **content-revision** path:
+every call mints a new ``StoredObject`` row.
+
+``record_event`` (ADR-0007, docs/spec/adr/ADR-0007-TASK-BUNDLE-TRANSITIONS-ARE-EVENTS.md)
+is the complementary **event-only** path: append a domain event (and its
+outbox row) atomically, WITHOUT writing any new object content revision.
+It exists because the Task Bundle is the one first-class object that is both
+lifecycle-bearing and origin-signed (MRR-FR-031) — modeling its lifecycle
+transitions (offer/accept/defer/reject, ...) as new content revisions would
+mean re-minting the signed payload's ``revision``/``content_hash`` on every
+negotiation step, breaking the origin's one-time signature. Under ADR-0007 a
+transition is instead an append-only domain event; the authoritative current
+status is derived from the event log (``mrr.services.task_bundle.service.
+_current_status``), and the signed content record is written once (at
+creation) and never touched again by a pure lifecycle transition — only a
+genuine content change (``propose_modification``) still goes through
+``record_object_revision_with_event``.
 """
 
 from __future__ import annotations
@@ -18,8 +35,8 @@ from collections.abc import Callable
 from mrr.domain.repositories import StoredObject
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
 from mrr.provenance.events import DomainEvent
-from mrr.provenance.log import AppendedEvent
-from sqlalchemy import Engine
+from mrr.provenance.log import AppendedEvent, EventLog
+from sqlalchemy import Connection, Engine
 
 
 def record_object_revision_with_event(
@@ -79,3 +96,67 @@ def record_object_revision_with_event(
         appended = event_log.append(conn, event)
         hook()
         return stored, appended
+
+
+def record_event(
+    engine: Engine,
+    event_log: EventLog[Connection],
+    event: DomainEvent,
+    *,
+    _after_append: Callable[[], None] | None = None,
+) -> AppendedEvent:
+    """Append ``event`` (and its outbox row) atomically, WITHOUT writing any
+    object content revision — the event-only counterpart to
+    ``record_object_revision_with_event`` (ADR-0007: a Task Bundle lifecycle
+    transition is a domain event, not a new signed content revision).
+
+    Body is deliberately exactly ``with engine.begin() as conn: return
+    event_log.append(conn, event)`` — one transaction, one write. There is no
+    ``object_repository`` parameter at all: this function cannot touch the
+    ``objects`` table even by accident, which is the whole point (a caller
+    that wants a content revision uses ``record_object_revision_with_event``
+    instead; the two are not interchangeable).
+
+    Typed against the generic ``mrr.provenance.log.EventLog[Connection]``
+    Protocol rather than the concrete ``PostgresEventLog`` class (unlike
+    ``record_object_revision_with_event``, which needs the concrete
+    ``PostgresObjectRepository``/``PostgresEventLog`` types because
+    ``insert_revision_with_connection`` is a Postgres-only addition not on
+    the framework-free ``ObjectRepository`` protocol). ``EventLog[TTx]``'s
+    own connection-accepting ``append`` shape already covers everything this
+    function needs, so nothing is lost by depending on the Protocol here —
+    and it is what lets a DB-free unit test substitute a fake event log
+    (``tests/unit/persistence/test_unit_of_work.py``) without any
+    ``# type: ignore``. ``PostgresEventLog`` itself still satisfies this
+    Protocol exactly as before (it *is* an ``EventLog[Connection]``, per its
+    own docstring), so production wiring and the integration tier are
+    unaffected.
+
+    Args:
+        engine: opens the single transaction the append shares (with its
+            outbox row — both are written inside ``PostgresEventLog.append``
+            itself, which this function does not duplicate).
+        event_log: an event log bound to ``engine`` (or an engine pointing at
+            the same database).
+        event: the domain event describing the lifecycle transition.
+        _after_append: test-only fault-injection seam, identical in spirit to
+            ``record_object_revision_with_event``'s own ``_after_append``: it
+            runs after the event (and its outbox row) is written but before
+            the transaction commits, so a test can inject a failure there and
+            assert that NEITHER the event NOR its outbox row survive. Not
+            part of the public contract; defaults to a no-op.
+
+    Returns:
+        the ``AppendedEvent`` (with its assigned sequence and computed
+        hashes).
+
+    Raises:
+        mrr.provenance.exceptions.EventAppendError: if the event itself
+            fails to append (e.g. a duplicate event id); the transaction
+            rolls back with it.
+    """
+    hook = _after_append or (lambda: None)
+    with engine.begin() as conn:
+        appended = event_log.append(conn, event)
+        hook()
+        return appended
