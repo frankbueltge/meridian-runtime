@@ -300,6 +300,46 @@ class CapabilityNotDeclaredError(DomainError):
         )
 
 
+class ClaimNotFoundError(DomainError):
+    """Raised by ``mrr.services.claim.service.ClaimService`` (task-packets/
+    E3-T02.yaml) when a referenced ``Claim`` id resolves to no stored object
+    at all. Carries ``claim_id``. Never returns ``None`` or a boolean for a
+    missing claim — matches ``ScoreNotFoundError``/``TaskBundleNotFoundError``'s
+    own precedent for a first-class object lookup.
+    """
+
+    def __init__(self, claim_id: str) -> None:
+        self.claim_id = claim_id
+        super().__init__(f"no Claim found for id {claim_id!r}")
+
+
+class MissingSupportEdgeError(DomainError):
+    """Raised by ``ClaimService.to_supported`` (task-packets/E3-T02.yaml
+    derived_decisions: "the service additionally enforces the matching
+    typed support edges exist") when one or more ``evidence_relations`` URNs
+    have no matching typed ``supports`` edge from the claim to that target.
+
+    This is on top of, not instead of, the Claim contract's own
+    ``model_validator`` (``evidence_relations``/``verification_ids`` must be
+    non-empty for status ``supported``, E1-T03) — that check catches an
+    EMPTY evidence_relations list; this one catches a NON-EMPTY list whose
+    entries are not actually backed by a graph edge docs/spec/01_SYSTEM_SPEC.md
+    MRR-FR-062 requires ("at least one valid support relation"). Carries
+    ``claim_id`` and ``missing_targets`` (the evidence_relations URNs with no
+    matching edge), so a caller can tell exactly which references are
+    unbacked without parsing the message string.
+    """
+
+    def __init__(self, claim_id: str, missing_targets: list[str]) -> None:
+        self.claim_id = claim_id
+        self.missing_targets = missing_targets
+        super().__init__(
+            f"Claim {claim_id!r} cannot become supported: no typed 'supports' edge "
+            f"from this claim to {missing_targets!r} — add_evidence_edge(..., "
+            "edge_type='supports') first"
+        )
+
+
 class UntrustedIsolationNotAvailableError(DomainError):
     """Raised by ``mrr.services.node_runtime.executor.ReferenceTaskExecutor.__init__``
     (task-packets/E2-T04.yaml, MRR-FR-041) when constructed with
