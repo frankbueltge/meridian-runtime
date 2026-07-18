@@ -1,0 +1,106 @@
+task_id: E2-T03
+title: Implement the Task Bundle service and local node decision
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md stage 4 (MRR-FR-030..035),
+  stage 3 (MRR-FR-022..024), the TaskBundle lifecycle in section 6.2, and
+  sections 7.5; approved by the repository owner's direction to continue
+  (2026-07-18). Third task of Epic E2.
+objective: >
+  Provide task-bundle creation, offer, and the authoritative local node
+  decision (accept / propose-modification / defer / reject) with recorded
+  refusals - up to but not including execution. The target node is the sole
+  authority for acceptance; the origin cannot self-accept.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#44-stage-4--signed-task-bundle
+  - docs/spec/01_SYSTEM_SPEC.md#43-stage-3--capability-discovery-and-negotiation
+  - docs/spec/01_SYSTEM_SPEC.md#62-task-bundle
+  - docs/spec/01_SYSTEM_SPEC.md#75-node-runtime
+  - schemas/task-bundle.schema.json
+requirements:
+  - MRR-FR-030
+  - MRR-FR-031
+  - MRR-FR-022
+  - MRR-FR-023
+  - MRR-FR-024
+  - MRR-NFR-001
+allowed_paths:
+  - services/**
+  - packages/domain/**
+  - tests/unit/**
+  - tests/integration/**
+  - pyproject.toml
+forbidden_changes:
+  - sandbox execution and QUEUED/RUNNING/COMPLETED transitions (E2-T04)
+  - evidence crate sealing (E2-T06)
+  - policy/permission granting (Policy Gateway, later)
+  - HTTP/FastAPI endpoints
+  - schema semantics
+  - contract models and persistence/event internals (reuse; additive domain
+    errors only)
+derived_decisions: >
+  Lives at services/control_plane/mrr/services/task_bundle/, under the
+  existing services/ root and layering contract, wired like E2-T01/T02
+  (bind_unit_of_work). Two distinct roles, both in-process for this
+  single-node slice but with separated authority: the ORIGIN operations
+  (create, offer, accept_modification, cancel) and the TARGET NODE decision
+  (accept, propose_modification, defer, reject). MRR-FR-022 is enforced
+  structurally - the accept/modify/defer/reject transitions are reachable
+  ONLY through the node-decision API, which records the deciding node
+  identity and requires it to equal the bundle's target_node_id; the origin
+  API has no accept method. Bundle creation gates on E2-T01
+  (ensure_can_start_work over research_score_id) and consults the E2-T02
+  registry to confirm the target node's current manifest DECLARES the
+  requested capability (declaration, not permission). Signing/verification
+  reuses E1-T02 over the same model_dump(mode="json") convention E2-T02 uses
+  (consistency; both to be aligned per ADR-0004 before E5). Transitions use
+  E1-T04 TASK_BUNDLE_LIFECYCLE and persist via the E1-T06 unit of work.
+invariants:
+  - only the target node can accept/modify/defer/reject; an attempt by any
+    identity other than the bundle's target_node_id fails closed with a
+    typed error and persists nothing (MRR-FR-022)
+  - creation requires an APPROVED/ACTIVE research score (reuse E2-T01 gate)
+    and a target node whose current manifest declares the capability; a
+    missing score or undeclared capability fails closed
+  - a proposed modification is a NEW signed revision with a new content hash
+    and signature, and returns to OFFERED for the origin to accept before
+    execution (MRR-FR-023/034); prior revisions stay intact
+  - a reject records a research event carrying a reason category (MRR-FR-024)
+  - the cross-practice bundle is signed by the origin and its signature is
+    verified on the node side before any decision (MRR-FR-031)
+  - only lifecycle-legal transitions succeed; illegal ones persist nothing
+  - every authoritative transition writes one domain event with full
+    NFR-001 provenance, atomically with the revision
+acceptance_tests:
+  - create against an unapproved score fails closed (reuses E2-T01 gate)
+  - create for a capability the target node does not declare fails closed
+  - offer then node-accept moves CREATED->OFFERED->ACCEPTED and persists
+    events; the origin has no path to accept on the node's behalf
+  - a non-target identity calling accept/reject fails closed, nothing
+    persisted
+  - node reject records a refusal event with a reason category
+  - node propose_modification creates a new signed revision (new hash and
+    signature) back in OFFERED; the prior revision is intact
+  - a bundle with a tampered/invalid origin signature is refused on the node
+    side before any decision
+  - illegal lifecycle transitions persist nothing (integration, real
+    PostgreSQL)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications
+  - open specification questions
+stop_conditions:
+  - the schema cannot express a required negotiation input (for example the
+    refusal reason-category vocabulary)
+  - node-authority separation cannot be enforced without HTTP transport
+  - implementation requires changes outside allowed paths
