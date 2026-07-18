@@ -680,8 +680,11 @@ class ClaimService:
         new_body["status"] = to_status
 
         if to_status == "supported":
-            assert evidence_relations is not None
-            assert verification_ids is not None
+            if evidence_relations is None or verification_ids is None:
+                raise ValueError(
+                    "transition to 'supported' requires evidence_relations and "
+                    "verification_ids"
+                )
             existing_support_targets = {
                 edge.target_id for edge in self._edge_repository.edges_from(claim_id, "supports")
             }
