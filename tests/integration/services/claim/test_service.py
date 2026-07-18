@@ -135,7 +135,10 @@ def test_full_path_persists_revisions_edges_and_events_atomically(
         "claim.evidence_edge_added",
         "claim.supported",
     ]
-    for appended, expected_revision in zip(events, [1, 2, 1, 3], strict=True):
+    # The evidence-edge-added event is emitted while the claim sits at revision 2
+    # (after submit_for_review): adding an edge is not a new claim revision, so the
+    # event faithfully records the claim's current revision (2), not 1.
+    for appended, expected_revision in zip(events, [1, 2, 2, 3], strict=True):
         event = appended.event
         assert event.actor == actor
         assert event.policy_version == _POLICY_VERSION
