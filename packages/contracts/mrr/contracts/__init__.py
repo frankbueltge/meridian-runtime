@@ -1,13 +1,13 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Seven hand-written Pydantic v2 models mirror the seven entity schemas in
+Nine hand-written Pydantic v2 models mirror the nine entity schemas in
 schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``, ``Claim``,
-``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), and ``RunManifest``
-(E2-T05). Shared building blocks mirroring ``schemas/common.schema.json``
-live in ``mrr.contracts.common`` and are re-exported here too
-(``Signature``, ``ArtifactRef``, ``Scope``, ``Budget``, ``BaseObject``,
-``MRRModel``).
+``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest`` (E2-T05),
+and ``SourceRecord``/``EvidenceAnchor`` (E3-T01). Shared building blocks
+mirroring ``schemas/common.schema.json`` live in ``mrr.contracts.common``
+and are re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``,
+``Budget``, ``BaseObject``, ``MRRModel``).
 
 These models are hand-written rather than generated from the JSON Schemas
 (see the PR body for the full rationale): the claim schema's conditional
@@ -41,6 +41,15 @@ from mrr.contracts.correction_event import (
     CorrectionStatus,
     CorrectionType,
 )
+from mrr.contracts.evidence_anchor import (
+    AnchorKind,
+    AnchorValidationStatus,
+    ComputationalSelector,
+    EvidenceAnchor,
+    EvidenceRelation,
+    RecomputationStatus,
+    TextLocator,
+)
 from mrr.contracts.evidence_crate import (
     EnvironmentInfo,
     EvidenceCrate,
@@ -62,6 +71,7 @@ from mrr.contracts.research_score import (
     ResearchScoreStatus,
 )
 from mrr.contracts.run_manifest import RunCost, RunManifest, RunResourceUsage
+from mrr.contracts.source_record import SourceClassification, SourceIdentifiers, SourceRecord
 from mrr.contracts.task_bundle import (
     CapabilityRef,
     DataAccessMode,
@@ -75,6 +85,8 @@ from mrr.contracts.task_bundle import (
 
 __all__ = [
     "AffectedObjectRef",
+    "AnchorKind",
+    "AnchorValidationStatus",
     "ApiVersion",
     "ApprovalMode",
     "ArtifactRef",
@@ -87,13 +99,16 @@ __all__ = [
     "ClaimStatus",
     "ClaimType",
     "Classification",
+    "ComputationalSelector",
     "CorrectionEvent",
     "CorrectionSeverity",
     "CorrectionStatus",
     "CorrectionType",
     "DataAccessMode",
     "EnvironmentInfo",
+    "EvidenceAnchor",
     "EvidenceCrate",
+    "EvidenceRelation",
     "ExecutionSpec",
     "FailureCategory",
     "FailureEntry",
@@ -105,6 +120,7 @@ __all__ = [
     "NetworkProfile",
     "NodeManifest",
     "PublicationPolicy",
+    "RecomputationStatus",
     "ResearchScore",
     "ResearchScoreStatus",
     "ResourceLimits",
@@ -115,8 +131,12 @@ __all__ = [
     "Scope",
     "Sha256",
     "Signature",
+    "SourceClassification",
+    "SourceIdentifiers",
+    "SourceRecord",
     "TaskBundle",
     "TaskBundleStatus",
+    "TextLocator",
     "TransportMode",
     "UncertaintyEntry",
     "UncertaintyKind",

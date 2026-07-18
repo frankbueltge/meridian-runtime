@@ -1,0 +1,38 @@
+{
+  "id": "urn:mrr:evidence-anchor:01J00000000000000000000021",
+  "api_version": "mrr/v1alpha1",
+  "kind": "EvidenceAnchor",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-18T09:10:00Z",
+  "created_by": "urn:mrr:executor:01J00000000000000000000017",
+  "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "relation": "supports",
+  "anchor_kind": "computational",
+  "extraction_method": "automated recomputation of the benchmark percentage",
+  "extractor_id": "urn:mrr:executor:01J00000000000000000000017",
+  "anchor_validation_status": "validated",
+  "anchor_unavailable_reason": null,
+  "source_record_id": null,
+  "snapshot_hash": null,
+  "locator": null,
+  "quoted_fragment_hash": null,
+  "run_id": "urn:mrr:run:01J00000000000000000000007",
+  "output_artifact": {
+    "artifact_id": "urn:mrr:artifact:01J00000000000000000000008",
+    "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "classification": "PUBLIC"
+  },
+  "selector": {
+    "table": null,
+    "column": "percentage",
+    "row": 1,
+    "json_pointer": "/results/0/percentage",
+    "query": null,
+    "notebook_cell": null
+  },
+  "transformation_chain": [
+    "numerator / denominator * 100"
+  ],
+  "recomputation_status": "reproduced"
+}

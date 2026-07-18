@@ -1,0 +1,36 @@
+{
+  "id": "urn:mrr:source-record:01J00000000000000000000020",
+  "api_version": "mrr/v1alpha1",
+  "kind": "SourceRecord",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-18T09:00:00Z",
+  "created_by": "urn:mrr:agent:01J00000000000000000000016",
+  "content_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+  "identifiers": {
+    "doi": "10.1234/example.42",
+    "repository_id": null,
+    "archive_id": null,
+    "local_asset_id": null
+  },
+  "title": "Benchmark fixture percentage tables, 2026 edition",
+  "creators": [
+    "Example Research Collective"
+  ],
+  "publication_date": "2026-01-15",
+  "version": "1.0",
+  "retrieval_timestamp": "2026-07-18T08:55:00Z",
+  "retrieval_method": "HTTP GET, publisher API",
+  "snapshot_artifact_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+  "source_type": "journal-article",
+  "primary_secondary_derived": "primary",
+  "source_family_id": null,
+  "derivation_evidence": null,
+  "accessibility": {
+    "access_type": "open_access",
+    "access_url": "https://example.invalid/articles/42"
+  },
+  "licensing": {
+    "license_id": "CC-BY-4.0"
+  }
+}
