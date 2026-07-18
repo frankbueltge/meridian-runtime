@@ -1,0 +1,107 @@
+task_id: E3-T02
+title: Implement the Claim service and typed edge graph
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md stage 7 (MRR-FR-060..066), the
+  Claim lifecycle in section 6.3, the edge vocabulary in
+  docs/spec/02_DOMAIN_MODEL.md section 3, and MRR-NFR-001; approved by the
+  repository owner's direction to continue (2026-07-19). Second task of Epic
+  E3 - the claim graph.
+objective: >
+  Provide the Claim service: create atomic claims, drive their lifecycle,
+  connect them to evidence, counterevidence, and dependencies as typed graph
+  edges, and enforce that a supported claim has the required support and
+  verification - keeping materially different claims separate and linked by
+  typed relations rather than merged.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#47-stage-7--claim-graph
+  - docs/spec/01_SYSTEM_SPEC.md#63-claim
+  - docs/spec/02_DOMAIN_MODEL.md#3-edge-vocabulary
+  - schemas/claim.schema.json
+requirements:
+  - MRR-FR-060
+  - MRR-FR-061
+  - MRR-FR-062
+  - MRR-FR-063
+  - MRR-FR-066
+  - MRR-NFR-001
+allowed_paths:
+  - services/**
+  - packages/domain/**
+  - tests/**
+  - pyproject.toml
+forbidden_changes:
+  - review/verification records and the self-verification gate (E3-T04)
+  - the independence validator (E3-T05)
+  - source-family representation (E3-T03)
+  - correction events and impact traversal (E3-T06)
+  - schema semantics and contract models (the Claim contract exists from
+    E1-T03; reuse it - additive domain errors only)
+  - HTTP/FastAPI endpoints
+derived_decisions: >
+  Lives under services/control_plane. The Claim is NOT a cross-practice
+  signed object (its schema has no signature field), so - like ResearchScore
+  (E2-T01) and unlike TaskBundle - its lifecycle transitions are new object
+  revisions with status in the body (ADR-0007 does not apply; no signature to
+  break). Evidence/counterevidence/dependency links are persisted as typed
+  edges via the E1-T05 EdgeRepository using the section-3 vocabulary
+  (supports, contradicts, qualifies, contextualizes, depends_on,
+  derived_from, uses_source, ...); the claim graph is these typed edges over
+  PostgreSQL (section 7.6: a graph database is not required). The
+  supported-requires-evidence-and-verification rule is already in the Claim
+  contract model_validator (E1-T03); the service additionally enforces the
+  matching typed support edges exist. Actual verification RECORDS and the
+  self-verification/independence gates are E3-T04/T05 - here, verification_ids
+  are structural references the contract requires for `supported`.
+invariants:
+  - a claim is atomic - independently supportable/contested/contradicted/
+    withdrawn (MRR-FR-060); the service creates one claim per assertion, never
+    merges materially different scopes (MRR-FR-066 - separate claims linked by
+    typed edges)
+  - status `supported` requires at least one evidence relation AND at least
+    one verification id (MRR-FR-062, contract-enforced); a supported claim
+    with neither fails closed
+  - a claim may be unsupported only under draft/unsupported/unresolved/
+    speculative status (MRR-FR-063); other non-supported statuses are reached
+    only via legal CLAIM_LIFECYCLE transitions
+  - lifecycle transitions use CLAIM_LIFECYCLE (E1-T04); illegal transitions
+    persist nothing (fail closed)
+  - evidence, counterevidence, and dependency links are typed edges from the
+    section-3 vocabulary; an edge type outside the vocabulary is rejected
+    (reuses the E1-T05 fail-closed edge validation)
+  - every authoritative transition and edge write records a domain event with
+    full NFR-001 provenance, atomically with the persisted revision/edge
+acceptance_tests:
+  - a supported claim without evidence or without verification is rejected
+    (the packet's headline gate)
+  - creating a claim persists it (draft) with one event; a legal transition
+    to under_review then supported (with evidence + verification refs +
+    support edges) succeeds
+  - an illegal CLAIM_LIFECYCLE transition persists nothing
+  - evidence relations are stored as typed edges of a valid vocabulary type;
+    an invalid edge type is rejected
+  - two materially different claims remain separate objects linked by a typed
+    edge, not merged (MRR-FR-066)
+  - transitions and edge writes persist atomically with their events
+    (integration, real PostgreSQL)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications
+  - open specification questions
+stop_conditions:
+  - the claim graph cannot be expressed with the E1-T05 typed edges
+  - MRR-FR-064's finer outcome taxonomy (not_found/null_result/underpowered/
+    method_invalidated/...) cannot be represented by the existing claim
+    status/uncertainty enums - if so, flag it as a specification question
+    rather than inventing statuses
+  - implementation requires changes outside allowed paths
