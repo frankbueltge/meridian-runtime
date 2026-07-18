@@ -1,10 +1,11 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Nine hand-written Pydantic v2 models mirror the nine entity schemas in
+Ten hand-written Pydantic v2 models mirror the ten entity schemas in
 schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``, ``Claim``,
 ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest`` (E2-T05),
-and ``SourceRecord``/``EvidenceAnchor`` (E3-T01). Shared building blocks
+``SourceRecord``/``EvidenceAnchor`` (E3-T01), and ``SourceFamily``
+(E3-T03). Shared building blocks
 mirroring ``schemas/common.schema.json`` live in ``mrr.contracts.common``
 and are re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``,
 ``Budget``, ``BaseObject``, ``MRRModel``).
@@ -71,6 +72,7 @@ from mrr.contracts.research_score import (
     ResearchScoreStatus,
 )
 from mrr.contracts.run_manifest import RunCost, RunManifest, RunResourceUsage
+from mrr.contracts.source_family import RelationshipType, SourceFamily
 from mrr.contracts.source_record import SourceClassification, SourceIdentifiers, SourceRecord
 from mrr.contracts.task_bundle import (
     CapabilityRef,
@@ -121,6 +123,7 @@ __all__ = [
     "NodeManifest",
     "PublicationPolicy",
     "RecomputationStatus",
+    "RelationshipType",
     "ResearchScore",
     "ResearchScoreStatus",
     "ResourceLimits",
@@ -132,6 +135,7 @@ __all__ = [
     "Sha256",
     "Signature",
     "SourceClassification",
+    "SourceFamily",
     "SourceIdentifiers",
     "SourceRecord",
     "TaskBundle",

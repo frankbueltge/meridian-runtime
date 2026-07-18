@@ -1,0 +1,20 @@
+{
+  "id": "urn:mrr:source-family:01J00000000000000000000030",
+  "api_version": "mrr/v1alpha1",
+  "kind": "SourceFamily",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-18T10:00:00Z",
+  "created_by": "urn:mrr:agent:01J00000000000000000000016",
+  "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+  "origin_ref": "Benchmark fixture percentage tables dataset, 2026 edition (upstream CSV release)",
+  "member_source_ids": [
+    "urn:mrr:source-record:01J00000000000000000000020",
+    "urn:mrr:source-record:01J00000000000000000000021"
+  ],
+  "relationship_type": "shared_dataset",
+  "confidence": 0.87,
+  "rationale": "Both records reproduce the same percentage table verbatim, including an identical rounding artifact in the third row, consistent with both drawing from one shared upstream dataset rather than two independent analyses.",
+  "detecting_method": "Automated text-similarity comparison (token_sort_ratio >= 0.92) across retrieved snapshot text",
+  "reviewer_id": "urn:mrr:person:01J00000000000000000000002"
+}
