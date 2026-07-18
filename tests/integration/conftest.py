@@ -39,7 +39,15 @@ ALEMBIC_INI = REPO_ROOT / "alembic.ini"
 MIGRATIONS_DIR = REPO_ROOT / "migrations"
 
 _TEST_DATABASE_URL_ENV_VAR = "MRR_TEST_DATABASE_URL"
-_DATABASE_URL_ENV_VAR = "MRR_DATABASE_URL"
+
+#: Matches migrations/env.py's `_ATTRIBUTES_URL_KEY` - the key under
+#: `Config.attributes` (a plain Python dict, never parsed by configparser)
+#: used to hand env.py a URL directly. This bypasses
+#: `Config.set_main_option`/`get_main_option`/`get_section`, which route
+#: through configparser and raise `InterpolationSyntaxError` on a bare `%`
+#: - and the schema-scoped URL built by `_schema_scoped_url` below contains
+#: one (a percent-encoded `options=-c%20search_path%3D<schema>` parameter).
+_ATTRIBUTES_URL_KEY = "sqlalchemy_url"
 
 
 def _require_test_database_url_or_skip() -> str:
@@ -68,22 +76,16 @@ def _schema_scoped_url(base_url: str, schema: str) -> str:
 
 def _run_alembic_upgrade_head(database_url: str) -> None:
     """Run ``alembic upgrade head`` via the Alembic Python API against
-    `database_url`, by setting MRR_DATABASE_URL for the duration of the call
-    — migrations/env.py reads that variable exclusively, exactly as it does
-    outside tests, so this exercises the real upgrade path rather than a
-    test-only shortcut.
+    `database_url`, injected through ``Config.attributes`` rather than
+    ``MRR_DATABASE_URL`` or ``set_main_option`` — see
+    ``migrations/env.py``'s ``_resolve_database_url`` docstring for why
+    `database_url` (which contains a percent-encoded query parameter) must
+    never round-trip through configparser.
     """
-    previous = os.environ.get(_DATABASE_URL_ENV_VAR)
-    os.environ[_DATABASE_URL_ENV_VAR] = database_url
-    try:
-        alembic_cfg = Config(str(ALEMBIC_INI))
-        alembic_cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
-        command.upgrade(alembic_cfg, "head")
-    finally:
-        if previous is None:
-            os.environ.pop(_DATABASE_URL_ENV_VAR, None)
-        else:
-            os.environ[_DATABASE_URL_ENV_VAR] = previous
+    alembic_cfg = Config(str(ALEMBIC_INI))
+    alembic_cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
+    alembic_cfg.attributes[_ATTRIBUTES_URL_KEY] = database_url
+    command.upgrade(alembic_cfg, "head")
 
 
 @pytest.fixture
