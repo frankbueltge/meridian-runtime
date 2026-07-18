@@ -1,0 +1,94 @@
+task_id: E2-T02
+title: Implement the local Node Manifest registration and capability registry
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md stage 3 (MRR-FR-020..021) and
+  section 7.3, and MRR-NFR-007; approved by the repository owner's direction
+  to continue (2026-07-18). Second task of Epic E2.
+objective: >
+  Provide the local capability registry: register signed Node Manifests after
+  verifying their signature and temporal validity, resolve the current valid
+  manifest for a node, and match a capability name to the nodes that declare
+  it - a storage-and-matching service that explicitly does NOT grant
+  permission.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#43-stage-3--capability-discovery-and-negotiation
+  - docs/spec/01_SYSTEM_SPEC.md#73-capability-registry
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - schemas/node-manifest.schema.json
+requirements:
+  - MRR-FR-020
+  - MRR-FR-021
+  - MRR-NFR-007
+  - MRR-NFR-001
+allowed_paths:
+  - services/**
+  - packages/domain/**
+  - tests/unit/**
+  - tests/integration/**
+  - pyproject.toml
+forbidden_changes:
+  - task negotiation / accept-modify-defer-reject (that is E2-T03)
+  - policy or permission granting (Policy Gateway, section 7.4, later) - the
+    registry stores and matches, it never authorizes
+  - HTTP/FastAPI endpoints
+  - key management, trust anchoring, or revocation (E5 federation) - the
+    verifying key is caller-supplied, as in E1-T02
+  - schema semantics
+  - contract models and persistence/event internals (reuse as-is; additive
+    domain errors only)
+derived_decisions: >
+  Lives at services/control_plane/mrr/services/capability_registry/, a plain
+  application class under the existing services/ root and its layering
+  contract. Manifests persist as append-only object revisions coupled to
+  domain events via the E1-T06 unit of work, exactly like E2-T01. Signature
+  verification reuses E1-T02 (mrr.domain.hashing_policy.verify_object_signature
+  over the manifest's signed payload); the trusted verifying key is supplied
+  by the caller (key management and trust anchoring are E5), so this task
+  proves the verify-closed path, not a trust hierarchy. Capability matching
+  this task is by capability name and current temporal validity only;
+  version/schema compatibility metadata is a documented later extension.
+invariants:
+  - registration fails closed on an invalid signature - the manifest is not
+    persisted and a typed error is raised (MRR-NFR-007)
+  - a manifest whose validity window does not include the evaluation instant
+    is expired/not-yet-valid and is never returned by lookup or match, though
+    it remains stored and historically addressable
+  - the registry never returns an authorization decision - find/match answer
+    "which nodes declare capability X and are currently valid", not "is X
+    allowed" (section 7.3: "It does not grant permission")
+  - re-registering a node_id creates a new revision; prior manifests stay
+    readable and unchanged (append-only)
+  - every registration records a domain event with full NFR-001 provenance,
+    atomically with the persisted revision
+acceptance_tests:
+  - a validly signed, in-window manifest registers and is resolvable by
+    node_id
+  - a tampered manifest or wrong verifying key fails closed - nothing
+    persisted, typed error raised
+  - an expired or not-yet-valid manifest is stored but excluded from
+    get-current and from capability match
+  - match by capability name returns exactly the currently valid nodes
+    declaring it, and never a permission verdict
+  - re-registration creates revision 2 with revision 1 intact
+  - registration writes exactly one event with complete provenance
+    (integration, real PostgreSQL)
+  - the services layering import contract still holds
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications
+  - open specification questions
+stop_conditions:
+  - manifest signature verification cannot reuse the E1-T02 primitives
+  - the schema cannot express a required matching or validity input
+  - implementation requires changes outside allowed paths
