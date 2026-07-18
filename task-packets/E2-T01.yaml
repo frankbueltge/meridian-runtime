@@ -1,0 +1,99 @@
+task_id: E2-T01
+title: Implement the Research Score service and approval gate
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md stage 1 (MRR-FR-001..004) and
+  section 7.1, the ResearchScore lifecycle in section 6.1, and MRR-NFR-001;
+  approved by the repository owner's direction to continue (2026-07-18).
+  First task of Epic E2 (single-node vertical slice) and the first service.
+objective: >
+  Provide the application-layer Research Score service: create and revise
+  versioned scores, drive their lifecycle through recorded approvals, and
+  expose the authoritative gate that decides whether a score may start work -
+  every transition persisted as an append-only revision coupled to a domain
+  event in one transaction.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#41-stage-1--research-score
+  - docs/spec/01_SYSTEM_SPEC.md#71-research-score-service
+  - docs/spec/01_SYSTEM_SPEC.md#61-research-score
+  - schemas/research-score.schema.json
+requirements:
+  - MRR-FR-001
+  - MRR-FR-002
+  - MRR-FR-003
+  - MRR-FR-004
+  - MRR-NFR-001
+allowed_paths:
+  - services/**
+  - packages/domain/**
+  - tests/unit/**
+  - tests/integration/**
+  - pyproject.toml
+forbidden_changes:
+  - HTTP/FastAPI endpoints (the service is a plain application class this
+    task; HTTP wiring is a later task if ever needed - the CLI in E2-T07
+    drives it)
+  - workflow-engine integration
+  - hypothesis forest / planner (stage 2, later epic)
+  - schema semantics
+  - contract models (packages/contracts) and persistence/event internals
+    (reuse E1-T05/T06 as-is; only additive domain errors are allowed)
+derived_decisions: >
+  Introduces the services/ namespace root at
+  services/control_plane/mrr/services/research_score/ (plain application
+  classes, no framework), registered in hatchling, mypy_path, and a NEW
+  import-linter layering contract - the six core packages plus persistence
+  MUST NOT import mrr.services (services depend inward on domain/contracts/
+  persistence/provenance, never the reverse). Framework-free is not required
+  of services, but this task needs no framework. Transitions are persisted
+  through the existing E1-T06 unit of work
+  (record_object_revision_with_event) so score revision and domain event
+  commit atomically; this task is the first real user of that machinery.
+invariants:
+  - a run may start only from a score whose latest revision is APPROVED or
+    ACTIVE; a missing, DRAFT/IN_REVIEW/REJECTED/SUSPENDED, or SUPERSEDED
+    score yields a deterministic typed error (MRR-FR-004) - never a boolean
+  - lifecycle transitions use the E1-T04 CLAIM/score machine
+    (RESEARCH_SCORE_LIFECYCLE); an illegal transition fails closed and
+    persists nothing
+  - a material change (question, scope, data class, autonomy, budget, or
+    publication policy) is realized as a NEW revision, never an in-place
+    mutation (MRR-FR-002 / MRR-FR-003) - the append-only store already
+    forbids mutation, and the service must route such changes through revise
+  - APPROVED requires at least one recorded approval reference
+  - every authoritative transition records a domain event carrying the
+    NFR-001 provenance (actor, occurred-at, policy version, causation,
+    correlation, object id, object revision) in the SAME transaction as the
+    persisted revision
+acceptance_tests:
+  - creating a run gate against a missing score raises a deterministic
+    not-found error
+  - the gate rejects DRAFT, IN_REVIEW, REJECTED, SUSPENDED, and SUPERSEDED
+    scores and accepts APPROVED and ACTIVE
+  - approve without any approval reference is rejected; with one it succeeds
+  - an illegal lifecycle transition persists no revision and no event
+  - a material revision creates revision 2 and leaves revision 1 readable and
+    unchanged
+  - each successful transition writes exactly one domain event with complete
+    provenance, atomically with the revision (integration, real PostgreSQL)
+  - the services layering import contract holds (lint-imports)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications
+  - open specification questions
+stop_conditions:
+  - the score schema cannot express a required gate input (for example an
+    expiry field for the "expired" case in MRR-FR-004 - flag rather than
+    invent one)
+  - atomic revision-plus-event coupling cannot reuse the E1-T06 unit of work
+  - implementation requires changes outside allowed paths
