@@ -6,7 +6,7 @@
     {"$ref": "common.schema.json#/$defs/baseObject"},
     {
       "type": "object",
-      "required": ["kind", "origin_practice_id", "target_node_id", "research_score_id", "research_score_revision", "branch_id", "capability", "purpose", "instructions", "inputs", "data_access_mode", "execution", "resource_limits", "network_policy", "output_schema", "classification", "approval_requirement", "expires_at", "nonce", "signature"],
+      "required": ["kind", "origin_practice_id", "target_node_id", "research_score_id", "research_score_revision", "branch_id", "capability", "purpose", "instructions", "inputs", "data_access_mode", "execution", "resource_limits", "network_policy", "output_schema", "classification", "approval_requirement", "expires_at", "nonce", "signature", "status"],
       "properties": {
         "kind": {"const": "TaskBundle"},
         "origin_practice_id": {"$ref": "common.schema.json#/$defs/urn"},
@@ -61,7 +61,8 @@
         "approval_requirement": {"type": "string", "enum": ["automatic", "human", "dual"]},
         "expires_at": {"$ref": "common.schema.json#/$defs/timestamp"},
         "nonce": {"type": "string", "minLength": 16},
-        "signature": {"$ref": "common.schema.json#/$defs/signature"}
+        "signature": {"$ref": "common.schema.json#/$defs/signature"},
+        "status": {"type": "string", "enum": ["CREATED", "OFFERED", "ACCEPTED", "MODIFICATION_PROPOSED", "DEFERRED", "REJECTED", "QUEUED", "EXPIRED", "CANCELLED", "RUNNING", "FAILED", "COMPLETED", "SEALED", "INVALID_RESULT"]}
       }
     }
   ],

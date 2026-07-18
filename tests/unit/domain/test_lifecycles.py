@@ -9,8 +9,8 @@ Acceptance-test mapping (task-packets/E1-T04.yaml):
 - "the typed error exposes machine, from-state, and to-state" ->
   ``test_invalid_transition_error_exposes_machine_from_and_to``.
 - state-set-matches-schema-enum invariant -> the
-  ``test_*_states_match_contract_status_literal`` group (TaskBundle is
-  skipped: it has no schema/contract status enum to check against).
+  ``test_*_states_match_contract_status_literal`` group (all four machines,
+  since ADR-0005 gave TaskBundle a schema/contract status enum too).
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import get_args
 
 import pytest
-from mrr.contracts import ClaimStatus, CorrectionStatus, ResearchScoreStatus
+from mrr.contracts import ClaimStatus, CorrectionStatus, ResearchScoreStatus, TaskBundleStatus
 from mrr.domain.exceptions import InvalidTransitionError
 from mrr.domain.lifecycles import (
     CLAIM_LIFECYCLE,
@@ -240,10 +240,8 @@ def test_correction_states_match_contract_status_literal() -> None:
     assert CORRECTION_LIFECYCLE.states == set(get_args(CorrectionStatus))
 
 
-# TaskBundle intentionally has no analogous test: schemas/task-bundle.schema.json
-# has no top-level `status` enum, and mrr.contracts.task_bundle.TaskBundle
-# carries no status-shaped Literal to check against (open question in
-# mrr.domain.lifecycles).
+def test_task_bundle_states_match_contract_status_literal() -> None:
+    assert TASK_BUNDLE_LIFECYCLE.states == set(get_args(TaskBundleStatus))
 
 
 # ---------------------------------------------------------------------------
