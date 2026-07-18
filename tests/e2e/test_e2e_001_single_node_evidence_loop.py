@@ -1,0 +1,278 @@
+"""E2E-001 (E2 scope) — task-packets/E2-T07.yaml, docs/spec/
+05_EVALUATION_AND_ACCEPTANCE.md section 6 ("E2E-001 Single-node evidence
+loop"). Drives ``mrr.services.cli.orchestration.run_local_evidence_loop`` —
+the SAME function the ``mrr`` console script calls — against a real
+PostgreSQL (the ``postgres_engine`` fixture in this directory's own
+``conftest.py``) and a real local content-addressed artifact store.
+
+Scope: this is the E2 portion of the specified E2E-001 scenario — "Approve
+Research Score" through "Seal Evidence Crate" (steps 1-5, with step 2
+deliberately NOT generating a hypothesis-forest branch, per this task's
+forbidden_changes: "the CLI references a branch_id but does not generate
+branches"). Steps 6-9 (create a claim, run independent verification, mark
+claim status, export a portable bundle) belong to E3/E8 and are out of scope
+here — see this task's PR body for the full mapping.
+
+Acceptance-test mapping (task-packets/E2-T07.yaml):
+
+- "the whole loop runs with NO LLM ... completed via the deterministic
+  executor and the result is_deterministic" ->
+  ``test_complete_local_run_is_deterministic_with_no_llm``.
+- "the sealed crate exists, is schema-valid, references the run manifest id
+  and the task id, and its node signature verifies" + "every hash resolves"
+  -> ``test_every_hash_and_signature_resolves``.
+- "deterministic replay: running the loop twice with identical inputs yields
+  the same executor output hash" ->
+  ``test_deterministic_replay_same_inputs_yield_same_output_hash``.
+- "an unapproved score aborts the run at the gate with the deterministic
+  typed error" -> ``test_unapproved_score_aborts_at_the_gate``.
+- "a policy-denied run ... seals an explicit FAILURE crate carrying that
+  terminal run_state" -> ``test_policy_denied_run_seals_an_explicit_failure_crate``.
+- "a timed-out run ... seals an explicit FAILURE crate carrying that terminal
+  run_state" -> ``test_timed_out_run_seals_an_explicit_failure_crate``.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from collections.abc import Mapping
+from pathlib import Path
+
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
+from mrr.contracts import EvidenceCrate, RunManifest, TaskBundle
+from mrr.crypto.hashing import content_hash
+from mrr.domain.exceptions import ScoreNotApprovedError
+from mrr.domain.hashing_policy import verify_object_signature
+from mrr.persistence.repositories import PostgresObjectRepository
+from mrr.services.cli.orchestration import run_local_evidence_loop
+from mrr.services.node_runtime.executor import ReferenceTaskExecutor, default_reference_transform
+from sqlalchemy import Engine
+
+from scripts.check_contracts import SCHEMAS_DIR, build_registry, build_validator_for_schema
+
+
+def _artifact_store(tmp_path: Path) -> LocalFilesystemArtifactStore:
+    return LocalFilesystemArtifactStore(tmp_path / "artifacts")
+
+
+def test_complete_local_run_is_deterministic_with_no_llm(
+    postgres_engine: Engine, tmp_path: Path
+) -> None:
+    """MRR-FR-044 / the task's own framing: there is no model/LLM anywhere in
+    this loop — the executor is the deterministic reference implementation,
+    and its result says so.
+    """
+    store = _artifact_store(tmp_path)
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+
+    result = run_local_evidence_loop(
+        engine=postgres_engine,
+        artifact_store=store,
+        origin_signing_key=origin_key,
+        node_signing_key=node_key,
+    )
+
+    assert result.run_state == "completed"
+    assert result.is_deterministic is True
+    assert result.output_hash is not None
+
+
+def test_every_hash_and_signature_resolves(postgres_engine: Engine, tmp_path: Path) -> None:
+    store = _artifact_store(tmp_path)
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+
+    result = run_local_evidence_loop(
+        engine=postgres_engine,
+        artifact_store=store,
+        origin_signing_key=origin_key,
+        node_signing_key=node_key,
+    )
+
+    object_repository = PostgresObjectRepository(postgres_engine)
+
+    # The sealed crate exists and is schema-valid.
+    crate_stored = object_repository.get_latest(result.evidence_crate_id)
+    schema = json.loads((SCHEMAS_DIR / "evidence-crate.schema.json").read_text())
+    registry = build_registry()
+    build_validator_for_schema(schema, registry).validate(crate_stored.body)
+    crate = EvidenceCrate.model_validate(crate_stored.body)
+
+    # It references the run manifest id and the task id.
+    assert crate.run_id == result.run_manifest_id
+    assert crate.task_id == result.task_id
+
+    # crate.run_id resolves to the recorded RunManifest.
+    manifest_stored = object_repository.get_latest(crate.run_id)
+    run_manifest = RunManifest.model_validate(manifest_stored.body)
+    assert run_manifest.task_id == result.task_id
+    assert run_manifest.sealed is True
+    assert run_manifest.run_state == "completed"
+
+    # The task itself resolves, and the origin's signature over it still verifies.
+    bundle_stored = object_repository.get_latest(result.task_id)
+    task_bundle = TaskBundle.model_validate(bundle_stored.body)
+    verify_object_signature(
+        origin_key.public_key(),
+        task_bundle.model_dump(mode="json"),
+        task_bundle.signature.value,
+        algorithm=task_bundle.signature.algorithm,
+    )
+
+    # Artifact hashes (input and output) recompute against the stored bytes.
+    assert crate.artifacts, "a completed run must have produced at least one output artifact"
+    for artifact_ref in crate.artifacts:
+        stored_bytes = store.get(artifact_ref.content_hash)
+        assert content_hash(stored_bytes) == artifact_ref.content_hash
+    for declared_input_hash in run_manifest.input_hashes:
+        stored_bytes = store.get(declared_input_hash)
+        assert content_hash(stored_bytes) == declared_input_hash
+
+    # The crate's node signature verifies.
+    verify_object_signature(
+        node_key.public_key(),
+        crate.model_dump(mode="json"),
+        crate.signature.value,
+        algorithm=crate.signature.algorithm,
+    )
+
+
+def test_deterministic_replay_same_inputs_yield_same_output_hash(
+    postgres_engine: Engine, tmp_path: Path
+) -> None:
+    """G-008 / task-packets/E2-T07.yaml's replay gate: two independent loop
+    runs with identical declared input bytes produce the same executor
+    output hash, even though every id/timestamp each run mints is fresh.
+    """
+    store = _artifact_store(tmp_path)
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+    fixed_input = b"mrr-e2-t07-deterministic-replay-fixture"
+
+    first = run_local_evidence_loop(
+        engine=postgres_engine,
+        artifact_store=store,
+        origin_signing_key=origin_key,
+        node_signing_key=node_key,
+        input_bytes=fixed_input,
+    )
+    second = run_local_evidence_loop(
+        engine=postgres_engine,
+        artifact_store=store,
+        origin_signing_key=origin_key,
+        node_signing_key=node_key,
+        input_bytes=fixed_input,
+    )
+
+    assert first.run_state == "completed"
+    assert second.run_state == "completed"
+    assert first.output_hash == second.output_hash
+    # Two independent runs, not one memoized call — distinct crates/manifests/tasks.
+    assert first.evidence_crate_id != second.evidence_crate_id
+    assert first.run_manifest_id != second.run_manifest_id
+    assert first.task_id != second.task_id
+
+
+def test_unapproved_score_aborts_at_the_gate(postgres_engine: Engine, tmp_path: Path) -> None:
+    """MRR-FR-004: an unapproved score blocks the run before any Task Bundle
+    is even created — the CLI refuses to start work, deterministically,
+    with the typed ``ScoreNotApprovedError``, not a generic failure.
+    """
+    store = _artifact_store(tmp_path)
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+
+    with pytest.raises(ScoreNotApprovedError):
+        run_local_evidence_loop(
+            engine=postgres_engine,
+            artifact_store=store,
+            origin_signing_key=origin_key,
+            node_signing_key=node_key,
+            approve_score=False,
+        )
+
+
+def test_policy_denied_run_seals_an_explicit_failure_crate(
+    postgres_engine: Engine, tmp_path: Path
+) -> None:
+    """MRR-FR-050: a policy-denied run is not a silent success — it seals an
+    explicit failure crate carrying ``run_state == "policy_denied"``.
+    """
+    store = _artifact_store(tmp_path)
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+    executor = ReferenceTaskExecutor(policy_gate=lambda _bundle: False)
+
+    result = run_local_evidence_loop(
+        engine=postgres_engine,
+        artifact_store=store,
+        origin_signing_key=origin_key,
+        node_signing_key=node_key,
+        executor=executor,
+    )
+
+    assert result.run_state == "policy_denied"
+    assert result.output_hash is None
+
+    object_repository = PostgresObjectRepository(postgres_engine)
+    crate = EvidenceCrate.model_validate(
+        object_repository.get_latest(result.evidence_crate_id).body
+    )
+    assert crate.run_state == "policy_denied"
+    assert crate.sealed is True
+    assert crate.artifacts == []
+    assert crate.failures, "a non-completed run must carry an explicit failure entry"
+
+    run_manifest = RunManifest.model_validate(
+        object_repository.get_latest(result.run_manifest_id).body
+    )
+    assert run_manifest.run_state == "policy_denied"
+    assert run_manifest.sealed is True
+
+
+def _slow_transform(inputs: Mapping[str, bytes]) -> bytes:
+    time.sleep(3)
+    return default_reference_transform(inputs)
+
+
+def test_timed_out_run_seals_an_explicit_failure_crate(
+    postgres_engine: Engine, tmp_path: Path
+) -> None:
+    """MRR-FR-050/MRR-FR-040: a timed-out run is likewise not a silent
+    success — it seals an explicit failure crate carrying
+    ``run_state == "timed_out"``.
+    """
+    store = _artifact_store(tmp_path)
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+    executor = ReferenceTaskExecutor(transform=_slow_transform)
+
+    result = run_local_evidence_loop(
+        engine=postgres_engine,
+        artifact_store=store,
+        origin_signing_key=origin_key,
+        node_signing_key=node_key,
+        executor=executor,
+        timeout_seconds=1,
+    )
+
+    assert result.run_state == "timed_out"
+    assert result.output_hash is None
+
+    object_repository = PostgresObjectRepository(postgres_engine)
+    crate = EvidenceCrate.model_validate(
+        object_repository.get_latest(result.evidence_crate_id).body
+    )
+    assert crate.run_state == "timed_out"
+    assert crate.sealed is True
+    assert crate.failures, "a non-completed run must carry an explicit failure entry"
+
+    run_manifest = RunManifest.model_validate(
+        object_repository.get_latest(result.run_manifest_id).body
+    )
+    assert run_manifest.run_state == "timed_out"
+    assert run_manifest.sealed is True

@@ -31,6 +31,18 @@ Test tiers that have no tests yet are declared in `tests/EMPTY_TIERS.txt` and ar
 reported as explicitly expected-empty, never as passing feature coverage — see
 `scripts/run_test_tier.py`.
 
+## The `mrr` CLI
+
+`mrr` (console script, `mrr.services.cli.main:main`) is a thin operator CLI over the
+merged E2 single-node vertical slice — no new domain behavior, no HTTP, no model/LLM
+dependency. `mrr run --database-url ... --artifact-root ...` drives one complete local
+evidence loop end to end: approve a Research Score, register a node's signed capability
+manifest, negotiate and execute a deterministic Task Bundle, record the Run Manifest, and
+seal the Evidence Crate. The underlying composition function,
+`mrr.services.cli.orchestration.run_local_evidence_loop`, is what both the CLI and
+`tests/e2e/test_e2e_001_single_node_evidence_loop.py` (E2E-001, E2 scope) call — see
+`task-packets/E2-T07.yaml`.
+
 ## Layout
 
 ```text
