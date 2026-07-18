@@ -1,0 +1,90 @@
+task_id: E1-T05
+title: Implement PostgreSQL persistence, migrations, and repository interfaces
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md sections 7.6 and 10, and
+  docs/spec/02_DOMAIN_MODEL.md sections 1, 3, and 7; approved by the
+  repository owner's direction to continue (2026-07-18).
+objective: >
+  Provide the authoritative PostgreSQL persistence layer for first-class MRR
+  objects and typed graph edges - JSONB object store with append-only
+  revisions and optimistic concurrency, explicit edge tables with the
+  section-3 vocabulary, Alembic migrations, and framework-free repository
+  interfaces in the domain layer.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#76-claim-and-evidence-graph
+  - docs/spec/01_SYSTEM_SPEC.md#10-technology-baseline
+  - docs/spec/02_DOMAIN_MODEL.md#1-identity-revision-and-hashing
+  - docs/spec/02_DOMAIN_MODEL.md#3-edge-vocabulary
+  - docs/spec/02_DOMAIN_MODEL.md#7-invariants
+  - schemas/common.schema.json
+requirements:
+  - MRR-NFR-001
+  - MRR-NFR-004
+  - MRR-FR-002
+  - MRR-FR-003
+allowed_paths:
+  - packages/persistence/**
+  - packages/domain/**
+  - migrations/**
+  - alembic.ini
+  - tests/unit/**
+  - tests/integration/**
+  - tests/EMPTY_TIERS.txt
+  - pyproject.toml
+  - .github/workflows/ci.yml
+forbidden_changes:
+  - API endpoints
+  - workflow-engine integration
+  - event log or transactional outbox (E1-T06)
+  - artifact/object storage (E1-T07)
+  - schema semantics
+  - contract models (packages/contracts)
+derived_decisions: >
+  The monorepo tree in docs/spec/06 names no persistence package; SQLAlchemy
+  models and repository implementations live in a new namespace root
+  packages/persistence/mrr/persistence/ and are added to the import-linter
+  contract (SQLAlchemy is permitted there; FastAPI, Temporal, and provider
+  SDKs remain forbidden). Repository INTERFACES stay framework-free in
+  packages/domain. Storage design per 01 section 10 "PostgreSQL with JSONB
+  and explicit edge tables" - one generic revisioned objects table plus one
+  typed edges table, not per-entity tables.
+invariants:
+  - identifiers never change; a revision is a new row, never an update
+    (02 section 1); no public interface can mutate or delete an existing
+    revision row (AGENTS - no silent overwrite of prior object revisions)
+  - optimistic concurrency is database-enforced - concurrent writers with
+    the same expected revision produce exactly one winner and a typed
+    conflict error for the loser
+  - edge types outside the section-3 vocabulary are rejected, fail closed
+  - repository interfaces in packages/domain import no SQLAlchemy, no
+    driver, no framework
+  - integration tests run against real PostgreSQL; without a database they
+    skip VISIBLY with a reason, and FAIL hard when CI=true has no database
+acceptance_tests:
+  - alembic upgrade head succeeds on an empty database
+  - insert revision 1 then revision 2 with expected revision - both readable,
+    latest resolution correct
+  - conflicting concurrent insert with the same expected revision loses with
+    a typed error
+  - direct duplicate (id, revision) insert fails with the same typed error
+  - every section-3 edge type round-trips; an invented edge type is rejected
+  - repository interfaces satisfy the import boundary (lint-imports)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - changed files and migration list
+  - tests and command results, including the CI run for the integration tier
+  - security implications
+  - open specification questions
+stop_conditions:
+  - the object model cannot be represented without changing schema semantics
+  - a required behavior conflicts with the append-only revision rule
+  - implementation requires changes outside allowed paths
