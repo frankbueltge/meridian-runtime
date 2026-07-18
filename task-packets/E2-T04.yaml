@@ -1,0 +1,105 @@
+task_id: E2-T04
+title: Implement the executor interface and deterministic reference task
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md stage 5 (MRR-FR-040..044),
+  MRR-FR-035, section 7.5, and the autonomy table (A2 Sandbox Execute);
+  approved by the repository owner's direction to continue (2026-07-18).
+  Fourth task of Epic E2.
+objective: >
+  Provide the execution boundary: a provider-neutral executor interface, a
+  deterministic reference executor that runs a bounded, replayable reference
+  task and returns an explicit terminal outcome for every case (completed,
+  failed, timed_out, cancelled, policy_denied, partial), and idempotency
+  keyed by (task_id, revision, execution_attempt). Real OCI-container
+  isolation is a later adapter and is out of scope here.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#45-stage-5--local-execution
+  - docs/spec/01_SYSTEM_SPEC.md#75-node-runtime
+  - docs/spec/02_DOMAIN_MODEL.md#26-runmanifest
+  - schemas/task-bundle.schema.json
+  - schemas/evidence-crate.schema.json
+requirements:
+  - MRR-FR-035
+  - MRR-FR-040
+  - MRR-FR-043
+  - MRR-FR-044
+allowed_paths:
+  - services/**
+  - packages/domain/**
+  - tests/unit/**
+  - tests/integration/**
+  - pyproject.toml
+forbidden_changes:
+  - RunManifest persistence and resource/cost records (E2-T05)
+  - evidence crate sealing (E2-T06)
+  - model/LLM invocation (E4; the reference task is deterministic, MRR-FR-044)
+  - HTTP/FastAPI endpoints
+  - schema semantics
+  - contract models and persistence/event internals (reuse; additive domain
+    errors only)
+derived_decisions: >
+  Lives at services/node_runtime/mrr/services/node_runtime/ (new namespace
+  root under the services/ layering contract). The executor INTERFACE is a
+  framework-free Protocol; the deterministic REFERENCE executor is its
+  reference implementation for the trusted reference task. CRITICAL HONESTY
+  BOUNDARY: full sandbox isolation per MRR-FR-041 (non-root, read-only base
+  filesystem, explicit writable mounts, deny-by-default network egress,
+  cgroup CPU/memory/disk limits) requires an OCI-container runtime, which is
+  NOT available in this environment and is DEFERRED to a later OCI-executor
+  adapter task - exactly as E1-T07 deferred the MinIO adapter. The reference
+  executor is for the DETERMINISTIC, TRUSTED reference task only; it enforces
+  bounding it can (wall-clock timeout, recorded resource usage) but MUST NOT
+  be presented or used as isolation for untrusted code, and MUST say so at
+  its interface. This task produces an in-memory ExecutionResult; recording
+  the immutable RunManifest (MRR-FR-042) is E2-T05. No container runtime is
+  required for this task or its tests.
+invariants:
+  - every execution returns exactly one explicit terminal outcome from
+    {completed, failed, timed_out, cancelled, policy_denied, partial}; there
+    is no generic catch-all error and no silent success (MRR-FR-043)
+  - execution is idempotent for a given (task_id, revision, execution_attempt)
+    tuple - re-running the same tuple returns the same outcome and does not
+    double-execute side effects (MRR-FR-035)
+  - the reference task is deterministic: identical inputs yield an identical
+    output and output hash across runs and machines (replayable), and the
+    result is marked as a deterministic transformation, not a stochastic one
+    (MRR-FR-044)
+  - a run exceeding its wall-clock bound terminates as timed_out, not
+    completed
+  - the reference executor documents, at its interface, that it is NOT an
+    isolation boundary for untrusted code (MRR-FR-041 isolation is the
+    deferred OCI adapter's responsibility) and refuses to pretend otherwise
+  - the executor interface imports no framework and no provider SDK
+acceptance_tests:
+  - the reference task runs and returns completed with a deterministic,
+    replayable output hash (same across repeated runs)
+  - a task that raises returns failed (not completed, not a generic error)
+  - a task exceeding its wall-clock bound returns timed_out
+  - a cancelled and a policy_denied path each return their explicit terminal
+    outcome
+  - re-executing the same (task_id, revision, execution_attempt) is
+    idempotent (same outcome, no double side effect)
+  - the result distinguishes deterministic from stochastic (reference task is
+    deterministic)
+  - the services layering import contract still holds
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications, explicitly including the deferred-isolation
+    boundary and what the reference executor does and does not guarantee
+  - open specification questions
+stop_conditions:
+  - a bounded, deterministic reference execution cannot be provided without a
+    container runtime (it can: pure computation with a wall-clock bound)
+  - enforcing a terminal-outcome for every path requires schema changes
+  - implementation requires changes outside allowed paths
