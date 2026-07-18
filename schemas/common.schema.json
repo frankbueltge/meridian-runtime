@@ -39,7 +39,7 @@
         "key_id": {"type": "string", "minLength": 1},
         "algorithm": {"type": "string", "const": "Ed25519"},
         "signed_at": {"$ref": "#/$defs/timestamp"},
-        "value": {"type": "string", "minLength": 40}
+        "value": {"type": "string", "minLength": 40, "description": "Standard base64 (RFC 4648 section 4, with padding) of the raw 64-byte Ed25519 signature; base64url is not accepted. See docs/spec/adr/ADR-0003-SIGNATURE-VALUE-ENCODING.md."}
       },
       "additionalProperties": false
     },

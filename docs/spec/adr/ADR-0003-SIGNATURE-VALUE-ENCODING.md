@@ -1,6 +1,6 @@
 # ADR-0003 — Signature value encoding
 
-Status: proposed (awaiting owner decision)
+Status: accepted (2026-07-18, decision delegated by the repository owner)
 
 ## Context
 
