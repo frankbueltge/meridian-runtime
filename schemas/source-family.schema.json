@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/source-family.schema.json",
+  "title": "MRR SourceFamily",
+  "description": "docs/spec/02_DOMAIN_MODEL.md section 2.10: represents evidence DEPENDENCE between sources, so that source COUNT is never mistaken for evidence INDEPENDENCE (MRR-FR-065). Invariant: family confidence is not used to silently delete sources — representation here is strictly ADDITIVE. A SourceFamily only ever references member SourceRecords (schemas/source-record.schema.json) by urn; it never embeds, mutates, or deletes them. Design decisions (task-packets/E3-T03.yaml asks that these be made and documented): (1) there is no separate 'family_id' field — the base object's own 'id' (baseObject#/properties/id, minted with URN entity 'source-family') already names this family, exactly like every other entity in this schema family (Claim.id, SourceRecord.id, ...) never duplicates its own identity under a second field name. (2) 'confidence' is a plain number in [0, 1] rather than an enum: it records the detecting method's own confidence that the relationship classification is correct — NOT a calibrated epistemic probability of anything, and NOT itself an independence weight (that translation belongs to the independence calculator, E3-T05; AGENTS.md's prohibited-shortcuts list: 'using an LLM confidence number as epistemic confidence'). (3) 'origin_ref' may be a urn (when the origin is itself a known SourceRecord), a free-text descriptor (when the origin is an external dataset/wire/press-release distributor never itself retrieved as a SourceRecord), or null (origin not yet known, e.g. relationship_type 'uncertain').",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "member_source_ids",
+        "relationship_type",
+        "confidence",
+        "rationale",
+        "detecting_method"
+      ],
+      "properties": {
+        "kind": {"const": "SourceFamily"},
+        "origin_ref": {
+          "description": "The origin source or dataset the members are believed to derive from (domain 2.10: \"origin source or dataset\"). A urn:mrr:source-record:... when the origin is itself a known SourceRecord in this corpus; a free-text descriptor otherwise; null when not yet known.",
+          "anyOf": [
+            {"$ref": "common.schema.json#/$defs/urn"},
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "member_source_ids": {
+          "description": "Member SourceRecords (domain 2.10: \"member sources\"), referenced by urn only — never embedded, so a source belongs to a family without the family owning its content. At least one member is required: a family referencing zero sources represents nothing (the same non-degeneracy reasoning correction-event.schema.json's affected_objects already applies).",
+          "type": "array",
+          "items": {"$ref": "common.schema.json#/$defs/urn"},
+          "minItems": 1
+        },
+        "relationship_type": {
+          "description": "domain 2.10's exact relationship-type vocabulary. Out-of-vocabulary values are rejected — fails closed.",
+          "type": "string",
+          "enum": [
+            "copy",
+            "syndication",
+            "shared_dataset",
+            "shared_press_release",
+            "direct_derivation",
+            "uncertain"
+          ]
+        },
+        "confidence": {
+          "description": "The detecting method's own confidence, in [0, 1], that this relationship_type classification is correct. See this schema's own top-level description for why this is not treated as a calibrated epistemic probability or an independence weight.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detecting_method": {
+          "description": "Free string (domain 2.10 gives no enumerated vocabulary for this field, confirmed by a full docs/spec/ search) — e.g. \"manual editorial review\", \"shared DOI prefix heuristic\", \"text-similarity algorithm v2\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer_id": {
+          "anyOf": [
+            {"$ref": "common.schema.json#/$defs/urn"},
+            {"type": "null"}
+          ]
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
