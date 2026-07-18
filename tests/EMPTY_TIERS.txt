@@ -2,6 +2,5 @@
 # a directory with no collectible tests). scripts/run_test_tier.py treats
 # that as EXPECTED EMPTY, never as feature completion. A task that populates
 # a tier removes its line in the same diff that adds the tests.
-e2e
 adversarial
 meridianbench

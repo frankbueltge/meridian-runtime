@@ -15,6 +15,13 @@ dependencies = [
   "alembic>=1.13",
 ]
 
+# task-packets/E2-T07.yaml: the `mrr` CLI (mrr.services.cli.main, under the
+# existing services/control_plane namespace root — see that module's own
+# docstring for why this is a new leaf, not a new namespace root). A new
+# console script is a rule-13 deviation, flagged in this task's PR.
+[project.scripts]
+mrr = "mrr.services.cli.main:main"
+
 [dependency-groups]
 dev = [
   "pytest>=8.3",
