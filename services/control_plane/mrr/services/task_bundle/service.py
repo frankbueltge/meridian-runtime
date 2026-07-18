@@ -29,86 +29,92 @@ defer, or reject decision"):
   transport identity rather than a bare parameter; that does not change
   this structural check, only who is trusted to populate it.
 
-Every one of ``NodeTaskDecisionService``'s four methods also verifies the
-CURRENT stored revision's own signature (``mrr.domain.hashing_policy.
-verify_object_signature``, the same ``model_dump(mode="json")`` convention
-E2-T02 uses for ``NodeManifest`` — see
-``docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md`` (status:
-proposed) for the cross-service alignment planned before E5) before any
-decision is recorded, fail closed (MRR-FR-031: "A cross-practice TaskBundle MUST be
-signed by the origin practice"; docs/spec/04_SECURITY_AND_POLICY.md section
-8.2: "Task ... envelopes include ... signatures"). For the first negotiation
-round this is exactly the origin's own signature over its initial CREATED
-bundle, as MRR-FR-031 names it. After a ``propose_modification`` round, the
-"current" stored revision is the one the deciding node itself just signed as
-the modifier (MRR-FR-023/034) — re-verifying that signature on a later
-``accept``/``defer``/``reject`` call for the same bundle is a harmless,
-uniform application of the same fail-closed gate rather than a second,
-differently-shaped check; the specification does not separately name a
-"verify the modifier's own signature" step, and this generalizes MRR-FR-031's
-"verify before any decision" gate to whichever revision is actually current,
-which is the only self-consistent reading available without inventing a
-parallel, unnamed verification path. Flagged for reviewer scrutiny in the PR.
+--- status is now a native TaskBundle field (ADR-0005) -----------------------
 
-The verifying key, like ``CapabilityRegistry.register``'s ``verifying_key``
-(E2-T02), is caller-supplied on every ``NodeTaskDecisionService`` method —
-key management, trust anchoring, and revocation stay E5
-(docs/spec/04_SECURITY_AND_POLICY.md section 8.4), out of scope here.
+``schemas/task-bundle.schema.json`` originally had no ``status``/lifecycle
+field at all (unlike ``ResearchScore``), which the first version of this
+service worked around by stashing workflow status as an out-of-band key on
+the persisted ``StoredObject.body``, alongside the real TaskBundle schema
+fields. Review caught that this made ``stored.body`` fail to round-trip
+through ``TaskBundle.model_validate`` (an unrecognized key, rejected by
+``MRRModel``'s ``extra="forbid"`` / the schema's own
+``unevaluatedProperties: false``) — a real defect, not just a style
+preference. ADR-0005 (accepted) closed the gap the right way, upstream of
+this service: ``status`` (the fourteen ``TASK_BUNDLE_LIFECYCLE`` states,
+``TaskBundleStatus``) is now a required, schema-validated ``TaskBundle``
+field, exactly like ``ResearchScore``'s. This module was rewritten on top of
+that: ``StoredObject.body`` is now a plain
+``bundle.model_dump_json(exclude_none=True)`` with **no** added key, and
+``TaskBundle.model_validate(stored.body)`` succeeds unconditionally (asserted
+directly by ``test_persisted_body_round_trips_through_task_bundle_model_validate``
+in the unit tests).
 
---- The TaskBundle-has-no-status-field problem -------------------------------
+--- TaskBundle.revision and the store revision now stay in lockstep ----------
 
-``schemas/task-bundle.schema.json`` has no ``status``/lifecycle field at all
-(unlike ``ResearchScore``, whose ``status`` is a real schema property that
-directly participates in its own signed/hashed content) —
-``mrr.domain.lifecycles``'s own module docstring already flags this as an
-open specification question ("TaskBundle has no schema status enum to
-anchor its state names against ... the states below are the section-6
-diagram names verbatim"). This service is the first to actually have to
-drive a ``TaskBundle`` through ``TASK_BUNDLE_LIFECYCLE``, so it is the first
-to have to resolve, not just note, that gap. The resolution here:
+Because ``status`` is a real top-level field, every workflow transition
+— even a pure status flip such as ``offer`` — is now genuinely "a new
+revision" in exactly the sense ``ResearchScoreService._transition`` already
+uses: the whole object (including the new ``status``) is re-serialized and
+its ``content_hash`` recomputed (``mrr.domain.hashing_policy.
+compute_content_hash``), and ``TaskBundle.revision`` is incremented to match.
+``mrr.persistence.repositories.PostgresObjectRepository.insert_revision``
+requires a strictly-incrementing ``StoredObject.revision`` on every insert
+regardless, so there is no longer any reason (and, given the round-trip
+requirement above, no longer any room) for the store's row-revision counter
+to diverge from ``TaskBundle.revision`` the way the pre-ADR-0005 version of
+this module did — they are one and the same number now, exactly as they
+already are for ``ResearchScore``/``NodeManifest``.
 
-1. ``StoredObject.body`` gets one extra top-level key beyond the TaskBundle
-   schema's own fields, ``_STATUS_KEY`` ("status"), holding the current
-   ``TASK_BUNDLE_LIFECYCLE`` state name. ``body`` is a plain, never-schema-
-   revalidated JSONB blob (``mrr.persistence.tables.objects_table.body``) —
-   nothing in this codebase re-validates a *stored* body against
-   ``schemas/task-bundle.schema.json`` (only ``examples/*.example.json`` are
-   schema-checked, by ``scripts/check_contracts.py``), so this addition
-   never collides with schema validation. ``_reconstruct_bundle`` strips it
-   back out before treating a stored body as a real ``TaskBundle`` again
-   (in particular, before signature verification — the signed payload never
-   included this key, so it must not be present when re-deriving the bytes
-   that were actually signed).
-2. Pure workflow-status transitions (``offer``, ``accept``, ``defer``,
-   ``reject``, ``accept_modification``) do **not** touch the bundle's own
-   ``revision``/``content_hash``/``signature`` fields — those stay exactly
-   as originally signed. Recomputing a content hash or asking for a new
-   signature on every status flip would be wrong: MRR-FR-034 ties "a new
-   content hash and signature" specifically to "a task revision"
-   (a genuine content change), and nothing about advancing negotiation
-   status is a content change the origin or node should have to re-sign.
-3. ``mrr.persistence.repositories.PostgresObjectRepository.insert_revision``
-   nonetheless requires a strictly-incrementing ``StoredObject.revision`` on
-   every insert (task-packets/E1-T06.yaml's ``record_object_revision_with_
-   event`` always pairs exactly one object insert with exactly one event —
-   there is no bare "append an event with no new object row" primitive, by
-   E1-T06's own deliberate design; see ``mrr.persistence.repositories``'s
-   module docstring). So every transition here, even a pure status flip,
-   does insert a new ``StoredObject`` row — its ``revision`` is a store-level
-   append-only counter, independent of (and, after the first transition,
-   numerically ahead of) the ``TaskBundle.revision`` field embedded in
-   ``body``, which only advances when ``propose_modification`` actually
-   mints new signed content. Multiple stored revisions can and do share the
-   same ``content_hash`` while only ``body["status"]`` differs between them
-   — that is the intended, documented shape of "the same signed object,
-   observed at successive workflow states," not a bug.
+--- Verifying a signature that is NOT re-minted on every status flip ---------
 
-This is a genuine, load-bearing design choice made in the absence of a
-schema-level status field, not an invented shortcut around one that exists —
-flagged in the PR as an open specification question (should
-``schemas/task-bundle.schema.json`` gain a status property, matching
-``ResearchScore``'s and mirrored into ``mrr.domain.lifecycles``' own
-documented gap?).
+``TaskBundle.signature`` is **not** re-signed on a pure status transition —
+nobody holds a private key inside this service, and re-signing on every
+workflow step (just to keep pace with a status flip) would defeat the point
+of MRR-FR-034 tying "a new content hash and signature" specifically to a
+genuine content revision (``propose_modification``), not to negotiation
+bookkeeping. ``signature.value`` is therefore carried forward unchanged
+across ``offer``/``accept``/``defer``/``reject``/``accept_modification``,
+while ``content_hash``/``revision`` advance underneath it (see above) —
+which means the *current* stored revision's own ``content_hash`` does not,
+in general, match what a fresh ``verify_object_signature`` call against its
+*current* fields would need (the signed payload's ``status`` differs from
+whatever ``status`` was in effect when ``signature.value`` was actually
+produced). Verifying "the origin signature" (MRR-FR-031: "verified on the
+node side before any decision") therefore does not target ``latest`` at
+all — it targets the **oldest stored revision that already carries the same
+``signature.value`` as `latest``** (``_find_signed_revision``, a linear scan
+over ``ObjectRepository.list_revisions`` comparing ``signature.value``,
+oldest-first): that revision's own fields (its own ``status`` — ``CREATED``
+for the origin's first signature, or ``OFFERED`` for a modifier's, since
+``propose_modification`` always signs the bundle it is about to land in
+``OFFERED`` with) are exactly the bytes that were actually signed, and
+verifying against them is what actually succeeds for an honestly-signed
+bundle and actually fails for a tampered one. This is the load-bearing
+adaptation this rewrite makes to keep MRR-FR-031 meaningful now that
+``status`` participates in the hashed/signed payload; flagged for reviewer
+scrutiny alongside the FR-022 authority split.
+
+--- propose_modification is one write, not two -------------------------------
+
+``TASK_BUNDLE_LIFECYCLE`` draws ``OFFERED -> MODIFICATION_PROPOSED ->
+OFFERED`` as two edges. The first version of this module persisted a
+separate ``StoredObject`` row for the transient ``MODIFICATION_PROPOSED``
+state before the modifier's genuinely new content. With ``TaskBundle.
+revision`` and the store revision now required to stay in lockstep, doing
+that would force the modifying node to sign its counter-proposal with
+``latest.revision + 2`` (one consumed by the transient marker row, one for
+its own content) instead of the natural, ``ResearchScoreService.revise``-
+style ``latest.revision + 1`` — an implementation detail of *this* service
+leaking into what a remote node must predict before it can even construct
+the bytes it signs. Instead, ``propose_modification`` here validates **both**
+edges are lifecycle-legal (two ``TASK_BUNDLE_LIFECYCLE.assert_transition``
+calls — the second, ``MODIFICATION_PROPOSED -> OFFERED``, is unconditionally
+legal, so in practice this reduces to requiring ``latest``'s status be
+``OFFERED``) but persists exactly **one** new revision — the modifier's own
+signed content, landing directly in ``OFFERED`` at ``latest.revision + 1`` —
+plus one ``task_bundle.modification_offered`` event whose payload documents
+that it passed through the (unmaterialized) ``MODIFICATION_PROPOSED`` state.
+The prior revision(s) are, as before, left completely untouched.
 
 --- Refusal reason vocabulary -------------------------------------------------
 
@@ -151,7 +157,7 @@ from mrr.domain.exceptions import (
     ObjectNotFoundError,
     TaskBundleNotFoundError,
 )
-from mrr.domain.hashing_policy import verify_object_signature
+from mrr.domain.hashing_policy import compute_content_hash, verify_object_signature
 from mrr.domain.identity import new_urn
 from mrr.domain.lifecycles import TASK_BUNDLE_LIFECYCLE
 from mrr.domain.repositories import ObjectRepository, StoredObject
@@ -163,16 +169,16 @@ from mrr.services.capability_registry.service import CapabilityRegistry
 from mrr.services.research_score.service import ResearchScoreService
 from sqlalchemy import Engine
 
-#: See the module docstring's "TaskBundle-has-no-status-field problem"
-#: section: the one key ``StoredObject.body`` carries beyond the TaskBundle
-#: schema's own fields, holding the current ``TASK_BUNDLE_LIFECYCLE`` state
-#: name. Never present in a real signed TaskBundle payload — stripped by
-#: ``_reconstruct_bundle`` before treating a stored body as a ``TaskBundle``
-#: again.
-_STATUS_KEY = "status"
+#: Sentinel "from" state used only when reporting ``InvalidTransitionError``
+#: for ``create()`` with a non-CREATED initial status — the exact pattern
+#: ``mrr.services.research_score.service.ResearchScoreService.create`` uses
+#: (there is no real "from" state for a brand-new object). Never a member of
+#: ``TASK_BUNDLE_LIFECYCLE.states``, so it can never appear as a legal
+#: transition source.
+_NEW_BUNDLE_SENTINEL_STATE = "<new>"
 
 #: docs/spec/01_SYSTEM_SPEC.md MRR-FR-024's refusal event type, and the other
-#: seven event types this module writes. Dot-separated, matching
+#: five event types this module writes. Dot-separated, matching
 #: ``node_manifest.registered``/``research_score.*``'s existing convention.
 _EVENT_CREATED = "task_bundle.created"
 _EVENT_OFFERED = "task_bundle.offered"
@@ -180,7 +186,6 @@ _EVENT_MODIFICATION_ACKNOWLEDGED = "task_bundle.modification_acknowledged"
 _EVENT_ACCEPTED = "task_bundle.accepted"
 _EVENT_DEFERRED = "task_bundle.deferred"
 _EVENT_REJECTED = "task_bundle.rejected"
-_EVENT_MODIFICATION_PROPOSED = "task_bundle.modification_proposed"
 _EVENT_MODIFICATION_OFFERED = "task_bundle.modification_offered"
 
 #: See the module docstring's "Refusal reason vocabulary" section: a minimal,
@@ -256,31 +261,23 @@ def bind_unit_of_work(
 # ---------------------------------------------------------------------------
 
 
-def _bundle_to_stored_object(
-    bundle: TaskBundle, *, status: str, store_revision: int
-) -> StoredObject:
-    """Convert ``bundle`` (already schema-valid, already signed — this
-    module never signs on a caller's behalf) into the generic
-    ``StoredObject`` ``ObjectRepository`` persists, tagging it with the
-    current workflow ``status`` (see the module docstring's "TaskBundle-has-
-    no-status-field problem"). ``store_revision`` is the append-only store
-    row counter, set by the caller — see that same section for why it is
-    not simply ``bundle.revision``.
-
-    ``body`` is the full schema-shaped JSON object
-    (``model_dump_json(exclude_none=True)``, matching
+def _bundle_to_stored_object(bundle: TaskBundle) -> StoredObject:
+    """Convert ``bundle`` (already schema-valid, including its native
+    ``status`` field — ADR-0005) into the generic ``StoredObject``
+    ``ObjectRepository`` persists. ``body`` is a plain
+    ``model_dump_json(exclude_none=True))`` — no added keys — so
+    ``TaskBundle.model_validate(stored.body)`` always succeeds, matching
     ``mrr.services.research_score.service._score_to_stored_object`` and
     ``mrr.services.capability_registry.service._manifest_to_stored_object``'s
-    own pattern) plus the one added ``_STATUS_KEY``.
+    own pattern exactly.
     """
     body: dict[str, Any] = json.loads(bundle.model_dump_json(exclude_none=True))
-    body[_STATUS_KEY] = status
     return StoredObject(
         id=bundle.id,
         api_version=bundle.api_version,
         kind=bundle.kind,
         practice_id=bundle.practice_id,
-        revision=store_revision,
+        revision=bundle.revision,
         created_at=bundle.created_at,
         created_by=bundle.created_by,
         content_hash=bundle.content_hash,
@@ -291,16 +288,27 @@ def _bundle_to_stored_object(
 
 
 def _reconstruct_bundle(stored: StoredObject) -> TaskBundle:
-    """The inverse of ``_bundle_to_stored_object``: strip ``_STATUS_KEY`` and
-    re-validate the rest as a ``TaskBundle``. Used both to recover the
-    unchanged bundle content across a pure status transition, and — crucially
-    — to rebuild the exact dict a signer would have produced
-    (``bundle.model_dump(mode="json")``) before signature verification: the
-    signed payload never included ``_STATUS_KEY``, so it must not be present
-    here either.
+    """The inverse of ``_bundle_to_stored_object``: ``stored.body`` is
+    already a plain, schema-valid ``TaskBundle`` serialization (ADR-0005), so
+    this is a direct ``model_validate`` — no stripping needed anymore.
     """
-    body_without_status = {key: value for key, value in stored.body.items() if key != _STATUS_KEY}
-    return TaskBundle.model_validate(body_without_status)
+    return TaskBundle.model_validate(stored.body)
+
+
+def _bundle_with_new_status(bundle: TaskBundle, *, to_status: str, new_revision: int) -> TaskBundle:
+    """Build the next pure-status-transition revision of ``bundle``: same
+    substantive content, ``status`` and ``revision`` advanced, and
+    ``content_hash`` recomputed to match (mirrors ``ResearchScoreService.
+    _transition``'s "only status changes, everything else carried over,
+    content_hash recomputed" pattern). ``signature`` is carried forward
+    UNCHANGED — see the module docstring's "Verifying a signature that is
+    NOT re-minted on every status flip" section for why, and for how
+    verification is adapted to that.
+    """
+    updated = bundle.model_copy(update={"revision": new_revision, "status": to_status})
+    body = json.loads(updated.model_dump_json(exclude_none=True))
+    new_content_hash = compute_content_hash(body)
+    return updated.model_copy(update={"content_hash": new_content_hash})
 
 
 def _get_latest_or_raise(object_repository: ObjectRepository, bundle_id: str) -> StoredObject:
@@ -308,6 +316,26 @@ def _get_latest_or_raise(object_repository: ObjectRepository, bundle_id: str) ->
         return object_repository.get_latest(bundle_id)
     except ObjectNotFoundError:
         raise TaskBundleNotFoundError(bundle_id) from None
+
+
+def _find_signed_revision(
+    object_repository: ObjectRepository, bundle_id: str, latest: StoredObject
+) -> StoredObject:
+    """Return the OLDEST stored revision whose ``signature.value`` equals
+    ``latest``'s — i.e. the revision whose fields are the exact bytes that
+    were actually signed, since pure status transitions carry ``signature``
+    forward unchanged while ``content_hash``/``revision``/``status`` advance
+    underneath it (module docstring). Verification must target THIS
+    revision's own fields (its own ``status`` — ``CREATED`` for the origin's
+    first signature, ``OFFERED`` for a modifier's), not ``latest``'s current
+    ones. ``list_revisions`` returns oldest-first, so the first match is the
+    revision where this exact signature was first introduced.
+    """
+    current_signature_value = latest.body["signature"]["value"]
+    for revision in object_repository.list_revisions(bundle_id):
+        if revision.body["signature"]["value"] == current_signature_value:
+            return revision
+    return latest  # pragma: no cover - defensive only; latest always matches itself
 
 
 def _last_event_id_for(event_log: _EventJournal, bundle_id: str) -> str | None:
@@ -330,33 +358,37 @@ def _advance(
     event_log: _EventJournal,
     record: RecordRevisionWithEvent,
     latest: StoredObject,
-    bundle: TaskBundle,
+    new_bundle: TaskBundle,
     *,
-    to_status: str,
     event_type: str,
     actor: Urn,
     policy_version: str,
     correlation_id: Urn,
     payload: dict[str, Any] | None = None,
 ) -> StoredObject:
-    """Shared implementation for every ``TASK_BUNDLE_LIFECYCLE`` edge this
-    module drives: assert the transition is legal (fails closed with
-    ``InvalidTransitionError`` and writes nothing — checked before any
-    ``StoredObject``/``DomainEvent`` is even constructed), then persist the
-    next store revision (carrying ``bundle``'s content, tagged with
-    ``to_status``) plus its event atomically.
+    """Shared implementation for every simple ``TASK_BUNDLE_LIFECYCLE`` edge
+    this module drives (``offer``/``accept``/``defer``/``reject`` — every
+    case where ``from_status != to_status``): assert the transition is legal
+    (fails closed with ``InvalidTransitionError`` and writes nothing —
+    checked before any ``StoredObject``/``DomainEvent`` is even
+    constructed), then persist ``new_bundle`` (already carrying the new
+    ``status``/``revision``/``content_hash`` — see
+    ``_bundle_with_new_status``) plus its event atomically.
 
-    ``bundle`` is supplied by the caller rather than reconstructed here —
-    for a pure status transition it is ``_reconstruct_bundle(latest)``
-    (content unchanged); for ``propose_modification``'s second edge it is
-    the node's genuinely new signed revision. Either way this function does
-    not need to know which case it is.
+    Not used by ``accept_modification`` (its "transition" is ``OFFERED ->
+    OFFERED``, not a legal edge — see that method) or by
+    ``propose_modification`` (whose overall move is also ``OFFERED ->
+    OFFERED`` at the storage level, passing logically but not physically
+    through ``MODIFICATION_PROPOSED`` — see the module docstring's
+    "propose_modification is one write, not two" section); both call
+    ``TASK_BUNDLE_LIFECYCLE.assert_transition`` themselves as needed and
+    build their ``DomainEvent`` directly.
     """
-    from_status = latest.body[_STATUS_KEY]
+    from_status = latest.body["status"]
+    to_status = new_bundle.status
     TASK_BUNDLE_LIFECYCLE.assert_transition(from_status, to_status)
 
-    new_store_revision = latest.revision + 1
-    obj = _bundle_to_stored_object(bundle, status=to_status, store_revision=new_store_revision)
+    obj = _bundle_to_stored_object(new_bundle)
     event = DomainEvent(
         id=new_urn("domain-event"),
         event_type=event_type,
@@ -366,7 +398,7 @@ def _advance(
         causation_id=_last_event_id_for(event_log, latest.id),
         correlation_id=correlation_id,
         object_id=latest.id,
-        object_revision=new_store_revision,
+        object_revision=new_bundle.revision,
         payload=payload
         if payload is not None
         else {"from_status": from_status, "to_status": to_status},
@@ -438,26 +470,28 @@ class TaskBundleService:
         ``TaskBundle`` — its own ``id``/``content_hash``/``signature`` are
         minted by the caller (this service does not sign or hash on the
         caller's behalf, matching E2-T01/T02's own "caller mints id/hash/
-        signature" convention). ``bundle.revision`` must be ``1``.
+        signature" convention). ``bundle.revision`` must be ``1`` and
+        ``bundle.status`` must be ``TASK_BUNDLE_LIFECYCLE.initial_state``
+        (``"CREATED"``) — now a real, schema-defined field (ADR-0005), this
+        mirrors ``ResearchScoreService.create``'s own "reject non-DRAFT
+        initial status" guard exactly, via the same sentinel-transition
+        technique.
 
-        Unlike ``ResearchScoreService.create``, there is no caller-suppliable
-        "initial status" field to defensively reject here — the TaskBundle
-        schema carries no status property at all (see the module docstring),
-        so the only analogous guard available is the ``revision == 1`` check
-        below; an attempt to ``create()`` on top of an ``id`` that already
-        has a stored revision fails structurally via
-        ``mrr.domain.exceptions.RevisionConflictError`` from
-        ``insert_revision`` (``expected_current_revision=None`` here), the
-        same way ``ResearchScoreService.create`` relies on it too.
+        Raises:
+            InvalidTransitionError: ``bundle.status`` is not ``"CREATED"``.
+            ValueError: ``bundle.revision`` is not ``1``.
         """
+        if bundle.status != TASK_BUNDLE_LIFECYCLE.initial_state:
+            raise InvalidTransitionError(
+                TASK_BUNDLE_LIFECYCLE.name, _NEW_BUNDLE_SENTINEL_STATE, bundle.status
+            )
         if bundle.revision != 1:
             raise ValueError(f"TaskBundle.revision must be 1 for create(), got {bundle.revision!r}")
 
         self._research_score_service.ensure_can_start_work(bundle.research_score_id)
         self._ensure_capability_declared(bundle)
 
-        status = TASK_BUNDLE_LIFECYCLE.initial_state
-        obj = _bundle_to_stored_object(bundle, status=status, store_revision=1)
+        obj = _bundle_to_stored_object(bundle)
         event = DomainEvent(
             id=new_urn("domain-event"),
             event_type=_EVENT_CREATED,
@@ -469,7 +503,7 @@ class TaskBundleService:
             object_id=bundle.id,
             object_revision=1,
             payload={
-                "status": status,
+                "status": bundle.status,
                 "target_node_id": bundle.target_node_id,
                 "capability_name": bundle.capability.name,
                 "capability_version": bundle.capability.version,
@@ -501,12 +535,14 @@ class TaskBundleService:
         """CREATED -> OFFERED."""
         latest = _get_latest_or_raise(self._object_repository, bundle_id)
         bundle = _reconstruct_bundle(latest)
+        new_bundle = _bundle_with_new_status(
+            bundle, to_status="OFFERED", new_revision=latest.revision + 1
+        )
         return _advance(
             self._event_log,
             self._record,
             latest,
-            bundle,
-            to_status="OFFERED",
+            new_bundle,
             event_type=_EVENT_OFFERED,
             actor=actor,
             policy_version=policy_version,
@@ -527,17 +563,17 @@ class TaskBundleService:
         exists and stands.
 
         This is deliberately **not** a ``TASK_BUNDLE_LIFECYCLE`` state
-        transition: the bundle is already ``OFFERED`` (``propose_modification``'s
-        second edge lands there), and ``OFFERED -> OFFERED`` is not a drawn
-        edge (self-transitions are never legal, per
+        transition: the bundle is already ``OFFERED`` (``propose_modification``
+        lands there), and ``OFFERED -> OFFERED`` is not a drawn edge
+        (self-transitions are never legal, per
         ``mrr.domain.lifecycles.StateMachine``). The node still holds the
         sole authority to move the bundle to ``ACCEPTED``
         (``NodeTaskDecisionService.accept``, MRR-FR-022) — this method
         cannot and does not grant the origin any such path; it only records
         a ``task_bundle.modification_acknowledged`` event, still requiring a
-        new store revision (see the module docstring for why every write
-        here pairs with one) whose content and status are otherwise
-        unchanged from ``latest``.
+        new store revision (every write here does, in lockstep — see the
+        module docstring) whose ``status`` is unchanged (``"OFFERED"``) and
+        whose substantive content is otherwise identical to ``latest``.
 
         Raises:
             InvalidTransitionError: if the bundle's current status is not
@@ -547,15 +583,13 @@ class TaskBundleService:
                 as ``from_state`` and ``"OFFERED"`` as ``to_state``.
         """
         latest = _get_latest_or_raise(self._object_repository, bundle_id)
-        current_status = latest.body[_STATUS_KEY]
-        if current_status != "OFFERED":
-            raise InvalidTransitionError(TASK_BUNDLE_LIFECYCLE.name, current_status, "OFFERED")
-
         bundle = _reconstruct_bundle(latest)
-        new_store_revision = latest.revision + 1
-        obj = _bundle_to_stored_object(
-            bundle, status=current_status, store_revision=new_store_revision
-        )
+        if bundle.status != "OFFERED":
+            raise InvalidTransitionError(TASK_BUNDLE_LIFECYCLE.name, bundle.status, "OFFERED")
+
+        new_revision = latest.revision + 1
+        new_bundle = _bundle_with_new_status(bundle, to_status="OFFERED", new_revision=new_revision)
+        obj = _bundle_to_stored_object(new_bundle)
         event = DomainEvent(
             id=new_urn("domain-event"),
             event_type=_EVENT_MODIFICATION_ACKNOWLEDGED,
@@ -565,8 +599,8 @@ class TaskBundleService:
             causation_id=_last_event_id_for(self._event_log, bundle_id),
             correlation_id=correlation_id,
             object_id=bundle_id,
-            object_revision=new_store_revision,
-            payload={"status": current_status, "acknowledged_content_revision": bundle.revision},
+            object_revision=new_revision,
+            payload={"status": "OFFERED", "acknowledged_content_revision": bundle.revision},
         )
         stored, _ = self._record(obj, latest.revision, event)
         return stored
@@ -610,17 +644,19 @@ class NodeTaskDecisionService:
         correlation_id: Urn,
     ) -> StoredObject:
         """OFFERED -> ACCEPTED, after verifying ``deciding_node_id`` is the
-        bundle's own ``target_node_id`` and the current revision's signature
-        verifies under ``verifying_key`` — both fail closed, before any
-        decision (MRR-FR-022, MRR-FR-031). See ``_authorize_and_verify``.
+        bundle's own ``target_node_id`` and the signature verifies
+        (MRR-FR-022, MRR-FR-031) — both fail closed, before any decision.
+        See ``_authorize_and_verify``.
         """
         latest, bundle = self._authorize_and_verify(bundle_id, deciding_node_id, verifying_key)
+        new_bundle = _bundle_with_new_status(
+            bundle, to_status="ACCEPTED", new_revision=latest.revision + 1
+        )
         return _advance(
             self._event_log,
             self._record,
             latest,
-            bundle,
-            to_status="ACCEPTED",
+            new_bundle,
             event_type=_EVENT_ACCEPTED,
             actor=actor,
             policy_version=policy_version,
@@ -643,12 +679,14 @@ class NodeTaskDecisionService:
     ) -> StoredObject:
         """OFFERED -> DEFERRED."""
         latest, bundle = self._authorize_and_verify(bundle_id, deciding_node_id, verifying_key)
+        new_bundle = _bundle_with_new_status(
+            bundle, to_status="DEFERRED", new_revision=latest.revision + 1
+        )
         return _advance(
             self._event_log,
             self._record,
             latest,
-            bundle,
-            to_status="DEFERRED",
+            new_bundle,
             event_type=_EVENT_DEFERRED,
             actor=actor,
             policy_version=policy_version,
@@ -692,8 +730,11 @@ class NodeTaskDecisionService:
             )
 
         latest, bundle = self._authorize_and_verify(bundle_id, deciding_node_id, verifying_key)
+        new_bundle = _bundle_with_new_status(
+            bundle, to_status="REJECTED", new_revision=latest.revision + 1
+        )
         payload: dict[str, Any] = {
-            "from_status": latest.body[_STATUS_KEY],
+            "from_status": bundle.status,
             "to_status": "REJECTED",
             "reason_category": reason_category,
         }
@@ -703,8 +744,7 @@ class NodeTaskDecisionService:
             self._event_log,
             self._record,
             latest,
-            bundle,
-            to_status="REJECTED",
+            new_bundle,
             event_type=_EVENT_REJECTED,
             actor=actor,
             policy_version=policy_version,
@@ -714,7 +754,8 @@ class NodeTaskDecisionService:
 
     # ------------------------------------------------------------------
     # OFFERED -> MODIFICATION_PROPOSED -> OFFERED (MRR-FR-023/034: a new
-    # signed revision, returned to OFFERED for the origin).
+    # signed revision, returned to OFFERED for the origin). See the module
+    # docstring's "propose_modification is one write, not two" section.
     # ------------------------------------------------------------------
 
     def propose_modification(
@@ -728,46 +769,53 @@ class NodeTaskDecisionService:
         policy_version: str,
         correlation_id: Urn,
     ) -> StoredObject:
-        """Traverse both edges ``TASK_BUNDLE_LIFECYCLE`` draws for a proposed
-        modification — ``OFFERED -> MODIFICATION_PROPOSED`` then
-        ``MODIFICATION_PROPOSED -> OFFERED`` — as two atomic store writes
-        (see the module docstring for why one ``DomainEvent`` always pairs
-        with one new ``StoredObject`` row, so two drawn edges mean two
-        writes here): first a status-only revision recording that a
-        modification is being proposed (bundle content unchanged), then the
-        genuinely new revision carrying ``modified_bundle``'s own new
-        ``content_hash``/``signature`` (minted by ``deciding_node_id`` as
-        the modifier, not by this service — same "caller mints hash/
-        signature" convention as everywhere else in this codebase), landing
-        back in ``OFFERED`` for the origin (``TaskBundleService.
-        accept_modification``) to acknowledge. The prior revision(s) —
-        including the original revision 1 the origin signed — are left
-        completely untouched; only new rows are ever inserted.
+        """Validate that both drawn edges (``OFFERED -> MODIFICATION_PROPOSED``
+        and ``MODIFICATION_PROPOSED -> OFFERED``) are lifecycle-legal, then
+        persist ``modified_bundle`` — the modifier's own new signed content,
+        already carrying its own new ``content_hash``/``signature`` (minted
+        by ``deciding_node_id``, not by this service — same "caller mints
+        hash/signature" convention as everywhere else in this codebase) and
+        its own ``status="OFFERED"`` — as exactly one new revision, plus one
+        ``task_bundle.modification_offered`` event. The prior revision(s) —
+        including the original revision the origin signed — are left
+        completely untouched; only one new row is ever inserted.
 
         Raises:
             NodeAuthorityError / mrr.crypto.exceptions.SignatureVerificationError:
-                see ``_authorize_and_verify`` — checked before either write.
+                see ``_authorize_and_verify`` — checked before anything else.
+            InvalidTransitionError: the bundle's current status is not
+                ``OFFERED`` (the only status from which
+                ``MODIFICATION_PROPOSED`` is reachable).
             ValueError: ``modified_bundle.id`` does not match ``bundle_id``,
+                ``modified_bundle.status`` is not ``"OFFERED"``,
                 ``modified_bundle.revision`` is not exactly the current
-                content revision + 1, or ``modified_bundle.content_hash``
-                equals the current revision's hash unchanged (MRR-FR-034
-                requires a genuinely new content hash for "a task
-                revision"). Checked after authorization/signature but before
-                either write, so a malformed proposed revision fails closed
-                with nothing persisted.
+                revision + 1, or ``modified_bundle.content_hash`` equals the
+                current revision's hash unchanged (MRR-FR-034 requires a
+                genuinely new content hash for "a task revision"). Checked
+                after authorization/signature but before the write, so a
+                malformed proposed revision fails closed with nothing
+                persisted.
         """
         latest, bundle = self._authorize_and_verify(bundle_id, deciding_node_id, verifying_key)
+
+        TASK_BUNDLE_LIFECYCLE.assert_transition(bundle.status, "MODIFICATION_PROPOSED")
+        TASK_BUNDLE_LIFECYCLE.assert_transition("MODIFICATION_PROPOSED", "OFFERED")
 
         if modified_bundle.id != bundle.id:
             raise ValueError(
                 f"modified_bundle.id ({modified_bundle.id!r}) must match the bundle being "
                 f"modified ({bundle.id!r})"
             )
+        if modified_bundle.status != "OFFERED":
+            raise ValueError(
+                f"modified_bundle.status must be 'OFFERED' (the state a proposed "
+                f"modification lands in), got {modified_bundle.status!r}"
+            )
         expected_revision = bundle.revision + 1
         if modified_bundle.revision != expected_revision:
             raise ValueError(
                 f"modified_bundle.revision must be {expected_revision!r} "
-                f"(current content revision + 1), got {modified_bundle.revision!r}"
+                f"(current revision + 1), got {modified_bundle.revision!r}"
             )
         if modified_bundle.content_hash == bundle.content_hash:
             raise ValueError(
@@ -775,33 +823,26 @@ class NodeTaskDecisionService:
                 "unchanged prior hash"
             )
 
-        proposed = _advance(
-            self._event_log,
-            self._record,
-            latest,
-            bundle,
-            to_status="MODIFICATION_PROPOSED",
-            event_type=_EVENT_MODIFICATION_PROPOSED,
-            actor=actor,
-            policy_version=policy_version,
-            correlation_id=correlation_id,
-        )
-        return _advance(
-            self._event_log,
-            self._record,
-            proposed,
-            modified_bundle,
-            to_status="OFFERED",
+        obj = _bundle_to_stored_object(modified_bundle)
+        event = DomainEvent(
+            id=new_urn("domain-event"),
             event_type=_EVENT_MODIFICATION_OFFERED,
+            occurred_at=datetime.now(UTC),
             actor=actor,
             policy_version=policy_version,
+            causation_id=_last_event_id_for(self._event_log, bundle_id),
             correlation_id=correlation_id,
+            object_id=bundle_id,
+            object_revision=modified_bundle.revision,
             payload={
-                "from_status": "MODIFICATION_PROPOSED",
+                "from_status": bundle.status,
+                "via": "MODIFICATION_PROPOSED",
                 "to_status": "OFFERED",
                 "content_revision": modified_bundle.revision,
             },
         )
+        stored, _ = self._record(obj, latest.revision, event)
+        return stored
 
     # ------------------------------------------------------------------
     # Internal helpers.
@@ -812,11 +853,22 @@ class NodeTaskDecisionService:
     ) -> tuple[StoredObject, TaskBundle]:
         """Load the latest stored revision, enforce MRR-FR-022 (structural
         node-authority check: ``deciding_node_id`` must equal the stored
-        bundle's ``target_node_id``), then verify the current revision's
-        signature under ``verifying_key`` (MRR-FR-031) — both fail closed,
-        both before any decision or persistence. The authority check runs
-        first (cheap, no cryptography) so an unauthorized caller learns
+        bundle's ``target_node_id``), then verify the signature that is
+        actually still valid for THIS bundle (MRR-FR-031) — both fail
+        closed, both before any decision or persistence. The authority check
+        runs first (cheap, no cryptography) so an unauthorized caller learns
         nothing about whether the bundle's signature is even valid.
+
+        Verification does not target ``latest`` directly — see the module
+        docstring's "Verifying a signature that is NOT re-minted on every
+        status flip" section for why — it targets
+        ``_find_signed_revision(latest)``, the oldest stored revision
+        carrying the same ``signature.value`` as ``latest``, which is
+        exactly the payload that was actually signed.
+
+        Returns ``(latest, bundle)`` — ``latest`` the current stored
+        revision, ``bundle`` its reconstructed ``TaskBundle`` (current
+        ``status``, ready for a caller to build the next transition from).
 
         Raises:
             TaskBundleNotFoundError: no stored bundle for ``bundle_id``.
@@ -825,19 +877,22 @@ class NodeTaskDecisionService:
                 content or verified at this point beyond ``target_node_id``
                 itself.
             mrr.crypto.exceptions.SignatureVerificationError /
-            UnsupportedAlgorithmError: the current revision's signature does
-                not verify under ``verifying_key``.
+            UnsupportedAlgorithmError: the signature does not verify under
+                ``verifying_key``.
         """
         latest = _get_latest_or_raise(self._object_repository, bundle_id)
         target_node_id = latest.body["target_node_id"]
         if deciding_node_id != target_node_id:
             raise NodeAuthorityError(bundle_id, target_node_id, deciding_node_id)
 
-        bundle = _reconstruct_bundle(latest)
+        signed_revision = _find_signed_revision(self._object_repository, bundle_id, latest)
+        signed_bundle = _reconstruct_bundle(signed_revision)
         verify_object_signature(
             verifying_key,
-            bundle.model_dump(mode="json"),
-            bundle.signature.value,
-            algorithm=bundle.signature.algorithm,
+            signed_bundle.model_dump(mode="json"),
+            signed_bundle.signature.value,
+            algorithm=signed_bundle.signature.algorithm,
         )
+
+        bundle = _reconstruct_bundle(latest)
         return latest, bundle

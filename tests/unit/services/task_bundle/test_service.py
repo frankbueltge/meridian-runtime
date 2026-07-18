@@ -47,6 +47,9 @@ Acceptance-test mapping (task-packets/E2-T03.yaml):
 - "illegal lifecycle transitions persist nothing" (unit-level; the packet's
   own integration-tier duplicate covers real PostgreSQL) ->
   ``test_accept_on_a_not_yet_offered_bundle_raises_and_persists_nothing``.
+- the round-trip invariant ADR-0005 exists to restore (a stray body key
+  used to make ``TaskBundle.model_validate(stored.body)`` fail) ->
+  ``test_persisted_body_round_trips_through_task_bundle_model_validate``.
 """
 
 from __future__ import annotations
@@ -394,6 +397,7 @@ def _bundle(
             "signed_at": now,
             "value": "0" * 44,
         },
+        "status": "CREATED",
     }
     data.update(overrides)
     return TaskBundle.model_validate(data)
@@ -871,14 +875,19 @@ def test_propose_modification_creates_new_signed_revision_prior_intact() -> None
     harness.task_bundle_service.create(
         bundle, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
     )
-    harness.task_bundle_service.offer(
+    offered = harness.task_bundle_service.offer(
         bundle.id, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
     )
+    # offer() recomputed content_hash (status is now part of the hashed
+    # payload, ADR-0005) — the modifier's new revision must build on the
+    # CURRENT stored content, not the pre-create fixture's own placeholder.
+    assert offered.revision == 2
 
     modified = _sign(
         bundle.model_copy(
             update={
-                "revision": 2,
+                "revision": 3,
+                "status": "OFFERED",
                 "content_hash": "sha256:" + "d" * 64,
                 "resource_limits": bundle.resource_limits.model_copy(
                     update={"cpu": 2.0, "memory_mb": 1024, "disk_mb": 200, "timeout_seconds": 120}
@@ -899,24 +908,27 @@ def test_propose_modification_creates_new_signed_revision_prior_intact() -> None
     )
 
     assert result.body["status"] == "OFFERED"
-    assert result.body["revision"] == 2
+    assert result.body["revision"] == 3
     assert result.body["resource_limits"]["cpu"] == 2.0
     assert result.body["content_hash"] == "sha256:" + "d" * 64
 
     # The prior (origin-signed) revision is completely intact and still
-    # readable at the original content revision's own store row.
+    # readable at its own store row — untouched by the modification.
     original_row = harness.object_repository.get_revision(bundle.id, 2)  # the offer() row
-    assert original_row.body["revision"] == 1
-    assert original_row.body["content_hash"] == bundle.content_hash
+    assert original_row.body["revision"] == 2
+    assert original_row.body["status"] == "OFFERED"
+    assert original_row.body["content_hash"] == offered.body["content_hash"]
     assert original_row.body["resource_limits"]["cpu"] == 1.0
 
     events = [
         e.event.event_type for e in harness.event_log.read_all() if e.event.object_id == bundle.id
     ]
+    # propose_modification is one atomic write, not two — see the service
+    # module docstring's "propose_modification is one write, not two"
+    # section for why a separate MODIFICATION_PROPOSED row is not persisted.
     assert events == [
         "task_bundle.created",
         "task_bundle.offered",
-        "task_bundle.modification_proposed",
         "task_bundle.modification_offered",
     ]
 
@@ -929,10 +941,19 @@ def test_propose_modification_rejects_unchanged_content_hash() -> None:
     harness.task_bundle_service.create(
         bundle, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
     )
-    harness.task_bundle_service.offer(
+    offered = harness.task_bundle_service.offer(
         bundle.id, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
     )
-    not_really_modified = _sign(bundle.model_copy(update={"revision": 2}), node_key)
+    not_really_modified = _sign(
+        bundle.model_copy(
+            update={
+                "revision": 3,
+                "status": "OFFERED",
+                "content_hash": offered.body["content_hash"],  # deliberately unchanged
+            }
+        ),
+        node_key,
+    )
 
     with pytest.raises(ValueError, match="content_hash"):
         harness.node_decision_service.propose_modification(
@@ -963,9 +984,12 @@ def test_full_negotiation_loop_modification_then_accept() -> None:
         bundle.id, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
     )
     modified = _sign(
-        bundle.model_copy(update={"revision": 2, "content_hash": "sha256:" + "e" * 64}), node_key
+        bundle.model_copy(
+            update={"revision": 3, "status": "OFFERED", "content_hash": "sha256:" + "e" * 64}
+        ),
+        node_key,
     )
-    harness.node_decision_service.propose_modification(
+    proposed = harness.node_decision_service.propose_modification(
         bundle.id,
         modified,
         node_id,
@@ -974,11 +998,13 @@ def test_full_negotiation_loop_modification_then_accept() -> None:
         policy_version=_POLICY_VERSION,
         correlation_id=_correlation_id(),
     )
+    assert proposed.revision == 3
 
     acknowledged = harness.task_bundle_service.accept_modification(
         bundle.id, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
     )
     assert acknowledged.body["status"] == "OFFERED"  # no state change, see docstring
+    assert acknowledged.revision == 4
 
     accepted = harness.node_decision_service.accept(
         bundle.id,
@@ -989,7 +1015,7 @@ def test_full_negotiation_loop_modification_then_accept() -> None:
         correlation_id=_correlation_id(),
     )
     assert accepted.body["status"] == "ACCEPTED"
-    assert accepted.body["revision"] == 2  # the modified content revision
+    assert accepted.revision == 5
 
 
 def test_accept_modification_requires_offered_status() -> None:
@@ -1009,6 +1035,73 @@ def test_accept_modification_requires_offered_status() -> None:
             policy_version=_POLICY_VERSION,
             correlation_id=_correlation_id(),
         )
+
+
+# ---------------------------------------------------------------------------
+# create() rejects a non-CREATED initial status (ADR-0005 makes ``status`` a
+# real, schema-defined field — mirrors
+# ResearchScoreService.create()'s own "reject non-DRAFT initial status"
+# guard, via the same sentinel-transition technique).
+# ---------------------------------------------------------------------------
+
+
+def test_create_rejects_non_created_initial_status() -> None:
+    harness = _harness()
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+    bundle, node_id, score_id = _fully_wired_bundle(
+        harness, origin_key=origin_key, node_key=node_key
+    )
+    wrong_initial_status = _sign(bundle.model_copy(update={"status": "OFFERED"}), origin_key)
+
+    with pytest.raises(InvalidTransitionError) as excinfo:
+        harness.task_bundle_service.create(
+            wrong_initial_status,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+    assert excinfo.value.to_state == "OFFERED"
+    with pytest.raises(ObjectNotFoundError):
+        harness.object_repository.get_latest(bundle.id)
+
+
+# ---------------------------------------------------------------------------
+# The round-trip invariant review caught missing before ADR-0005: the
+# persisted body is a plain, schema-valid TaskBundle serialization —
+# TaskBundle.model_validate(stored.body) must always succeed, and .status
+# must reflect the expected lifecycle state after a transition.
+# ---------------------------------------------------------------------------
+
+
+def test_persisted_body_round_trips_through_task_bundle_model_validate() -> None:
+    harness = _harness()
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+    bundle, node_id, _ = _fully_wired_bundle(harness, origin_key=origin_key, node_key=node_key)
+
+    created = harness.task_bundle_service.create(
+        bundle, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    round_tripped_created = TaskBundle.model_validate(created.body)
+    assert round_tripped_created.status == "CREATED"
+
+    offered = harness.task_bundle_service.offer(
+        bundle.id, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    round_tripped_offered = TaskBundle.model_validate(offered.body)
+    assert round_tripped_offered.status == "OFFERED"
+
+    accepted = harness.node_decision_service.accept(
+        bundle.id,
+        node_id,
+        origin_key.public_key(),
+        actor=node_id,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+    )
+    round_tripped_accepted = TaskBundle.model_validate(accepted.body)
+    assert round_tripped_accepted.status == "ACCEPTED"
 
 
 # ---------------------------------------------------------------------------

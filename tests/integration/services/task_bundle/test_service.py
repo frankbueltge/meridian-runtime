@@ -18,6 +18,8 @@ Acceptance-test mapping (task-packets/E2-T03.yaml, integration tier):
   ``test_propose_modification_persists_new_revision_and_leaves_prior_intact``.
 - "illegal transition rolls back" ->
   ``test_illegal_transition_persists_nothing``.
+- the round-trip invariant ADR-0005 exists to restore, verified straight
+  from the database -> ``test_persisted_body_round_trips_through_task_bundle_model_validate``.
 """
 
 from __future__ import annotations
@@ -228,6 +230,7 @@ def _bundle(*, target_node_id: str, research_score_id: str, **overrides: Any) ->
             "signed_at": now,
             "value": "0" * 44,
         },
+        "status": "CREATED",
     }
     data.update(overrides)
     return TaskBundle.model_validate(data)
@@ -323,14 +326,19 @@ def test_propose_modification_persists_new_revision_and_leaves_prior_intact(
     task_bundle_service.create(
         bundle, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
     )
-    task_bundle_service.offer(
+    offered = task_bundle_service.offer(
         bundle.id, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
     )
+    # offer() recomputed content_hash (status is part of the hashed payload,
+    # ADR-0005) — build the modifier's new revision on that CURRENT content,
+    # not the pre-create fixture's own placeholder.
+    assert offered.revision == 2
 
     modified = _sign(
         bundle.model_copy(
             update={
-                "revision": 2,
+                "revision": 3,
+                "status": "OFFERED",
                 "content_hash": "sha256:" + "d" * 64,
                 "resource_limits": bundle.resource_limits.model_copy(update={"cpu": 4.0}),
             }
@@ -347,7 +355,7 @@ def test_propose_modification_persists_new_revision_and_leaves_prior_intact(
         correlation_id=correlation_id,
     )
     assert result.body["status"] == "OFFERED"
-    assert result.body["revision"] == 2
+    assert result.body["revision"] == 3
     assert result.body["resource_limits"]["cpu"] == 4.0
 
     with postgres_engine.connect() as conn:
@@ -357,17 +365,19 @@ def test_propose_modification_persists_new_revision_and_leaves_prior_intact(
             .order_by(objects_table.c.revision.asc())
         ).fetchall()
 
-    # 1: CREATED (content revision 1); 2: OFFERED (content revision 1);
-    # 3: MODIFICATION_PROPOSED (content revision 1, unchanged);
-    # 4: OFFERED again (content revision 2, the node's new signed content).
-    assert len(object_rows) == 4
+    # propose_modification is one atomic write, not two (see the service
+    # module docstring's "propose_modification is one write, not two"
+    # section — a separate MODIFICATION_PROPOSED row is not persisted):
+    # 1: CREATED (origin-signed); 2: OFFERED (same origin-signed content);
+    # 3: OFFERED again (the node's new signed content).
+    assert len(object_rows) == 3
     assert object_rows[0].body["content_hash"] == bundle.content_hash
     assert object_rows[0].body["resource_limits"]["cpu"] == 1.0
-    assert object_rows[2].body["status"] == "MODIFICATION_PROPOSED"
-    assert object_rows[2].body["content_hash"] == bundle.content_hash  # unchanged content
-    assert object_rows[3].body["status"] == "OFFERED"
-    assert object_rows[3].body["content_hash"] == "sha256:" + "d" * 64
-    assert object_rows[3].body["resource_limits"]["cpu"] == 4.0
+    assert object_rows[1].body["status"] == "OFFERED"
+    assert object_rows[1].body["content_hash"] == offered.body["content_hash"]
+    assert object_rows[2].body["status"] == "OFFERED"
+    assert object_rows[2].body["content_hash"] == "sha256:" + "d" * 64
+    assert object_rows[2].body["resource_limits"]["cpu"] == 4.0
 
     # The very first, origin-signed revision is untouched and independently
     # addressable.
@@ -500,3 +510,53 @@ def test_reject_persists_refusal_event_with_reason_category(postgres_engine: Eng
     reject_event = event_rows[-1]
     assert reject_event.event_type == "task_bundle.rejected"
     assert reject_event.payload["reason_category"] == "resource_unavailable"
+
+
+def test_persisted_body_round_trips_through_task_bundle_model_validate(
+    postgres_engine: Engine,
+) -> None:
+    """The round-trip invariant review caught missing before ADR-0005: the
+    body actually read back from PostgreSQL is a plain, schema-valid
+    TaskBundle serialization — TaskBundle.model_validate(stored.body) must
+    succeed, and .status must reflect the expected lifecycle state, straight
+    from the database (not just through the repository abstraction).
+    """
+    task_bundle_service, node_decision_service, research_score_service, capability_registry = (
+        _services_for(postgres_engine)
+    )
+    score_id = _create_and_approve_score(research_score_service)
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+    node_id = new_urn("node")
+    _register_node(capability_registry, node_id, node_key)
+    bundle = _sign(_bundle(target_node_id=node_id, research_score_id=score_id), origin_key)
+    actor = new_urn("agent-role")
+    correlation_id = new_urn("research-run")
+
+    task_bundle_service.create(
+        bundle, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    task_bundle_service.offer(
+        bundle.id, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    node_decision_service.accept(
+        bundle.id,
+        node_id,
+        origin_key.public_key(),
+        actor=node_id,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+    )
+
+    with postgres_engine.connect() as conn:
+        object_rows = conn.execute(
+            sa.select(objects_table)
+            .where(objects_table.c.id == bundle.id)
+            .order_by(objects_table.c.revision.asc())
+        ).fetchall()
+
+    assert len(object_rows) == 3
+    expected_statuses = ["CREATED", "OFFERED", "ACCEPTED"]
+    for row, expected_status in zip(object_rows, expected_statuses, strict=True):
+        round_tripped = TaskBundle.model_validate(row.body)
+        assert round_tripped.status == expected_status
