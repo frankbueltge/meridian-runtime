@@ -1,0 +1,103 @@
+task_id: E3-T01
+title: Implement SourceRecord and EvidenceAnchor schemas, contracts, and services
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/02_DOMAIN_MODEL.md sections 2.8 (SourceRecord) and
+  2.9 (EvidenceAnchor), MRR-FR-052, the stage-6 acceptance ("a supported
+  source claim cannot cite only a bare URL without an evidence anchor or
+  explicit anchor_unavailable reason"), and MRR-NFR-001; approved by the
+  repository owner's direction to continue (2026-07-18). First task of Epic
+  E3 (claim, evidence, correction kernel). Authorizes two NEW entity schemas
+  (source-record, evidence-anchor) derived faithfully from the domain model.
+objective: >
+  Provide the evidence substrate for claims: a SourceRecord (external/local
+  source description, with metadata kept distinct from content) and an
+  EvidenceAnchor (a claim-relevant proposition tied to an exact part of a
+  source or run, or an explicit declaration of why exact anchoring is
+  impossible), each with a schema, a Pydantic contract, and a persistence
+  service.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/02_DOMAIN_MODEL.md#28-sourcerecord
+  - docs/spec/02_DOMAIN_MODEL.md#29-evidenceanchor
+  - docs/spec/01_SYSTEM_SPEC.md#46-stage-6--evidence-crate
+  - schemas/common.schema.json
+requirements:
+  - MRR-FR-052
+  - MRR-NFR-001
+allowed_paths:
+  - schemas/**
+  - examples/**
+  - packages/contracts/**
+  - packages/domain/**
+  - services/**
+  - scripts/check_contracts.py
+  - tests/**
+  - pyproject.toml
+forbidden_changes:
+  - the Claim service and claim graph edges (E3-T02)
+  - source-family representation (E3-T03)
+  - verification/review records and the independence validator (E3-T04/T05)
+  - changing the existing schemas' semantics
+  - HTTP/FastAPI endpoints
+derived_decisions: >
+  Two new entity schemas (source-record, evidence-anchor) derived faithfully
+  from domain 2.8/2.9, mirroring existing schema conventions (allOf over
+  baseObject, unevaluatedProperties:false, urn/sha256/timestamp $defs), added
+  to check_contracts (now nine entities). EvidenceAnchor models BOTH the text
+  anchor and the computational anchor variants from 2.9, and carries an
+  explicit "exact anchoring impossible" declaration (an anchor_unavailable
+  reason) so the stage-6 acceptance can be met without inventing anchors.
+  SourceRecord keeps source METADATA distinct from source CONTENT (2.8
+  invariant: a correct DOI does not prove support). Services persist via the
+  E1-T06 unit of work (revision + event), consistent with the E2 services;
+  neither object is cross-practice-signed here (signing/trust is E5). This
+  task provides the substrate ONLY; wiring anchors into claim support is
+  E3-T02.
+invariants:
+  - source metadata and source content are distinct - a SourceRecord with a
+    valid identifier (e.g. DOI) is NOT by itself evidence of anything (domain
+    2.8); the model does not conflate the two
+  - an EvidenceAnchor either resolves against an exact referenced version
+    (snapshot/quoted-fragment hash for text; run/output/recomputation for
+    computational) OR explicitly declares why exact anchoring is impossible;
+    a bare reference with neither fails closed (domain 2.9 / stage-6
+    acceptance)
+  - an anchor's relation is one of supports/contradicts/qualifies/
+    contextualizes (domain 2.9), reusing the edge vocabulary values
+  - every example validates against schema AND Pydantic and round-trips
+    (E1-T03 invariant extended to the two new entities)
+  - persisting a record or anchor writes exactly one domain event with full
+    NFR-001 provenance, atomically with the revision
+acceptance_tests:
+  - the source-record and evidence-anchor schemas pass Draft 2020-12
+    validation; their examples validate against schema and Pydantic and
+    round-trip
+  - a text anchor with a quoted-fragment hash validates; a computational
+    anchor with a recomputation reference validates
+  - an anchor with neither an exact resolution NOR an anchor_unavailable
+    reason fails validation (fails closed)
+  - a malformed fixture (bad hash/urn, unknown relation) fails both validators
+  - creating a source record and an anchor each persists one revision + one
+    event atomically (integration, real PostgreSQL)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+required_output:
+  - implementation summary
+  - the two derived schemas and how they map to domain 2.8/2.9
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications
+  - open specification questions
+stop_conditions:
+  - domain 2.8/2.9 cannot be represented as schemas without inventing
+    semantics beyond them
+  - the exact-anchor-or-explicit-reason invariant cannot be expressed in the
+    schema
+  - implementation requires changes outside allowed paths
