@@ -30,6 +30,12 @@ Acceptance-test mapping (task-packets/E2-T07.yaml):
   terminal run_state" -> ``test_policy_denied_run_seals_an_explicit_failure_crate``.
 - "a timed-out run ... seals an explicit FAILURE crate carrying that terminal
   run_state" -> ``test_timed_out_run_seals_an_explicit_failure_crate``.
+- MRR-NFR-012 / MRR-FR-053: a run started with no injected code revision
+  (``code_revision=None``, the caller's own honest "unknown" — see
+  ``run_local_evidence_loop``'s own docstring for why this is never derived
+  by shelling out to ``git``) executes and records its Run Manifest as
+  usual, then fails EXPLICITLY at sealing rather than fabricating a code
+  revision -> ``test_run_without_code_revision_fails_explicitly_at_sealing``.
 """
 
 from __future__ import annotations
@@ -47,12 +53,19 @@ from mrr.crypto.hashing import content_hash
 from mrr.domain.exceptions import ScoreNotApprovedError
 from mrr.domain.hashing_policy import verify_object_signature
 from mrr.domain.identity import new_urn
-from mrr.persistence.repositories import PostgresObjectRepository
+from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
 from mrr.services.cli.orchestration import run_local_evidence_loop
 from mrr.services.node_runtime.executor import ReferenceTaskExecutor, default_reference_transform
 from sqlalchemy import Engine
 
 from scripts.check_contracts import SCHEMAS_DIR, build_registry, build_validator_for_schema
+
+#: A fixed, caller-injected code revision for every test that needs a crate
+#: to actually seal — mirrors what ``mrr.services.cli.main`` would resolve
+#: from ``--code-revision``/``MRR_CODE_COMMIT`` in a real deployment. Never
+#: derived from the real checked-out git commit (this test suite must not
+#: depend on running inside a git working tree either).
+_TEST_CODE_REVISION = "git:e2e-test-fixture"
 
 
 def _artifact_store(tmp_path: Path) -> LocalFilesystemArtifactStore:
@@ -75,6 +88,7 @@ def test_complete_local_run_is_deterministic_with_no_llm(
         artifact_store=store,
         origin_signing_key=origin_key,
         node_signing_key=node_key,
+        code_revision=_TEST_CODE_REVISION,
     )
 
     assert result.run_state == "completed"
@@ -92,6 +106,7 @@ def test_every_hash_and_signature_resolves(postgres_engine: Engine, tmp_path: Pa
         artifact_store=store,
         origin_signing_key=origin_key,
         node_signing_key=node_key,
+        code_revision=_TEST_CODE_REVISION,
     )
 
     object_repository = PostgresObjectRepository(postgres_engine)
@@ -171,6 +186,7 @@ def test_deterministic_replay_same_inputs_yield_same_output_hash(
         node_signing_key=node_key,
         input_bytes=fixed_input,
         input_artifact_id=fixed_input_artifact_id,
+        code_revision=_TEST_CODE_REVISION,
     )
     second = run_local_evidence_loop(
         engine=postgres_engine,
@@ -179,6 +195,7 @@ def test_deterministic_replay_same_inputs_yield_same_output_hash(
         node_signing_key=node_key,
         input_bytes=fixed_input,
         input_artifact_id=fixed_input_artifact_id,
+        code_revision=_TEST_CODE_REVISION,
     )
 
     assert first.run_state == "completed"
@@ -226,6 +243,7 @@ def test_policy_denied_run_seals_an_explicit_failure_crate(
         origin_signing_key=origin_key,
         node_signing_key=node_key,
         executor=executor,
+        code_revision=_TEST_CODE_REVISION,
     )
 
     assert result.run_state == "policy_denied"
@@ -271,6 +289,7 @@ def test_timed_out_run_seals_an_explicit_failure_crate(
         node_signing_key=node_key,
         executor=executor,
         timeout_seconds=1,
+        code_revision=_TEST_CODE_REVISION,
     )
 
     assert result.run_state == "timed_out"
@@ -288,4 +307,47 @@ def test_timed_out_run_seals_an_explicit_failure_crate(
         object_repository.get_latest(result.run_manifest_id).body
     )
     assert run_manifest.run_state == "timed_out"
+    assert run_manifest.sealed is True
+
+
+def test_run_without_code_revision_fails_explicitly_at_sealing(
+    postgres_engine: Engine, tmp_path: Path
+) -> None:
+    """MRR-NFR-012 / MRR-FR-053: with no code revision injected (the honest
+    "unknown" ``code_revision=None`` default — never a fabricated git-derived
+    value, per ``run_local_evidence_loop``'s own docstring), the loop still
+    executes and records a sealed Run Manifest, but ``EvidenceCrateSealer
+    .seal`` then raises explicitly rather than sealing a crate with a
+    fabricated code revision. This is a real gap in what this run can prove,
+    surfaced loudly — not papered over with a placeholder value.
+    """
+    store = _artifact_store(tmp_path)
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+
+    with pytest.raises(ValueError, match="code_commit"):
+        run_local_evidence_loop(
+            engine=postgres_engine,
+            artifact_store=store,
+            origin_signing_key=origin_key,
+            node_signing_key=node_key,
+            # code_revision intentionally omitted -> None.
+        )
+
+    # The Run Manifest was still recorded before sealing failed — locate it
+    # via the event log (the function raised before returning a
+    # LocalEvidenceLoopResult, so there is no run_manifest_id to read here).
+    event_log = PostgresEventLog(postgres_engine)
+    object_repository = PostgresObjectRepository(postgres_engine)
+    recorded_events = [
+        appended
+        for appended in event_log.read_all()
+        if appended.event.event_type == "run_manifest.recorded"
+    ]
+    assert recorded_events, "the run manifest should still be recorded before sealing fails"
+    run_manifest = RunManifest.model_validate(
+        object_repository.get_latest(recorded_events[-1].event.object_id).body
+    )
+    assert run_manifest.code_commit is None
+    assert run_manifest.run_state == "completed"
     assert run_manifest.sealed is True

@@ -9,10 +9,13 @@ pointing ``--database-url`` at a port nothing is listening on.
 
 from __future__ import annotations
 
+import ast
+import inspect
 from pathlib import Path
 
 import pytest
-from mrr.services.cli.main import build_parser, main
+from mrr.services.cli import main as cli_main_module
+from mrr.services.cli.main import _CODE_COMMIT_ENV_VAR, _resolve_code_revision, build_parser, main
 from mrr.services.cli.orchestration import LocalEvidenceLoopResult, run_local_evidence_loop
 
 #: A URL nothing is listening on — 127.0.0.1:1 is a reserved, unassigned port
@@ -78,3 +81,47 @@ def test_run_reports_an_explicit_degraded_message_when_database_is_unreachable(
     assert exit_code != 0
     err = capsys.readouterr().err
     assert "cannot reach the PostgreSQL database" in err
+
+
+# ---------------------------------------------------------------------------
+# code_revision resolution (MRR-NFR-012): injected via --code-revision or
+# MRR_CODE_COMMIT, never derived by shelling out to git. See the bandit
+# finding (B404/B603/B607) this replaced, and main.py's own module docstring.
+# ---------------------------------------------------------------------------
+
+
+def test_main_module_does_not_import_subprocess() -> None:
+    """Regression guard for the bandit finding this task fixed: the CLI must
+    never shell out to discover its own code revision. Pinned via ``ast`` (a
+    precise check of actual import statements, not a substring match — this
+    module's own docstring and comments legitimately mention "subprocess" in
+    prose) so a future change cannot silently reintroduce the dependency.
+    """
+    source = inspect.getsource(cli_main_module)
+    tree = ast.parse(source)
+    imported_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_names.add(node.module)
+    assert "subprocess" not in imported_names
+
+
+def test_resolve_code_revision_prefers_explicit_over_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_CODE_COMMIT_ENV_VAR, "env-value")
+    assert _resolve_code_revision("explicit-value") == "explicit-value"
+
+
+def test_resolve_code_revision_falls_back_to_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_CODE_COMMIT_ENV_VAR, "env-value")
+    assert _resolve_code_revision(None) == "env-value"
+
+
+def test_resolve_code_revision_is_none_when_neither_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(_CODE_COMMIT_ENV_VAR, raising=False)
+    assert _resolve_code_revision(None) is None

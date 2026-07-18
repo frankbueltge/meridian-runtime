@@ -13,13 +13,31 @@ database and a writable artifact-store root — are checked BEFORE any service
 call runs, with a clear, specific message and a non-zero exit code on
 failure. Neither failure mode falls back to an in-memory or fake substitute;
 the run simply does not happen, and says so.
+
+The same principle governs ``code_revision`` (MRR-FR-053's "code or workflow
+version"): a research runtime must not depend on running inside a git working
+tree to know its own code version — a deployed container has no ``.git``
+directory and no ``git`` binary, so shelling out to discover one would either
+silently fail or, worse, resolve to whatever repository happens to be
+checked out on the host rather than the actual running code. The code
+revision is therefore INJECTED — via ``--code-revision`` or the
+``MRR_CODE_COMMIT`` environment variable a deployment sets — never derived by
+calling a subprocess. When neither is given, ``code_revision`` is ``None``:
+an explicit "unknown", which ``mrr.contracts.task_bundle.ExecutionSpec
+.code_revision``/``mrr.contracts.run_manifest.RunManifest.code_commit`` both
+already model as a nullable field, not a fabricated placeholder string.
+Note that ``EvidenceCrateSealer.seal`` (E2-T06) itself raises if the
+recorded ``RunManifest.code_commit`` is ``None`` (MRR-FR-053 requires a real
+value before a crate can be sealed) — so a run started without a known code
+revision will run all the way through execution and Run Manifest recording,
+then fail loudly and explicitly at the sealing step, never silently.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,42 +48,26 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
 from mrr.crypto.exceptions import CryptoError
 from mrr.domain.exceptions import DomainError
-from mrr.services.cli.orchestration import (
-    DEFAULT_CODE_REVISION,
-    DEFAULT_INPUT_BYTES,
-    run_local_evidence_loop,
-)
+from mrr.services.cli.orchestration import DEFAULT_INPUT_BYTES, run_local_evidence_loop
 from sqlalchemy.exc import SQLAlchemyError
 
 #: Exit codes. 0 is success (argparse's own built-in failures, e.g. a bad
 #: flag or missing required argument, use argparse's own code, 2).
 _EXIT_DEPENDENCY_UNAVAILABLE = 2
-_EXIT_RUN_ABORTED_AT_GATE = 3
+_EXIT_RUN_ABORTED = 3
 
-_GIT_TIMEOUT_SECONDS = 5
+#: The environment variable a deployment sets to inject the running code's
+#: revision (see the module docstring). No subprocess, no ``git`` call.
+_CODE_COMMIT_ENV_VAR = "MRR_CODE_COMMIT"
 
 
-def _resolve_code_revision(explicit: str | None) -> str:
-    """The caller's ``--code-revision``, else a best-effort ``git rev-parse
-    --short HEAD`` of the checked-out repository, else an explicit "unknown"
-    label (``mrr.services.cli.orchestration.DEFAULT_CODE_REVISION``) — never
-    a fabricated commit hash.
+def _resolve_code_revision(explicit: str | None) -> str | None:
+    """The caller's ``--code-revision``, else the ``MRR_CODE_COMMIT``
+    environment variable, else ``None`` — an explicit, honest "unknown"
+    (MRR-NFR-012), never a fabricated or guessed value. See the module
+    docstring for why this never shells out to ``git``.
     """
-    if explicit:
-        return explicit
-    try:
-        result = subprocess.run(  # noqa: S603 - fixed argv, no shell, best-effort only
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT_SECONDS,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return DEFAULT_CODE_REVISION
-    if result.returncode != 0 or not result.stdout.strip():
-        return DEFAULT_CODE_REVISION
-    return f"git:{result.stdout.strip()}"
+    return explicit or os.environ.get(_CODE_COMMIT_ENV_VAR) or None
 
 
 def _load_or_generate_key(path: Path | None, *, flag: str) -> tuple[Ed25519PrivateKey, bool]:
@@ -158,8 +160,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--code-revision",
         default=None,
         help=(
-            "Recorded code/workflow revision. Defaults to the checked-out git commit "
-            "if resolvable, else an explicit 'unknown' label."
+            "Recorded code/workflow revision. Falls back to the MRR_CODE_COMMIT "
+            "environment variable, then to an explicit unknown (null) — never a "
+            "fabricated value. A crate cannot be sealed without one (MRR-FR-053)."
         ),
     )
     run_parser.add_argument(
@@ -250,9 +253,14 @@ def _run_command(args: argparse.Namespace) -> int:
 
     try:
         result = run_local_evidence_loop(**kwargs)
-    except (DomainError, CryptoError) as exc:
+    except (DomainError, CryptoError, ValueError) as exc:
+        # ValueError alongside the typed DomainError/CryptoError hierarchies
+        # covers, among other invariant checks, EvidenceCrateSealer.seal
+        # raising when code_revision was never supplied (see the module
+        # docstring) — a real gap in what this run can prove, reported
+        # clearly rather than as a bare traceback.
         print(f"mrr run: aborted — {type(exc).__name__}: {exc}", file=sys.stderr)
-        return _EXIT_RUN_ABORTED_AT_GATE
+        return _EXIT_RUN_ABORTED
     finally:
         engine.dispose()
 

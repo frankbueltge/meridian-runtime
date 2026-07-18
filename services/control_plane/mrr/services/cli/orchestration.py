@@ -123,15 +123,6 @@ DEFAULT_CAPABILITY_VERSION = "1.0.0"
 #: image this digest would name is never invoked by this executor.
 _REFERENCE_IMAGE_DIGEST = "sha256:" + "c" * 64
 
-#: Fallback ``TaskBundle.execution.code_revision`` when the caller does not
-#: supply one and no git commit could be resolved (``mrr.services.cli.main``
-#: tries ``git rev-parse --short HEAD`` first). Required because
-#: ``EvidenceCrateSealer.seal`` raises if ``run_manifest.code_commit`` is
-#: ``None`` (MRR-FR-053) — this module never leaves it unset, but an
-#: explicit "unknown" label is honest where a fabricated commit hash would
-#: not be.
-DEFAULT_CODE_REVISION = "mrr-reference-executor/unknown-revision"
-
 #: Minimal, NOT spec-ratified mapping from a non-``completed``
 #: ``TerminalOutcome`` to an ``EvidenceCrate`` ``FailureCategory``, needed
 #: because ``EvidenceCrateSealer.seal`` requires the caller to construct
@@ -331,7 +322,7 @@ def _build_task_bundle(
     timeout_seconds: int,
     origin_signing_key: Ed25519PrivateKey,
     origin_key_id: str,
-    code_revision: str,
+    code_revision: str | None,
 ) -> TaskBundle:
     now = datetime.now(UTC)
     placeholder_signature = Signature(
@@ -413,7 +404,7 @@ def run_local_evidence_loop(
     input_bytes: bytes = DEFAULT_INPUT_BYTES,
     input_artifact_id: Urn | None = None,
     timeout_seconds: int = 30,
-    code_revision: str = DEFAULT_CODE_REVISION,
+    code_revision: str | None = None,
     executor: Executor | None = None,
     execution_attempt: int = 1,
     approve_score: bool = True,
@@ -461,6 +452,22 @@ def run_local_evidence_loop(
             different inputs, and are not guaranteed (or expected) to produce
             the same output hash. Replaying "the same declared input"
             therefore means holding both its id and its bytes fixed.
+        code_revision: the code/workflow revision to record
+            (``TaskBundle.execution.code_revision`` -> ``RunManifest
+            .code_commit`` -> ``EvidenceCrate.environment.code_revision``,
+            MRR-FR-053). Caller-injected, never derived by this function —
+            a research runtime must not depend on running inside a git
+            working tree to know its own code version (there is none in a
+            deployed container); ``mrr.services.cli.main`` resolves this
+            from ``--code-revision`` or the ``MRR_CODE_COMMIT`` environment
+            variable before calling here. Defaults to ``None``: an explicit,
+            honest "unknown" (MRR-NFR-012), never a fabricated value. A run
+            started with ``code_revision=None`` executes and records its Run
+            Manifest exactly as usual, but ``EvidenceCrateSealer.seal`` then
+            raises ``ValueError`` — no crate (of ANY terminal outcome, not
+            only ``completed``) can be sealed without a real code revision;
+            see that class's own docstring for why this is a deliberate
+            explicit failure, not a gap this function papers over.
 
     Returns:
         A ``LocalEvidenceLoopResult`` naming the sealed crate, the run
@@ -470,6 +477,8 @@ def run_local_evidence_loop(
     Raises:
         mrr.domain.exceptions.ScoreNotApprovedError: see ``approve_score``
             above.
+        ValueError: ``code_revision`` is ``None`` (see above) — raised by
+            ``EvidenceCrateSealer.seal``, propagated unmodified.
         Any other typed error a composed service itself raises (e.g.
         ``mrr.crypto.exceptions.SignatureVerificationError``,
         ``mrr.domain.exceptions.CapabilityNotDeclaredError``) propagates
