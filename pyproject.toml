@@ -50,6 +50,7 @@ only-include = [
   "packages/observability/mrr",
   "packages/persistence/mrr",
   "adapters/object_store/mrr",
+  "services/control_plane/mrr",
 ]
 
 # The regular wheel build above merges the eight roots via path remapping.
@@ -66,6 +67,7 @@ dev-mode-dirs = [
   "packages/observability",
   "packages/persistence",
   "adapters/object_store",
+  "services/control_plane",
 ]
 
 [tool.hatch.build.targets.wheel.sources]
@@ -77,6 +79,7 @@ dev-mode-dirs = [
 "packages/observability" = ""
 "packages/persistence" = ""
 "adapters/object_store" = ""
+"services/control_plane" = ""
 
 [tool.ruff]
 target-version = "py312"
@@ -89,7 +92,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 strict = true
 namespace_packages = true
 explicit_package_bases = true
-files = ["packages", "adapters", "tests", "scripts"]
+files = ["packages", "adapters", "services", "tests", "scripts"]
 mypy_path = [
   "packages/domain",
   "packages/crypto",
@@ -99,6 +102,7 @@ mypy_path = [
   "packages/observability",
   "packages/persistence",
   "adapters/object_store",
+  "services/control_plane",
   "tests/property",
 ]
 
@@ -127,6 +131,22 @@ forbidden_modules = [
   "anthropic",
   "boto3",
   "botocore",
+]
+
+[[tool.importlinter.contracts]]
+name = "Nothing inward imports the services layer (E2-T01)"
+type = "forbidden"
+source_modules = [
+  "mrr.domain",
+  "mrr.crypto",
+  "mrr.contracts",
+  "mrr.policy",
+  "mrr.provenance",
+  "mrr.observability",
+  "mrr.persistence",
+]
+forbidden_modules = [
+  "mrr.services",
 ]
 
 [tool.bandit]

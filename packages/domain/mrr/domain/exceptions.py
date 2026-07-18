@@ -122,6 +122,52 @@ class ArtifactNotFoundError(DomainError):
         super().__init__(f"no artifact found for content hash {content_hash!r}")
 
 
+class ScoreNotFoundError(DomainError):
+    """Raised by ``mrr.services.research_score.service.ResearchScoreService``
+    when a referenced ``ResearchScore`` id resolves to no stored object at
+    all (docs/spec/01_SYSTEM_SPEC.md MRR-FR-004: "The system MUST reject
+    execution when the referenced score is missing ..."). Carries
+    ``score_id``. Never returns ``None`` or a boolean for a missing score.
+    """
+
+    def __init__(self, score_id: str) -> None:
+        self.score_id = score_id
+        super().__init__(f"no ResearchScore found for id {score_id!r}")
+
+
+class ScoreNotApprovedError(DomainError):
+    """Raised by ``ResearchScoreService.ensure_can_start_work`` when the
+    latest revision of a ``ResearchScore`` exists but its status is not one
+    of ``APPROVED``/``ACTIVE`` (MRR-FR-004: "Only APPROVED and ACTIVE
+    revisions may start work", docs/spec/01_SYSTEM_SPEC.md section 6.1).
+    Carries ``score_id`` and the ``actual_status`` observed, so a caller can
+    react to *why* the score is not eligible without parsing a message
+    string.
+    """
+
+    def __init__(self, score_id: str, actual_status: str) -> None:
+        self.score_id = score_id
+        self.actual_status = actual_status
+        super().__init__(
+            f"ResearchScore {score_id!r} cannot start work: status is "
+            f"{actual_status!r}, must be APPROVED or ACTIVE"
+        )
+
+
+class ApprovalRequiredError(DomainError):
+    """Raised by ``ResearchScoreService.approve`` when the score being
+    approved carries no recorded approval reference (task-packets/
+    E2-T01.yaml invariant: "APPROVED requires at least one recorded approval
+    reference"). Carries ``score_id``.
+    """
+
+    def __init__(self, score_id: str) -> None:
+        self.score_id = score_id
+        super().__init__(
+            f"ResearchScore {score_id!r} cannot be approved: no approval reference recorded"
+        )
+
+
 class ArtifactIntegrityError(DomainError):
     """Raised by ``mrr.domain.artifacts.ArtifactStore.get``/``stat``/``put``
     when a stored artifact's bytes no longer hash to its key — corruption,
