@@ -27,14 +27,18 @@ all three always create a new row.
 
 ``PostgresEventLog.append`` deliberately takes a live ``Connection`` rather
 than opening its own transaction from an ``Engine`` the way
-``insert_revision``/``add_edge`` do. The whole point of E1-T06 is that an
-object write, its event, and its outbox row commit or roll back together as
-ONE transaction (task-packets/E1-T06.yaml invariant: "state change, event
-append, and outbox row are one transaction"). An ``Engine``-based
-convenience that opened its own transaction would make it easy to call
+``insert_revision``/``add_edge`` do — this is not an ad hoc divergence from
+``mrr.provenance.log.EventLog``, it is exactly what that protocol's generic
+``append(self, tx: TTx, event: DomainEvent)`` shape requires;
+``PostgresEventLog`` is an ``EventLog[Connection]``. The whole point of
+E1-T06 is that an object write, its event, and its outbox row commit or roll
+back together as ONE transaction (task-packets/E1-T06.yaml invariant: "state
+change, event append, and outbox row are one transaction"). An ``Engine``-
+based convenience that opened its own transaction would make it easy to call
 ``append`` outside that shared transaction by accident, silently
 reintroducing the very divergence this task exists to close — so it is not
-offered. Composing an event append with an object write is
+offered, and the protocol itself is shaped so that it cannot be. Composing
+an event append with an object write is
 ``mrr.persistence.unit_of_work.record_object_revision_with_event``.
 ``read_all``/``verify_chain`` need no such coupling (reads outside a write
 transaction are safe) and stay ``Engine``-based like the E1-T05 repositories.
@@ -311,10 +315,11 @@ def _row_to_appended_event(row: Any) -> AppendedEvent:
 
 
 class PostgresEventLog:
-    """``mrr.provenance.log``-shaped append-only domain event log against
-    PostgreSQL (task-packets/E1-T06.yaml). See the module docstring for why
-    ``append`` takes a ``Connection`` rather than being ``Engine``-based like
-    ``PostgresObjectRepository``/``PostgresEdgeRepository``.
+    """``mrr.provenance.log.EventLog[Connection]`` against PostgreSQL
+    (task-packets/E1-T06.yaml). See the module docstring for why ``append``
+    takes a ``Connection`` rather than being ``Engine``-based like
+    ``PostgresObjectRepository``/``PostgresEdgeRepository`` — it is the
+    generic protocol's own shape, not a local deviation from it.
 
     Tamper evidence is a hash chain with a single writer: ``append`` takes
     ``pg_advisory_xact_lock(_ADVISORY_LOCK_KEY)`` first, so two concurrent

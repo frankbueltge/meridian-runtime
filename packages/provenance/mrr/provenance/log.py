@@ -7,7 +7,13 @@ object-repository write lives in ``mrr.persistence.unit_of_work``.
 This module carries no SQLAlchemy, driver, or framework import -
 mrr.provenance stays framework-independent (MRR-NFR-010; enforced by the
 import-linter contract in pyproject.toml and by
-tests/unit/architecture/test_provenance_boundary.py).
+tests/unit/architecture/test_provenance_boundary.py). ``EventLog`` is generic
+over the transaction type ``append`` requires (``TTx``) precisely so that
+this stays true even though a real ``append`` needs a live database
+transaction to satisfy the atomicity invariant below - ``TTx`` is an
+abstract type parameter here, never bound to a concrete SQLAlchemy/psycopg
+type in this module. ``mrr.persistence.repositories.PostgresEventLog``
+instantiates it as ``EventLog[sqlalchemy.Connection]``.
 """
 
 from __future__ import annotations
@@ -15,10 +21,19 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
 
 from mrr.provenance.events import DomainEvent, compute_event_hash
 from mrr.provenance.exceptions import ChainVerificationError
+
+#: The transaction/connection type ``EventLog.append`` requires. Declared
+#: contravariant because ``TTx`` only ever appears in an *argument* position
+#: (``append(self, tx: TTx, ...)``) - never returned - which is exactly the
+#: position contravariance describes: an ``EventLog[Base]`` implementation
+#: (whose ``append`` accepts any ``Base``) can stand in wherever an
+#: ``EventLog[Derived]`` is expected, for any ``Derived`` that is a subtype
+#: of ``Base``.
+TTx = TypeVar("TTx", contravariant=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,22 +50,49 @@ class AppendedEvent:
     prev_hash: str | None
 
 
-@runtime_checkable
-class EventLog(Protocol):
+class EventLog(Protocol[TTx]):
     """Append-only, tamper-evident domain event log (MRR-NFR-002: "Domain
     events MUST be append-only and tamper-evident"). No public interface
     anywhere on this protocol updates or deletes an appended event - the
     only write is ``append``, and it always creates a new entry.
+
+    ``append`` takes an explicit ``tx: TTx`` - a caller-supplied transaction/
+    connection - rather than managing its own transaction internally. This
+    is the atomicity invariant's home (task-packets/E1-T06.yaml: "state
+    change, event append, and outbox row are one transaction"): requiring
+    the transaction as a parameter is what makes it possible to compose an
+    append with another write (an object-repository insert, its outbox row)
+    into one caller-owned unit of work, and structurally impossible to call
+    ``append`` in a way that opens its own transaction and lets an event
+    escape that unit of work. See
+    ``mrr.persistence.unit_of_work.record_object_revision_with_event`` for
+    the concrete composition.
+
+    Deliberately not ``@runtime_checkable``: Python's runtime protocol
+    ``isinstance`` check only compares method *names*, never signatures - it
+    would happily report ``True`` for a class whose ``append`` has an
+    entirely different, incompatible parameter list. The static, generic
+    shape here (checked by mypy, e.g.
+    ``tests/unit/persistence/test_event_log_protocol_conformance.py``'s
+    typed assignment) is the real conformance guarantee; a passing
+    ``isinstance`` check would be false comfort on top of it, not additional
+    safety.
     """
 
-    def append(self, event: DomainEvent) -> AppendedEvent:
-        """Append ``event`` as the new head of the chain and return the
-        persisted entry (with its assigned sequence and computed hashes).
+    def append(self, tx: TTx, event: DomainEvent) -> AppendedEvent:
+        """Append ``event`` as the new head of the chain, using ``tx`` for
+        every statement, and return the persisted entry (with its assigned
+        sequence and computed hashes). The caller owns ``tx``'s lifecycle
+        (commit/rollback).
         """
         ...
 
     def read_all(self) -> list[AppendedEvent]:
-        """Return every appended event, oldest (sequence 1) first."""
+        """Return every appended event, oldest (sequence 1) first.
+
+        Unlike ``append``, reading needs no caller-supplied transaction -
+        implementations may manage their own read-only connection.
+        """
         ...
 
     def verify_chain(self) -> None:

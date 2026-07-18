@@ -1,10 +1,17 @@
 """Unit tests for mrr.provenance.log (E1-T06): the AppendedEvent/OutboxEntry
-dataclass surface, EventLog/OutboxDispatcher Protocol conformance (structural
-tests double, matching tests/unit/domain/test_repositories.py's pattern for
+dataclass surface, OutboxDispatcher Protocol conformance (structural test
+double, matching tests/unit/domain/test_repositories.py's pattern for
 ObjectRepository/EdgeRepository), and verify_appended_events — the pure,
 database-free chain-verification function also used by
 mrr.persistence.repositories.PostgresEventLog.verify_chain, exercised here
 directly and more thoroughly in tests/property/test_event_chain_properties.py.
+
+``EventLog`` is generic (``Protocol[TTx]``) and deliberately not
+``@runtime_checkable`` — see its docstring — so it has no isinstance-based
+conformance test here. Its real conformance guarantee is static:
+tests/unit/persistence/test_event_log_protocol_conformance.py's typed
+assignment, checked by ``make typecheck``, fails the moment
+``PostgresEventLog``'s method shapes drift from ``EventLog[Connection]``.
 """
 
 from __future__ import annotations
@@ -19,7 +26,6 @@ from mrr.provenance.exceptions import ChainVerificationError
 from mrr.provenance.log import (
     OUTBOX_STATUSES,
     AppendedEvent,
-    EventLog,
     OutboxDispatcher,
     OutboxEntry,
     verify_appended_events,
@@ -95,29 +101,9 @@ def test_outbox_statuses_are_exactly_pending_and_dispatched() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Protocol surface — runtime_checkable structural conformance.
+# OutboxDispatcher — runtime_checkable structural conformance. (EventLog's
+# conformance is checked statically; see the module docstring.)
 # ---------------------------------------------------------------------------
-
-
-class _FakeEventLog:
-    def append(self, event: DomainEvent) -> AppendedEvent:  # pragma: no cover
-        raise NotImplementedError
-
-    def read_all(self) -> list[AppendedEvent]:  # pragma: no cover
-        raise NotImplementedError
-
-    def verify_chain(self) -> None:  # pragma: no cover
-        raise NotImplementedError
-
-
-class _IncompleteEventLog:
-    """Missing verify_chain — must not satisfy the protocol."""
-
-    def append(self, event: DomainEvent) -> AppendedEvent:  # pragma: no cover
-        raise NotImplementedError
-
-    def read_all(self) -> list[AppendedEvent]:  # pragma: no cover
-        raise NotImplementedError
 
 
 class _FakeOutboxDispatcher:
@@ -127,14 +113,6 @@ class _FakeOutboxDispatcher:
 
 class _IncompleteOutboxDispatcher:
     """No dispatch_pending at all — must not satisfy the protocol."""
-
-
-def test_event_log_protocol_accepts_a_conforming_implementation() -> None:
-    assert isinstance(_FakeEventLog(), EventLog)
-
-
-def test_event_log_protocol_rejects_an_incomplete_implementation() -> None:
-    assert not isinstance(_IncompleteEventLog(), EventLog)
 
 
 def test_outbox_dispatcher_protocol_accepts_a_conforming_implementation() -> None:
