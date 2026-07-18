@@ -1,0 +1,97 @@
+task_id: E1-T07
+title: Implement the content-addressed artifact store interface and local adapter
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/02_DOMAIN_MODEL.md section 2.7, MRR-FR-051 and
+  MRR-FR-056, docs/spec/06_IMPLEMENTATION_PLAN.md E1-T07 backlog row, and
+  MRR-NFR-004 (vendor neutrality); approved by the repository owner's
+  direction to continue (2026-07-18).
+objective: >
+  Provide the content-addressed byte store for immutable artifacts - a
+  framework-free store interface in the domain layer plus a local filesystem
+  adapter that addresses bytes by their SHA-256 content hash, verifies
+  integrity on read, and offers no way to mutate or overwrite stored bytes.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#stage-6--evidence-crate
+  - docs/spec/02_DOMAIN_MODEL.md#27-artifact
+  - schemas/common.schema.json
+requirements:
+  - MRR-FR-051
+  - MRR-FR-056
+  - MRR-NFR-004
+allowed_paths:
+  - adapters/**
+  - packages/domain/**
+  - tests/unit/**
+  - tests/property/**
+  - pyproject.toml
+forbidden_changes:
+  - persistence, event log, or outbox code
+  - API endpoints
+  - workflow-engine integration
+  - schema semantics
+  - contract models (packages/contracts)
+  - a remote object-storage SDK (the interface must stay adapter-neutral so a
+    MinIO/S3 adapter can be added later without touching the domain layer;
+    only the local filesystem adapter is in scope here)
+derived_decisions: >
+  The store INTERFACE (Protocol) and descriptor live framework-free in
+  packages/domain/mrr/domain/artifacts.py. The local filesystem adapter
+  lives in a new namespace root adapters/object_store/mrr/adapters/object_store/
+  per the monorepo tree in docs/spec/06; the new root is registered in
+  hatchling and mypy_path and added to the import-linter contract as a source
+  package (the core-package framework ban still applies to it, but a future
+  MinIO adapter under adapters/ may import an S3 SDK). Content addressing
+  reuses mrr.crypto.hashing (the sha256: format) - the store key IS the
+  content hash. No PostgreSQL and no migration: this task stores bytes, not
+  metadata rows, so it needs no database and is fully testable locally.
+invariants:
+  - the store key is the artifact's SHA-256 content hash; identical bytes map
+    to one blob, and distinct bytes cannot share a key (02 section 2.7:
+    "byte changes change identity")
+  - storing is idempotent - putting identical bytes twice yields the same
+    descriptor and one stored blob, never a second copy or an error
+  - stored bytes are immutable - the public interface offers no update or
+    delete, and a key can never be rebound to different bytes
+  - reads verify integrity - if a stored blob's bytes no longer hash to its
+    key (corruption or tampering), get fails closed with a typed error rather
+    than returning wrong bytes (acceptance: "recomputing a sealed artifact
+    hash yields the stored value")
+  - writes are atomic - a failed or partial write never leaves a readable
+    blob at the target key (temp file plus rename, or equivalent)
+  - the descriptor carries every MRR-FR-051 field - media type, byte size,
+    SHA-256 content hash, producer run, creation time, disclosure
+    classification
+  - the interface in packages/domain imports no filesystem-specific or
+    framework code
+acceptance_tests:
+  - put then get returns the original bytes exactly
+  - put computes a sha256: hash equal to mrr.crypto.hashing over the bytes
+  - put is idempotent - identical content twice gives one blob and an equal
+    descriptor
+  - get on an unknown hash raises a typed not-found error
+  - corrupting a stored blob on disk then reading it raises a typed integrity
+    error (byte mutation is detected)
+  - the descriptor exposes all MRR-FR-051 fields
+  - property - arbitrary byte strings round-trip and distinct contents never
+    collide to the same key
+  - the interface satisfies the import boundary (lint-imports)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+required_output:
+  - implementation summary
+  - changed files
+  - tests and command results
+  - security implications
+  - open specification questions
+stop_conditions:
+  - content addressing cannot be made consistent with the existing
+    mrr.crypto.hashing format
+  - immutability or integrity verification cannot be provided without a
+    remote storage dependency
+  - implementation requires changes outside allowed paths
