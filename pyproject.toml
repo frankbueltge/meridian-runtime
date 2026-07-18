@@ -10,6 +10,9 @@ dependencies = [
   "cryptography>=43.0",
   "python-ulid>=2.7",
   "pydantic>=2.9",
+  "sqlalchemy>=2.0",
+  "psycopg[binary]>=3",
+  "alembic>=1.13",
 ]
 
 [dependency-groups]
@@ -31,10 +34,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 # The distribution ships one PEP 420 namespace package, `mrr`, merged at build
-# time from six independent package roots under packages/. Each root owns a
+# time from seven independent package roots under packages/. Each root owns a
 # leaf subpackage (mrr.domain, mrr.crypto, ...) and none of the intermediate
 # `mrr` directories carry an __init__.py, which is what makes the merge a
-# namespace package instead of six competing regular packages.
+# namespace package instead of seven competing regular packages.
 [tool.hatch.build.targets.wheel]
 only-include = [
   "packages/domain/mrr",
@@ -43,9 +46,10 @@ only-include = [
   "packages/policy/mrr",
   "packages/provenance/mrr",
   "packages/observability/mrr",
+  "packages/persistence/mrr",
 ]
 
-# The regular wheel build above merges the six roots via path remapping.
+# The regular wheel build above merges the seven roots via path remapping.
 # Editable installs (uv sync / pip install -e) instead add each root
 # directly to sys.path so PEP 420 merges them into one `mrr` namespace
 # package at import time; `sources` remapping (below) is not honored in
@@ -57,6 +61,7 @@ dev-mode-dirs = [
   "packages/policy",
   "packages/provenance",
   "packages/observability",
+  "packages/persistence",
 ]
 
 [tool.hatch.build.targets.wheel.sources]
@@ -66,6 +71,7 @@ dev-mode-dirs = [
 "packages/policy" = ""
 "packages/provenance" = ""
 "packages/observability" = ""
+"packages/persistence" = ""
 
 [tool.ruff]
 target-version = "py312"
@@ -86,6 +92,7 @@ mypy_path = [
   "packages/policy",
   "packages/provenance",
   "packages/observability",
+  "packages/persistence",
   "tests/property",
 ]
 
@@ -103,6 +110,7 @@ source_modules = [
   "mrr.policy",
   "mrr.provenance",
   "mrr.observability",
+  "mrr.persistence",
 ]
 forbidden_modules = [
   "fastapi",
