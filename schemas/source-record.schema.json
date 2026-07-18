@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/source-record.schema.json",
+  "title": "MRR SourceRecord",
+  "description": "docs/spec/02_DOMAIN_MODEL.md section 2.8: describes an external or local source. Invariant: source METADATA (this object) is distinct from source CONTENT — a correct DOI does not prove that a claim is supported. No field here expresses whether this source supports anything; that relation is only ever carried by a separate EvidenceAnchor (evidence-anchor.schema.json).",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "identifiers",
+        "title",
+        "creators",
+        "retrieval_timestamp",
+        "retrieval_method",
+        "source_type",
+        "primary_secondary_derived"
+      ],
+      "properties": {
+        "kind": {"const": "SourceRecord"},
+        "identifiers": {
+          "type": "object",
+          "description": "Stable identifiers such as DOI, repository ID, archive identifier, or local asset ID (domain 2.8). None are individually required — a source carries whichever subset applies.",
+          "properties": {
+            "doi": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "repository_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "archive_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "local_asset_id": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+          },
+          "additionalProperties": false
+        },
+        "title": {"type": "string", "minLength": 1},
+        "creators": {"type": "array", "items": {"type": "string"}},
+        "publication_date": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "version": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "retrieval_timestamp": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "retrieval_method": {"type": "string", "minLength": 1},
+        "snapshot_artifact_hash": {
+          "anyOf": [{"$ref": "common.schema.json#/$defs/sha256"}, {"type": "null"}],
+          "description": "Set only when a snapshot was permitted to be taken (domain 2.8: \"snapshot artifact hash when permitted\")."
+        },
+        "source_type": {"type": "string", "minLength": 1},
+        "primary_secondary_derived": {
+          "type": "string",
+          "enum": ["primary", "secondary", "derived"]
+        },
+        "source_family_id": {
+          "anyOf": [{"$ref": "common.schema.json#/$defs/urn"}, {"type": "null"}],
+          "description": "Links to a future SourceFamily (domain 2.10) — not itself implemented by this schema."
+        },
+        "derivation_evidence": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "accessibility": {
+          "anyOf": [
+            {"type": "object", "additionalProperties": {"type": "string"}},
+            {"type": "null"}
+          ]
+        },
+        "licensing": {
+          "anyOf": [
+            {"type": "object", "additionalProperties": {"type": "string"}},
+            {"type": "null"}
+          ]
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

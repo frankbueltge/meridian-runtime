@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/evidence-anchor.schema.json",
+  "title": "MRR EvidenceAnchor",
+  "description": "docs/spec/02_DOMAIN_MODEL.md section 2.9: connects a claim-relevant proposition to an exact part of a source or run. Models BOTH the text-anchor and computational-anchor variants side by side (every anchor carries both sets of fields, nullable). Invariant, enforced below by the two if/then conditionals: the anchor must resolve against the exact referenced version appropriate to its anchor_kind, OR explicitly declare a non-null anchor_unavailable_reason. Neither present fails closed.",
+  "$defs": {
+    "textResolutionPresent": {
+      "anyOf": [
+        {
+          "required": ["snapshot_hash"],
+          "properties": {"snapshot_hash": {"not": {"type": "null"}}}
+        },
+        {
+          "required": ["quoted_fragment_hash"],
+          "properties": {"quoted_fragment_hash": {"not": {"type": "null"}}}
+        }
+      ]
+    },
+    "computationalResolutionPresent": {
+      "allOf": [
+        {
+          "required": ["run_id"],
+          "properties": {"run_id": {"not": {"type": "null"}}}
+        },
+        {
+          "required": ["recomputation_status"],
+          "properties": {"recomputation_status": {"not": {"type": "null"}}}
+        }
+      ]
+    },
+    "unavailableReasonPresent": {
+      "required": ["anchor_unavailable_reason"],
+      "properties": {"anchor_unavailable_reason": {"not": {"type": "null"}}}
+    }
+  },
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "relation",
+        "anchor_kind",
+        "extraction_method",
+        "extractor_id",
+        "anchor_validation_status",
+        "transformation_chain"
+      ],
+      "properties": {
+        "kind": {"const": "EvidenceAnchor"},
+        "relation": {
+          "type": "string",
+          "enum": ["supports", "contradicts", "qualifies", "contextualizes"]
+        },
+        "anchor_kind": {"type": "string", "enum": ["text", "computational"]},
+        "extraction_method": {"type": "string", "minLength": 1},
+        "extractor_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "anchor_validation_status": {
+          "type": "string",
+          "enum": ["validated", "unvalidated", "invalid"]
+        },
+        "anchor_unavailable_reason": {
+          "anyOf": [{"type": "string"}, {"type": "null"}],
+          "description": "Non-null exactly when exact anchoring is impossible for this anchor — the stage-6 acceptance escape (docs/spec/01_SYSTEM_SPEC.md section 4.6)."
+        },
+        "source_record_id": {
+          "anyOf": [{"$ref": "common.schema.json#/$defs/urn"}, {"type": "null"}]
+        },
+        "snapshot_hash": {
+          "anyOf": [{"$ref": "common.schema.json#/$defs/sha256"}, {"type": "null"}]
+        },
+        "locator": {
+          "description": "Page, section, paragraph, line, character offsets, or a structured selector (domain 2.9).",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "page": {"type": ["integer", "string", "null"]},
+                "section": {"type": ["string", "null"]},
+                "paragraph": {"type": ["integer", "string", "null"]},
+                "line_start": {"type": ["integer", "null"]},
+                "line_end": {"type": ["integer", "null"]},
+                "char_start": {"type": ["integer", "null"]},
+                "char_end": {"type": ["integer", "null"]},
+                "selector": {"type": ["string", "null"]}
+              },
+              "additionalProperties": false
+            },
+            {"type": "null"}
+          ]
+        },
+        "quoted_fragment_hash": {
+          "anyOf": [{"$ref": "common.schema.json#/$defs/sha256"}, {"type": "null"}]
+        },
+        "run_id": {
+          "anyOf": [{"$ref": "common.schema.json#/$defs/urn"}, {"type": "null"}]
+        },
+        "output_artifact": {
+          "anyOf": [
+            {"$ref": "common.schema.json#/$defs/artifactRef"},
+            {"$ref": "common.schema.json#/$defs/urn"},
+            {"type": "null"}
+          ]
+        },
+        "selector": {
+          "description": "Table/column/row, JSON Pointer, query, or notebook cell (domain 2.9).",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "table": {"type": ["string", "null"]},
+                "column": {"type": ["string", "null"]},
+                "row": {"type": ["integer", "string", "null"]},
+                "json_pointer": {"type": ["string", "null"]},
+                "query": {"type": ["string", "null"]},
+                "notebook_cell": {"type": ["string", "null"]}
+              },
+              "additionalProperties": false
+            },
+            {"type": "null"}
+          ]
+        },
+        "transformation_chain": {"type": "array", "items": {"type": "string"}},
+        "recomputation_status": {
+          "anyOf": [
+            {"type": "string", "enum": ["reproduced", "not_reproduced", "not_attempted"]},
+            {"type": "null"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"anchor_kind": {"const": "text"}},
+            "required": ["anchor_kind"]
+          },
+          "then": {
+            "anyOf": [
+              {"$ref": "#/$defs/textResolutionPresent"},
+              {"$ref": "#/$defs/unavailableReasonPresent"}
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {"anchor_kind": {"const": "computational"}},
+            "required": ["anchor_kind"]
+          },
+          "then": {
+            "anyOf": [
+              {"$ref": "#/$defs/computationalResolutionPresent"},
+              {"$ref": "#/$defs/unavailableReasonPresent"}
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}
