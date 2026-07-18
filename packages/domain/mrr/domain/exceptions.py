@@ -237,3 +237,64 @@ class NodeManifestValidityError(DomainError):
             f"NodeManifest for node_id {node_id!r} is {reason} at evaluation instant "
             f"{at.isoformat()!r}"
         )
+
+
+class TaskBundleNotFoundError(DomainError):
+    """Raised by ``mrr.services.task_bundle.service.TaskBundleService`` and
+    ``NodeTaskDecisionService`` (task-packets/E2-T03.yaml) when a referenced
+    ``TaskBundle`` id resolves to no stored object at all. Carries
+    ``bundle_id``. Never returns ``None`` or a boolean for a missing bundle.
+    """
+
+    def __init__(self, bundle_id: str) -> None:
+        self.bundle_id = bundle_id
+        super().__init__(f"no TaskBundle found for id {bundle_id!r}")
+
+
+class NodeAuthorityError(DomainError):
+    """Raised by ``mrr.services.task_bundle.service.NodeTaskDecisionService``
+    (task-packets/E2-T03.yaml, MRR-FR-022: "The target node MUST make the
+    authoritative accept, modify, defer, or reject decision") when the
+    identity attempting a node decision (``accept``/``propose_modification``/
+    ``defer``/``reject``) is not the bundle's own ``target_node_id``. This is
+    the structural enforcement of MRR-FR-022: there is no accept-style method
+    on the origin-facing ``TaskBundleService`` at all, and every method on
+    ``NodeTaskDecisionService`` raises this before doing anything else if the
+    caller-supplied ``deciding_node_id`` does not equal the stored bundle's
+    ``target_node_id`` — nothing is persisted for a rejected attempt.
+
+    Carries ``bundle_id``, ``target_node_id`` (the sole authorized identity),
+    and ``attempted_node_id`` (who actually called), so a caller can tell the
+    attempted identity from the authorized one without parsing the message
+    string.
+    """
+
+    def __init__(self, bundle_id: str, target_node_id: str, attempted_node_id: str) -> None:
+        self.bundle_id = bundle_id
+        self.target_node_id = target_node_id
+        self.attempted_node_id = attempted_node_id
+        super().__init__(
+            f"TaskBundle {bundle_id!r}: only target_node_id {target_node_id!r} may decide "
+            f"on this bundle, not {attempted_node_id!r}"
+        )
+
+
+class CapabilityNotDeclaredError(DomainError):
+    """Raised by ``mrr.services.task_bundle.service.TaskBundleService.create``
+    (task-packets/E2-T03.yaml) when the target node's CURRENT ``NodeManifest``
+    (``mrr.services.capability_registry.service.CapabilityRegistry``) does
+    not declare the exact ``{name, version}`` capability the ``TaskBundle``
+    requests. This is a declaration check only (docs/spec/01_SYSTEM_SPEC.md
+    section 7.3: "It does not grant permission") — it does not evaluate
+    policy, approval mode, or any other gating concern. Carries ``node_id``,
+    ``capability_name``, and ``capability_version``.
+    """
+
+    def __init__(self, node_id: str, capability_name: str, capability_version: str) -> None:
+        self.node_id = node_id
+        self.capability_name = capability_name
+        self.capability_version = capability_version
+        super().__init__(
+            f"node {node_id!r} current manifest does not declare capability "
+            f"{capability_name!r} version {capability_version!r}"
+        )
