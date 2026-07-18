@@ -24,6 +24,24 @@ DataAccessMode = Literal["none", "read_local", "compute_to_data", "approved_tran
 #: Mirrors `network_policy.mode`.
 NetworkPolicyMode = Literal["deny_all", "allowlist"]
 
+#: Mirrors the top-level `status` enum.
+TaskBundleStatus = Literal[
+    "CREATED",
+    "OFFERED",
+    "ACCEPTED",
+    "MODIFICATION_PROPOSED",
+    "DEFERRED",
+    "REJECTED",
+    "QUEUED",
+    "EXPIRED",
+    "CANCELLED",
+    "RUNNING",
+    "FAILED",
+    "COMPLETED",
+    "SEALED",
+    "INVALID_RESULT",
+]
+
 
 class CapabilityRef(MRRModel):
     """Mirrors the `capability` object: a `{name, version}` reference to a
@@ -96,3 +114,4 @@ class TaskBundle(BaseObject):
     expires_at: AwareDatetime
     nonce: str = Field(min_length=16)
     signature: Signature
+    status: TaskBundleStatus

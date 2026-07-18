@@ -68,6 +68,7 @@ from mrr.contracts.task_bundle import (
     NetworkPolicyMode,
     ResourceLimits,
     TaskBundle,
+    TaskBundleStatus,
 )
 
 __all__ = [
@@ -110,6 +111,7 @@ __all__ = [
     "Sha256",
     "Signature",
     "TaskBundle",
+    "TaskBundleStatus",
     "TransportMode",
     "UncertaintyEntry",
     "UncertaintyKind",
