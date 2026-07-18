@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 
 class DomainError(Exception):
     """Base class for all mrr.domain errors."""
@@ -184,4 +186,54 @@ class ArtifactIntegrityError(DomainError):
         super().__init__(
             f"artifact integrity check failed: expected content hash {expected!r}, "
             f"computed {actual!r} from stored bytes"
+        )
+
+
+class NodeManifestNotFoundError(DomainError):
+    """Raised by ``mrr.services.capability_registry.service.CapabilityRegistry``
+    (task-packets/E2-T02.yaml) when a referenced node id resolves to no
+    stored ``NodeManifest`` revision at all. Carries ``node_id``. Never
+    returns ``None`` or a boolean for a missing manifest.
+    """
+
+    def __init__(self, node_id: str) -> None:
+        self.node_id = node_id
+        super().__init__(f"no NodeManifest found for node_id {node_id!r}")
+
+
+class NodeManifestValidityError(DomainError):
+    """Raised by ``CapabilityRegistry.get_current_manifest`` (and by
+    ``list_capabilities``, which delegates to it) when the latest stored
+    ``NodeManifest`` for a node exists but its validity window
+    (``valid_from``..``valid_until``) does not include the evaluation
+    instant. ``find_nodes_with_capability`` checks the same window but does
+    not raise this error for an out-of-window node — it simply excludes
+    that node id from its result list, since a match query has no single
+    node to report an error about (task-packets/E2-T02.yaml invariant: "a
+    manifest whose validity window does not include the evaluation instant
+    is expired/not-yet-valid and is never returned by lookup or match,
+    though it remains stored and historically addressable").
+
+    A single typed error covers both the "not yet valid" (``at`` before
+    ``valid_from``) and "expired" (``at`` after ``valid_until``) cases —
+    the message distinguishes which one occurred, and ``node_id``,
+    ``valid_from``, ``valid_until``, and ``at`` are all carried as fields so
+    a caller can tell the two apart without parsing the message string.
+    """
+
+    def __init__(
+        self, node_id: str, valid_from: datetime, valid_until: datetime, at: datetime
+    ) -> None:
+        self.node_id = node_id
+        self.valid_from = valid_from
+        self.valid_until = valid_until
+        self.at = at
+        reason = (
+            f"not yet valid (valid_from {valid_from.isoformat()!r})"
+            if at < valid_from
+            else f"expired (valid_until {valid_until.isoformat()!r})"
+        )
+        super().__init__(
+            f"NodeManifest for node_id {node_id!r} is {reason} at evaluation instant "
+            f"{at.isoformat()!r}"
         )
