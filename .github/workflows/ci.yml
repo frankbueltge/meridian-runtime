@@ -8,6 +8,22 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      MRR_TEST_DATABASE_URL: postgresql+psycopg://mrr:mrr@localhost:5432/mrr_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mrr
+          POSTGRES_PASSWORD: mrr
+          POSTGRES_DB: mrr_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U mrr -d mrr_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
