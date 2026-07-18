@@ -37,4 +37,4 @@ security-check:
 	uv export --quiet --no-emit-project --format requirements.txt -o .security-check-requirements.txt
 	uv run pip-audit --strict -r .security-check-requirements.txt
 	rm -f .security-check-requirements.txt
-	uv run bandit -c pyproject.toml -r packages
+	uv run bandit -c pyproject.toml -r packages adapters
