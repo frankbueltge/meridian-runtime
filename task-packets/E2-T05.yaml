@@ -1,0 +1,109 @@
+task_id: E2-T05
+title: Implement the Run Manifest schema, contract, and recording service
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/02_DOMAIN_MODEL.md section 2.6 (RunManifest fields
+  and its append-only/sealed invariant), MRR-FR-042/043/053, and MRR-NFR-001;
+  approved by the repository owner's direction to continue (2026-07-18). Fifth
+  task of Epic E2. Authorizes a NEW entity schema (run-manifest) derived
+  faithfully from the domain model, since none was shipped in the original
+  seven schemas.
+objective: >
+  Provide the immutable Run Manifest: a schema and contract derived from the
+  domain model's RunManifest fields, and a recording service that turns an
+  executor ExecutionResult (E2-T04) plus its Task Bundle into a persisted,
+  sealed-at-terminal-state RunManifest with resource/cost records and full
+  provenance - recorded before any outputs are sealed (MRR-FR-042).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/02_DOMAIN_MODEL.md#26-runmanifest
+  - docs/spec/01_SYSTEM_SPEC.md#45-stage-5--local-execution
+  - schemas/common.schema.json
+  - schemas/evidence-crate.schema.json
+requirements:
+  - MRR-FR-042
+  - MRR-FR-043
+  - MRR-FR-053
+  - MRR-NFR-001
+allowed_paths:
+  - schemas/**
+  - examples/**
+  - packages/contracts/**
+  - packages/domain/**
+  - services/**
+  - scripts/check_contracts.py
+  - tests/**
+  - pyproject.toml
+forbidden_changes:
+  - evidence crate sealing (E2-T06)
+  - model/LLM invocation records beyond empty placeholders (E4)
+  - changing the six existing schemas' semantics
+  - HTTP/FastAPI endpoints
+derived_decisions: >
+  Deliver in two clearly separated commits within one PR (spec PR policy
+  prefers schema changes reviewed apart from behavior): (1) the run-manifest
+  schema + Pydantic contract + example + check_contracts extension (now seven
+  entities); (2) the recording service. The schema is derived faithfully from
+  docs/spec/02 section 2.6, mirroring existing schema conventions (allOf over
+  common baseObject, unevaluatedProperties:false, urn/sha256/timestamp
+  $defs), and reuses the evidence-crate run_state enum
+  (completed/failed/cancelled/timed_out/policy_denied/partial) for the
+  terminal state. run_state is nullable while active and set when sealed; a
+  `sealed` boolean mirrors the evidence-crate pattern. The RunManifest is NOT
+  a cross-practice signed object (the domain model lists no signature for it),
+  so it carries no signature field and no ADR-0007-style concern. Model and
+  tool invocation arrays are present but empty for the deterministic reference
+  run (MRR-FR-044/045; populated in E4). The recording service lives under
+  services/node_runtime and persists via the E1-T06 unit of work (revision +
+  event, atomic); since reference execution is synchronous, a manifest is
+  created already sealed with the executor's terminal outcome, and the
+  active->sealed path is documented for future asynchronous execution.
+invariants:
+  - every run manifest validates against the run-manifest schema AND the
+    Pydantic model, and every example round-trips (E1-T03 invariant extended
+    to the seventh entity)
+  - a sealed run manifest is immutable - no public interface mutates it;
+    corrections would be superseding manifests, not edits (domain 2.6)
+  - the manifest records the exact task_id + task revision and research score
+    id + revision, executor identity, start/end, terminal run_state, image
+    digest, input hashes, resource/cost usage, and produced artifact hashes
+    (MRR-FR-053 / domain 2.6); missing provenance fails closed rather than
+    defaulting silently
+  - a failed/timed_out/cancelled/policy_denied/partial run produces a manifest
+    with that explicit terminal state, not only successful runs (MRR-FR-043)
+  - recording a manifest writes exactly one domain event with full NFR-001
+    provenance, atomically with the persisted revision
+acceptance_tests:
+  - the run-manifest schema passes Draft 2020-12 validation and its example
+    validates against schema and Pydantic and round-trips
+  - a malformed run-manifest fixture (bad hash, bad urn, unknown run_state)
+    fails both validators
+  - recording a completed ExecutionResult yields a sealed manifest carrying
+    the terminal state and resource usage, persisted with one event
+    (integration, real PostgreSQL)
+  - recording a failed/timed_out ExecutionResult yields a manifest with that
+    terminal state
+  - the recorded manifest reproduces the executor output hash and the task /
+    score revisions exactly
+  - the services layering and core import contracts still hold
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+required_output:
+  - implementation summary
+  - the derived run-manifest schema and how it maps to domain 2.6
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications
+  - open specification questions
+stop_conditions:
+  - domain section 2.6 cannot be represented as a schema without inventing
+    semantics beyond it
+  - the append-only/sealed invariant cannot be enforced through the existing
+    persistence interfaces
+  - implementation requires changes outside allowed paths
