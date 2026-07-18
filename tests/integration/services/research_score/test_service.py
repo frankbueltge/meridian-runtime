@@ -128,7 +128,7 @@ def test_full_lifecycle_persists_one_revision_and_one_event_per_transition(
     # Provenance completeness (MRR-NFR-001): a real causal chain within this
     # score's own history, distinct from the constant correlation_id above.
     assert events[0].event.causation_id is None
-    for earlier, later in zip(events, events[1:], strict=True):
+    for earlier, later in zip(events, events[1:], strict=False):
         assert later.event.causation_id == earlier.event.id
 
     # The gate now accepts the ACTIVE score.
