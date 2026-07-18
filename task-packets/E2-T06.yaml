@@ -1,0 +1,103 @@
+task_id: E2-T06
+title: Implement the Evidence Crate builder and sealing
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md stage 6 (MRR-FR-050..056),
+  section 7.5 (the node signs result crates), and MRR-NFR-001/007; approved
+  by the repository owner's direction to continue (2026-07-18). Sixth task of
+  Epic E2.
+objective: >
+  Assemble an Evidence Crate from a completed or materially failed run and
+  seal it: the node signs the canonical crate content once, the crate becomes
+  immutable, and it is persisted with full provenance. Both success and
+  failure runs produce a sealed, signed crate that preserves null results,
+  errors, exclusions, and known unknowns.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#46-stage-6--evidence-crate
+  - docs/spec/01_SYSTEM_SPEC.md#75-node-runtime
+  - docs/spec/02_DOMAIN_MODEL.md#26-runmanifest
+  - schemas/evidence-crate.schema.json
+  - schemas/common.schema.json
+requirements:
+  - MRR-FR-050
+  - MRR-FR-054
+  - MRR-FR-056
+  - MRR-NFR-001
+  - MRR-NFR-007
+allowed_paths:
+  - services/**
+  - packages/domain/**
+  - tests/**
+  - pyproject.toml
+forbidden_changes:
+  - claim graph / evidence anchors beyond what the crate schema requires
+    (E3 owns the claim and evidence-anchor services; this task fills the
+    crate's arrays with what a single deterministic run produces, which for
+    the reference run is minimal/empty, and preserves failures/known_unknowns)
+  - RO-Crate / PROV export (MRR-FR-055 is E8)
+  - the evidence-crate schema semantics (the schema already exists; use it
+    as-is)
+  - HTTP/FastAPI endpoints
+  - persistence/event/crypto internals (reuse; additive domain errors only)
+derived_decisions: >
+  Lives under services/node_runtime (the node runtime seals and signs result
+  crates, section 7.5). The crate is assembled in memory from a sealed
+  RunManifest (E2-T05) plus the produced artifact references (E1-T07 hashes),
+  then SEALED once: the node signs the canonical crate content with E1-T02
+  (sign_object over model_dump(mode="json"), the same convention E2-T02/T03
+  use pending ADR-0004), content_hash is set, sealed=true, and the crate is
+  persisted as a single immutable object revision plus a domain event. Because
+  the crate is built-then-sealed exactly once (not a multi-state lifecycle
+  like TaskBundle), the node signature trivially verifies against the sealed
+  crate - ADR-0007's transition concern does not arise here. A failure crate
+  (run_state failed/timed_out/cancelled/policy_denied/partial) is still built,
+  signed, and sealed (MRR-FR-050), preserving the run's failures and known
+  unknowns (MRR-FR-054). For the deterministic reference run, proposed_claims,
+  source_records, and evidence_anchors are empty (claims are E3); this is a
+  faithful empty, not a stub - the arrays exist and are preserved.
+invariants:
+  - both a completed run and a materially failed run produce a sealed, signed
+    crate (MRR-FR-050); a failure crate is never silently omitted
+  - a sealed crate is immutable - no public interface mutates it; the sealing
+    operation is the only write, and there is no unseal/edit (MRR-FR-056)
+  - the sealed crate's node signature verifies against the sealed content, and
+    any tamper of the sealed content fails that verification (MRR-NFR-007)
+  - failures, errors, exclusions, and known unknowns from the run are carried
+    into the crate, not dropped, including for successful runs where they are
+    explicitly empty (MRR-FR-054)
+  - the crate references its run_id (the RunManifest) and task_id, and its
+    artifact references carry SHA-256 content hashes that recompute to the
+    stored value (stage 6 acceptance)
+  - sealing records exactly one domain event with full NFR-001 provenance,
+    atomically with the persisted revision
+acceptance_tests:
+  - a completed run seals into a schema-valid, signed crate that round-trips
+    through the EvidenceCrate contract model
+  - a materially failed run also seals into a signed crate preserving its
+    failures and known unknowns (MRR-FR-050 / MRR-FR-054)
+  - the sealed crate's node signature verifies; tampering any sealed field
+    fails verification (adversarial)
+  - no mutate/unseal method exists on the sealer (MRR-FR-056)
+  - sealing persists one revision + one event atomically (integration, real
+    PostgreSQL)
+  - an artifact reference's content hash recomputes to the stored value
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications (crate signing and seal immutability)
+  - open specification questions
+stop_conditions:
+  - a completed or failed run cannot be represented as a schema-valid crate
+    without inventing claim/anchor semantics owned by E3
+  - seal immutability cannot be enforced through the existing persistence
+    interfaces
+  - implementation requires changes outside allowed paths
