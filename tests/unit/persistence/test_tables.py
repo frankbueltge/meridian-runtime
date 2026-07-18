@@ -1,14 +1,16 @@
 """Unit tests for mrr.persistence.tables: metadata sanity only, no database
-connection (E1-T05). Table structure against a live PostgreSQL - including
-that the CHECK constraint actually rejects invalid rows - is exercised by
-the integration tier (tests/integration/persistence/).
+connection (E1-T05, extended by E1-T06 for domain_events/outbox). Table
+structure against a live PostgreSQL - including that the CHECK constraint
+actually rejects invalid rows - is exercised by the integration tier
+(tests/integration/persistence/).
 """
 
 from __future__ import annotations
 
 from mrr.domain.repositories import EDGE_VOCABULARY
-from mrr.persistence.tables import edges_table, objects_table
-from sqlalchemy import CheckConstraint
+from mrr.persistence.tables import domain_events_table, edges_table, objects_table, outbox_table
+from mrr.provenance.log import OUTBOX_STATUSES
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Identity, UniqueConstraint
 
 
 def test_objects_table_primary_key_is_id_and_revision() -> None:
@@ -94,3 +96,93 @@ def test_edges_table_has_source_target_and_edge_type_indexes() -> None:
     assert ("source_id",) in index_columns
     assert ("target_id",) in index_columns
     assert ("edge_type",) in index_columns
+
+
+# ---------------------------------------------------------------------------
+# domain_events / outbox (E1-T06).
+# ---------------------------------------------------------------------------
+
+
+def test_domain_events_table_primary_key_is_sequence_only() -> None:
+    pk_columns = {column.name for column in domain_events_table.primary_key.columns}
+    assert pk_columns == {"sequence"}
+
+
+def test_domain_events_table_sequence_is_a_generated_identity() -> None:
+    sequence_column = domain_events_table.c.sequence
+    assert isinstance(sequence_column.identity, Identity)
+    assert sequence_column.identity.always is True
+
+
+def test_domain_events_table_has_expected_columns() -> None:
+    expected = {
+        "sequence",
+        "id",
+        "event_type",
+        "occurred_at",
+        "actor",
+        "policy_version",
+        "causation_id",
+        "correlation_id",
+        "object_id",
+        "object_revision",
+        "payload",
+        "content_hash",
+        "prev_hash",
+    }
+    assert {column.name for column in domain_events_table.columns} == expected
+
+
+def test_domain_events_table_nullable_columns_are_exactly_causation_id_and_prev_hash() -> None:
+    nullable = {column.name for column in domain_events_table.columns if column.nullable}
+    assert nullable == {"causation_id", "prev_hash"}
+
+
+def test_domain_events_table_id_is_unique() -> None:
+    unique_constraints = [
+        c for c in domain_events_table.constraints if isinstance(c, UniqueConstraint)
+    ]
+    assert len(unique_constraints) == 1
+    assert {column.name for column in unique_constraints[0].columns} == {"id"}
+
+
+def test_domain_events_table_has_object_id_and_correlation_id_indexes() -> None:
+    index_columns = {
+        tuple(column.name for column in index.columns) for index in domain_events_table.indexes
+    }
+    assert ("object_id",) in index_columns
+    assert ("correlation_id",) in index_columns
+
+
+def test_outbox_table_primary_key_is_event_id_only() -> None:
+    pk_columns = {column.name for column in outbox_table.primary_key.columns}
+    assert pk_columns == {"event_id"}
+
+
+def test_outbox_table_has_expected_columns() -> None:
+    expected = {"event_id", "status", "created_at", "dispatched_at", "attempts"}
+    assert {column.name for column in outbox_table.columns} == expected
+
+
+def test_outbox_table_nullable_columns_are_exactly_dispatched_at() -> None:
+    nullable = {column.name for column in outbox_table.columns if column.nullable}
+    assert nullable == {"dispatched_at"}
+
+
+def test_outbox_table_event_id_references_domain_events_id() -> None:
+    fk_constraints = [c for c in outbox_table.constraints if isinstance(c, ForeignKeyConstraint)]
+    assert len(fk_constraints) == 1
+    fk = fk_constraints[0]
+    assert {column.name for column in fk.columns} == {"event_id"}
+    assert [element.target_fullname for element in fk.elements] == ["domain_events.id"]
+
+
+def test_outbox_table_has_status_check_constraint_over_full_vocabulary() -> None:
+    check_constraints = [c for c in outbox_table.constraints if isinstance(c, CheckConstraint)]
+    assert len(check_constraints) == 1
+    constraint = check_constraints[0]
+    assert constraint.name == "ck_outbox_status_vocabulary"
+
+    sqltext = str(constraint.sqltext)
+    for status in OUTBOX_STATUSES:
+        assert f"'{status}'" in sqltext, f"{status!r} missing from CHECK constraint text"
