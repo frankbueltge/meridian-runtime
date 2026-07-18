@@ -34,12 +34,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 # The distribution ships one PEP 420 namespace package, `mrr`, merged at build
-# time from eight independent package roots under packages/ and adapters/.
-# Each root owns a leaf subpackage (mrr.domain, mrr.crypto, ...,
-# mrr.adapters.object_store) and none of the intermediate `mrr` directories
-# (nor, for the adapters root, the intermediate `mrr.adapters` directory)
-# carry an __init__.py, which is what makes the merge a namespace package
-# instead of competing regular packages.
+# time from nine independent package roots under packages/, adapters/, and
+# services/. Each root owns a leaf subpackage (mrr.domain, mrr.crypto, ...,
+# mrr.adapters.object_store, mrr.services.control_plane's several
+# sub-services, mrr.services.node_runtime) and none of the intermediate `mrr`
+# directories (nor, for the adapters root, the intermediate `mrr.adapters`
+# directory, nor, for the two services roots, the intermediate `mrr.services`
+# directory) carry an __init__.py, which is what makes the merge a namespace
+# package instead of competing regular packages. services/control_plane and
+# services/node_runtime are two separate roots that both contribute
+# subpackages under the single merged `mrr.services` namespace (E2-T04).
 [tool.hatch.build.targets.wheel]
 only-include = [
   "packages/domain/mrr",
@@ -51,9 +55,10 @@ only-include = [
   "packages/persistence/mrr",
   "adapters/object_store/mrr",
   "services/control_plane/mrr",
+  "services/node_runtime/mrr",
 ]
 
-# The regular wheel build above merges the eight roots via path remapping.
+# The regular wheel build above merges the nine roots via path remapping.
 # Editable installs (uv sync / pip install -e) instead add each root
 # directly to sys.path so PEP 420 merges them into one `mrr` namespace
 # package at import time; `sources` remapping (below) is not honored in
@@ -68,6 +73,7 @@ dev-mode-dirs = [
   "packages/persistence",
   "adapters/object_store",
   "services/control_plane",
+  "services/node_runtime",
 ]
 
 [tool.hatch.build.targets.wheel.sources]
@@ -80,6 +86,7 @@ dev-mode-dirs = [
 "packages/persistence" = ""
 "adapters/object_store" = ""
 "services/control_plane" = ""
+"services/node_runtime" = ""
 
 [tool.ruff]
 target-version = "py312"
@@ -103,6 +110,7 @@ mypy_path = [
   "packages/persistence",
   "adapters/object_store",
   "services/control_plane",
+  "services/node_runtime",
   "tests/property",
 ]
 
@@ -134,7 +142,15 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Nothing inward imports the services layer (E2-T01)"
+# forbidden_modules names the "mrr.services" root, not a specific
+# sub-service, so this one contract already covers every current and future
+# leaf under it — mrr.services.research_score/capability_registry/task_bundle
+# (services/control_plane, E2-T01/T02/T03) and mrr.services.node_runtime
+# (services/node_runtime, E2-T04) alike. No new contract was needed to add
+# the second services/ root; this is confirmed by
+# tests/unit/architecture/test_import_boundaries.py, which runs this exact
+# contract as an acceptance test.
+name = "Nothing inward imports the services layer (E2-T01, E2-T04)"
 type = "forbidden"
 source_modules = [
   "mrr.domain",

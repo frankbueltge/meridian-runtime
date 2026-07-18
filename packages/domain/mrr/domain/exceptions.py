@@ -298,3 +298,30 @@ class CapabilityNotDeclaredError(DomainError):
             f"node {node_id!r} current manifest does not declare capability "
             f"{capability_name!r} version {capability_version!r}"
         )
+
+
+class UntrustedIsolationNotAvailableError(DomainError):
+    """Raised by ``mrr.services.node_runtime.executor.ReferenceTaskExecutor.__init__``
+    (task-packets/E2-T04.yaml, MRR-FR-041) when constructed with
+    ``require_isolation=True`` — an explicit, generic caller request for
+    untrusted-code isolation guarantees (non-root, read-only base
+    filesystem, explicit writable mounts, deny-by-default network egress,
+    cgroup CPU/memory/disk limits).
+
+    This is a programmer error, not a run outcome: the reference executor is
+    for the TRUSTED deterministic reference task only (MRR-FR-044) and never
+    provides such isolation — isolation is the deferred OCI-executor
+    adapter's responsibility. Raised at construction time, before any task
+    ever runs, so a caller cannot accidentally end up trusting this executor
+    for untrusted code and only discover the gap after the fact. See
+    ``ReferenceTaskExecutor``'s own docstring for the full honesty-boundary
+    rationale.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "ReferenceTaskExecutor does not provide untrusted-code isolation "
+            "(MRR-FR-041) — that is the deferred OCI-executor adapter's "
+            "responsibility. Refusing to construct an instance that silently "
+            "pretends otherwise."
+        )
