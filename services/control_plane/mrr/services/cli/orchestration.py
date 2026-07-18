@@ -411,6 +411,7 @@ def run_local_evidence_loop(
     capability_name: str = DEFAULT_CAPABILITY_NAME,
     capability_version: str = DEFAULT_CAPABILITY_VERSION,
     input_bytes: bytes = DEFAULT_INPUT_BYTES,
+    input_artifact_id: Urn | None = None,
     timeout_seconds: int = 30,
     code_revision: str = DEFAULT_CODE_REVISION,
     executor: Executor | None = None,
@@ -443,14 +444,23 @@ def run_local_evidence_loop(
             (or a test exercising the policy-denied/timed-out paths) may pass
             one already configured with a ``policy_gate``, ``is_cancelled``,
             or a deliberately slow ``transform``.
-        input_bytes: the reference task's declared input. Passing the SAME
-            bytes across two separate calls is the deterministic-replay
-            invariant this task requires: the deterministic reference
-            transform depends only on its resolved input bytes
-            (``mrr.services.node_runtime.executor.default_reference_transform``),
-            so two independent loop runs with identical ``input_bytes``
-            always produce the same ``output_hash``, regardless of the fresh
-            ids and timestamps each run otherwise mints.
+        input_bytes: the reference task's declared input.
+        input_artifact_id: the URN identifying the declared input artifact in
+            ``TaskBundle.inputs``/the executor's ``inputs`` mapping. Defaults
+            to a freshly minted ``new_urn("artifact")`` — appropriate for an
+            ordinary run, where each invocation declares its own artifact
+            identity. For the deterministic-replay invariant this task
+            requires, a caller MUST hold this id constant (in addition to
+            ``input_bytes``) across the two independent calls being compared:
+            ``mrr.services.node_runtime.executor.default_reference_transform``
+            hashes ``"<artifact_id>:<sha256(bytes)>"`` lines — it is
+            deterministic in the FULL resolved ``inputs`` mapping (keys AND
+            values), not merely in the byte content — so two runs that mint
+            two different random artifact ids for otherwise-identical bytes
+            are, from the executor's own point of view, two genuinely
+            different inputs, and are not guaranteed (or expected) to produce
+            the same output hash. Replaying "the same declared input"
+            therefore means holding both its id and its bytes fixed.
 
     Returns:
         A ``LocalEvidenceLoopResult`` naming the sealed crate, the run
@@ -476,6 +486,9 @@ def run_local_evidence_loop(
         node_practice_id if node_practice_id is not None else new_urn("practice")
     )
     resolved_node_id = node_id if node_id is not None else new_urn("node")
+    resolved_input_artifact_id = (
+        input_artifact_id if input_artifact_id is not None else new_urn("artifact")
+    )
     resolved_executor: Executor = executor if executor is not None else ReferenceTaskExecutor()
 
     object_repository = PostgresObjectRepository(engine)
@@ -574,7 +587,7 @@ def run_local_evidence_loop(
         created_at=datetime.now(UTC),
     )
     input_artifact_ref = ArtifactRef(
-        artifact_id=new_urn("artifact"),
+        artifact_id=resolved_input_artifact_id,
         content_hash=input_descriptor.content_hash,
         classification="PUBLIC",
     )

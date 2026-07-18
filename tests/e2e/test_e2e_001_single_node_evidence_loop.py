@@ -46,6 +46,7 @@ from mrr.contracts import EvidenceCrate, RunManifest, TaskBundle
 from mrr.crypto.hashing import content_hash
 from mrr.domain.exceptions import ScoreNotApprovedError
 from mrr.domain.hashing_policy import verify_object_signature
+from mrr.domain.identity import new_urn
 from mrr.persistence.repositories import PostgresObjectRepository
 from mrr.services.cli.orchestration import run_local_evidence_loop
 from mrr.services.node_runtime.executor import ReferenceTaskExecutor, default_reference_transform
@@ -145,13 +146,23 @@ def test_deterministic_replay_same_inputs_yield_same_output_hash(
     postgres_engine: Engine, tmp_path: Path
 ) -> None:
     """G-008 / task-packets/E2-T07.yaml's replay gate: two independent loop
-    runs with identical declared input bytes produce the same executor
-    output hash, even though every id/timestamp each run mints is fresh.
+    runs declaring the SAME input artifact (same id, same bytes) produce the
+    same executor output hash, even though every OTHER id/timestamp each run
+    mints (score, node, task, run manifest, crate) is fresh.
+
+    ``default_reference_transform`` hashes ``"<artifact_id>:<sha256(bytes)>"``
+    lines — it is deterministic in the full resolved ``inputs`` mapping (both
+    keys and values), not merely in the byte content — so ``input_artifact_id``
+    must be held constant across the two calls being compared, exactly like
+    ``input_bytes``; two runs that mint two different random artifact ids for
+    otherwise-identical bytes are, from the executor's own point of view, two
+    different inputs (see ``run_local_evidence_loop``'s own docstring).
     """
     store = _artifact_store(tmp_path)
     origin_key = Ed25519PrivateKey.generate()
     node_key = Ed25519PrivateKey.generate()
     fixed_input = b"mrr-e2-t07-deterministic-replay-fixture"
+    fixed_input_artifact_id = new_urn("artifact")
 
     first = run_local_evidence_loop(
         engine=postgres_engine,
@@ -159,6 +170,7 @@ def test_deterministic_replay_same_inputs_yield_same_output_hash(
         origin_signing_key=origin_key,
         node_signing_key=node_key,
         input_bytes=fixed_input,
+        input_artifact_id=fixed_input_artifact_id,
     )
     second = run_local_evidence_loop(
         engine=postgres_engine,
@@ -166,6 +178,7 @@ def test_deterministic_replay_same_inputs_yield_same_output_hash(
         origin_signing_key=origin_key,
         node_signing_key=node_key,
         input_bytes=fixed_input,
+        input_artifact_id=fixed_input_artifact_id,
     )
 
     assert first.run_state == "completed"
