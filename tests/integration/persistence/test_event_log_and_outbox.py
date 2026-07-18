@@ -23,6 +23,10 @@ Acceptance-test mapping:
   dispatcher; a dispatcher error leaves the row pending" ->
   ``test_dispatcher_dispatches_pending_rows_exactly_once`` and
   ``test_dispatcher_error_leaves_row_pending_with_attempts_incremented``.
+- (ADR-0007) "record_event appends exactly one event + one outbox row and NO
+  object row; an injected failure leaves neither" ->
+  ``test_record_event_appends_one_event_and_outbox_row_and_no_object_row``
+  and ``test_record_event_injected_failure_leaves_no_event_or_outbox_row``.
 """
 
 from __future__ import annotations
@@ -42,8 +46,8 @@ from mrr.persistence.repositories import (
     PostgresEventLog,
     PostgresObjectRepository,
 )
-from mrr.persistence.tables import domain_events_table, outbox_table
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.tables import domain_events_table, objects_table, outbox_table
+from mrr.persistence.unit_of_work import record_event, record_object_revision_with_event
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.exceptions import ChainVerificationError
 from mrr.provenance.log import AppendedEvent
@@ -426,3 +430,64 @@ def test_dispatcher_error_leaves_row_pending_with_attempts_incremented(
         )
     assert row_after["status"] == "dispatched"
     assert row_after["attempts"] == 2
+
+
+# ---------------------------------------------------------------------------
+# record_event (ADR-0007): event-only atomicity — no object row, ever.
+# ---------------------------------------------------------------------------
+
+
+def test_record_event_appends_one_event_and_outbox_row_and_no_object_row(
+    postgres_engine: Engine,
+) -> None:
+    event_log = PostgresEventLog(postgres_engine)
+    bundle_id = new_urn("task-bundle")
+    event = _domain_event(object_id=bundle_id, object_revision=1)
+
+    appended = record_event(postgres_engine, event_log, event)
+
+    assert appended.event.id == event.id
+    with postgres_engine.connect() as conn:
+        event_rows = conn.execute(
+            sa.select(domain_events_table).where(domain_events_table.c.object_id == bundle_id)
+        ).fetchall()
+        outbox_rows = conn.execute(
+            sa.select(outbox_table).where(outbox_table.c.event_id == event.id)
+        ).fetchall()
+        object_rows = conn.execute(
+            sa.select(objects_table).where(objects_table.c.id == bundle_id)
+        ).fetchall()
+
+    assert len(event_rows) == 1
+    assert len(outbox_rows) == 1
+    assert outbox_rows[0].status == "pending"
+    # The whole point of record_event (ADR-0007): a lifecycle transition
+    # never writes an object content revision — there is no
+    # object_repository parameter for it to write through in the first
+    # place, and this asserts that straight from the database.
+    assert object_rows == []
+
+
+def test_record_event_injected_failure_leaves_no_event_or_outbox_row(
+    postgres_engine: Engine,
+) -> None:
+    event_log = PostgresEventLog(postgres_engine)
+    bundle_id = new_urn("task-bundle")
+    event = _domain_event(object_id=bundle_id, object_revision=1)
+
+    def _inject_failure() -> None:
+        raise RuntimeError("injected failure after append, before commit")
+
+    with pytest.raises(RuntimeError, match="injected failure"):
+        record_event(postgres_engine, event_log, event, _after_append=_inject_failure)
+
+    with postgres_engine.connect() as conn:
+        event_rows = conn.execute(
+            sa.select(domain_events_table).where(domain_events_table.c.object_id == bundle_id)
+        ).fetchall()
+        outbox_rows = conn.execute(
+            sa.select(outbox_table).where(outbox_table.c.event_id == event.id)
+        ).fetchall()
+
+    assert event_rows == []
+    assert outbox_rows == []
