@@ -29,92 +29,102 @@ defer, or reject decision"):
   transport identity rather than a bare parameter; that does not change
   this structural check, only who is trusted to populate it.
 
---- status is now a native TaskBundle field (ADR-0005) -----------------------
+--- ADR-0007: lifecycle transitions are events, not new signed revisions ----
 
-``schemas/task-bundle.schema.json`` originally had no ``status``/lifecycle
-field at all (unlike ``ResearchScore``), which the first version of this
-service worked around by stashing workflow status as an out-of-band key on
-the persisted ``StoredObject.body``, alongside the real TaskBundle schema
-fields. Review caught that this made ``stored.body`` fail to round-trip
-through ``TaskBundle.model_validate`` (an unrecognized key, rejected by
-``MRRModel``'s ``extra="forbid"`` / the schema's own
-``unevaluatedProperties: false``) — a real defect, not just a style
-preference. ADR-0005 (accepted) closed the gap the right way, upstream of
-this service: ``status`` (the fourteen ``TASK_BUNDLE_LIFECYCLE`` states,
-``TaskBundleStatus``) is now a required, schema-validated ``TaskBundle``
-field, exactly like ``ResearchScore``'s. This module was rewritten on top of
-that: ``StoredObject.body`` is now a plain
-``bundle.model_dump_json(exclude_none=True)`` with **no** added key, and
-``TaskBundle.model_validate(stored.body)`` succeeds unconditionally (asserted
-directly by ``test_persisted_body_round_trips_through_task_bundle_model_validate``
-in the unit tests).
+docs/spec/adr/ADR-0007-TASK-BUNDLE-TRANSITIONS-ARE-EVENTS.md is the
+authorizing decision for this module's shape and supersedes both the first
+E2-T03 implementation's own workaround and the withdrawn ADR-0006. The
+problem it fixes: a first-class object's ``revision``/``content_hash`` are
+part of what a signature covers (docs/spec/02_DOMAIN_MODEL.md section 1.3),
+and TaskBundle is the only lifecycle-bearing object that is ALSO
+origin-signed (MRR-FR-031). Modeling every workflow step (offer, accept,
+defer, reject) as "a new revision" — the natural pattern for
+ResearchScore/Claim/CorrectionEvent, none of which are signed — would mean
+``revision``/``content_hash`` moving out from under a signature that is
+produced exactly once. The very first version of this module reconciled
+that by scanning stored revisions for the one the current ``signature.value``
+was actually produced against (``_find_signed_revision``) — which proved
+"some ancestor was validly signed", not "the current content matches what
+was signed": a real verification-semantics weakness that ADR-0007 removes at
+the root, not by patching around it further.
 
---- TaskBundle.revision and the store revision now stay in lockstep ----------
+The model this module now implements, exactly per ADR-0007:
 
-Because ``status`` is a real top-level field, every workflow transition
-— even a pure status flip such as ``offer`` — is now genuinely "a new
-revision" in exactly the sense ``ResearchScoreService._transition`` already
-uses: the whole object (including the new ``status``) is re-serialized and
-its ``content_hash`` recomputed (``mrr.domain.hashing_policy.
-compute_content_hash``), and ``TaskBundle.revision`` is incremented to match.
-``mrr.persistence.repositories.PostgresObjectRepository.insert_revision``
-requires a strictly-incrementing ``StoredObject.revision`` on every insert
-regardless, so there is no longer any reason (and, given the round-trip
-requirement above, no longer any room) for the store's row-revision counter
-to diverge from ``TaskBundle.revision`` the way the pre-ADR-0005 version of
-this module did — they are one and the same number now, exactly as they
-already are for ``ResearchScore``/``NodeManifest``.
+- The origin-signed TaskBundle **content record** is written ONCE, as
+  revision 1, by ``TaskBundleService.create``, and is never touched again by
+  a pure lifecycle transition. Its signature therefore always verifies
+  directly against whatever ``ObjectRepository.get_latest`` returns — no
+  historical scan, ever (see ``NodeTaskDecisionService._authorize_and_verify``,
+  and the unit/integration tests literally named for this: signature
+  verification after an arbitrary sequence of transitions still passes, and
+  a content-tampered record is still caught).
+- ``offer``/``accept``/``defer``/``reject`` (the drawn ``TASK_BUNDLE_LIFECYCLE``
+  edges out of CREATED/OFFERED) append an append-only **domain event** via
+  the new event-only unit-of-work primitive
+  (``mrr.persistence.unit_of_work.record_event``, E1-T06's ADR-0007
+  addition) and mint NO new object content revision. The authoritative
+  CURRENT status is derived from the event log, not read off any stored
+  ``body["status"]`` (``_current_status`` below) — ``body["status"]`` on a
+  content record is that record's own creation-time snapshot, a historical
+  fact about when it was written, not a live field.
+- ``propose_modification`` is the one exception, and it is not really an
+  exception at all: it is a genuine CONTENT change (new purpose/resources/
+  whatever the modifying node wants to counter-propose), so it still goes
+  through ``record_object_revision_with_event`` exactly like
+  ``create`` — a new content hash, a new signature by the modifying node,
+  a new revision (MRR-FR-023/034). The "returns to OFFERED" lifecycle
+  language is represented purely in the event stream (the
+  ``task_bundle.modification_offered`` event's ``to_status``), not by a
+  transient ``MODIFICATION_PROPOSED`` object row (see "propose_modification
+  is one write, not two" below, unchanged from the first implementation).
+- ``accept_modification`` (the origin's acknowledgement that a node's
+  counter-proposal exists and stands) never changed the lifecycle *status*
+  (bundle stays OFFERED throughout) and, per ADR-0007's "only a genuine
+  content change creates a revision" rule, no longer writes any object
+  revision either — it is now a plain event-only write via
+  ``record_event``, same as ``offer``/``accept``/``defer``/``reject``. Under
+  the pre-ADR-0007 implementation this method DID write a revision, but only
+  because ADR-0005 had (temporarily) made every workflow step "a revision by
+  construction" — a premise ADR-0007 replaces.
 
---- Verifying a signature that is NOT re-minted on every status flip ---------
+What this rework removes entirely, and why:
 
-``TaskBundle.signature`` is **not** re-signed on a pure status transition —
-nobody holds a private key inside this service, and re-signing on every
-workflow step (just to keep pace with a status flip) would defeat the point
-of MRR-FR-034 tying "a new content hash and signature" specifically to a
-genuine content revision (``propose_modification``), not to negotiation
-bookkeeping. ``signature.value`` is therefore carried forward unchanged
-across ``offer``/``accept``/``defer``/``reject``/``accept_modification``,
-while ``content_hash``/``revision`` advance underneath it (see above) —
-which means the *current* stored revision's own ``content_hash`` does not,
-in general, match what a fresh ``verify_object_signature`` call against its
-*current* fields would need (the signed payload's ``status`` differs from
-whatever ``status`` was in effect when ``signature.value`` was actually
-produced). Verifying "the origin signature" (MRR-FR-031: "verified on the
-node side before any decision") therefore does not target ``latest`` at
-all — it targets the **oldest stored revision that already carries the same
-``signature.value`` as `latest``** (``_find_signed_revision``, a linear scan
-over ``ObjectRepository.list_revisions`` comparing ``signature.value``,
-oldest-first): that revision's own fields (its own ``status`` — ``CREATED``
-for the origin's first signature, or ``OFFERED`` for a modifier's, since
-``propose_modification`` always signs the bundle it is about to land in
-``OFFERED`` with) are exactly the bytes that were actually signed, and
-verifying against them is what actually succeeds for an honestly-signed
-bundle and actually fails for a tampered one. This is the load-bearing
-adaptation this rewrite makes to keep MRR-FR-031 meaningful now that
-``status`` participates in the hashed/signed payload; flagged for reviewer
-scrutiny alongside the FR-022 authority split.
+- ``_find_signed_revision`` — the historical-revision scan described above.
+  Gone; verification now targets ``get_latest`` directly.
+- ``_bundle_with_new_status`` — built a same-content-different-status/
+  revision/content_hash copy of a bundle for a pure lifecycle transition.
+  Gone; a lifecycle transition no longer touches the content record at all.
+- The "``TaskBundle.revision`` and the store revision stay in lockstep"
+  section from the prior revision of this docstring — no longer true, or
+  needed: the store's row-revision counter and ``TaskBundle.revision`` both
+  still only ever advance on a genuine content write (``create``,
+  ``propose_modification``), which is exactly the same event, not two
+  independent counters that happen to agree.
+
+Because a lifecycle transition writes no revision, ``offer``/``accept``/
+``defer``/``reject``/``accept_modification`` can no longer return "the new
+``StoredObject``" the way the old revision-per-transition design did — there
+is no new one. They return ``TaskBundleTransition`` instead: the unchanged
+content record (``content``, still whatever ``get_latest`` already returned)
+paired with the newly current, event-derived ``status`` — which will, after
+any transition beyond ``create``, differ from ``content.body["status"]`` by
+design; that divergence *is* the point of ADR-0007, not a bug, and the test
+suite asserts it explicitly.
 
 --- propose_modification is one write, not two -------------------------------
 
 ``TASK_BUNDLE_LIFECYCLE`` draws ``OFFERED -> MODIFICATION_PROPOSED ->
-OFFERED`` as two edges. The first version of this module persisted a
-separate ``StoredObject`` row for the transient ``MODIFICATION_PROPOSED``
-state before the modifier's genuinely new content. With ``TaskBundle.
-revision`` and the store revision now required to stay in lockstep, doing
-that would force the modifying node to sign its counter-proposal with
-``latest.revision + 2`` (one consumed by the transient marker row, one for
-its own content) instead of the natural, ``ResearchScoreService.revise``-
-style ``latest.revision + 1`` — an implementation detail of *this* service
-leaking into what a remote node must predict before it can even construct
-the bytes it signs. Instead, ``propose_modification`` here validates **both**
-edges are lifecycle-legal (two ``TASK_BUNDLE_LIFECYCLE.assert_transition``
-calls — the second, ``MODIFICATION_PROPOSED -> OFFERED``, is unconditionally
-legal, so in practice this reduces to requiring ``latest``'s status be
-``OFFERED``) but persists exactly **one** new revision — the modifier's own
-signed content, landing directly in ``OFFERED`` at ``latest.revision + 1`` —
+OFFERED`` as two edges. This module never materializes the transient
+``MODIFICATION_PROPOSED`` state as its own stored row (before OR after
+ADR-0007): ``propose_modification`` validates both edges are lifecycle-legal
+(two ``TASK_BUNDLE_LIFECYCLE.assert_transition`` calls — the second,
+``MODIFICATION_PROPOSED -> OFFERED``, is unconditionally legal, so in
+practice this reduces to requiring the CURRENT event-derived status be
+``OFFERED``) but persists exactly **one** new content revision — the
+modifier's own signed content, landing directly at ``latest.revision + 1`` —
 plus one ``task_bundle.modification_offered`` event whose payload documents
 that it passed through the (unmaterialized) ``MODIFICATION_PROPOSED`` state.
-The prior revision(s) are, as before, left completely untouched.
+The prior revision(s) are, as always, left completely untouched.
 
 --- Refusal reason vocabulary -------------------------------------------------
 
@@ -145,6 +155,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, get_args
 
@@ -157,12 +168,12 @@ from mrr.domain.exceptions import (
     ObjectNotFoundError,
     TaskBundleNotFoundError,
 )
-from mrr.domain.hashing_policy import compute_content_hash, verify_object_signature
+from mrr.domain.hashing_policy import verify_object_signature
 from mrr.domain.identity import new_urn
 from mrr.domain.lifecycles import TASK_BUNDLE_LIFECYCLE
 from mrr.domain.repositories import ObjectRepository, StoredObject
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import record_event, record_object_revision_with_event
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from mrr.services.capability_registry.service import CapabilityRegistry
@@ -188,6 +199,25 @@ _EVENT_DEFERRED = "task_bundle.deferred"
 _EVENT_REJECTED = "task_bundle.rejected"
 _EVENT_MODIFICATION_OFFERED = "task_bundle.modification_offered"
 
+#: Event types whose payload carries a lifecycle ``to_status`` — exactly the
+#: drawn ``TASK_BUNDLE_LIFECYCLE`` edges this module drives (ADR-0007's
+#: "current status is derived from the latest lifecycle event"). Deliberately
+#: excludes ``_EVENT_CREATED`` (creation is not a transition — there is no
+#: "from" state, and the content record's own ``body["status"]`` already IS
+#: the fallback ``_current_status`` uses) and
+#: ``_EVENT_MODIFICATION_ACKNOWLEDGED`` (the origin's acknowledgement changes
+#: no lifecycle status at all — the bundle stays OFFERED throughout, per
+#: ``TaskBundleService.accept_modification``'s own docstring).
+_LIFECYCLE_TRANSITION_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        _EVENT_OFFERED,
+        _EVENT_ACCEPTED,
+        _EVENT_DEFERRED,
+        _EVENT_REJECTED,
+        _EVENT_MODIFICATION_OFFERED,
+    }
+)
+
 #: See the module docstring's "Refusal reason vocabulary" section: a minimal,
 #: coarse, NOT spec-defined set (docs/spec/04_SECURITY_AND_POLICY.md section
 #: 8.3, "a coarse reason code"), flagged as an open specification question.
@@ -203,7 +233,8 @@ _REFUSAL_REASONS: frozenset[str] = frozenset(get_args(RefusalReason))
 
 #: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
 #: takes once its ``engine``/``object_repository``/``event_log`` arguments
-#: are bound. Identical in shape to
+#: are bound — the CONTENT-revision path (``create``, ``propose_modification``).
+#: Identical in shape to
 #: ``mrr.services.research_score.service.RecordRevisionWithEvent`` /
 #: ``mrr.services.capability_registry.service.RecordRevisionWithEvent`` —
 #: see those modules' docstrings for why this is a local copy, not a shared
@@ -218,6 +249,12 @@ RecordRevisionWithEvent = Callable[
     [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
 ]
 
+#: The callable shape ``mrr.persistence.unit_of_work.record_event`` takes
+#: once its ``engine``/``event_log`` arguments are bound — the EVENT-ONLY
+#: path (ADR-0007: ``offer``/``accept``/``defer``/``reject``/
+#: ``accept_modification``, none of which write a content revision).
+RecordEvent = Callable[[DomainEvent], AppendedEvent]
+
 
 class _EventJournal(Protocol):
     """The one read operation this module needs from an event log. Same
@@ -228,18 +265,42 @@ class _EventJournal(Protocol):
     def read_all(self) -> list[AppendedEvent]: ...
 
 
+@dataclass(frozen=True, slots=True)
+class TaskBundleTransition:
+    """The result of an ADR-0007 event-only lifecycle transition — ``offer``,
+    ``accept``, ``defer``, ``reject``, ``accept_modification``. None of these
+    write a new content revision, so there is no "new ``StoredObject``" to
+    return the way ``create``/``propose_modification`` do.
+
+    ``content`` is the unchanged content record ``ObjectRepository.get_latest``
+    already returned before this transition ran (still revision 1, unless an
+    earlier ``propose_modification`` advanced it) — its own
+    ``content.body["status"]`` is that record's creation-time snapshot and,
+    after this transition, will generally NOT equal ``status`` below. That
+    divergence is the whole point of ADR-0007, not a bug: ``status`` is the
+    live, event-derived current lifecycle status; ``content`` is the
+    immutable, always-signature-verifiable content. ``appended_event`` is the
+    domain event this transition just recorded.
+    """
+
+    content: StoredObject
+    status: str
+    appended_event: AppendedEvent
+
+
 def bind_unit_of_work(
     engine: Engine,
     object_repository: PostgresObjectRepository,
     event_log: PostgresEventLog,
 ) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` to a concrete
-    ``sqlalchemy.Engine``/``PostgresObjectRepository``/``PostgresEventLog``
-    triple. Production wiring and integration tests call this once each for
-    ``TaskBundleService`` and ``NodeTaskDecisionService`` (they may safely
-    share the same bound callable, since both ultimately write the same
-    ``objects``/``domain_events`` tables); DB-free unit tests pass their own
-    trivial callable of the same shape, backed by in-memory fakes, instead.
+    """Bind ``record_object_revision_with_event`` (the CONTENT-revision path)
+    to a concrete ``sqlalchemy.Engine``/``PostgresObjectRepository``/
+    ``PostgresEventLog`` triple. Production wiring and integration tests call
+    this once each for ``TaskBundleService`` and ``NodeTaskDecisionService``
+    (they may safely share the same bound callable, since both ultimately
+    write the same ``objects``/``domain_events`` tables); DB-free unit tests
+    pass their own trivial callable of the same shape, backed by in-memory
+    fakes, instead.
     """
 
     def _record(
@@ -252,6 +313,22 @@ def bind_unit_of_work(
         )
 
     return _record
+
+
+def bind_event_unit_of_work(engine: Engine, event_log: PostgresEventLog) -> RecordEvent:
+    """Bind ``mrr.persistence.unit_of_work.record_event`` (ADR-0007's
+    EVENT-ONLY path — no content revision) to a concrete
+    ``sqlalchemy.Engine``/``PostgresEventLog`` pair. Production wiring and
+    integration tests call this once each for ``TaskBundleService`` and
+    ``NodeTaskDecisionService``; DB-free unit tests pass their own trivial
+    callable of the same ``RecordEvent`` shape, backed by an in-memory fake
+    event log, instead.
+    """
+
+    def _record_event(event: DomainEvent) -> AppendedEvent:
+        return record_event(engine, event_log, event)
+
+    return _record_event
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +346,9 @@ def _bundle_to_stored_object(bundle: TaskBundle) -> StoredObject:
     ``TaskBundle.model_validate(stored.body)`` always succeeds, matching
     ``mrr.services.research_score.service._score_to_stored_object`` and
     ``mrr.services.capability_registry.service._manifest_to_stored_object``'s
-    own pattern exactly.
+    own pattern exactly. Used only for genuine content writes (``create``,
+    ``propose_modification`` — ADR-0007); a pure lifecycle transition never
+    calls this, since it never builds a new content record at all.
     """
     body: dict[str, Any] = json.loads(bundle.model_dump_json(exclude_none=True))
     return StoredObject(
@@ -290,25 +369,9 @@ def _bundle_to_stored_object(bundle: TaskBundle) -> StoredObject:
 def _reconstruct_bundle(stored: StoredObject) -> TaskBundle:
     """The inverse of ``_bundle_to_stored_object``: ``stored.body`` is
     already a plain, schema-valid ``TaskBundle`` serialization (ADR-0005), so
-    this is a direct ``model_validate`` — no stripping needed anymore.
+    this is a direct ``model_validate`` — no stripping needed.
     """
     return TaskBundle.model_validate(stored.body)
-
-
-def _bundle_with_new_status(bundle: TaskBundle, *, to_status: str, new_revision: int) -> TaskBundle:
-    """Build the next pure-status-transition revision of ``bundle``: same
-    substantive content, ``status`` and ``revision`` advanced, and
-    ``content_hash`` recomputed to match (mirrors ``ResearchScoreService.
-    _transition``'s "only status changes, everything else carried over,
-    content_hash recomputed" pattern). ``signature`` is carried forward
-    UNCHANGED — see the module docstring's "Verifying a signature that is
-    NOT re-minted on every status flip" section for why, and for how
-    verification is adapted to that.
-    """
-    updated = bundle.model_copy(update={"revision": new_revision, "status": to_status})
-    body = json.loads(updated.model_dump_json(exclude_none=True))
-    new_content_hash = compute_content_hash(body)
-    return updated.model_copy(update={"content_hash": new_content_hash})
 
 
 def _get_latest_or_raise(object_repository: ObjectRepository, bundle_id: str) -> StoredObject:
@@ -318,24 +381,29 @@ def _get_latest_or_raise(object_repository: ObjectRepository, bundle_id: str) ->
         raise TaskBundleNotFoundError(bundle_id) from None
 
 
-def _find_signed_revision(
-    object_repository: ObjectRepository, bundle_id: str, latest: StoredObject
-) -> StoredObject:
-    """Return the OLDEST stored revision whose ``signature.value`` equals
-    ``latest``'s — i.e. the revision whose fields are the exact bytes that
-    were actually signed, since pure status transitions carry ``signature``
-    forward unchanged while ``content_hash``/``revision``/``status`` advance
-    underneath it (module docstring). Verification must target THIS
-    revision's own fields (its own ``status`` — ``CREATED`` for the origin's
-    first signature, ``OFFERED`` for a modifier's), not ``latest``'s current
-    ones. ``list_revisions`` returns oldest-first, so the first match is the
-    revision where this exact signature was first introduced.
+def _current_status(event_log: _EventJournal, latest: StoredObject) -> str:
+    """The authoritative CURRENT ``TASK_BUNDLE_LIFECYCLE`` status (ADR-0007):
+    the ``to_status`` of the most recently appended lifecycle-transition
+    event for this bundle (``_LIFECYCLE_TRANSITION_EVENT_TYPES`` — offer,
+    accept, defer, reject, propose_modification), or ``latest.body["status"]``
+    — the immutable content record's own creation-time status snapshot —
+    when no transition event has been recorded yet (a freshly created
+    bundle, still ``CREATED``).
+
+    ``event_log.read_all()`` returns events oldest-first (both the
+    ``EventLog`` protocol's contract and ``PostgresEventLog``'s
+    implementation), so the LAST matching entry is the most recent —
+    "newest wins" over the filtered list.
     """
-    current_signature_value = latest.body["signature"]["value"]
-    for revision in object_repository.list_revisions(bundle_id):
-        if revision.body["signature"]["value"] == current_signature_value:
-            return revision
-    return latest  # pragma: no cover - defensive only; latest always matches itself
+    transition_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.object_id == latest.id
+        and appended.event.event_type in _LIFECYCLE_TRANSITION_EVENT_TYPES
+    ]
+    if not transition_events:
+        return str(latest.body["status"])
+    return str(transition_events[-1].payload["to_status"])
 
 
 def _last_event_id_for(event_log: _EventJournal, bundle_id: str) -> str | None:
@@ -356,39 +424,34 @@ def _last_event_id_for(event_log: _EventJournal, bundle_id: str) -> str | None:
 
 def _advance(
     event_log: _EventJournal,
-    record: RecordRevisionWithEvent,
+    record_event_fn: RecordEvent,
     latest: StoredObject,
-    new_bundle: TaskBundle,
+    current_status: str,
     *,
+    to_status: str,
     event_type: str,
     actor: Urn,
     policy_version: str,
     correlation_id: Urn,
     payload: dict[str, Any] | None = None,
-) -> StoredObject:
-    """Shared implementation for every simple ``TASK_BUNDLE_LIFECYCLE`` edge
-    this module drives (``offer``/``accept``/``defer``/``reject`` — every
-    case where ``from_status != to_status``): assert the transition is legal
-    (fails closed with ``InvalidTransitionError`` and writes nothing —
-    checked before any ``StoredObject``/``DomainEvent`` is even
-    constructed), then persist ``new_bundle`` (already carrying the new
-    ``status``/``revision``/``content_hash`` — see
-    ``_bundle_with_new_status``) plus its event atomically.
+) -> TaskBundleTransition:
+    """Shared implementation for every EVENT-ONLY ``TASK_BUNDLE_LIFECYCLE``
+    edge this module drives (``offer``/``accept``/``defer``/``reject`` —
+    ADR-0007): assert the transition is legal (fails closed with
+    ``InvalidTransitionError`` and appends nothing — checked before any
+    ``DomainEvent`` is even constructed), then append the transition's event
+    via ``record_event_fn``. Writes NO object content revision — ``latest``
+    is returned unchanged inside the result.
 
     Not used by ``accept_modification`` (its "transition" is ``OFFERED ->
     OFFERED``, not a legal edge — see that method) or by
-    ``propose_modification`` (whose overall move is also ``OFFERED ->
-    OFFERED`` at the storage level, passing logically but not physically
-    through ``MODIFICATION_PROPOSED`` — see the module docstring's
-    "propose_modification is one write, not two" section); both call
-    ``TASK_BUNDLE_LIFECYCLE.assert_transition`` themselves as needed and
-    build their ``DomainEvent`` directly.
+    ``propose_modification`` (a genuine content write, going through
+    ``record_object_revision_with_event`` instead — see that method's
+    docstring); both call ``TASK_BUNDLE_LIFECYCLE.assert_transition``
+    themselves as needed.
     """
-    from_status = latest.body["status"]
-    to_status = new_bundle.status
-    TASK_BUNDLE_LIFECYCLE.assert_transition(from_status, to_status)
+    TASK_BUNDLE_LIFECYCLE.assert_transition(current_status, to_status)
 
-    obj = _bundle_to_stored_object(new_bundle)
     event = DomainEvent(
         id=new_urn("domain-event"),
         event_type=event_type,
@@ -398,13 +461,13 @@ def _advance(
         causation_id=_last_event_id_for(event_log, latest.id),
         correlation_id=correlation_id,
         object_id=latest.id,
-        object_revision=new_bundle.revision,
+        object_revision=latest.revision,
         payload=payload
         if payload is not None
-        else {"from_status": from_status, "to_status": to_status},
+        else {"from_status": current_status, "to_status": to_status},
     )
-    stored, _ = record(obj, latest.revision, event)
-    return stored
+    appended = record_event_fn(event)
+    return TaskBundleTransition(content=latest, status=to_status, appended_event=appended)
 
 
 # ---------------------------------------------------------------------------
@@ -426,17 +489,19 @@ class TaskBundleService:
         object_repository: ObjectRepository,
         event_log: _EventJournal,
         record: RecordRevisionWithEvent,
+        record_event: RecordEvent,
         research_score_service: ResearchScoreService,
         capability_registry: CapabilityRegistry,
     ) -> None:
         self._object_repository = object_repository
         self._event_log = event_log
         self._record = record
+        self._record_event = record_event
         self._research_score_service = research_score_service
         self._capability_registry = capability_registry
 
     # ------------------------------------------------------------------
-    # Creation (MRR-FR-030/031/032).
+    # Creation (MRR-FR-030/031/032) — the one-time CONTENT write.
     # ------------------------------------------------------------------
 
     def create(
@@ -472,10 +537,13 @@ class TaskBundleService:
         caller's behalf, matching E2-T01/T02's own "caller mints id/hash/
         signature" convention). ``bundle.revision`` must be ``1`` and
         ``bundle.status`` must be ``TASK_BUNDLE_LIFECYCLE.initial_state``
-        (``"CREATED"``) — now a real, schema-defined field (ADR-0005), this
-        mirrors ``ResearchScoreService.create``'s own "reject non-DRAFT
-        initial status" guard exactly, via the same sentinel-transition
-        technique.
+        (``"CREATED"``).
+
+        Per ADR-0007, this revision-1 content record is written ONCE and
+        never touched again by a pure lifecycle transition — see the module
+        docstring. Its origin signature therefore always verifies directly
+        against whatever ``get_latest`` returns, for as long as no
+        ``propose_modification`` has happened.
 
         Raises:
             InvalidTransitionError: ``bundle.status`` is not ``"CREATED"``.
@@ -526,23 +594,24 @@ class TaskBundleService:
 
     # ------------------------------------------------------------------
     # Offer (MRR-FR-021: matching, not permission — the origin still has to
-    # explicitly offer before the node can decide).
+    # explicitly offer before the node can decide). ADR-0007: EVENT-ONLY —
+    # no new content revision.
     # ------------------------------------------------------------------
 
     def offer(
         self, bundle_id: Urn, *, actor: Urn, policy_version: str, correlation_id: Urn
-    ) -> StoredObject:
-        """CREATED -> OFFERED."""
+    ) -> TaskBundleTransition:
+        """CREATED -> OFFERED, recorded as a ``task_bundle.offered`` domain
+        event. The content record (revision 1) is untouched.
+        """
         latest = _get_latest_or_raise(self._object_repository, bundle_id)
-        bundle = _reconstruct_bundle(latest)
-        new_bundle = _bundle_with_new_status(
-            bundle, to_status="OFFERED", new_revision=latest.revision + 1
-        )
+        current_status = _current_status(self._event_log, latest)
         return _advance(
             self._event_log,
-            self._record,
+            self._record_event,
             latest,
-            new_bundle,
+            current_status,
+            to_status="OFFERED",
             event_type=_EVENT_OFFERED,
             actor=actor,
             policy_version=policy_version,
@@ -552,14 +621,14 @@ class TaskBundleService:
     # ------------------------------------------------------------------
     # The origin's acknowledgement of a node-proposed modification
     # (MRR-FR-023: "... explicitly accepted by the origin before
-    # execution").
+    # execution"). ADR-0007: EVENT-ONLY.
     # ------------------------------------------------------------------
 
     def accept_modification(
         self, bundle_id: Urn, *, actor: Urn, policy_version: str, correlation_id: Urn
-    ) -> StoredObject:
+    ) -> TaskBundleTransition:
         """Record the origin's explicit acknowledgement that the current
-        ``OFFERED`` revision (following a node's ``propose_modification``)
+        content revision (following a node's ``propose_modification``)
         exists and stands.
 
         This is deliberately **not** a ``TASK_BUNDLE_LIFECYCLE`` state
@@ -570,26 +639,25 @@ class TaskBundleService:
         sole authority to move the bundle to ``ACCEPTED``
         (``NodeTaskDecisionService.accept``, MRR-FR-022) — this method
         cannot and does not grant the origin any such path; it only records
-        a ``task_bundle.modification_acknowledged`` event, still requiring a
-        new store revision (every write here does, in lockstep — see the
-        module docstring) whose ``status`` is unchanged (``"OFFERED"``) and
-        whose substantive content is otherwise identical to ``latest``.
+        a ``task_bundle.modification_acknowledged`` event. Per ADR-0007 this
+        writes NO content revision (unlike the pre-ADR-0007 implementation,
+        which minted one purely because every workflow step was then, by
+        ADR-0005 construction, "a revision" — a premise ADR-0007 replaces:
+        only a genuine content change is a revision now).
 
         Raises:
-            InvalidTransitionError: if the bundle's current status is not
-                ``OFFERED`` — reused here (rather than a new error type) to
-                report "you cannot acknowledge a modification of a bundle
-                that is not currently offered", carrying the actual status
-                as ``from_state`` and ``"OFFERED"`` as ``to_state``.
+            InvalidTransitionError: if the bundle's current (event-derived)
+                status is not ``OFFERED`` — reused here (rather than a new
+                error type) to report "you cannot acknowledge a modification
+                of a bundle that is not currently offered", carrying the
+                actual status as ``from_state`` and ``"OFFERED"`` as
+                ``to_state``.
         """
         latest = _get_latest_or_raise(self._object_repository, bundle_id)
-        bundle = _reconstruct_bundle(latest)
-        if bundle.status != "OFFERED":
-            raise InvalidTransitionError(TASK_BUNDLE_LIFECYCLE.name, bundle.status, "OFFERED")
+        current_status = _current_status(self._event_log, latest)
+        if current_status != "OFFERED":
+            raise InvalidTransitionError(TASK_BUNDLE_LIFECYCLE.name, current_status, "OFFERED")
 
-        new_revision = latest.revision + 1
-        new_bundle = _bundle_with_new_status(bundle, to_status="OFFERED", new_revision=new_revision)
-        obj = _bundle_to_stored_object(new_bundle)
         event = DomainEvent(
             id=new_urn("domain-event"),
             event_type=_EVENT_MODIFICATION_ACKNOWLEDGED,
@@ -599,11 +667,11 @@ class TaskBundleService:
             causation_id=_last_event_id_for(self._event_log, bundle_id),
             correlation_id=correlation_id,
             object_id=bundle_id,
-            object_revision=new_revision,
-            payload={"status": "OFFERED", "acknowledged_content_revision": bundle.revision},
+            object_revision=latest.revision,
+            payload={"status": "OFFERED", "acknowledged_content_revision": latest.revision},
         )
-        stored, _ = self._record(obj, latest.revision, event)
-        return stored
+        appended = self._record_event(event)
+        return TaskBundleTransition(content=latest, status="OFFERED", appended_event=appended)
 
 
 # ---------------------------------------------------------------------------
@@ -624,13 +692,15 @@ class NodeTaskDecisionService:
         object_repository: ObjectRepository,
         event_log: _EventJournal,
         record: RecordRevisionWithEvent,
+        record_event: RecordEvent,
     ) -> None:
         self._object_repository = object_repository
         self._event_log = event_log
         self._record = record
+        self._record_event = record_event
 
     # ------------------------------------------------------------------
-    # OFFERED -> ACCEPTED.
+    # OFFERED -> ACCEPTED. ADR-0007: EVENT-ONLY.
     # ------------------------------------------------------------------
 
     def accept(
@@ -642,21 +712,22 @@ class NodeTaskDecisionService:
         actor: Urn,
         policy_version: str,
         correlation_id: Urn,
-    ) -> StoredObject:
+    ) -> TaskBundleTransition:
         """OFFERED -> ACCEPTED, after verifying ``deciding_node_id`` is the
         bundle's own ``target_node_id`` and the signature verifies
         (MRR-FR-022, MRR-FR-031) — both fail closed, before any decision.
-        See ``_authorize_and_verify``.
+        See ``_authorize_and_verify``. Records a ``task_bundle.accepted``
+        event; writes NO content revision.
         """
-        latest, bundle = self._authorize_and_verify(bundle_id, deciding_node_id, verifying_key)
-        new_bundle = _bundle_with_new_status(
-            bundle, to_status="ACCEPTED", new_revision=latest.revision + 1
+        latest, _bundle, current_status = self._authorize_and_verify(
+            bundle_id, deciding_node_id, verifying_key
         )
         return _advance(
             self._event_log,
-            self._record,
+            self._record_event,
             latest,
-            new_bundle,
+            current_status,
+            to_status="ACCEPTED",
             event_type=_EVENT_ACCEPTED,
             actor=actor,
             policy_version=policy_version,
@@ -664,7 +735,7 @@ class NodeTaskDecisionService:
         )
 
     # ------------------------------------------------------------------
-    # OFFERED -> DEFERRED.
+    # OFFERED -> DEFERRED. ADR-0007: EVENT-ONLY.
     # ------------------------------------------------------------------
 
     def defer(
@@ -676,17 +747,17 @@ class NodeTaskDecisionService:
         actor: Urn,
         policy_version: str,
         correlation_id: Urn,
-    ) -> StoredObject:
+    ) -> TaskBundleTransition:
         """OFFERED -> DEFERRED."""
-        latest, bundle = self._authorize_and_verify(bundle_id, deciding_node_id, verifying_key)
-        new_bundle = _bundle_with_new_status(
-            bundle, to_status="DEFERRED", new_revision=latest.revision + 1
+        latest, _bundle, current_status = self._authorize_and_verify(
+            bundle_id, deciding_node_id, verifying_key
         )
         return _advance(
             self._event_log,
-            self._record,
+            self._record_event,
             latest,
-            new_bundle,
+            current_status,
+            to_status="DEFERRED",
             event_type=_EVENT_DEFERRED,
             actor=actor,
             policy_version=policy_version,
@@ -695,7 +766,7 @@ class NodeTaskDecisionService:
 
     # ------------------------------------------------------------------
     # OFFERED -> REJECTED (MRR-FR-024: a refusal event with a reason
-    # category).
+    # category). ADR-0007: EVENT-ONLY.
     # ------------------------------------------------------------------
 
     def reject(
@@ -709,13 +780,14 @@ class NodeTaskDecisionService:
         actor: Urn,
         policy_version: str,
         correlation_id: Urn,
-    ) -> StoredObject:
+    ) -> TaskBundleTransition:
         """OFFERED -> REJECTED, recording a ``task_bundle.rejected`` event
         carrying ``reason_category`` (docs/spec/04_SECURITY_AND_POLICY.md
         section 8.3: "a coarse reason code") and the optional human-readable
         ``explanation`` (MRR-FR-024). See the module docstring's "Refusal
         reason vocabulary" section — ``RefusalReason`` is this task's own
-        minimal proposal, not schema- or spec-defined.
+        minimal proposal, not schema- or spec-defined. Writes NO content
+        revision.
 
         Raises:
             ValueError: ``reason_category`` is not one of ``RefusalReason``'s
@@ -729,12 +801,11 @@ class NodeTaskDecisionService:
                 f"got {reason_category!r}"
             )
 
-        latest, bundle = self._authorize_and_verify(bundle_id, deciding_node_id, verifying_key)
-        new_bundle = _bundle_with_new_status(
-            bundle, to_status="REJECTED", new_revision=latest.revision + 1
+        latest, _bundle, current_status = self._authorize_and_verify(
+            bundle_id, deciding_node_id, verifying_key
         )
         payload: dict[str, Any] = {
-            "from_status": bundle.status,
+            "from_status": current_status,
             "to_status": "REJECTED",
             "reason_category": reason_category,
         }
@@ -742,9 +813,10 @@ class NodeTaskDecisionService:
             payload["explanation"] = explanation
         return _advance(
             self._event_log,
-            self._record,
+            self._record_event,
             latest,
-            new_bundle,
+            current_status,
+            to_status="REJECTED",
             event_type=_EVENT_REJECTED,
             actor=actor,
             policy_version=policy_version,
@@ -754,8 +826,10 @@ class NodeTaskDecisionService:
 
     # ------------------------------------------------------------------
     # OFFERED -> MODIFICATION_PROPOSED -> OFFERED (MRR-FR-023/034: a new
-    # signed revision, returned to OFFERED for the origin). See the module
-    # docstring's "propose_modification is one write, not two" section.
+    # signed CONTENT revision, returned to OFFERED for the origin). This is
+    # the one node decision ADR-0007 keeps as a content write — see the
+    # module docstring's "propose_modification is one write, not two"
+    # section.
     # ------------------------------------------------------------------
 
     def propose_modification(
@@ -770,35 +844,44 @@ class NodeTaskDecisionService:
         correlation_id: Urn,
     ) -> StoredObject:
         """Validate that both drawn edges (``OFFERED -> MODIFICATION_PROPOSED``
-        and ``MODIFICATION_PROPOSED -> OFFERED``) are lifecycle-legal, then
-        persist ``modified_bundle`` — the modifier's own new signed content,
-        already carrying its own new ``content_hash``/``signature`` (minted
-        by ``deciding_node_id``, not by this service — same "caller mints
-        hash/signature" convention as everywhere else in this codebase) and
-        its own ``status="OFFERED"`` — as exactly one new revision, plus one
+        and ``MODIFICATION_PROPOSED -> OFFERED``) are lifecycle-legal against
+        the CURRENT event-derived status, then persist ``modified_bundle`` —
+        the modifier's own new signed content, already carrying its own new
+        ``content_hash``/``signature`` (minted by ``deciding_node_id``, not by
+        this service — same "caller mints hash/signature" convention as
+        everywhere else in this codebase) and its own ``status="OFFERED"`` —
+        as exactly one new content revision, plus one
         ``task_bundle.modification_offered`` event. The prior revision(s) —
         including the original revision the origin signed — are left
         completely untouched; only one new row is ever inserted.
 
+        After this call, ``get_latest`` returns this new, modifier-signed
+        content record, and its signature verifies directly against it — the
+        next node decision on this bundle (e.g. ``accept``) must be given the
+        MODIFIER's public key, not the origin's (see
+        ``test_full_negotiation_loop_modification_then_accept``).
+
         Raises:
             NodeAuthorityError / mrr.crypto.exceptions.SignatureVerificationError:
                 see ``_authorize_and_verify`` — checked before anything else.
-            InvalidTransitionError: the bundle's current status is not
-                ``OFFERED`` (the only status from which
+            InvalidTransitionError: the bundle's current (event-derived)
+                status is not ``OFFERED`` (the only status from which
                 ``MODIFICATION_PROPOSED`` is reachable).
             ValueError: ``modified_bundle.id`` does not match ``bundle_id``,
                 ``modified_bundle.status`` is not ``"OFFERED"``,
                 ``modified_bundle.revision`` is not exactly the current
-                revision + 1, or ``modified_bundle.content_hash`` equals the
-                current revision's hash unchanged (MRR-FR-034 requires a
-                genuinely new content hash for "a task revision"). Checked
-                after authorization/signature but before the write, so a
-                malformed proposed revision fails closed with nothing
+                content revision + 1, or ``modified_bundle.content_hash``
+                equals the current revision's hash unchanged (MRR-FR-034
+                requires a genuinely new content hash for "a task revision").
+                Checked after authorization/signature but before the write,
+                so a malformed proposed revision fails closed with nothing
                 persisted.
         """
-        latest, bundle = self._authorize_and_verify(bundle_id, deciding_node_id, verifying_key)
+        latest, bundle, current_status = self._authorize_and_verify(
+            bundle_id, deciding_node_id, verifying_key
+        )
 
-        TASK_BUNDLE_LIFECYCLE.assert_transition(bundle.status, "MODIFICATION_PROPOSED")
+        TASK_BUNDLE_LIFECYCLE.assert_transition(current_status, "MODIFICATION_PROPOSED")
         TASK_BUNDLE_LIFECYCLE.assert_transition("MODIFICATION_PROPOSED", "OFFERED")
 
         if modified_bundle.id != bundle.id:
@@ -811,7 +894,7 @@ class NodeTaskDecisionService:
                 f"modified_bundle.status must be 'OFFERED' (the state a proposed "
                 f"modification lands in), got {modified_bundle.status!r}"
             )
-        expected_revision = bundle.revision + 1
+        expected_revision = latest.revision + 1
         if modified_bundle.revision != expected_revision:
             raise ValueError(
                 f"modified_bundle.revision must be {expected_revision!r} "
@@ -835,7 +918,7 @@ class NodeTaskDecisionService:
             object_id=bundle_id,
             object_revision=modified_bundle.revision,
             payload={
-                "from_status": bundle.status,
+                "from_status": current_status,
                 "via": "MODIFICATION_PROPOSED",
                 "to_status": "OFFERED",
                 "content_revision": modified_bundle.revision,
@@ -850,25 +933,33 @@ class NodeTaskDecisionService:
 
     def _authorize_and_verify(
         self, bundle_id: Urn, deciding_node_id: Urn, verifying_key: Ed25519PublicKey
-    ) -> tuple[StoredObject, TaskBundle]:
-        """Load the latest stored revision, enforce MRR-FR-022 (structural
-        node-authority check: ``deciding_node_id`` must equal the stored
-        bundle's ``target_node_id``), then verify the signature that is
-        actually still valid for THIS bundle (MRR-FR-031) — both fail
-        closed, both before any decision or persistence. The authority check
-        runs first (cheap, no cryptography) so an unauthorized caller learns
-        nothing about whether the bundle's signature is even valid.
+    ) -> tuple[StoredObject, TaskBundle, str]:
+        """Load the latest stored content revision, enforce MRR-FR-022
+        (structural node-authority check: ``deciding_node_id`` must equal the
+        stored bundle's ``target_node_id``), verify the signature that
+        actually covers it (MRR-FR-031), and resolve the current
+        event-derived status — all fail closed, all before any decision or
+        persistence. The authority check runs first (cheap, no cryptography)
+        so an unauthorized caller learns nothing about whether the bundle's
+        signature is even valid.
 
-        Verification does not target ``latest`` directly — see the module
-        docstring's "Verifying a signature that is NOT re-minted on every
-        status flip" section for why — it targets
-        ``_find_signed_revision(latest)``, the oldest stored revision
-        carrying the same ``signature.value`` as ``latest``, which is
-        exactly the payload that was actually signed.
+        Per ADR-0007, verification targets ``latest`` DIRECTLY — no
+        historical-revision scan. This is possible, and sound, precisely
+        because a content record is never mutated by a pure lifecycle
+        transition: ``latest`` is either the origin's original revision-1
+        record (no ``propose_modification`` has happened yet) or the most
+        recent modifier-signed revision, and in both cases its own embedded
+        ``signature`` is exactly what was produced over exactly its own
+        current fields. ``verifying_key`` must therefore be the CURRENT
+        signer's public key — the origin's, or the modifier's after a
+        ``propose_modification`` — not necessarily the bundle's original
+        creator.
 
-        Returns ``(latest, bundle)`` — ``latest`` the current stored
-        revision, ``bundle`` its reconstructed ``TaskBundle`` (current
-        ``status``, ready for a caller to build the next transition from).
+        Returns ``(latest, bundle, current_status)`` — ``latest`` the
+        current stored content revision, ``bundle`` its reconstructed
+        ``TaskBundle``, ``current_status`` the event-derived live lifecycle
+        status (``_current_status``) a caller validates the next transition
+        against.
 
         Raises:
             TaskBundleNotFoundError: no stored bundle for ``bundle_id``.
@@ -878,21 +969,22 @@ class NodeTaskDecisionService:
                 itself.
             mrr.crypto.exceptions.SignatureVerificationError /
             UnsupportedAlgorithmError: the signature does not verify under
-                ``verifying_key``.
+                ``verifying_key`` — including when the CONTENT itself has
+                been tampered with since it was signed (the content record's
+                own fields no longer match what ``signature.value`` covers).
         """
         latest = _get_latest_or_raise(self._object_repository, bundle_id)
         target_node_id = latest.body["target_node_id"]
         if deciding_node_id != target_node_id:
             raise NodeAuthorityError(bundle_id, target_node_id, deciding_node_id)
 
-        signed_revision = _find_signed_revision(self._object_repository, bundle_id, latest)
-        signed_bundle = _reconstruct_bundle(signed_revision)
+        bundle = _reconstruct_bundle(latest)
         verify_object_signature(
             verifying_key,
-            signed_bundle.model_dump(mode="json"),
-            signed_bundle.signature.value,
-            algorithm=signed_bundle.signature.algorithm,
+            bundle.model_dump(mode="json"),
+            bundle.signature.value,
+            algorithm=bundle.signature.algorithm,
         )
 
-        bundle = _reconstruct_bundle(latest)
-        return latest, bundle
+        current_status = _current_status(self._event_log, latest)
+        return latest, bundle, current_status
