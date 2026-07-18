@@ -1,0 +1,47 @@
+{
+  "id": "urn:mrr:run:01J00000000000000000000007",
+  "api_version": "mrr/v1alpha1",
+  "kind": "RunManifest",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-17T10:17:30Z",
+  "created_by": "urn:mrr:executor:01J00000000000000000000017",
+  "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "task_id": "urn:mrr:task:01J00000000000000000000006",
+  "task_revision": 1,
+  "research_score_id": "urn:mrr:research-score:01J00000000000000000000004",
+  "research_score_revision": 1,
+  "executor_id": "urn:mrr:executor:01J00000000000000000000017",
+  "executor_role": "reference-task-executor",
+  "started_at": "2026-07-17T10:15:00Z",
+  "ended_at": "2026-07-17T10:17:30Z",
+  "run_state": "completed",
+  "sealed": true,
+  "image_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "environment": {
+    "python_version": "3.12.4",
+    "os": "linux"
+  },
+  "code_commit": "git:abc123",
+  "parameters": {
+    "operation": "percentage",
+    "numerator": 42,
+    "denominator": 100
+  },
+  "seeds": [],
+  "input_hashes": [],
+  "tool_invocations": [],
+  "model_invocations": [],
+  "network_permitted": [],
+  "network_performed": [],
+  "resource_usage": {
+    "wall_seconds": 0.42
+  },
+  "cost": null,
+  "logs_ref": null,
+  "error_refs": [],
+  "policy_decision_refs": [],
+  "produced_artifact_hashes": [
+    "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  ]
+}

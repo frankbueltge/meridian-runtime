@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/run-manifest.schema.json",
+  "title": "MRR RunManifest",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "task_id",
+        "task_revision",
+        "research_score_id",
+        "research_score_revision",
+        "executor_id",
+        "executor_role",
+        "started_at",
+        "sealed",
+        "image_digest",
+        "environment",
+        "parameters",
+        "seeds",
+        "input_hashes",
+        "tool_invocations",
+        "model_invocations",
+        "network_permitted",
+        "network_performed",
+        "resource_usage",
+        "error_refs",
+        "policy_decision_refs",
+        "produced_artifact_hashes"
+      ],
+      "properties": {
+        "kind": {"const": "RunManifest"},
+        "task_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "task_revision": {"type": "integer", "minimum": 1},
+        "research_score_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "research_score_revision": {"type": "integer", "minimum": 1},
+        "executor_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "executor_role": {"type": "string", "minLength": 1},
+        "started_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "ended_at": {
+          "anyOf": [{"$ref": "common.schema.json#/$defs/timestamp"}, {"type": "null"}]
+        },
+        "run_state": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["completed", "failed", "cancelled", "timed_out", "policy_denied", "partial"]
+            },
+            {"type": "null"}
+          ]
+        },
+        "sealed": {"type": "boolean"},
+        "image_digest": {"$ref": "common.schema.json#/$defs/sha256"},
+        "environment": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "code_commit": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "parameters": {"type": "object"},
+        "seeds": {"type": "array", "items": {"type": "string"}},
+        "input_hashes": {"type": "array", "items": {"$ref": "common.schema.json#/$defs/sha256"}},
+        "tool_invocations": {"type": "array", "items": {"type": "object"}},
+        "model_invocations": {"type": "array", "items": {"type": "object"}},
+        "network_permitted": {"type": "array", "items": {"type": "string"}},
+        "network_performed": {"type": "array", "items": {"type": "string"}},
+        "resource_usage": {
+          "type": "object",
+          "required": ["wall_seconds"],
+          "properties": {
+            "wall_seconds": {"type": "number", "minimum": 0},
+            "cpu_seconds": {"type": "number", "minimum": 0},
+            "memory_mb": {"type": "number", "minimum": 0}
+          },
+          "additionalProperties": false
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["amount", "currency"],
+              "properties": {
+                "amount": {"type": "number", "minimum": 0},
+                "currency": {"type": "string", "minLength": 3, "maxLength": 3}
+              },
+              "additionalProperties": false
+            },
+            {"type": "null"}
+          ]
+        },
+        "logs_ref": {
+          "anyOf": [{"$ref": "common.schema.json#/$defs/urn"}, {"type": "null"}]
+        },
+        "error_refs": {"type": "array", "items": {"type": "string"}},
+        "policy_decision_refs": {"type": "array", "items": {"$ref": "common.schema.json#/$defs/urn"}},
+        "produced_artifact_hashes": {
+          "type": "array",
+          "items": {"$ref": "common.schema.json#/$defs/sha256"}
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
