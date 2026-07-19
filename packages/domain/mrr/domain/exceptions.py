@@ -365,3 +365,46 @@ class UntrustedIsolationNotAvailableError(DomainError):
             "responsibility. Refusing to construct an instance that silently "
             "pretends otherwise."
         )
+
+
+class SelfVerificationError(DomainError):
+    """Raised by ``mrr.services.verification.service.VerificationService.record``
+    (task-packets/E3-T04.yaml, MRR-FR-070: "The proposer and executor MUST
+    NOT issue the final verification decision for their own claim" —
+    AGENTS.md rule 8: "No executor may approve or verify its own result").
+    This is the packet's headline gate, checked FIRST, before anything is
+    persisted: a caught instance always means nothing was written, neither
+    the ``VerificationResult`` revision nor its event.
+
+    Raised in either of two cases — the reviewer identity equals the
+    claim's own ``proposer_id``, or (when a producing run's executor
+    identity is known) the reviewer identity equals that run's
+    ``executor_id``. ``violated`` names which check actually fired
+    (``"proposer"`` or ``"executor"``) so a caller can tell the two apart
+    without parsing the message string; ``proposer_id`` and ``executor_id``
+    are both carried for context (whichever one did NOT trigger the
+    rejection is carried as supplied — ``executor_id`` is ``None`` if no
+    run executor identity was given to ``record`` at all).
+    """
+
+    def __init__(
+        self,
+        reviewer_id: str,
+        *,
+        proposer_id: str,
+        executor_id: str | None,
+        violated: str,
+    ) -> None:
+        self.reviewer_id = reviewer_id
+        self.proposer_id = proposer_id
+        self.executor_id = executor_id
+        self.violated = violated
+        trigger = (
+            f"equals the claim's proposer_id {proposer_id!r}"
+            if violated == "proposer"
+            else f"equals the run's executor_id {executor_id!r}"
+        )
+        super().__init__(
+            f"self-verification prohibited: reviewer_id {reviewer_id!r} {trigger} "
+            "(MRR-FR-070 / AGENTS.md rule 8) — nothing was persisted"
+        )
