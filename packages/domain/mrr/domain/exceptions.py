@@ -367,6 +367,20 @@ class UntrustedIsolationNotAvailableError(DomainError):
         )
 
 
+class CorrectionNotFoundError(DomainError):
+    """Raised by ``mrr.services.correction.service.CorrectionImpactService``
+    (task-packets/E3-T06.yaml) when a referenced ``CorrectionEvent`` id
+    resolves to no stored object at all. Carries ``correction_id``. Never
+    returns ``None`` or a boolean for a missing correction — matches
+    ``ClaimNotFoundError``/``ScoreNotFoundError``'s own precedent for a
+    first-class object lookup.
+    """
+
+    def __init__(self, correction_id: str) -> None:
+        self.correction_id = correction_id
+        super().__init__(f"no CorrectionEvent found for id {correction_id!r}")
+
+
 class SelfVerificationError(DomainError):
     """Raised by ``mrr.services.verification.service.VerificationService.record``
     (task-packets/E3-T04.yaml, MRR-FR-070: "The proposer and executor MUST
