@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/practice.schema.json",
+  "title": "MRR Practice",
+  "description": "docs/spec/02_DOMAIN_MODEL.md section 2.1: an autonomous research practice's own published identity. Sixteenth entity schema in this repository; first task of Epic E5 (task-packets/E5-T01.yaml). 'keys' carries PUBLIC key material only (see $defs.publicKeyDescriptor) -- never a private key. 'disclosure' is a deliberately minimal reading of section 2.1's 'disclosure and trust metadata', which the spec does not elaborate further (flagged as an open specification question in this task's PR body). 'trust_chain_ref' is an OPTIONAL, opaque reference (docs/spec/02 section 1.3 / task-packets/E5-T01.yaml forbidden_changes) -- carried, never resolved or validated as a chain here. 'signature' is OPTIONAL, unlike node-manifest/task-bundle/evidence-crate's own required 'signature': a practice may SELF-sign its own identity with one of its own listed keys (signer_practice_id equals this Practice's own id), built and verified over the ADR-0004 exclude_none canonical form via the existing mrr.domain.hashing_policy -- deciding whether a Practice is TRUSTED is deferred to E5-T02+.",
+  "$defs": {
+    "publicKeyDescriptor": {
+      "description": "One PUBLIC key's identity, validity window, and lifecycle state (docs/spec/04_SECURITY_AND_POLICY.md section 8.4). 'encoded_public_key' is the standard base64 (RFC 4648 section 4, with padding) encoding of a raw Ed25519 public key -- the same convention ADR-0003-SIGNATURE-VALUE-ENCODING.md pins for signature.value. 'kid' MUST be the deterministic key identifier mrr.crypto.keys.derive_key_id derives from that same key -- checked by mrr.contracts.practice.PublicKeyDescriptor's own model_validator (shape only here; the kid/key consistency and valid_from < valid_until ordering are semantic checks this schema cannot express).",
+      "type": "object",
+      "required": ["kid", "algorithm", "encoded_public_key", "valid_from", "valid_until", "state"],
+      "properties": {
+        "kid": {
+          "description": "Deterministic key identifier derived only from the key's own raw bytes (mrr.crypto.keys.derive_key_id) -- never from a mutable label.",
+          "type": "string",
+          "minLength": 1
+        },
+        "algorithm": {"type": "string", "const": "Ed25519"},
+        "encoded_public_key": {
+          "description": "Standard base64 (RFC 4648 section 4, with padding) of the raw 32-byte Ed25519 PUBLIC key; base64url is not accepted. See docs/spec/adr/ADR-0003-SIGNATURE-VALUE-ENCODING.md. Never a private key.",
+          "type": "string",
+          "minLength": 40
+        },
+        "valid_from": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "valid_until": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "state": {
+          "description": "docs/spec/04_SECURITY_AND_POLICY.md section 8.4 lifecycle: active, rotated (superseded, kept historically addressable), or revoked (existing objects remain historically attributable).",
+          "type": "string",
+          "enum": ["active", "rotated", "revoked"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "disclosureAndTrust": {
+      "description": "Deliberately minimal reading of docs/spec/02_DOMAIN_MODEL.md section 2.1's 'disclosure and trust metadata' -- see schema-level description.",
+      "type": "object",
+      "required": ["max_disclosure", "trust_statement"],
+      "properties": {
+        "max_disclosure": {
+          "description": "Reuses research-score.schema.json's own three-value disclosure ceiling vocabulary.",
+          "type": "string",
+          "enum": ["INTERNAL", "PARTNER_RESTRICTED", "PUBLIC"]
+        },
+        "trust_statement": {
+          "description": "Free-text qualitative trust posture this practice publishes about itself. May be empty.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "name",
+        "description",
+        "keys",
+        "governance_contacts",
+        "supported_policy_versions",
+        "disclosure"
+      ],
+      "properties": {
+        "kind": {"const": "Practice"},
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "keys": {
+          "description": "This practice's own PUBLIC signing/identity key material -- never private keys. At least one key is required (a practice with zero keys could sign or verify nothing).",
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/publicKeyDescriptor"}
+        },
+        "governance_contacts": {
+          "description": "Reachable governance contact references (e.g. mailto:/https: URIs). The key must be present; an empty array is schema-valid.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "supported_policy_versions": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "capability_registry_endpoint": {
+          "description": "Public capability-registry endpoint, if any (docs/spec/02 section 2.1: 'public capability registry endpoint if any').",
+          "type": "string"
+        },
+        "disclosure": {"$ref": "#/$defs/disclosureAndTrust"},
+        "trust_chain_ref": {
+          "description": "Optional, opaque certificate or trust-chain reference (docs/spec/02 section 1.3). Carried only -- chain validation is out of scope (task-packets/E5-T01.yaml).",
+          "type": "string",
+          "minLength": 1
+        },
+        "signature": {
+          "description": "Optional self-signature: this practice signing its own identity with one of its own listed keys (signer_practice_id equals this Practice's own id).",
+          "anyOf": [{"$ref": "common.schema.json#/$defs/signature"}, {"type": "null"}]
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

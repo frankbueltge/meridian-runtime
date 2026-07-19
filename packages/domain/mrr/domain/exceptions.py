@@ -381,6 +381,19 @@ class CorrectionNotFoundError(DomainError):
         super().__init__(f"no CorrectionEvent found for id {correction_id!r}")
 
 
+class UnknownKeyIdError(DomainError):
+    """Raised by ``mrr.domain.key_management.rotate``/``revoke`` when the
+    given kid does not resolve to any descriptor in the ``KeyRing`` — there
+    is nothing to supersede or revoke. Carries ``kid``. Never silently
+    no-ops on an unknown kid (fail closed, matching this codebase's other
+    "unknown identifier" lookups, e.g. ``NodeManifestNotFoundError``).
+    """
+
+    def __init__(self, kid: str) -> None:
+        self.kid = kid
+        super().__init__(f"no key descriptor found for kid {kid!r}")
+
+
 class SelfVerificationError(DomainError):
     """Raised by ``mrr.services.verification.service.VerificationService.record``
     (task-packets/E3-T04.yaml, MRR-FR-070: "The proposer and executor MUST
