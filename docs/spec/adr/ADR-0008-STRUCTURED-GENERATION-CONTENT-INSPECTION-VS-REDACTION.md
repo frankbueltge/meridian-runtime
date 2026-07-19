@@ -1,6 +1,14 @@
 # ADR-0008 — Structured generation must inspect candidate content that the default redaction policy withholds
 
-Status: PROPOSED (2026-07-19) — decision deferred; to be resolved before E4-T05 (executor wiring of model calls).
+Status: PROPOSED (2026-07-19) — decision deferred; to be resolved before the structured-generation layer is wired into a live run (the first task that actually invokes a model inside the executor), and before E5 federation carries these records across nodes.
+
+> Correction (2026-07-19, post-E4): this ADR originally named "before E4-T05
+> (executor wiring of model calls)" as the decision point. E4-T05 was instead
+> the DETERMINISTIC verifier (it invokes no model at all), so the tension this
+> ADR records is not yet triggered anywhere in the merged code — no task in E4
+> wires structured generation into a live run. The decision point is therefore
+> the future task that first runs the E4-T02 layer inside the executor, and E5
+> at the latest. Nothing about the options or the analysis below changes.
 
 ## Context
 
@@ -82,10 +90,12 @@ a conscious choice, not a default reached by omission.
 - No implementation change now. E4-T02's behavior (respect the caller's
   redaction policy; fail honestly when no content is observable) is the correct
   conservative placeholder under every option.
-- Resolve before E4-T05. Whichever option is chosen, the executor's structured
-  calls must record what MRR-FR-045 requires without recording a secret
-  (AGENTS.md rule 11) and without treating unvalidated model output as
-  authoritative (MRR-FR-046).
+- Resolve before the first task that runs the E4-T02 structured-generation
+  layer inside the executor (see the status-line correction above — E4-T05 was
+  the deterministic verifier, not this wiring), and before E5 federation.
+  Whichever option is chosen, the executor's structured calls must record what
+  MRR-FR-045 requires without recording a secret (AGENTS.md rule 11) and without
+  treating unvalidated model output as authoritative (MRR-FR-046).
 - Interacts with ADR-0004 (canonical serialization) and the E4-T01 record
   shape: all three concern what bytes constitute "the recorded call" and should
   be read together when E5 federation carries these records across nodes.
