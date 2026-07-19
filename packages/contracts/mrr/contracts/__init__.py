@@ -1,14 +1,15 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Eleven hand-written Pydantic v2 models mirror the eleven entity schemas in
-schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``, ``Claim``,
+Thirteen hand-written Pydantic v2 models mirror the thirteen entity schemas
+in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``, ``Claim``,
 ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest`` (E2-T05),
 ``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
-(E3-T03), and ``VerificationResult`` (E3-T04). Shared building blocks
-mirroring ``schemas/common.schema.json`` live in ``mrr.contracts.common``
-and are re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``,
-``Budget``, ``BaseObject``, ``MRRModel``).
+(E3-T03), ``VerificationResult`` (E3-T04), and ``ModelProfile``/
+``ModelInvocation`` (E4-T01). Shared building blocks mirroring
+``schemas/common.schema.json`` live in ``mrr.contracts.common`` and are
+re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``, ``Budget``,
+``BaseObject``, ``MRRModel``).
 
 These models are hand-written rather than generated from the JSON Schemas
 (see the PR body for the full rationale): the claim schema's conditional
@@ -58,6 +59,16 @@ from mrr.contracts.evidence_crate import (
     FailureEntry,
     RunState,
 )
+from mrr.contracts.model_invocation import (
+    ModelInvocation,
+    ModelToolCall,
+    OperationKind,
+    RedactionPolicy,
+    TerminalStatus,
+    TokenUsage,
+    ToolCallStatus,
+)
+from mrr.contracts.model_profile import ModelProfile, compute_config_hash
 from mrr.contracts.node_manifest import (
     CapabilityDefinition,
     NetworkProfile,
@@ -130,14 +141,19 @@ __all__ = [
     "MRRModel",
     "MaxDisclosure",
     "MethodsPolicy",
+    "ModelInvocation",
+    "ModelProfile",
+    "ModelToolCall",
     "NetworkPolicy",
     "NetworkPolicyMode",
     "NetworkProfile",
     "NodeManifest",
     "NumericRecomputation",
+    "OperationKind",
     "PublicationPolicy",
     "RecomputationStatus",
     "Recommendation",
+    "RedactionPolicy",
     "RelationshipType",
     "ResearchScore",
     "ResearchScoreStatus",
@@ -156,11 +172,15 @@ __all__ = [
     "TargetKind",
     "TaskBundle",
     "TaskBundleStatus",
+    "TerminalStatus",
     "TextLocator",
+    "TokenUsage",
+    "ToolCallStatus",
     "TransportMode",
     "UncertaintyEntry",
     "UncertaintyKind",
     "Urn",
     "VerificationResult",
     "VerificationType",
+    "compute_config_hash",
 ]

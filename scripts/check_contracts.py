@@ -3,7 +3,8 @@ mrr.contracts Pydantic v2 models against each other (E1-T03; extended to a
 seventh entity, RunManifest, by E2-T05; extended to a eighth and ninth
 entity, SourceRecord and EvidenceAnchor, by E3-T01; extended to a tenth
 entity, SourceFamily, by E3-T03; extended to an eleventh entity,
-VerificationResult, by E3-T04).
+VerificationResult, by E3-T04; extended to a twelfth and thirteenth entity,
+ModelProfile and ModelInvocation, by E4-T01).
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -12,10 +13,10 @@ out of sync, not just the first one):
 1. Every schemas/*.schema.json is a valid JSON Schema Draft 2020-12 document
    (``Draft202012Validator.check_schema``).
 2. Every examples/*.example.json validates against its own entity schema,
-   resolved through a ``referencing.Registry`` built from all twelve schemas
-   (eleven entities plus ``common.schema.json``) keyed by their ``$id`` —
-   this is what lets the relative ``common.schema.json#/$defs/...`` refs
-   inside each entity schema resolve.
+   resolved through a ``referencing.Registry`` built from all fourteen
+   schemas (thirteen entities plus ``common.schema.json``) keyed by their
+   ``$id`` — this is what lets the relative ``common.schema.json#/$defs/...``
+   refs inside each entity schema resolve.
 3. Every example validates against the corresponding Pydantic model in
    ``mrr.contracts``.
 4. Round-trip: ``model_validate(example)`` -> ``model_dump_json()`` ->
@@ -49,6 +50,8 @@ from mrr.contracts import (
     CorrectionEvent,
     EvidenceAnchor,
     EvidenceCrate,
+    ModelInvocation,
+    ModelProfile,
     NodeManifest,
     ResearchScore,
     RunManifest,
@@ -79,6 +82,8 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "evidence-anchor": EvidenceAnchor,
     "source-family": SourceFamily,
     "verification-result": VerificationResult,
+    "model-profile": ModelProfile,
+    "model-invocation": ModelInvocation,
 }
 
 

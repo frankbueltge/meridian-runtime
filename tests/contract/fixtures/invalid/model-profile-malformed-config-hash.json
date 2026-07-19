@@ -1,0 +1,22 @@
+{
+  "id": "urn:mrr:model-profile:01J00000000000000000000040",
+  "api_version": "mrr/v1alpha1",
+  "kind": "ModelProfile",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-19T09:00:00Z",
+  "created_by": "urn:mrr:agent:01J00000000000000000000016",
+  "content_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+  "provider": "anthropic",
+  "model_family": "claude-3",
+  "model_identifier": "claude-3-5-sonnet-20241022",
+  "decoding_parameters": {
+    "temperature": 0,
+    "max_output_tokens": 4096
+  },
+  "determinism": "deterministic",
+  "seed": 42,
+  "prompt_family": "meridian-skeptic-v1",
+  "tool_permissions": ["web_search", "code_execution"],
+  "config_hash": "sha256:not-a-valid-hex-digest"
+}
