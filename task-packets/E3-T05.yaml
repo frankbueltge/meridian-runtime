@@ -1,0 +1,104 @@
+task_id: E3-T05
+title: Implement the independence validator
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md MRR-FR-071 and MRR-FR-076, the
+  domain 2.13 independence invariant, and section 7.7; approved by the
+  repository owner's direction to continue (2026-07-19). Fifth task of Epic
+  E3. Pure, deterministic, framework-free domain logic - no new schema, no
+  persistence.
+objective: >
+  Provide the independence validator: given a producer's independence profile
+  (the claim proposer / run executor) and a set of verification records'
+  declared independence profiles, decide which verifications are genuinely
+  independent of the producer and of each other, and count distinct
+  independent reviews - so that repeated judgments from the same
+  model/configuration are never counted as independent, and a reviewer that
+  shares the producer's principal and unaltered reasoning path is disqualified.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#47-stage-7--claim-graph
+  - docs/spec/02_DOMAIN_MODEL.md#213-review-and-verificationresult
+  - docs/spec/01_SYSTEM_SPEC.md#77-review-and-verification-service
+  - packages/contracts/mrr/contracts/verification_result.py
+requirements:
+  - MRR-FR-071
+  - MRR-FR-076
+  - MRR-NFR-001
+allowed_paths:
+  - packages/domain/**
+  - services/**
+  - tests/unit/**
+  - tests/property/**
+  - pyproject.toml
+forbidden_changes:
+  - the verification RECORD schema/contract (E3-T04; reuse VerificationResult
+    and its IndependenceProfile as-is)
+  - the self-verification identity gate (E3-T04 owns reviewer != proposer/
+    executor; this task is about DIMENSION independence, not identity)
+  - correction events (E3-T06); model/LLM invocation (E4)
+  - schema semantics and persistence internals
+  - HTTP/FastAPI endpoints
+derived_decisions: >
+  A pure, deterministic, framework-free validator in packages/domain (no new
+  schema, no persistence, no events - it computes over the IndependenceProfile
+  values already recorded on VerificationResult by E3-T04). It reuses the six
+  MRR-FR-071 dimensions (principal, model_family, prompt_family,
+  retrieval_path, code_path, data_access_path). The precise independence rule
+  is derived FAITHFULLY from the domain 2.13 invariant ("a reviewer cannot
+  satisfy independence if it shares the same execution principal AND unaltered
+  reasoning path as the producer") and MRR-FR-076 ("repeated judgments from
+  the same model/configuration MUST NOT count as independent"): the exact
+  combination of dimensions that constitutes "same reasoning path" and the
+  dedup key for "same model/configuration" are derived and DOCUMENTED, and any
+  genuine ambiguity in how the six dimensions combine is flagged as an open
+  specification question rather than guessed. The validator is a building
+  block; wiring a "supported requires >= N independent verifications" check
+  into the claim gate may be done here as an optional, clearly-scoped addition
+  to the E3-T02 ClaimService or left for a later task - decide and document.
+invariants:
+  - a verifier sharing the producer's execution principal AND an unaltered
+    reasoning path is NOT independent of the producer (domain 2.13)
+  - two verifications with the same independence profile (same
+    model/configuration) count as ONE independent review, never two
+    (MRR-FR-076)
+  - the validator is pure and deterministic - same inputs yield the same
+    independence verdict and count, with no side effects, no I/O, no framework
+    imports
+  - the validator never silently deletes or reweights a verification record;
+    it only reports independence verdicts and counts (analogous to
+    SourceFamily's additive-representation stance)
+  - the independence rule is explicit and documented; it does not conflate
+    identity self-verification (E3-T04's gate) with dimension independence
+acceptance_tests:
+  - a verifier with a different principal and an altered reasoning path is
+    independent of the producer
+  - a verifier sharing the producer's principal and unaltered reasoning path
+    is NOT independent
+  - two verifications with identical independence profiles count as one
+    (MRR-FR-076); with differing profiles count as two
+  - property - independence verdict and distinct-count are deterministic and
+    order-independent over arbitrary sets of profiles
+  - property - adding a duplicate-profile verification never increases the
+    distinct independent count
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  required_output_note: no integration tier needed (pure logic, no DB)
+required_output:
+  - implementation summary
+  - the exact independence rule derived from FR-071/FR-076/domain 2.13, and
+    the dedup key, both documented
+  - changed files
+  - tests and command results
+  - security implications
+  - open specification questions (any ambiguity in how the six dimensions
+    combine)
+stop_conditions:
+  - the domain 2.13 / FR-071 / FR-076 rule is too ambiguous to derive a
+    defensible deterministic independence function - if so, implement the
+    clearest defensible reading and flag the ambiguity, do not guess silently
+  - implementation requires changes outside allowed paths
