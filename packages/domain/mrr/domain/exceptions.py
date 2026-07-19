@@ -394,6 +394,15 @@ class UnknownKeyIdError(DomainError):
     descriptor in the trusted sender practice's ``KeyRing`` at all — the
     "unknown kid" leg of that resolver's fail-closed matrix, distinct from
     ``ManifestKeyNotValidError`` (kid resolves but is not currently valid).
+
+    Also raised, a third time, by
+    ``mrr.domain.envelope_validation.validate_inbound_envelope``
+    (task-packets/E5-T03.yaml) for the identical fact pattern applied to a
+    received ``NodeMessageEnvelope``'s claimed ``signature.key_id`` — reused
+    unchanged rather than duplicated, since its name and fields are already
+    generic (no "Manifest"-specific wording), unlike
+    ``ManifestSignerMismatchError``/``ManifestKeyNotValidError``, which are
+    each mirrored by a distinctly-named ``Envelope*`` sibling below.
     """
 
     def __init__(self, kid: str) -> None:
@@ -514,4 +523,141 @@ class ManifestKeyNotDeclaredError(DomainError):
             f"the public key resolved for key_id {kid!r} in the trusted sender "
             "practice's key ring is not among this manifest's own declared "
             "public_keys"
+        )
+
+
+class EnvelopeRecipientMismatchError(DomainError):
+    """Raised by ``mrr.domain.envelope_validation.validate_inbound_envelope``
+    (task-packets/E5-T03.yaml) when a received ``NodeMessageEnvelope``'s
+    ``recipient_node_id`` does not equal the receiving node's own id — the
+    envelope was not actually addressed to THIS node
+    (docs/spec/04_SECURITY_AND_POLICY.md section 8.2: "envelopes include ...
+    recipient identity"). Checked FIRST, before any other precondition,
+    since an envelope meant for a different node has nothing further worth
+    validating here. Carries ``message_id``, the envelope's own claimed
+    ``recipient_node_id``, and ``this_node_id`` (the actual receiving node),
+    so a caller can tell the two apart without parsing the message string.
+    """
+
+    def __init__(self, message_id: str, recipient_node_id: str, this_node_id: str) -> None:
+        self.message_id = message_id
+        self.recipient_node_id = recipient_node_id
+        self.this_node_id = this_node_id
+        super().__init__(
+            f"NodeMessageEnvelope {message_id!r} is addressed to recipient_node_id "
+            f"{recipient_node_id!r}, not this node ({this_node_id!r})"
+        )
+
+
+class EnvelopeNotWithinValidityWindowError(DomainError):
+    """Raised by ``validate_inbound_envelope`` (task-packets/E5-T03.yaml)
+    when the evaluation instant is not within ``[sent_at, expires_at)`` —
+    either before the envelope was sent, or at/after its declared expiry
+    (docs/spec/04_SECURITY_AND_POLICY.md section 8.2: "envelopes include
+    nonces, expiry, ..."). A single typed error covers both the "not yet
+    sent" and "expired" cases — mirroring ``NodeManifestValidityError``'s
+    own precedent for the identical fact pattern (one class, two reasons
+    distinguished by message text) — and ``message_id``, ``sent_at``,
+    ``expires_at``, and ``at`` are all carried as fields so a caller can
+    tell them apart without parsing the message string.
+    """
+
+    def __init__(
+        self, message_id: str, sent_at: datetime, expires_at: datetime, at: datetime
+    ) -> None:
+        self.message_id = message_id
+        self.sent_at = sent_at
+        self.expires_at = expires_at
+        self.at = at
+        reason = (
+            f"not yet sent (sent_at {sent_at.isoformat()!r})"
+            if at < sent_at
+            else f"expired (expires_at {expires_at.isoformat()!r})"
+        )
+        super().__init__(
+            f"NodeMessageEnvelope {message_id!r} is {reason} at evaluation instant "
+            f"{at.isoformat()!r}"
+        )
+
+
+class EnvelopePayloadContentHashMismatchError(DomainError):
+    """Raised by ``validate_inbound_envelope`` (task-packets/E5-T03.yaml)
+    when the carried payload's own ``content_hash`` does not equal the
+    envelope's declared ``payload_content_hash`` — the payload was
+    tampered with, substituted, or never carried a ``content_hash`` field at
+    all (docs/spec/04_SECURITY_AND_POLICY.md section 8.2: "... content
+    hashes ..."). Carries ``message_id``, ``declared`` (the envelope's own
+    ``payload_content_hash``), and ``actual`` (whatever
+    ``payload.get("content_hash")`` actually returned — ``None`` if absent).
+    """
+
+    def __init__(self, message_id: str, declared: str, actual: str | None) -> None:
+        self.message_id = message_id
+        self.declared = declared
+        self.actual = actual
+        super().__init__(
+            f"NodeMessageEnvelope {message_id!r}: payload_content_hash {declared!r} does "
+            f"not equal the carried payload's own content_hash ({actual!r})"
+        )
+
+
+class EnvelopeAlreadyProcessedError(DomainError):
+    """Raised by ``validate_inbound_envelope`` (task-packets/E5-T03.yaml)
+    when the caller-supplied ``already_processed`` predicate reports
+    ``True`` for the envelope's ``message_id`` — a replay
+    (docs/spec/04_SECURITY_AND_POLICY.md section 8.2: "Processed envelope
+    IDs are retained for replay detection"). This is a CHECK only: the
+    durable processed-id store the predicate is backed by in production is
+    task-packets/E5-T07.yaml's scope, not this one's. Carries ``message_id``.
+    """
+
+    def __init__(self, message_id: str) -> None:
+        self.message_id = message_id
+        super().__init__(f"NodeMessageEnvelope {message_id!r} has already been processed (replay)")
+
+
+class EnvelopeSignerMismatchError(DomainError):
+    """Raised by ``validate_inbound_envelope`` (task-packets/E5-T03.yaml)
+    when a received ``NodeMessageEnvelope``'s
+    ``signature.signer_practice_id`` does not equal the id of the practice
+    the receiver actually trusts as this envelope's sender. Mirrors
+    ``ManifestSignerMismatchError``'s identical fact pattern for
+    ``NodeManifest`` (docs/spec/04_SECURITY_AND_POLICY.md section 8.1:
+    "Trust is per practice and capability, not universal"), kept as a
+    SEPARATE type rather than reused because it is raised for a different
+    carrying object (an envelope, not a manifest) — see
+    ``UnknownKeyIdError``'s docstring for why that one, unlike this one, IS
+    reused verbatim. Carries ``claimed_signer_practice_id`` and
+    ``trusted_practice_id``.
+    """
+
+    def __init__(self, *, claimed_signer_practice_id: str, trusted_practice_id: str) -> None:
+        self.claimed_signer_practice_id = claimed_signer_practice_id
+        self.trusted_practice_id = trusted_practice_id
+        super().__init__(
+            "envelope signature.signer_practice_id "
+            f"{claimed_signer_practice_id!r} does not equal the trusted sender "
+            f"practice id {trusted_practice_id!r}"
+        )
+
+
+class EnvelopeKeyNotValidError(DomainError):
+    """Raised by ``validate_inbound_envelope`` (task-packets/E5-T03.yaml)
+    when a received ``NodeMessageEnvelope``'s claimed signing key id DOES
+    resolve to a descriptor in the trusted sender practice's ``KeyRing``
+    (see ``UnknownKeyIdError`` for the case where it does not), but that
+    descriptor is not ``mrr.domain.key_management.KeyRing.is_valid_at`` the
+    evaluation instant — revoked, rotated, expired, or not yet valid.
+    Mirrors ``ManifestKeyNotValidError``'s identical fact pattern for
+    ``NodeManifest``, kept as a separate type for the same reason
+    ``EnvelopeSignerMismatchError`` is. Carries ``kid`` and the evaluation
+    instant ``at``.
+    """
+
+    def __init__(self, kid: str, *, at: datetime) -> None:
+        self.kid = kid
+        self.at = at
+        super().__init__(
+            f"key {kid!r} is not valid at evaluation instant {at.isoformat()!r} "
+            "(revoked, rotated, expired, or not yet valid)"
         )

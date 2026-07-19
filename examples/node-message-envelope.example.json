@@ -1,0 +1,23 @@
+{
+  "message_id": "urn:mrr:node-message-envelope:01J00000000000000000000070",
+  "sender_node_id": "urn:mrr:node:01J00000000000000000000071",
+  "sender_practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "recipient_node_id": "urn:mrr:node:01J00000000000000000000003",
+  "sent_at": "2026-07-19T12:00:00Z",
+  "expires_at": "2026-07-19T12:05:00Z",
+  "payload_kind": "TaskBundle",
+  "payload_content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "payload": {
+    "id": "urn:mrr:task:01J00000000000000000000006",
+    "kind": "TaskBundle",
+    "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "purpose": "Recompute the percentage in a benchmark table."
+  },
+  "signature": {
+    "signer_practice_id": "urn:mrr:practice:01J00000000000000000000001",
+    "key_id": "key-2026-01",
+    "algorithm": "Ed25519",
+    "signed_at": "2026-07-19T12:00:00Z",
+    "value": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+  }
+}

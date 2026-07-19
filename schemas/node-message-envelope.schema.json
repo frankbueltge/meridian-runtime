@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/node-message-envelope.schema.json",
+  "title": "MRR NodeMessageEnvelope",
+  "type": "object",
+  "required": ["message_id", "sender_node_id", "sender_practice_id", "recipient_node_id", "sent_at", "expires_at", "payload_kind", "payload_content_hash", "payload", "signature"],
+  "properties": {
+    "message_id": {"$ref": "common.schema.json#/$defs/urn"},
+    "sender_node_id": {"$ref": "common.schema.json#/$defs/urn"},
+    "sender_practice_id": {"$ref": "common.schema.json#/$defs/urn"},
+    "recipient_node_id": {"$ref": "common.schema.json#/$defs/urn"},
+    "sent_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "expires_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "payload_kind": {"type": "string", "minLength": 1},
+    "payload_content_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "payload": {"type": "object"},
+    "signature": {"$ref": "common.schema.json#/$defs/signature"}
+  },
+  "additionalProperties": false
+}

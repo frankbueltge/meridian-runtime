@@ -7,7 +7,8 @@ VerificationResult, by E3-T04; extended to a twelfth and thirteenth entity,
 ModelProfile and ModelInvocation, by E4-T01; extended to a fourteenth
 entity, Hypothesis, by E4-T03; extended to a fifteenth entity,
 SkepticalChallenge, by E4-T04; extended to a sixteenth entity, Practice,
-by E5-T01).
+by E5-T01; extended to a seventeenth entity, NodeMessageEnvelope, by
+E5-T03).
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -57,6 +58,7 @@ from mrr.contracts import (
     ModelInvocation,
     ModelProfile,
     NodeManifest,
+    NodeMessageEnvelope,
     Practice,
     ResearchScore,
     RunManifest,
@@ -93,6 +95,7 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "hypothesis": Hypothesis,
     "skeptical-challenge": SkepticalChallenge,
     "practice": Practice,
+    "node-message-envelope": NodeMessageEnvelope,
 }
 
 
