@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/skeptical-challenge.schema.json",
+  "title": "MRR SkepticalChallenge",
+  "description": "docs/spec/01_SYSTEM_SPEC.md section 4.8 ('Stage 8 -- Skepticism and independent verification'), MRR-FR-074: 'The skeptic MUST search for counterevidence, alternative explanations, scope leakage, and hidden assumptions.' Fourth task of Epic E4 (task-packets/E4-T04.yaml); the fifteenth entity schema in this repository. A SkepticalChallenge is ONE skeptical challenge raised against a target Claim -- challenge_type is a CLOSED four-value enum, exactly MRR-FR-074's four kinds, in MRR-FR-074's own order. It pins the claim it targets by reference (target_claim_id + target_claim_hash, the claim's own content_hash pinned at challenge time) rather than embedding the claim, mirroring model-invocation.schema.json's own 'references a ModelProfile by id and pinned content hash rather than embedding one' precedent; the same by-reference pattern is applied a second time for producing_model_profile_id/producing_model_profile_hash, the ModelProfile that produced this challenge -- recording independence LINEAGE, never COMPUTING it (that stays mrr.domain.independence, E3-T05, wired by the verifier, E4-T05). PROPOSAL-ONLY, NEVER A VERDICT (MRR-FR-070, AGENTS.md rule 7): this schema declares no verdict/decision/verified/resolved/claim_status property of any kind, anywhere -- the skeptic issues no verification decision and changes no claim's status; that is the verifier's job (E4-T05, out of this task's scope). supporting_source_ids is not a docs/spec/02_DOMAIN_MODEL.md-given field -- this task's own minimal, necessary addition (plain URNs of cited source objects, e.g. SourceRecord/EvidenceAnchor), flagged as an open specification question in this task's PR body, mirroring evidence-anchor.schema.json's own 'anchor_unavailable_reason: not a specification-given field' precedent; not required (a challenge may cite no source), defaulting to an empty array.",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "challenge_type",
+        "target_claim_id",
+        "target_claim_hash",
+        "statement",
+        "rationale",
+        "producing_model_profile_id",
+        "producing_model_profile_hash"
+      ],
+      "properties": {
+        "kind": {"const": "SkepticalChallenge"},
+        "challenge_type": {
+          "description": "MRR-FR-074's exact four challenge kinds -- a closed enum, no fifth value accepted.",
+          "type": "string",
+          "enum": [
+            "counterevidence",
+            "alternative_explanation",
+            "scope_leakage",
+            "hidden_assumption"
+          ]
+        },
+        "target_claim_id": {
+          "description": "The Claim this challenge targets.",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "target_claim_hash": {
+          "description": "The targeted Claim's own content_hash, pinned at challenge time.",
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "statement": {
+          "description": "The challenge itself: the counterevidence, alternative explanation, scope leakage, or hidden assumption being raised against the targeted claim.",
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "description": "Why this challenge applies to the targeted claim.",
+          "type": "string",
+          "minLength": 1
+        },
+        "supporting_source_ids": {
+          "description": "URNs of SourceRecord/EvidenceAnchor (or other) objects cited in support of this challenge. Not a specification-given vocabulary -- this task's own minimal addition; an empty array (the default) means no source is cited.",
+          "type": "array",
+          "items": {"$ref": "common.schema.json#/$defs/urn"}
+        },
+        "producing_model_profile_id": {
+          "description": "The ModelProfile that produced this challenge -- independence lineage RECORDED here, never computed (see mrr.domain.independence, E3-T05, wired by the verifier, E4-T05).",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "producing_model_profile_hash": {
+          "description": "The producing ModelProfile's own content_hash, pinned at challenge time.",
+          "$ref": "common.schema.json#/$defs/sha256"
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
