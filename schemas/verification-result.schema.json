@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/verification-result.schema.json",
+  "title": "MRR VerificationResult",
+  "description": "docs/spec/02_DOMAIN_MODEL.md section 2.13 (Review and VerificationResult): 'a review records judgment; a verification records checks.' Fourth task of Epic E3 (claim, evidence, correction kernel); the eleventh entity schema in this repository. The invariant this schema exists to serve is domain 2.13's own: 'a reviewer cannot satisfy independence if it shares the same execution principal and unaltered reasoning path as the producer' — the SELF-VERIFICATION PROHIBITION is AGENTS.md rule 8 ('No executor may approve or verify its own result') and this task's headline requirement (MRR-FR-070). This schema records the DECLARED independence profile and the verification's own findings; it does not itself validate that a declared profile is genuinely independent (that calculation, including 'repeated judgments from the same model/configuration MUST NOT count as independent', MRR-FR-076, is E3-T05 — out of this task's scope). Design decisions (task-packets/E3-T04.yaml derived_decisions): (1) no separate 'verification_id' field — like every sibling entity (Claim.id, SourceFamily.id, ...), the base object's own 'id' already names this record. (2) minted with URN entity 'verification' (not 'verification-result') to match the precedent schemas/claim.schema.json's own example/fixtures already set for the shape of a value in Claim.verification_ids ('urn:mrr:verification:...') before this schema existed — the URN entity segment has no registry enforcing a specific string (mrr.domain.identity._ENTITY_PATTERN accepts any '[a-z0-9-]+'), so this is a naming-consistency choice, not a structural requirement. (3) 'confidence' is a plain [0, 1] number — like source-family.schema.json's own 'confidence' field, this is documented as the REVIEWER's own confidence in their verification judgment, NOT a calibrated epistemic probability of anything (AGENTS.md prohibited-shortcuts: 'using an LLM confidence number as epistemic confidence') and NOT itself an independence weight. (4) 'findings[].severity' reuses correction-event.schema.json's exact three-value vocabulary (minor/material/critical) for consistency across this codebase's two 'severity' fields, rather than inventing a fourth vocabulary — domain 2.13 names 'findings by severity' without enumerating values of its own. (5) 'checks_performed' and 'conflicts_of_interest' are plain string arrays (domain 2.13 gives no further structure for either) — not a spec-derived vocabulary, flagged as an open question in this task's PR body, mirroring evidence-anchor.schema.json's own 'recomputation_status: not a specification-given vocabulary' precedent. (6) MRR-FR-072/MRR-FR-073 ('neither is left blank') are enforced by the two if/then conditionals below: a 'source' verification_type requires a non-empty evidence_inspected; a 'numeric' verification_type requires a non-null numeric_recomputation that itself records either a recomputed_value or an explicit impossible_reason (never neither) — mirroring evidence-anchor.schema.json's own 'exact resolution or explicit reason' if/then pattern. (7) The record carries no 'signature' field (domain 2.13 lists none) — like Claim and SourceFamily, its service persists plain create-only revisions; this schema and its service describe no update/mutate lifecycle at all, since domain 2.13 describes disagreement as SEPARATE records (MRR-FR-077), never as a revision of a prior one.",
+  "$defs": {
+    "numericRecomputationObject": {
+      "type": "object",
+      "properties": {
+        "recomputed_value": {
+          "anyOf": [{"type": "number"}, {"type": "string"}, {"type": "null"}]
+        },
+        "matches_claimed_value": {"type": ["boolean", "null"]},
+        "method": {"type": ["string", "null"]},
+        "impossible_reason": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "numericResolutionPresent": {
+      "anyOf": [
+        {
+          "required": ["recomputed_value"],
+          "properties": {"recomputed_value": {"not": {"type": "null"}}}
+        },
+        {
+          "required": ["impossible_reason"],
+          "properties": {"impossible_reason": {"not": {"type": "null"}}}
+        }
+      ]
+    },
+    "numericRecomputation": {
+      "description": "MRR-FR-073: 'Numeric verification MUST recompute the value or explicitly record why recomputation is impossible.' Present (non-null) whenever verification_type == 'numeric' (see the top-level if/then below); optional otherwise, since a source/skeptic/reproduction/other verification may have nothing numeric to recompute. The object variant always satisfies numericResolutionPresent: recomputed_value or impossible_reason must be non-null — never neither.",
+      "anyOf": [
+        {
+          "allOf": [
+            {"$ref": "#/$defs/numericRecomputationObject"},
+            {"$ref": "#/$defs/numericResolutionPresent"}
+          ]
+        },
+        {"type": "null"}
+      ]
+    }
+  },
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "target_id",
+        "target_kind",
+        "reviewer_id",
+        "reviewer_role",
+        "independence_profile",
+        "verification_type",
+        "checks_performed",
+        "evidence_inspected",
+        "findings",
+        "recommendation",
+        "confidence",
+        "rationale",
+        "conflicts_of_interest"
+      ],
+      "properties": {
+        "kind": {"const": "VerificationResult"},
+        "target_id": {
+          "description": "The claim, run, or artifact reviewed (domain 2.13: 'claim/run/artifact reviewed').",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "target_kind": {"type": "string", "enum": ["claim", "run", "artifact"]},
+        "reviewer_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "reviewer_role": {"type": "string", "minLength": 1},
+        "independence_profile": {
+          "description": "MRR-FR-071's exact six dimensions, ALL required: a record missing any one dimension fails validation. This records what the reviewer DECLARES; validating that the declaration is genuinely independent (same-model/prompt/etc. detection) is E3-T05, not this schema.",
+          "type": "object",
+          "required": [
+            "principal",
+            "model_family",
+            "prompt_family",
+            "retrieval_path",
+            "code_path",
+            "data_access_path"
+          ],
+          "properties": {
+            "principal": {"type": "string", "minLength": 1},
+            "model_family": {"type": "string", "minLength": 1},
+            "prompt_family": {"type": "string", "minLength": 1},
+            "retrieval_path": {"type": "string", "minLength": 1},
+            "code_path": {"type": "string", "minLength": 1},
+            "data_access_path": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        },
+        "verification_type": {
+          "type": "string",
+          "enum": ["source", "numeric", "skeptic", "reproduction", "other"]
+        },
+        "checks_performed": {
+          "description": "Free-text descriptions of the checks this verification actually ran (domain 2.13: 'checks performed'; no further structure given).",
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "evidence_inspected": {
+          "description": "Evidence/anchors this verification retrieved or locally inspected (domain 2.13: 'evidence inspected'; MRR-FR-072 for verification_type == 'source').",
+          "type": "array",
+          "items": {"$ref": "common.schema.json#/$defs/urn"}
+        },
+        "numeric_recomputation": {"$ref": "#/$defs/numericRecomputation"},
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "statement"],
+            "properties": {
+              "severity": {"type": "string", "enum": ["minor", "material", "critical"]},
+              "statement": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        },
+        "recommendation": {"type": "string", "enum": ["pass", "fail", "inconclusive"]},
+        "confidence": {
+          "description": "The REVIEWER's own confidence in this verification's recommendation, in [0, 1] — not a calibrated epistemic probability of anything (see this schema's top-level description).",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "rationale": {"type": "string", "minLength": 1},
+        "conflicts_of_interest": {
+          "description": "Free-text conflict-of-interest declarations; an empty array means none declared (domain 2.13: 'conflicts of interest').",
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "adjudication_relation": {
+          "description": "When this record adjudicates a prior, conflicting review, the urn of the review it adjudicates (domain 2.13: 'adjudication relation'); null otherwise. Disagreement is preserved by recording SEPARATE VerificationResult objects (MRR-FR-077) — this field links them without either one being overwritten.",
+          "anyOf": [{"$ref": "common.schema.json#/$defs/urn"}, {"type": "null"}]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"verification_type": {"const": "source"}},
+            "required": ["verification_type"]
+          },
+          "then": {
+            "properties": {"evidence_inspected": {"minItems": 1}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"verification_type": {"const": "numeric"}},
+            "required": ["verification_type"]
+          },
+          "then": {
+            "required": ["numeric_recomputation"],
+            "properties": {"numeric_recomputation": {"not": {"type": "null"}}}
+          }
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

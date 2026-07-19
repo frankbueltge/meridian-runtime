@@ -1,11 +1,11 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Ten hand-written Pydantic v2 models mirror the ten entity schemas in
+Eleven hand-written Pydantic v2 models mirror the eleven entity schemas in
 schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``, ``Claim``,
 ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest`` (E2-T05),
-``SourceRecord``/``EvidenceAnchor`` (E3-T01), and ``SourceFamily``
-(E3-T03). Shared building blocks
+``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
+(E3-T03), and ``VerificationResult`` (E3-T04). Shared building blocks
 mirroring ``schemas/common.schema.json`` live in ``mrr.contracts.common``
 and are re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``,
 ``Budget``, ``BaseObject``, ``MRRModel``).
@@ -84,6 +84,16 @@ from mrr.contracts.task_bundle import (
     TaskBundle,
     TaskBundleStatus,
 )
+from mrr.contracts.verification_result import (
+    Finding,
+    FindingSeverity,
+    IndependenceProfile,
+    NumericRecomputation,
+    Recommendation,
+    TargetKind,
+    VerificationResult,
+    VerificationType,
+)
 
 __all__ = [
     "AffectedObjectRef",
@@ -114,6 +124,9 @@ __all__ = [
     "ExecutionSpec",
     "FailureCategory",
     "FailureEntry",
+    "Finding",
+    "FindingSeverity",
+    "IndependenceProfile",
     "MRRModel",
     "MaxDisclosure",
     "MethodsPolicy",
@@ -121,8 +134,10 @@ __all__ = [
     "NetworkPolicyMode",
     "NetworkProfile",
     "NodeManifest",
+    "NumericRecomputation",
     "PublicationPolicy",
     "RecomputationStatus",
+    "Recommendation",
     "RelationshipType",
     "ResearchScore",
     "ResearchScoreStatus",
@@ -138,6 +153,7 @@ __all__ = [
     "SourceFamily",
     "SourceIdentifiers",
     "SourceRecord",
+    "TargetKind",
     "TaskBundle",
     "TaskBundleStatus",
     "TextLocator",
@@ -145,4 +161,6 @@ __all__ = [
     "UncertaintyEntry",
     "UncertaintyKind",
     "Urn",
+    "VerificationResult",
+    "VerificationType",
 ]

@@ -1,0 +1,47 @@
+{
+  "id": "urn:mrr:verification:01J00000000000000000000010",
+  "api_version": "mrr/v1alpha1",
+  "kind": "VerificationResult",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-18T11:00:00Z",
+  "created_by": "urn:mrr:person:01J00000000000000000000036",
+  "content_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+  "target_id": "urn:mrr:claim:01J00000000000000000000011",
+  "target_kind": "claim",
+  "reviewer_id": "urn:mrr:person:01J00000000000000000000036",
+  "reviewer_role": "independent numeric reviewer",
+  "independence_profile": {
+    "principal": "urn:mrr:person:01J00000000000000000000036",
+    "model_family": "human-reviewer (no model invoked)",
+    "prompt_family": "n/a — manual review checklist v3",
+    "retrieval_path": "independent re-fetch via publisher API, not the original crawl",
+    "code_path": "independent recomputation script, not the original analysis notebook",
+    "data_access_path": "read-only snapshot corpus, separate credential from the proposer's"
+  },
+  "verification_type": "numeric",
+  "checks_performed": [
+    "Recomputed the percentage directly from the stated numerator and denominator",
+    "Confirmed the cited EvidenceAnchor resolves to an exact, validated snapshot",
+    "Checked the reviewer's own identity against the claim's proposer_id and the producing run's executor_id"
+  ],
+  "evidence_inspected": [
+    "urn:mrr:evidence-anchor:01J00000000000000000000018"
+  ],
+  "numeric_recomputation": {
+    "recomputed_value": 42.0,
+    "matches_claimed_value": true,
+    "method": "Independent recomputation: 42 / 100 * 100"
+  },
+  "findings": [
+    {
+      "severity": "minor",
+      "statement": "Displayed precision differs from computed precision by rounding only; no impact on the claim's conclusion."
+    }
+  ],
+  "recommendation": "pass",
+  "confidence": 0.93,
+  "rationale": "Recomputation from the stated inputs reproduces the claimed percentage exactly; the cited evidence anchor resolves to an exact, validated snapshot; no counterevidence or scope leakage found.",
+  "conflicts_of_interest": [],
+  "adjudication_relation": null
+}
