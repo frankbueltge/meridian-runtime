@@ -1,0 +1,110 @@
+task_id: E3-T06
+title: Implement the correction event and graph impact traversal
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 (and its worked example E3-T06A) from docs/spec/01_SYSTEM_SPEC.md
+  stage 10 (MRR-FR-090..093), section 7.8, docs/spec/02_DOMAIN_MODEL.md
+  section 2.16 (CorrectionEvent) and section 3 (edges), and MRR-NFR-001;
+  approved by the repository owner's direction to continue (2026-07-19).
+  Sixth task of Epic E3.
+objective: >
+  Provide the correction event and its impact propagation: record a
+  CorrectionEvent, compute the transitive set of downstream objects it affects
+  by traversing the typed edge graph (deterministically, cycle-safe, each
+  object once), and mark affected claims review_required or stricter without
+  deleting any local decision.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#410-stage-10--correction-propagation
+  - docs/spec/01_SYSTEM_SPEC.md#78-correction-impact-service
+  - docs/spec/02_DOMAIN_MODEL.md#216-correctionevent
+  - docs/spec/02_DOMAIN_MODEL.md#3-edge-vocabulary
+  - schemas/correction-event.schema.json
+requirements:
+  - MRR-FR-090
+  - MRR-FR-091
+  - MRR-FR-092
+  - MRR-FR-093
+  - MRR-NFR-001
+allowed_paths:
+  - packages/domain/**
+  - services/**
+  - tests/unit/**
+  - tests/property/**
+  - tests/integration/**
+  - pyproject.toml
+forbidden_changes:
+  - cross-practice notification / signed delivery (MRR-FR-094 is E6)
+  - public unresolved-correction projection (MRR-FR-095 is E3-T07/E8)
+  - participant data withdrawal + retention/deletion policy (MRR-FR-096 is E7;
+    the correction_type enum already includes data_withdrawal, but the
+    withdrawal-specific machinery is out of scope)
+  - the correction-event schema semantics (it already exists; use as-is)
+  - model/LLM invocation; HTTP/FastAPI endpoints
+derived_decisions: >
+  Two layers. (1) A PURE, deterministic traversal in packages/domain (like
+  the E3-T05 validator and E1-T04 lifecycles - no DB, no I/O): given a set of
+  seed affected-object ids and a set of typed edges, compute the transitive
+  closure of DOWNSTREAM DEPENDENTS reachable via the MRR-FR-091 impact edge
+  types (dependency=depends_on, derivation=derived_from/adapted_from,
+  citation=uses_source, transfer=transferred_from, publication=projected_into
+  - the exact mapping from the section-3 vocabulary is derived and documented;
+  edge types NOT in this impact set do not propagate). Impact flows to objects
+  that BUILD ON a corrected object, so the traversal follows edges whose
+  TARGET is currently impacted back to their SOURCE, transitively. It is
+  cycle-safe (visited set), returns each object once, and is idempotent
+  (same inputs -> same set; re-running adds nothing). (2) A CorrectionImpact
+  service that records the CorrectionEvent (schema exists), reads the real
+  typed edges via the E1-T05 EdgeRepository, runs the pure traversal, writes
+  the computed impact_objects onto the correction, and marks affected CLAIMS
+  review_required via the E3-T02 ClaimService (never deleting a local
+  decision - a prior supported/contested status is preserved in history; only
+  a new review_required revision is added). Persists via the E1-T06 unit of
+  work.
+invariants:
+  - the traversal is deterministic, cycle-safe, and terminates on any graph
+    (including cycles and self-references); it returns every reachable
+    impacted object exactly once (MRR-FR-093)
+  - it is idempotent - running the same correction impact twice yields the
+    same impact set and the same review obligations; a second run adds no new
+    revision to an already-review_required claim
+  - only the MRR-FR-091 impact edge types propagate; an irrelevant edge type
+    (e.g. contradicts, reviews) does not carry impact
+  - an affected claim is moved to review_required (or stricter) WITHOUT
+    deleting its prior decision - the prior status stays in the revision
+    history; nothing is overwritten in place (MRR-FR-092, append-only)
+  - a correction records affected objects, reason, severity, evidence, and
+    requested action (MRR-FR-090); recording and each induced claim
+    transition writes a domain event with full NFR-001 provenance
+acceptance_tests:
+  - line graph - correction on the root impacts the whole chain, once each
+  - branching graph - all branches impacted, each once
+  - cyclic graph - terminates and each object appears once
+  - duplicate edges - no double-processing
+  - disconnected graph - unrelated components are NOT impacted
+  - already-reviewed object - idempotent, no duplicate obligation/revision
+  - only impact edge types propagate; contradicts/reviews edges do not
+  - property - traversal is order-independent and idempotent over arbitrary
+    graphs; result size never exceeds the node count
+  - an affected claim gains a review_required revision while its prior status
+    remains in history (integration, real PostgreSQL)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - the impact edge-type mapping (section-3 vocabulary -> FR-091 categories)
+    and the traversal direction, documented
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration run
+  - security implications
+  - open specification questions
+stop_conditions:
+  - the FR-091 edge categories cannot be mapped to the section-3 vocabulary
+    without inventing edge types
+  - cycle-safety or idempotency cannot be guaranteed
+  - implementation requires changes outside allowed paths
