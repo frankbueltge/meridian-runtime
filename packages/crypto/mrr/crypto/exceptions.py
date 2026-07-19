@@ -38,3 +38,12 @@ class SignatureVerificationError(CryptoError):
 
 class ContentHashMismatchError(CryptoError):
     """Raised when a computed content hash does not match an expected value."""
+
+
+class InvalidPublicKeyError(CryptoError):
+    """Raised by ``mrr.crypto.keys.decode_public_key`` when a value is not
+    valid standard base64, or does not decode to a well-formed Ed25519
+    public key (wrong byte length, or otherwise rejected by the underlying
+    ``cryptography`` library). Fails closed: a malformed encoded key is
+    never silently treated as absent or accepted.
+    """
