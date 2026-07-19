@@ -1,0 +1,194 @@
+task_id: E5-T02
+title: Trust-anchored signed NodeManifest exchange (resolve signer key via the sender practice's KeyRing, fail closed)
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E5 (E5-T02
+  "signed manifest exchange"), docs/spec/01_SYSTEM_SPEC.md section 7.3 (the
+  Capability Registry stores signed node manifests and does NOT grant
+  permission) and MRR-FR-020, docs/spec/02_DOMAIN_MODEL.md section 1.3
+  (a signature carries signer practice id, key id, algorithm, signed-at) and
+  section 2.1/2.2 (Practice keys; NodeManifest public_keys + signature),
+  docs/spec/04_SECURITY_AND_POLICY.md section 8.1 (trust is per practice and
+  capability), section 8.3 (a refusal returns a coarse reason and retains detail
+  locally), and section 8.4 (a practice can revoke a key; new objects are
+  rejected after revocation; existing objects remain historically attributable).
+  Builds directly on E5-T01 (Practice, PublicKeyDescriptor, KeyRing, kid
+  derivation) and the ADR-0004 unified exclude_none signature form (E5-T00). It
+  closes the trust-anchoring gap E2-T02 deliberately left open: today
+  CapabilityRegistry.register verifies a manifest against a CALLER-SUPPLIED bare
+  public key, with no resolution of the manifest's own claimed signer/kid against
+  a trusted key set. This is the OBJECT-layer exchange only: no network, no mTLS
+  (E5-T03), no durable replay store or cross-runtime revocation enforcement sweep
+  (E5-T07), and no new persisted practice registry (the trusted sender Practice
+  is caller-supplied, exactly as E2-T02 supplied the verifying key). Fully
+  CI-testable without PostgreSQL at the domain layer; the registry's existing
+  Postgres-backed paths run in CI.
+objective: >
+  Make a receiving practice accept another practice's signed NodeManifest ONLY
+  after anchoring it to that sender practice's trusted keys, fail-closed at every
+  step. (1) A framework-free domain resolver that, given a received NodeManifest
+  and the sender practice's trusted KeyRing (built from its Practice.keys),
+  resolves the manifest's signature to a trusted verifying key: it requires
+  signature.signer_practice_id to equal the sender practice's id, resolves
+  signature.key_id (kid) to a PublicKeyDescriptor in the ring, requires that
+  descriptor to be valid at the evaluation instant (KeyRing.is_valid_at(now):
+  active AND in its validity window - so a revoked, rotated, expired, or unknown
+  kid fails closed), requires the resolved descriptor's public key to be one of
+  the manifest's own declared public_keys, and only THEN returns the decoded
+  Ed25519 public key. (2) A small helper to build a KeyRing from a Practice's
+  keys. (3) An ADDITIVE trust-anchored accept path on CapabilityRegistry (e.g.
+  `receive`) that runs the resolver, verifies the signature over the ADR-0004
+  exclude_none form using the resolved key, and on success registers the manifest
+  via the EXISTING register mechanism; on any failure it raises a typed error and
+  records a manifest-rejected research event carrying only a COARSE reason
+  category (docs/spec/04 section 8.3), persisting nothing. The existing
+  register(verifying_key=...) primitive and all its tests stay unchanged.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/01_SYSTEM_SPEC.md#73-capability-registry
+  - docs/spec/02_DOMAIN_MODEL.md#13-signatures
+  - docs/spec/02_DOMAIN_MODEL.md#21-practice
+  - docs/spec/02_DOMAIN_MODEL.md#22-nodemanifest
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e5--federation
+  - packages/crypto/mrr/crypto/keys.py
+  - packages/domain/mrr/domain/key_management.py
+  - packages/contracts/mrr/contracts/practice.py
+  - packages/contracts/mrr/contracts/node_manifest.py
+  - packages/contracts/mrr/contracts/common.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - services/control_plane/mrr/services/capability_registry/service.py
+requirements:
+  - MRR-FR-020
+  - MRR-NFR-007
+  - MRR-NFR-001
+  - MRR-NFR-004
+allowed_paths:
+  - packages/domain/**
+  - services/control_plane/mrr/services/capability_registry/**
+  - tests/unit/**
+  - tests/property/**
+  - tests/contract/**
+  - tests/integration/**
+  - tests/e2e/**
+forbidden_changes:
+  - any network egress, transport, socket, or mTLS - the online node protocol is
+    E5-T03; this task is the object/crypto layer only, CI-testable offline
+  - a durable processed-envelope-id / replay-detection store and any cross-runtime
+    revocation ENFORCEMENT sweep (rejecting already-accepted objects after a later
+    revocation) - that is E5-T07; this task fails a manifest closed when its
+    resolving key is not valid AT the evaluation instant, but builds NO persistent
+    replay/expiry/revocation subsystem
+  - a NEW persisted practice registry, DB model, migration, or repository - the
+    trusted sender Practice/KeyRing is CALLER-SUPPLIED (mirroring E2-T02's
+    caller-supplied verifying key); persisting practices is a later concern
+  - modifying the NodeManifest, Practice, Signature, PublicKeyDescriptor, or any
+    other existing contract/schema - E5-T02 is additive VERIFICATION over the
+    fixed objects; it changes no entity shape
+  - changing or weakening the existing CapabilityRegistry.register(verifying_key=)
+    primitive or any E2-T02 test - the trust-anchored path is ADDITIVE and
+    delegates to the existing register once a trusted key is resolved
+  - the crypto primitives, mrr.crypto.keys, and the mrr.domain.hashing_policy /
+    prepare_for_* policy (reuse unchanged); both import-linter contracts MUST
+    stay KEPT (the resolver is framework-free domain code, no provider/web import)
+  - introducing a separate manifest "envelope" contract with nonce/recipient -
+    docs/spec/04 section 8.2 scopes nonce/recipient envelopes to TASK and RESULT
+    flows (E5-T04/E5-T05); a NodeManifest is already a signed, validity-windowed,
+    published object and needs no second wrapper
+derived_decisions: >
+  Trust anchoring is a distinct security step from raw signature checking, and is
+  where E2-T02 stopped. The resolver lives in framework-free domain code (e.g.
+  mrr.domain.manifest_trust or alongside mrr.domain.key_management) so it is
+  CI-testable with no DB and no provider import. Its accept rule, all-must-hold,
+  fail-closed: (a) manifest.signature.signer_practice_id == the trusted sender
+  Practice's id; (b) manifest.signature.key_id resolves to a descriptor in that
+  practice's KeyRing (built by a Practice->KeyRing helper from Practice.keys);
+  (c) that descriptor is KeyRing.is_valid_at(now) - evaluated at the RECEIPT
+  instant, default datetime.now(UTC), caller-overridable like
+  get_current_manifest's `at` - so a revoked key rejects new manifests
+  (docs/spec/04 section 8.4 "new objects are rejected after revocation"), and a
+  rotated/expired/unknown kid also fails closed; (d) the descriptor's public key
+  equals one of the manifest's declared public_keys (the node must actually list
+  the key it signed with - a practice cannot be tricked into anchoring a manifest
+  to a key the manifest itself does not claim); (e) verify_object_signature
+  (E1-T02, over the exclude_none body, unchanged) passes under the resolved key.
+  A typed failure family names each distinct reason (unknown kid, key-not-valid,
+  signer-mismatch, key-not-in-manifest, bad-signature) so the four failure kinds
+  never collapse into one generic error (AGENTS prohibited shortcut); the
+  registry maps them to a COARSE public reason code on the recorded
+  manifest-rejected event (docs/spec/04 section 8.3), keeping the specific reason
+  local. On success the registry delegates to the EXISTING register once the
+  trusted key is in hand, so all E2-T02 persistence/event/revision behavior is
+  reused verbatim, and on any failure nothing is persisted (verification precedes
+  every write, exactly as register already orders it).
+invariants:
+  - a received NodeManifest is accepted ONLY when ALL hold: signer_practice_id ==
+    the trusted sender practice id; its kid resolves in that practice's KeyRing;
+    the resolved descriptor is valid at the evaluation instant (active + window);
+    the descriptor's public key is among manifest.public_keys; and the Ed25519
+    signature verifies over the exclude_none form - otherwise it is rejected and
+    NOTHING is persisted
+  - a manifest whose resolving key is revoked, rotated, expired, or not-yet-valid
+    at the evaluation instant is rejected even if the raw signature is
+    cryptographically valid (trust anchoring beyond crypto; docs/spec/04 §8.4)
+  - a cryptographically tampered manifest (any signed field changed after signing)
+    fails verification and is rejected
+  - the distinct failure reasons (unknown kid / key-not-valid / signer-mismatch /
+    key-not-declared-in-manifest / bad-signature) are represented as DISTINCT
+    typed errors, never collapsed into one generic failure; the recorded rejected
+    event exposes only a coarse reason category and leaks no key/policy detail
+  - the existing register(verifying_key=...) primitive and every E2-T02 test are
+    unchanged and still green; the trust-anchored path is purely additive
+  - no network is opened; the resolver imports no provider SDK or web framework;
+    both import-linter contracts stay KEPT
+acceptance_tests:
+  - happy path: a Practice with an active in-window key signs a NodeManifest with
+    that key's kid; receive() with that Practice trust-anchors, verifies, and
+    registers it (the stored revision and registered event match register's own
+    behavior)
+  - fail-closed matrix, each rejected with its own typed error, nothing persisted,
+    a rejected event with a coarse reason recorded: unknown kid; revoked kid;
+    rotated (superseded) kid; expired / not-yet-valid key at the evaluation
+    instant; signer_practice_id != the trusted practice id; kid resolves but its
+    public key is NOT in manifest.public_keys; and a tampered manifest whose
+    signature no longer verifies
+  - a key valid at signing but REVOKED in the sender practice's ring by the time
+    of receipt causes the new manifest to be rejected (docs/spec/04 §8.4), while
+    the revoked descriptor remains resolvable in the ring (historical
+    attributability, from E5-T01)
+  - the Practice->KeyRing helper builds a ring whose kids and descriptors match
+    the practice's keys and round-trips through is_valid_at correctly
+  - property/unit: the resolver never returns a key for any failing precondition
+    (returns only on all-hold); existing register(verifying_key=) tests stay green
+  - both import-linter contracts remain KEPT and the resolver imports no provider
+    SDK / opens no network
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the resolver's accept rule and typed failure family, the Practice->KeyRing
+    helper, and the registry's additive receive() path (how it delegates to the
+    existing register and records a coarse-reason rejected event)
+  - changed files and any additive domain errors/enums
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract) proving green, plus the CI result for integration/e2e
+  - security/privacy implications (trust anchoring beyond crypto, fail-closed
+    matrix, coarse refusal reason, no network, no new persisted state, revocation
+    respected at receipt)
+  - open specification questions (what is deferred to E5-T03 transport/mTLS and
+    E5-T07 replay/expiry/revocation hardening)
+stop_conditions:
+  - trust-anchored acceptance cannot be expressed without persisting a new
+    practice registry or opening a network path (that is E5-T02+ persistence /
+    E5-T03; stop and report)
+  - a required fail-closed check cannot be made without weakening the existing
+    register primitive or an E2-T02 invariant
+  - docs/spec/04 section 8.4's "reject new objects after revocation" conflicts
+    with historical attributability in a way this task cannot honor both (stop and
+    report the exact conflict)
