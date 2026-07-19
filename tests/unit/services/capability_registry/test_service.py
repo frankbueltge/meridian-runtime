@@ -87,6 +87,7 @@ from mrr.services.capability_registry.service import (
     RecordEvent,
     RecordRevisionWithEvent,
 )
+from mrr.services.cli.orchestration import _build_node_manifest
 
 # ---------------------------------------------------------------------------
 # In-memory fakes (ObjectRepository protocol conformance + a minimal event
@@ -1185,3 +1186,140 @@ def test_receive_delegates_to_register_reusing_its_persistence_and_event_behavio
         if appended.event.event_type == "node_manifest.registered"
     ]
     assert len(registered_events) == 2
+
+
+# ---------------------------------------------------------------------------
+# receive() against a manifest built by the REAL production builder
+# (task-packets/E5-T02b.yaml, ADR-0009). Every scenario above hand-builds
+# its manifest's public_keys directly with the already-canonical
+# plain-base64 encoding (``_key_entry``/``encode_public_key``); none of them
+# ever exercised ``mrr.services.cli.orchestration._build_node_manifest``,
+# the actual production call site. Before ADR-0009, that builder's
+# ``_public_key_reference`` minted an ``ed25519-raw-base64:``-prefixed
+# string that condition (d)'s old STRING compare could never match against
+# a plain-base64 descriptor key — wrongly rejecting a legitimate,
+# production-built manifest as ``key_not_declared``. This section proves
+# that gap is closed end to end, and that condition (d)'s new
+# identity-based comparison fails closed exactly as before for a genuinely
+# undeclared key, without ever raising for an undecodable sibling entry.
+# ---------------------------------------------------------------------------
+
+
+def test_receive_accepts_a_manifest_built_by_the_real_production_builder() -> None:
+    """ADR-0009 / task-packets/E5-T02b.yaml's named acceptance test: a
+    NodeManifest built by the REAL production builder (``_build_node_manifest``,
+    now emitting the ADR-0009 canonical plain-base64 ``_public_key_reference``)
+    is accepted end-to-end by ``receive()`` when the trusted practice's ring
+    holds the signing key — the case E5-T02's own tests did not cover.
+    """
+    registry, object_repository, event_log = _registry()
+    record_event = _fake_record_event(event_log)
+    node_signing_key = Ed25519PrivateKey.generate()
+    practice_id = new_urn("practice")
+    entry = _key_entry(node_signing_key)
+    practice = _practice(practice_id=practice_id, keys=[entry])
+
+    manifest = _build_node_manifest(
+        node_id=new_urn("node"),
+        node_practice_id=practice_id,
+        actor=_ACTOR,
+        capability_name="reference.deterministic-transform",
+        capability_version="1.0.0",
+        node_signing_key=node_signing_key,
+        node_key_id=entry["kid"],
+    )
+    # The production builder now emits the ADR-0009 canonical plain-base64
+    # encoding — no retired `ed25519-raw-base64:` prefix, no `did:key:`
+    # placeholder, in what it actually declares.
+    for declared_key in manifest.public_keys:
+        assert not declared_key.startswith("ed25519-raw-base64:")
+        assert not declared_key.startswith("did:key:")
+
+    stored = registry.receive(
+        manifest,
+        practice,
+        record_event,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+    )
+
+    assert stored.id == manifest.node_id
+    assert stored.revision == 1
+    assert object_repository.get_latest(manifest.node_id).id == manifest.node_id
+    events = event_log.read_all()
+    assert len(events) == 1
+    assert events[0].event.event_type == "node_manifest.registered"
+
+
+def test_receive_condition_d_skips_an_undecodable_sibling_entry_and_still_accepts() -> None:
+    """ADR-0009: an undecodable sibling entry in ``public_keys`` (e.g. a
+    stray non-base64 string another node or a bug might have appended) must
+    never raise out of condition (d) — it is simply skipped, and the check
+    still succeeds once the actual signing key's own encoding is found
+    among the other declared entries.
+
+    The noisy entry is included in ``public_keys`` BEFORE signing (not
+    spliced into an already-signed manifest) — ``public_keys`` is itself
+    part of the signed body (ADR-0004), so mutating it afterwards would
+    also break condition (e) and this test would no longer isolate
+    condition (d).
+    """
+    registry, _, event_log = _registry()
+    record_event = _fake_record_event(event_log)
+    private_key = Ed25519PrivateKey.generate()
+    practice_id = new_urn("practice")
+    entry = _key_entry(private_key)
+    practice = _practice(practice_id=practice_id, keys=[entry])
+    manifest = _signed_manifest(
+        private_key,
+        practice_id=practice_id,
+        public_keys=["not-valid-base64!!!", entry["encoded_public_key"]],
+        signature={
+            "signer_practice_id": practice_id,
+            "key_id": entry["kid"],
+            "algorithm": "Ed25519",
+            "signed_at": datetime.now(UTC),
+            "value": "0" * 44,  # placeholder — _signed_manifest replaces this for real
+        },
+    )
+
+    stored = registry.receive(
+        manifest,
+        practice,
+        record_event,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+    )
+
+    assert stored.id == manifest.node_id
+
+
+def test_receive_still_rejects_when_every_declared_public_key_is_undecodable() -> None:
+    """A manifest whose ``public_keys`` are ALL undecodable (so none can
+    possibly match the resolved descriptor's key) is still rejected as
+    ``key_not_declared`` — condition (d) fails closed rather than silently
+    accepting once nothing decodes, and still raises no exception other
+    than the expected typed one.
+    """
+    registry, object_repository, event_log = _registry()
+    record_event = _fake_record_event(event_log)
+    manifest, practice, _ = _trusted_scenario()
+    stripped = manifest.model_copy(
+        update={"public_keys": ["not-valid-base64!!!", "also-not-a-key!!!"]}
+    )
+
+    with pytest.raises(ManifestKeyNotDeclaredError):
+        registry.receive(
+            stripped,
+            practice,
+            record_event,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+
+    with pytest.raises(ObjectNotFoundError):
+        object_repository.get_latest(manifest.node_id)
+    assert event_log.read_all()[0].event.payload == {"reason_category": "key_not_declared"}

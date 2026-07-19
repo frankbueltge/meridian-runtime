@@ -40,11 +40,19 @@ own DISTINCT typed error — never collapsed into one generic failure
     what makes a revoked, rotated, or expired key fail closed even though it
     still resolves in step (b) — trust anchoring beyond raw crypto
     (docs/spec/04 section 8.4: "New objects are rejected after revocation").
-(d) the descriptor's own ``encoded_public_key`` is one of the manifest's own
-    declared ``public_keys`` — else
-    :class:`mrr.domain.exceptions.ManifestKeyNotDeclaredError`. The node
-    must actually list the key it signed with; a practice cannot be tricked
-    into anchoring a manifest to a key the manifest itself never claims.
+(d) the descriptor's own ``encoded_public_key`` decodes to the SAME raw
+    32-byte Ed25519 key as some entry in the manifest's own declared
+    ``public_keys`` — else
+    :class:`mrr.domain.exceptions.ManifestKeyNotDeclaredError`. Per
+    ADR-0009 (docs/spec/adr/ADR-0009-CANONICAL-PUBLIC-KEY-ENCODING.md), this
+    compares KEY IDENTITY, not string identity: each ``public_keys`` entry
+    is decoded (``mrr.crypto.keys.decode_public_key``) inside a local
+    try/except and compared byte-for-byte against the resolved descriptor's
+    decoded key; an entry that does not decode to a valid Ed25519 key
+    simply is not a match (fail closed) and never aborts the check for its
+    siblings. The node must actually list the key it signed with; a
+    practice cannot be tricked into anchoring a manifest to a key the
+    manifest itself never claims.
 (e) ``mrr.domain.hashing_policy.verify_object_signature`` (E1-T02, UNCHANGED)
     passes, over the exact ADR-0004 ``exclude_none`` canonical form, under
     the resolved key — else the same
@@ -100,6 +108,7 @@ from datetime import UTC, datetime
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from mrr.contracts.node_manifest import NodeManifest
 from mrr.contracts.practice import Practice
+from mrr.crypto.exceptions import InvalidPublicKeyError
 from mrr.crypto.keys import decode_public_key
 from mrr.domain.exceptions import (
     ManifestKeyNotDeclaredError,
@@ -188,8 +197,9 @@ def resolve_trusted_manifest_key(
             — the resolved descriptor is not valid at the evaluation
             instant (revoked, rotated, expired, or not yet valid).
         mrr.domain.exceptions.ManifestKeyNotDeclaredError: condition (d)
-            fails — the resolved descriptor's public key is not among the
-            manifest's own declared ``public_keys``.
+            fails — the resolved descriptor's public key does not decode to
+            the same raw bytes as any entry in the manifest's own declared
+            ``public_keys`` (ADR-0009: identity, not string, comparison).
         mrr.crypto.exceptions.SignatureVerificationError: condition (e)
             fails — the Ed25519 signature does not verify (bad or tampered
             signature) under the resolved key.
@@ -211,10 +221,27 @@ def resolve_trusted_manifest_key(
     if not ring.is_valid_at(evaluation_instant, kid):
         raise ManifestKeyNotValidError(kid, at=evaluation_instant)
 
-    if descriptor.encoded_public_key not in manifest.public_keys:
+    # ADR-0009: compare KEY IDENTITY, not string identity — decode the
+    # resolved descriptor's key once, then decode each of the manifest's own
+    # declared public_keys entries inside a LOCAL try/except, matching on
+    # the first that decodes to the same raw bytes. An entry that fails to
+    # decode (e.g. a stray non-key string) is skipped, never raising out of
+    # this condition — only ManifestKeyNotDeclaredError, and only once every
+    # entry has been tried and none matched.
+    verifying_key = decode_public_key(descriptor.encoded_public_key)
+    resolved_key_bytes = verifying_key.public_bytes_raw()
+    key_is_declared = False
+    for candidate in manifest.public_keys:
+        try:
+            candidate_key_bytes = decode_public_key(candidate).public_bytes_raw()
+        except InvalidPublicKeyError:
+            continue
+        if candidate_key_bytes == resolved_key_bytes:
+            key_is_declared = True
+            break
+    if not key_is_declared:
         raise ManifestKeyNotDeclaredError(kid)
 
-    verifying_key = decode_public_key(descriptor.encoded_public_key)
     verify_object_signature(
         verifying_key,
         json.loads(manifest.model_dump_json(exclude_none=True)),

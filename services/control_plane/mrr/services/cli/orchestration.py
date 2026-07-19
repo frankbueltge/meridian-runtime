@@ -72,14 +72,12 @@ not only the signed three.
 
 from __future__ import annotations
 
-import base64
 import json
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
@@ -97,6 +95,7 @@ from mrr.contracts import (
     TaskBundle,
     Urn,
 )
+from mrr.crypto.keys import encode_public_key
 from mrr.domain.artifacts import ArtifactStore
 from mrr.domain.hashing_policy import compute_content_hash, sign_object
 from mrr.domain.identity import new_urn
@@ -207,19 +206,22 @@ def _finalize_content_hash[T: BaseObject](draft: T) -> T:
 
 
 def _public_key_reference(public_key: Ed25519PublicKey) -> str:
-    """A human-inspectable string naming a real Ed25519 public key — the raw
-    32 verification-key bytes, standard base64-encoded, prefixed so the
-    encoding is unambiguous. ``NodeManifest.public_keys`` is schema-typed as
-    a plain ``list[str]`` with no format constraint (docs/spec/
-    02_DOMAIN_MODEL.md section 2.2's own example is a bare ``did:key:...``
-    placeholder); this module has no DID encoder available, so it records
-    the actual verifying key material instead of inventing a DID string that
-    would look authoritative but resolve to nothing.
+    """A human-inspectable string naming a real Ed25519 public key: the
+    ADR-0009 canonical encoding (docs/spec/adr/
+    ADR-0009-CANONICAL-PUBLIC-KEY-ENCODING.md) — standard base64 (RFC 4648
+    section 4, with padding) of the raw 32 verification-key bytes, produced
+    by the single canonical encoder ``mrr.crypto.keys.encode_public_key``
+    (E5-T01), identical to how ``PublicKeyDescriptor.encoded_public_key``
+    encodes the same key elsewhere in this codebase. Previously this
+    function minted its own ``ed25519-raw-base64:``-prefixed spelling of the
+    same bytes; ADR-0009 retired that prefix (and the
+    ``did:key:...`` placeholder docs/spec/02_DOMAIN_MODEL.md section 2.2's
+    own example used) once ``mrr.domain.manifest_trust``'s condition (d) was
+    hardened to compare decoded key IDENTITY rather than raw strings — one
+    canonical producer, reused, rather than a second independently-chosen
+    encoding for this call site.
     """
-    raw = public_key.public_bytes(
-        encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
-    )
-    return "ed25519-raw-base64:" + base64.b64encode(raw).decode("ascii")
+    return encode_public_key(public_key)
 
 
 def _build_research_score(*, practice_id: str, actor: str) -> ResearchScore:

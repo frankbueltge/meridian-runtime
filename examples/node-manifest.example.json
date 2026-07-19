@@ -34,7 +34,7 @@
   "valid_from": "2026-07-17T10:00:00Z",
   "valid_until": "2027-07-17T10:00:00Z",
   "public_keys": [
-    "did:key:z6MkExample"
+    "Zie9VbnuTa2TTACjgC+I0nkbYyfeR3EkSDbgUS9Pp4w="
   ],
   "signature": {
     "signer_practice_id": "urn:mrr:practice:01J00000000000000000000001",
