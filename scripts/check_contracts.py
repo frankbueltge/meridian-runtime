@@ -5,7 +5,8 @@ entity, SourceRecord and EvidenceAnchor, by E3-T01; extended to a tenth
 entity, SourceFamily, by E3-T03; extended to an eleventh entity,
 VerificationResult, by E3-T04; extended to a twelfth and thirteenth entity,
 ModelProfile and ModelInvocation, by E4-T01; extended to a fourteenth
-entity, Hypothesis, by E4-T03).
+entity, Hypothesis, by E4-T03; extended to a fifteenth entity,
+SkepticalChallenge, by E4-T04).
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -14,8 +15,8 @@ out of sync, not just the first one):
 1. Every schemas/*.schema.json is a valid JSON Schema Draft 2020-12 document
    (``Draft202012Validator.check_schema``).
 2. Every examples/*.example.json validates against its own entity schema,
-   resolved through a ``referencing.Registry`` built from all fourteen
-   schemas (thirteen entities plus ``common.schema.json``) keyed by their
+   resolved through a ``referencing.Registry`` built from all sixteen
+   schemas (fifteen entities plus ``common.schema.json``) keyed by their
    ``$id`` — this is what lets the relative ``common.schema.json#/$defs/...``
    refs inside each entity schema resolve.
 3. Every example validates against the corresponding Pydantic model in
@@ -57,6 +58,7 @@ from mrr.contracts import (
     NodeManifest,
     ResearchScore,
     RunManifest,
+    SkepticalChallenge,
     SourceFamily,
     SourceRecord,
     TaskBundle,
@@ -87,6 +89,7 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "model-profile": ModelProfile,
     "model-invocation": ModelInvocation,
     "hypothesis": Hypothesis,
+    "skeptical-challenge": SkepticalChallenge,
 }
 
 

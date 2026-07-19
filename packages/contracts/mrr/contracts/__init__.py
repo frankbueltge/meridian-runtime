@@ -1,12 +1,13 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Fourteen hand-written Pydantic v2 models mirror the fourteen entity schemas
+Fifteen hand-written Pydantic v2 models mirror the fifteen entity schemas
 in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``, ``Claim``,
 ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest`` (E2-T05),
 ``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
 (E3-T03), ``VerificationResult`` (E3-T04), ``ModelProfile``/
-``ModelInvocation`` (E4-T01), and ``Hypothesis`` (E4-T03). Shared building blocks mirroring
+``ModelInvocation`` (E4-T01), ``Hypothesis`` (E4-T03), and
+``SkepticalChallenge`` (E4-T04). Shared building blocks mirroring
 ``schemas/common.schema.json`` live in ``mrr.contracts.common`` and are
 re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``, ``Budget``,
 ``BaseObject``, ``MRRModel``).
@@ -90,6 +91,7 @@ from mrr.contracts.research_score import (
     ResearchScoreStatus,
 )
 from mrr.contracts.run_manifest import RunCost, RunManifest, RunResourceUsage
+from mrr.contracts.skeptical_challenge import CHALLENGE_TYPES, ChallengeType, SkepticalChallenge
 from mrr.contracts.source_family import RelationshipType, SourceFamily
 from mrr.contracts.source_record import SourceClassification, SourceIdentifiers, SourceRecord
 from mrr.contracts.task_bundle import (
@@ -125,8 +127,10 @@ __all__ = [
     "BaseObject",
     "BranchRole",
     "Budget",
+    "CHALLENGE_TYPES",
     "CapabilityDefinition",
     "CapabilityRef",
+    "ChallengeType",
     "Claim",
     "ClaimStatus",
     "ClaimType",
@@ -176,6 +180,7 @@ __all__ = [
     "Scope",
     "Sha256",
     "Signature",
+    "SkepticalChallenge",
     "SourceClassification",
     "SourceFamily",
     "SourceIdentifiers",
