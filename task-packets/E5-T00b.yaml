@@ -1,0 +1,122 @@
+task_id: E5-T00b
+title: Align the last non-signed content-hash path (ResearchScore) to the ADR-0004 exclude_none form
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 as the completeness follow-up to E5-T00, from ADR-0004 (ACCEPTED
+  2026-07-19, which pins ONE canonical form for content hashing of EVERY
+  first-class MRR object) and docs/spec/02_DOMAIN_MODEL.md section 1.2. E5-T00
+  unified the three cross-practice SIGNED objects (NodeManifest, TaskBundle,
+  EvidenceCrate) onto the exclude_none form for signing AND content hashing.
+  Independent review of E5-T00 found exactly one remaining first-class object
+  whose content_hash is still computed over the null-including
+  `model_dump(mode="json")` form: ResearchScore, via the CLI orchestration
+  helper `_finalize_content_hash`. Its persisted body is `exclude_none`, so
+  `content_hash != hash(persisted body)` for a ResearchScore with any absent
+  optional (e.g. revision 1, whose `supersedes`/`labels` are absent) - the exact
+  "gap 2" ADR-0004 exists to close. This packet closes it. NOT E5-blocking
+  (ResearchScore is not signed and is not re-hash-verified until export/E8), but
+  it makes `content_hash == hash(persisted body)` true for every first-class
+  object before federation work proceeds.
+objective: >
+  Change `_finalize_content_hash` in
+  services/control_plane/mrr/services/cli/orchestration.py so ResearchScore's
+  content_hash is computed over the SAME `exclude_none=True` canonical form its
+  persisted body uses and that every other content-hash site in the codebase
+  already uses (schema-conformant JSON with absent/None optionals OMITTED, then
+  RFC 8785 via the unchanged `compute_content_hash`). Update the now-stale
+  module and helper docstrings that currently state ResearchScore keeps the
+  null-including form. Add a test proving `content_hash == compute_content_hash`
+  over the object's own `exclude_none` body (i.e. content_hash equals the hash
+  of the persisted body), with at least one optional field absent. Do NOT touch
+  the crypto primitives, `prepare_for_hash`/`prepare_for_signature`, the
+  ResearchScore schema/contract, or any signature path (all correct as of E5-T00).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/02_DOMAIN_MODEL.md#12-canonical-hashing
+  - packages/domain/mrr/domain/hashing_policy.py
+  - services/control_plane/mrr/services/cli/orchestration.py
+  - services/control_plane/mrr/services/research_score/service.py
+requirements:
+  - MRR-NFR-001
+  - MRR-NFR-002
+allowed_paths:
+  - services/control_plane/mrr/services/cli/**
+  - tests/unit/**
+  - tests/property/**
+  - tests/integration/**
+  - tests/e2e/**
+forbidden_changes:
+  - the crypto primitives and the domain `prepare_for_hash` /
+    `prepare_for_signature` field-selection policy - `compute_content_hash`
+    already canonicalizes the exclude_none body correctly and MUST NOT change;
+    this task only changes WHICH dict is handed to it for ResearchScore
+  - any signature sign/verify path (NodeManifest, TaskBundle, EvidenceCrate) -
+    all correct as of E5-T00 and out of scope here
+  - the ResearchScore JSON Schema, Pydantic contract, or example fixture, and
+    any other contract/schema/entity
+  - the research_score SERVICE's own hashing (it already computes over the
+    exclude_none body); this task fixes only the CLI helper that builds the
+    initial object
+  - any network egress, DB schema, migration, new service, or endpoint; both
+    import-linter contracts MUST stay KEPT
+derived_decisions: >
+  The fix mirrors the established pattern every other content-hash site uses
+  (research_score service, evidence_crate, run_manifest, planner, skeptic,
+  verifier, correction, claim, and the E5-T00 NodeManifest/TaskBundle builders):
+  build `body = json.loads(draft.model_dump_json(exclude_none=True))`, then
+  `compute_content_hash(body)`. `compute_content_hash` -> `prepare_for_hash`
+  already strips the placeholder `content_hash` (and `signature`, absent on
+  ResearchScore) before canonicalizing, so the placeholder is irrelevant and no
+  ordering trap exists. `_finalize_content_hash` stays a generic
+  `[T: BaseObject]` helper (used only by `_build_research_score` and
+  `_add_approval_revision`) - correct for any first-class object, now on the one
+  canonical form. Result: a CLI-built ResearchScore's stored `content_hash`
+  equals `compute_content_hash` of its own persisted (`exclude_none`) body, so a
+  later integrity recomputation (export/E8, an auditor) reproduces the stored
+  value instead of diverging.
+invariants:
+  - after this task, NO first-class object's content_hash is computed over the
+    null-including `model_dump(mode="json")` form anywhere in non-test code; the
+    repo has exactly one content-hash canonical form (exclude_none), matching the
+    persisted body
+  - for a CLI-built ResearchScore (including revision 1, with `supersedes` and
+    `labels` absent), `content_hash == compute_content_hash(json.loads(
+    score.model_dump_json(exclude_none=True)))` - content_hash equals the hash of
+    the persisted body
+  - `compute_content_hash` and the `prepare_for_*` policy are unchanged; no
+    signature path is touched; both import-linter contracts stay KEPT
+  - existing create/approve/revise behavior is preserved: the research_score
+    service still persists the exclude_none body and (on revise) recomputes over
+    exclude_none - now consistent with the initial object's hash
+acceptance_tests:
+  - a test builds a ResearchScore via the real `_build_research_score` and
+    asserts its `content_hash` equals `compute_content_hash` of
+    `json.loads(score.model_dump_json(exclude_none=True))`, and that the
+    exclude_none body omits `supersedes`/`labels` (absent, never JSON null)
+  - a regression assertion that the OLD null-including hash
+    (`compute_content_hash(score.model_dump(mode="json"))`) now DIFFERS from the
+    stored `content_hash` (the change is real, not a no-op)
+  - the existing E2E single-node loop (test_e2e_001) and all research_score
+    unit/integration suites stay green on the new hash (make test locally;
+    integration/e2e in CI with PostgreSQL)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the exact change to `_finalize_content_hash` and the docstrings updated
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract) proving green, plus CI result for integration/e2e
+  - security/privacy implications (content_hash now equals hash of persisted
+    body for every first-class object; no signature/secret/fixture change)
+  - open specification questions (if any)
+stop_conditions:
+  - aligning ResearchScore would require changing the crypto primitives, the
+    prepare_for_* policy, the ResearchScore schema, or any signature path
+  - the research_score service turns out to depend on the null-including initial
+    hash in a way a simple alignment would break (report the exact coupling)

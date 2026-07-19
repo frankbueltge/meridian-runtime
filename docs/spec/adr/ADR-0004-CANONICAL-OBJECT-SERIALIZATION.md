@@ -93,3 +93,12 @@ bytes (minus the signature) for every signed object. E5-T01..T07 (the federation
 feature tasks) then build on the single unified form. Every new signed object
 introduced from E5-T01 on MUST sign/verify over the `exclude_none=True` form
 (reuse the persisted-body dict), never a second `model_dump(mode="json")`.
+
+One pre-existing NON-signed residual — the CLI orchestration helper
+`_finalize_content_hash`, which computed `ResearchScore.content_hash` over the
+null-including form while its persisted body is `exclude_none` — is aligned to
+`exclude_none=True` by the completeness follow-up packet E5-T00b, so
+`content_hash == hash(persisted body)` holds for EVERY first-class object, not
+only the signed three. (E5-T00 itself scoped to the sign/verify paths; E5-T00b
+closes the last content-hash path. Not E5-blocking: ResearchScore is not a
+cross-practice signed object and is not re-hash-verified until export/E8.)
