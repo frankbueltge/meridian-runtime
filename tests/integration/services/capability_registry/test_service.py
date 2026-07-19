@@ -20,6 +20,18 @@ Acceptance-test mapping (task-packets/E2-T02.yaml, integration tier):
 - "an expired or not-yet-valid manifest is stored but excluded from
   get-current and from capability match" ->
   ``test_expired_manifest_is_stored_but_excluded_from_lookup_and_match``.
+
+``receive()`` acceptance-test mapping (task-packets/E5-T02.yaml, integration
+tier — a real PostgreSQL proves the atomic write/rollback guarantee
+``receive`` inherits from ``register`` by delegation, and that a rejection
+persists nothing under a real transaction):
+
+- trust-anchored acceptance persists one revision and one
+  ``node_manifest.registered`` event, exactly like ``register`` itself ->
+  ``test_receive_persists_one_revision_and_one_event_when_trust_anchored``.
+- trust-resolution failure persists nothing and records exactly one
+  ``node_manifest.rejected`` event with a coarse reason ->
+  ``test_receive_persists_nothing_and_records_a_rejected_event_on_trust_failure``.
 """
 
 from __future__ import annotations
@@ -31,14 +43,19 @@ from typing import Any
 import pytest
 import sqlalchemy as sa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from mrr.contracts import NodeManifest
+from mrr.contracts import NodeManifest, Practice
 from mrr.crypto.exceptions import SignatureVerificationError
-from mrr.domain.exceptions import NodeManifestValidityError
+from mrr.crypto.keys import derive_key_id, encode_public_key
+from mrr.domain.exceptions import ManifestKeyNotValidError, NodeManifestValidityError
 from mrr.domain.hashing_policy import sign_object
 from mrr.domain.identity import new_urn
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
 from mrr.persistence.tables import domain_events_table, objects_table
-from mrr.services.capability_registry.service import CapabilityRegistry, bind_unit_of_work
+from mrr.services.capability_registry.service import (
+    CapabilityRegistry,
+    bind_event_unit_of_work,
+    bind_unit_of_work,
+)
 from sqlalchemy import Engine
 
 _POLICY_VERSION = "policy-2026-07-01"
@@ -108,6 +125,76 @@ def _registry_for(
     record = bind_unit_of_work(engine, object_repository, event_log)
     registry = CapabilityRegistry(object_repository, event_log, record)
     return registry, object_repository, event_log
+
+
+# ---------------------------------------------------------------------------
+# Practice/KeyRing fixture factory for receive() (task-packets/E5-T02.yaml).
+# ---------------------------------------------------------------------------
+
+
+def _key_entry(
+    private_key: Ed25519PrivateKey,
+    *,
+    valid_from: datetime | None = None,
+    valid_until: datetime | None = None,
+    state: str = "active",
+) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    public_key = private_key.public_key()
+    return {
+        "kid": derive_key_id(public_key),
+        "algorithm": "Ed25519",
+        "encoded_public_key": encode_public_key(public_key),
+        "valid_from": valid_from or now - timedelta(days=1),
+        "valid_until": valid_until or now + timedelta(days=365),
+        "state": state,
+    }
+
+
+def _practice(*, practice_id: str, keys: list[dict[str, Any]]) -> Practice:
+    now = datetime.now(UTC)
+    data: dict[str, Any] = {
+        "id": practice_id,
+        "api_version": "mrr/v1alpha1",
+        "kind": "Practice",
+        "practice_id": practice_id,
+        "revision": 1,
+        "created_at": now,
+        "created_by": new_urn("agent-role"),
+        "content_hash": "sha256:" + "a" * 64,
+        "name": "Fixture Sender Practice",
+        "description": "Fixture practice trusted as manifest sender in receive() tests.",
+        "keys": keys,
+        "governance_contacts": ["mailto:governance@fixture.invalid"],
+        "supported_policy_versions": ["policy-2026-07-01"],
+        "disclosure": {"max_disclosure": "PUBLIC", "trust_statement": "fixture"},
+    }
+    return Practice.model_validate(data)
+
+
+def _trusted_scenario(
+    *,
+    node_id: str | None = None,
+    key_state: str = "active",
+) -> tuple[NodeManifest, Practice, Ed25519PrivateKey]:
+    private_key = Ed25519PrivateKey.generate()
+    practice_id = new_urn("practice")
+    entry = _key_entry(private_key, state=key_state)
+    practice = _practice(practice_id=practice_id, keys=[entry])
+    manifest = _signed_manifest(
+        private_key,
+        node_id=node_id,
+        practice_id=practice_id,
+        public_keys=[entry["encoded_public_key"]],
+        signature={
+            "signer_practice_id": practice_id,
+            "key_id": entry["kid"],
+            "algorithm": "Ed25519",
+            "signed_at": datetime.now(UTC),
+            "value": "0" * 44,
+        },
+    )
+    return manifest, practice, private_key
 
 
 def test_register_persists_one_revision_and_one_event_atomically(
@@ -248,3 +335,83 @@ def test_expired_manifest_is_stored_but_excluded_from_lookup_and_match(
     with pytest.raises(NodeManifestValidityError):
         registry.get_current_manifest(node_id)
     assert registry.find_nodes_with_capability("statistics.recompute") == []
+
+
+# ---------------------------------------------------------------------------
+# receive(): trust-anchored acceptance, against a real PostgreSQL
+# (task-packets/E5-T02.yaml).
+# ---------------------------------------------------------------------------
+
+
+def test_receive_persists_one_revision_and_one_event_when_trust_anchored(
+    postgres_engine: Engine,
+) -> None:
+    registry, object_repository, event_log = _registry_for(postgres_engine)
+    record_event = bind_event_unit_of_work(postgres_engine, event_log)
+    node_id = new_urn("node")
+    manifest, practice, _ = _trusted_scenario(node_id=node_id)
+    actor = new_urn("agent-role")
+    correlation_id = new_urn("research-run")
+
+    stored = registry.receive(
+        manifest,
+        practice,
+        record_event,
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+    )
+
+    assert stored.revision == 1
+    assert stored.id == node_id
+
+    with postgres_engine.connect() as conn:
+        object_rows = conn.execute(
+            sa.select(objects_table).where(objects_table.c.id == node_id)
+        ).fetchall()
+        event_rows = conn.execute(
+            sa.select(domain_events_table).where(domain_events_table.c.object_id == node_id)
+        ).fetchall()
+
+    assert len(object_rows) == 1
+    assert len(event_rows) == 1
+    assert event_rows[0].event_type == "node_manifest.registered"
+    assert registry.get_current_manifest(node_id).revision == 1
+
+
+def test_receive_persists_nothing_and_records_a_rejected_event_on_trust_failure(
+    postgres_engine: Engine,
+) -> None:
+    """A revoked resolving key fails closed under a real transaction: no
+    object revision is ever written, and exactly one ``node_manifest.rejected``
+    event is recorded carrying only a coarse reason category.
+    """
+    registry, object_repository, event_log = _registry_for(postgres_engine)
+    record_event = bind_event_unit_of_work(postgres_engine, event_log)
+    node_id = new_urn("node")
+    manifest, practice, _ = _trusted_scenario(node_id=node_id, key_state="revoked")
+    actor = new_urn("agent-role")
+    correlation_id = new_urn("research-run")
+
+    with pytest.raises(ManifestKeyNotValidError):
+        registry.receive(
+            manifest,
+            practice,
+            record_event,
+            actor=actor,
+            policy_version=_POLICY_VERSION,
+            correlation_id=correlation_id,
+        )
+
+    with postgres_engine.connect() as conn:
+        object_rows = conn.execute(
+            sa.select(objects_table).where(objects_table.c.id == node_id)
+        ).fetchall()
+        event_rows = conn.execute(
+            sa.select(domain_events_table).where(domain_events_table.c.object_id == node_id)
+        ).fetchall()
+
+    assert object_rows == []
+    assert len(event_rows) == 1
+    assert event_rows[0].event_type == "node_manifest.rejected"
+    assert event_rows[0].payload == {"reason_category": "key_not_valid"}

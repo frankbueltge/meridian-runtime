@@ -387,6 +387,13 @@ class UnknownKeyIdError(DomainError):
     is nothing to supersede or revoke. Carries ``kid``. Never silently
     no-ops on an unknown kid (fail closed, matching this codebase's other
     "unknown identifier" lookups, e.g. ``NodeManifestNotFoundError``).
+
+    Also raised by ``mrr.domain.manifest_trust.resolve_trusted_manifest_key``
+    (task-packets/E5-T02.yaml) for the identical fact pattern: a received
+    ``NodeManifest``'s claimed ``signature.key_id`` does not resolve to any
+    descriptor in the trusted sender practice's ``KeyRing`` at all — the
+    "unknown kid" leg of that resolver's fail-closed matrix, distinct from
+    ``ManifestKeyNotValidError`` (kid resolves but is not currently valid).
     """
 
     def __init__(self, kid: str) -> None:
@@ -434,4 +441,77 @@ class SelfVerificationError(DomainError):
         super().__init__(
             f"self-verification prohibited: reviewer_id {reviewer_id!r} {trigger} "
             "(MRR-FR-070 / AGENTS.md rule 8) — nothing was persisted"
+        )
+
+
+class ManifestSignerMismatchError(DomainError):
+    """Raised by ``mrr.domain.manifest_trust.resolve_trusted_manifest_key``
+    (task-packets/E5-T02.yaml) when a received ``NodeManifest``'s
+    ``signature.signer_practice_id`` does not equal the id of the practice
+    the receiver actually trusts as the sender. Checked FIRST, before the
+    manifest's claimed key id is even looked up in the trusted practice's
+    ``KeyRing`` — a manifest cannot be trust-anchored to a practice it does
+    not itself claim to be signed by (docs/spec/04_SECURITY_AND_POLICY.md
+    section 8.1: "Trust is per practice and capability, not universal").
+    Carries ``claimed_signer_practice_id`` (from the manifest's own
+    signature) and ``trusted_practice_id`` (the practice the caller actually
+    trusts as sender), so a caller can tell the two apart without parsing
+    the message string.
+    """
+
+    def __init__(self, *, claimed_signer_practice_id: str, trusted_practice_id: str) -> None:
+        self.claimed_signer_practice_id = claimed_signer_practice_id
+        self.trusted_practice_id = trusted_practice_id
+        super().__init__(
+            "manifest signature.signer_practice_id "
+            f"{claimed_signer_practice_id!r} does not equal the trusted sender "
+            f"practice id {trusted_practice_id!r}"
+        )
+
+
+class ManifestKeyNotValidError(DomainError):
+    """Raised by ``mrr.domain.manifest_trust.resolve_trusted_manifest_key``
+    (task-packets/E5-T02.yaml) when a received ``NodeManifest``'s claimed
+    signing key id DOES resolve to a descriptor in the trusted sender
+    practice's ``KeyRing`` (see ``UnknownKeyIdError`` for the case where it
+    does not), but that descriptor is not
+    ``mrr.domain.key_management.KeyRing.is_valid_at`` the evaluation
+    instant — revoked, rotated (superseded), expired, or not yet valid.
+
+    This is the trust-anchoring check that rejects a manifest signed by a
+    key that has since been revoked or rotated even though the raw Ed25519
+    signature itself is still cryptographically valid over the manifest's
+    bytes (docs/spec/04_SECURITY_AND_POLICY.md section 8.4: "A practice can
+    revoke a node or key. New objects are rejected after revocation.") —
+    trust anchoring is deliberately a stronger gate than raw signature
+    verification alone. Carries ``kid`` and the evaluation instant ``at``.
+    """
+
+    def __init__(self, kid: str, *, at: datetime) -> None:
+        self.kid = kid
+        self.at = at
+        super().__init__(
+            f"key {kid!r} is not valid at evaluation instant {at.isoformat()!r} "
+            "(revoked, rotated, expired, or not yet valid)"
+        )
+
+
+class ManifestKeyNotDeclaredError(DomainError):
+    """Raised by ``mrr.domain.manifest_trust.resolve_trusted_manifest_key``
+    (task-packets/E5-T02.yaml) when the trusted sender practice's ``KeyRing``
+    descriptor resolved for the manifest's claimed key id is itself valid,
+    but its own ``encoded_public_key`` is not among the manifest's own
+    declared ``public_keys``. The node must actually list the key it signed
+    with — without this check, a practice could be tricked into anchoring a
+    manifest to a key the manifest itself never claims to carry, purely
+    because that key happens to be in the trusted ring under the same kid.
+    Carries ``kid``.
+    """
+
+    def __init__(self, kid: str) -> None:
+        self.kid = kid
+        super().__init__(
+            f"the public key resolved for key_id {kid!r} in the trusted sender "
+            "practice's key ring is not among this manifest's own declared "
+            "public_keys"
         )
