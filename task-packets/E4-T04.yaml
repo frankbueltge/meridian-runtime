@@ -1,0 +1,175 @@
+task_id: E4-T04
+title: Implement the SkepticalChallenge contract and the skeptic role
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E4 (E4-T04),
+  docs/spec/01_SYSTEM_SPEC.md section 4.8 (Stage 8 - Skepticism and independent
+  verification; MRR-FR-074 "The skeptic MUST search for counterevidence,
+  alternative explanations, scope leakage, and hidden assumptions", MRR-FR-070,
+  MRR-FR-077) and section 5 (A1 = clearly marked proposal); building on the
+  merged E4-T01 port, E4-T02 structured generation, and the E4-T03 planner role
+  (the direct structural precedent). Approved by the repository owner's standing
+  direction to continue through E4 (2026-07-19). Fourth task of Epic E4 - the
+  second AI ROLE: the skeptic produces skeptical challenges as proposals, never
+  a verification verdict.
+objective: >
+  Provide (1) a SkepticalChallenge contract (the 15th entity: schema + Pydantic)
+  - one skeptical challenge against a target claim, with challenge_type a closed
+  enum of exactly the four MRR-FR-074 kinds (counterevidence,
+  alternative_explanation, scope_leakage, hidden_assumption), a pinned reference
+  to the challenged claim (id + content hash), the challenge statement and
+  rationale, and the id + hash of the ModelProfile that produced it (so
+  independence lineage is recorded); and (2) the skeptic role - a pure producer
+  that, given a target claim and an injected E4-T01 ModelAdapter, uses the
+  E4-T02 structured-generation layer to propose challenges across the four
+  types, covering every type (recording "searched, none found" for a type that
+  yields nothing - MRR-FR-074's "MUST search for" is a coverage duty, not a
+  find duty). A SkepticalChallenge is a PROPOSAL, never a verification verdict:
+  the skeptic issues no verification decision and changes no claim status
+  (MRR-FR-070/075 are the verifier's, E4-T05). This task PRODUCES proposals in
+  memory; it persists nothing and writes no authoritative state.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#48-stage-8--skepticism-and-independent-verification
+  - docs/spec/02_DOMAIN_MODEL.md#24-hypothesis-and-researchbranch   # sibling role-output shape; claim/counterevidence context
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e4--agent-roles-and-model-adapters
+  - services/control_plane/mrr/services/planner/service.py   # E4-T03 role precedent to MIRROR
+  - packages/contracts/mrr/contracts/hypothesis.py           # E4-T03 contract precedent to MIRROR
+  - adapters/llm/mrr/adapters/llm/structured_generation.py   # E4-T02 layer this role uses
+  - packages/contracts/mrr/contracts/claim.py                # the claim being challenged
+  - schemas/common.schema.json
+requirements:
+  - MRR-FR-074
+  - MRR-FR-070
+  - MRR-FR-077
+  - MRR-NFR-001
+  - MRR-NFR-004
+  - MRR-NFR-010
+allowed_paths:
+  - schemas/**
+  - packages/contracts/**
+  - packages/domain/**
+  - services/control_plane/**
+  - examples/**
+  - scripts/check_contracts.py
+  - tests/unit/**
+  - tests/property/**
+  - tests/contract/**
+forbidden_changes:
+  - any verification VERDICT / decision - the skeptic PRODUCES challenges
+    (proposals), never issues a verification decision and never changes a claim
+    status (MRR-FR-070/075 belong to the verifier, E4-T05); the SkepticalChallenge
+    MUST have no verdict/decision/verified/resolved/claim_status field
+  - independence COMPUTATION or a self-verification gate - reuse the existing
+    E3-T05 mrr.domain.independence / mrr.contracts.verification_result only by
+    RECORDING which ModelProfile produced the challenge (id + hash); do NOT
+    reimplement, invoke, or validate independence here (E3-T05 owns it; E4-T05
+    wires it)
+  - source retrieval or numeric recomputation (MRR-FR-072/073 = the verifier's
+    deterministic tools, E4-T05)
+  - any persistence, DB schema, migration, repository, or unit-of-work wiring -
+    the skeptic PRODUCES in-memory challenge proposals plus an audit trail and
+    writes NOTHING; persistence and attaching challenges to a claim's
+    counterevidence edges is a LATER task
+  - any change to the E4-T01/E4-T02/E4-T03 or E3 SEMANTICS beyond importing them
+    - if a change seems required, STOP and report it (AGENTS rule 13/14)
+  - any provider SDK dependency or network egress - the skeptic reaches a model
+    SOLELY through the injected ModelAdapter via structured generation
+  - the verifier role (E4-T05), the prompt/version registry (E4-T06), and the
+    benchmark runner (E4-T07)
+  - weakening or removing EITHER import-linter contract (both MUST stay KEPT)
+derived_decisions: >
+  Structurally this task MIRRORS the merged E4-T03 planner (its contract
+  packages/contracts/mrr/contracts/hypothesis.py and its role
+  services/control_plane/mrr/services/planner/service.py are the templates):
+  a new registered contract entity plus a pure-producer role under the existing
+  services/control_plane root (mrr.services.skeptic - NO new package root, NO
+  pyproject change). SkepticalChallenge is the 15th entity (schema + hand-written
+  Pydantic + example + scripts/check_contracts.py registration + tests/contract
+  cross-validation). challenge_type is a closed enum of EXACTLY the four
+  MRR-FR-074 kinds. The challenge pins the claim it targets by id + content hash
+  (mirroring mrr.contracts.model_invocation.ModelInvocation's by-reference-plus-
+  hash precedent) and records the id + hash of the ModelProfile that produced it
+  so independence lineage is recorded (E4 exit criterion) WITHOUT this task
+  computing independence. Proposal-only is STRUCTURAL: the entity declares no
+  verdict/decision/verified/resolved/claim_status field, mirroring E4-T03's own
+  "not a claim of result" enforcement (MRR-FR-070). The skeptic's LLM-facing
+  target model (private to mrr.services.skeptic, extra=forbid, no envelope) lets
+  the model author only challenge CONTENT (type, statement, rationale, optional
+  supporting source references) - never the target reference, the producing
+  profile, or any verdict; the role sets those itself. MRR-FR-074's "MUST search
+  for" all four kinds is a COVERAGE duty modeled exactly like E4-T03's role
+  coverage: the result reports, per challenge_type, either the proposed
+  challenges or an explicit "searched, none found" marker - a type is never
+  silently omitted (a skeptic that searched and found no counterevidence is a
+  valid, recorded outcome, not a gap). No-invalid-passes, provider neutrality,
+  and determinism (via injected id_factory/clock) are inherited from E4-T02/E4-T03.
+invariants:
+  - challenge_type is a closed enum of EXACTLY the four MRR-FR-074 kinds
+    (counterevidence, alternative_explanation, scope_leakage, hidden_assumption)
+  - a SkepticalChallenge is a PROPOSAL, never a verdict - it has no
+    verdict/decision/verified/resolved/claim_status field, so the skeptic cannot
+    issue a verification decision or change a claim's status (MRR-FR-070); the
+    challenge pins the claim it targets (id + content hash) and records the
+    ModelProfile id + hash that produced it (independence lineage recorded, not
+    computed)
+  - coverage - the skeptic result reports every one of the four challenge types,
+    each with either its proposed challenges or an explicit "searched, none
+    found" marker; no type is silently omitted (MRR-FR-074 "MUST search for")
+  - the skeptic produces schema-valid SkepticalChallenge PROPOSALS (A1) via the
+    E4-T02 structured-generation layer over the injected ModelAdapter; an output
+    challenge that is not schema-valid is NEVER emitted (no-invalid-passes,
+    inherited from E4-T02)
+  - provider neutrality and determinism - the skeptic imports no provider SDK
+    and opens no network (both import-linter contracts stay KEPT); given a
+    scripted fake adapter and injected identity the produced challenges are
+    deterministic
+  - every underlying model call is recorded in the returned audit trail
+acceptance_tests:
+  - SkepticalChallenge validates against its JSON Schema and round-trips; the
+    committed example validates; tests/contract cross-validates schema <-> model
+    <-> example
+  - a SkepticalChallenge with an unknown challenge_type, a missing target claim
+    reference, or a missing producing-ModelProfile reference is rejected
+  - the SkepticalChallenge has no verdict/decision/verified/resolved/claim_status
+    field (structural proposal-only, checked against model_fields)
+  - the skeptic, given a scripted fake adapter returning valid challenge output,
+    produces schema-valid challenge proposals across challenge types; the audit
+    trail records the underlying model call(s)
+  - coverage - when the model returns challenges for only some types, the result
+    records an explicit "searched, none found" marker for each uncovered type;
+    no type is dropped
+  - when the model returns schema-invalid challenge output, the skeptic does NOT
+    emit it as a proposal and surfaces the failure explicitly (no-invalid-passes)
+  - a non-completed underlying outcome (refused/content_filtered/error/timed_out)
+    is surfaced verbatim, with no challenges (distinct failure taxonomy)
+  - determinism - the same scripted fake adapter and inputs yield identical
+    challenges (ids + content hashes)
+  - provider neutrality - the skeptic package imports no provider SDK and makes
+    no network call; both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the SkepticalChallenge shape (challenge_type enum, target + producing-profile
+    references) and the skeptic role's API surface and proposal-only /
+    no-verdict / no-persistence guarantees
+  - changed files, the new schema/example, contract-checker registration, and
+    any additive errors/enums
+  - tests added and exact command results (format, lint incl. both contracts
+    KEPT, typecheck, test, test-contract) proving green
+  - security/privacy implications (proposal-only, no verdict, no persistence, no
+    provider SDK / no network)
+  - open specification questions (what remains for the verifier role, adjudication
+    of disagreement, and persistence/attachment to claim counterevidence edges)
+stop_conditions:
+  - MRR-FR-074's four challenge kinds or MRR-FR-070's "skeptic issues no verdict"
+    cannot be enforced structurally on the contract
+  - the skeptic cannot produce schema-valid proposals on the E4-T02 layer without
+    persistence, independence computation, a provider SDK, or a path outside this
+    packet
