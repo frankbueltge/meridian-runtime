@@ -38,6 +38,7 @@ Acceptance-test mapping (task-packets/E2-T03.yaml, ADR-0007 rework):
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -200,8 +201,14 @@ def _node_manifest(*, node_id: str, **overrides: Any) -> NodeManifest:
 def _register_node(
     capability_registry: CapabilityRegistry, node_id: str, private_key: Ed25519PrivateKey
 ) -> None:
+    """Sign over the ``exclude_none=True`` form (ADR-0004,
+    task-packets/E5-T00.yaml) — the same canonical body
+    ``CapabilityRegistry.register`` verifies against.
+    """
     manifest = _node_manifest(node_id=node_id)
-    signature_value = sign_object(private_key, manifest.model_dump(mode="json"))
+    signature_value = sign_object(
+        private_key, json.loads(manifest.model_dump_json(exclude_none=True))
+    )
     signed = manifest.model_copy(
         update={"signature": manifest.signature.model_copy(update={"value": signature_value})}
     )
@@ -258,7 +265,13 @@ def _bundle(*, target_node_id: str, research_score_id: str, **overrides: Any) ->
 
 
 def _sign(bundle: TaskBundle, private_key: Ed25519PrivateKey) -> TaskBundle:
-    signature_value = sign_object(private_key, bundle.model_dump(mode="json"))
+    """Sign over the ``exclude_none=True`` form (ADR-0004,
+    task-packets/E5-T00.yaml) — the same canonical body
+    ``TaskBundleService``/``NodeTaskDecisionService`` verify against.
+    """
+    signature_value = sign_object(
+        private_key, json.loads(bundle.model_dump_json(exclude_none=True))
+    )
     return bundle.model_copy(
         update={"signature": bundle.signature.model_copy(update={"value": signature_value})}
     )
@@ -595,10 +608,12 @@ def test_signature_still_verifies_after_transitions_straight_from_database(
     current_bundle = TaskBundle.model_validate(row.body)
 
     # Must not raise: direct verification against the CURRENT content row —
-    # no historical-revision scan needed, because it was never mutated.
+    # no historical-revision scan needed, because it was never mutated. Over
+    # the persisted exclude_none=True body itself (ADR-0004,
+    # task-packets/E5-T00.yaml) — the same form _authorize_and_verify uses.
     verify_object_signature(
         origin_key.public_key(),
-        current_bundle.model_dump(mode="json"),
+        row.body,
         current_bundle.signature.value,
         algorithm=current_bundle.signature.algorithm,
     )

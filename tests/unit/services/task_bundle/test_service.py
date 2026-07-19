@@ -375,8 +375,14 @@ def _node_manifest(*, node_id: str, **overrides: Any) -> NodeManifest:
 def _register_node(
     capability_registry: CapabilityRegistry, node_id: str, private_key: Ed25519PrivateKey
 ) -> None:
+    """Sign over the ``exclude_none=True`` form (ADR-0004,
+    task-packets/E5-T00.yaml) — the same canonical body
+    ``CapabilityRegistry.register`` verifies against.
+    """
     manifest = _node_manifest(node_id=node_id)
-    signature_value = sign_object(private_key, manifest.model_dump(mode="json"))
+    signature_value = sign_object(
+        private_key, json.loads(manifest.model_dump_json(exclude_none=True))
+    )
     signed = manifest.model_copy(
         update={"signature": manifest.signature.model_copy(update={"value": signature_value})}
     )
@@ -448,10 +454,14 @@ def _bundle(
 
 def _sign(bundle: TaskBundle, private_key: Ed25519PrivateKey) -> TaskBundle:
     """Sign ``bundle`` for real with ``private_key`` (E1-T02 ``sign_object``)
-    over ``bundle.model_dump(mode="json")`` — the same construction
-    ``TaskBundleService``/``NodeTaskDecisionService`` verify against.
+    over the ``exclude_none=True`` form (ADR-0004, task-packets/E5-T00.yaml)
+    — the same canonical body ``TaskBundleService``/``NodeTaskDecisionService``
+    verify against (directly off the persisted ``StoredObject.body`` — see
+    ``_authorize_and_verify``).
     """
-    signature_value = sign_object(private_key, bundle.model_dump(mode="json"))
+    signature_value = sign_object(
+        private_key, json.loads(bundle.model_dump_json(exclude_none=True))
+    )
     return bundle.model_copy(
         update={"signature": bundle.signature.model_copy(update={"value": signature_value})}
     )
@@ -837,10 +847,12 @@ def test_signature_still_verifies_after_offer_and_accept() -> None:
     assert latest.revision == 1
     current_bundle = TaskBundle.model_validate(latest.body)
 
-    # Must not raise: direct verification against the CURRENT content record.
+    # Must not raise: direct verification against the CURRENT content record,
+    # over the persisted exclude_none=True body itself (ADR-0004,
+    # task-packets/E5-T00.yaml) — the same form _authorize_and_verify uses.
     verify_object_signature(
         origin_key.public_key(),
-        current_bundle.model_dump(mode="json"),
+        latest.body,
         current_bundle.signature.value,
         algorithm=current_bundle.signature.algorithm,
     )
@@ -887,7 +899,7 @@ def test_signature_still_verifies_after_offer_and_defer_or_reject() -> None:
         current_bundle = TaskBundle.model_validate(latest.body)
         verify_object_signature(
             origin_key.public_key(),
-            current_bundle.model_dump(mode="json"),
+            latest.body,
             current_bundle.signature.value,
             algorithm=current_bundle.signature.algorithm,
         )
@@ -1223,11 +1235,13 @@ def test_propose_modification_creates_new_signed_revision_prior_intact() -> None
 
     # And the new revision's own signature verifies directly (it is now the
     # CURRENT content record — the same ADR-0007 property, exercised across
-    # a genuine content revision this time).
-    current_bundle = TaskBundle.model_validate(harness.object_repository.get_latest(bundle.id).body)
+    # a genuine content revision this time) — over the persisted
+    # exclude_none=True body itself (ADR-0004, task-packets/E5-T00.yaml).
+    new_latest = harness.object_repository.get_latest(bundle.id)
+    current_bundle = TaskBundle.model_validate(new_latest.body)
     verify_object_signature(
         node_key.public_key(),
-        current_bundle.model_dump(mode="json"),
+        new_latest.body,
         current_bundle.signature.value,
         algorithm=current_bundle.signature.algorithm,
     )

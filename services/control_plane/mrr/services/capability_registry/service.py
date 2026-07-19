@@ -151,13 +151,14 @@ def _manifest_to_stored_object(manifest: NodeManifest) -> StoredObject:
     ``_score_to_stored_object``'s own pattern and
     ``scripts/check_contracts.py``'s round-trip convention) — the
     authoritative full payload ``StoredObject.body`` is documented to carry.
-    This is deliberately a *separate* serialization from the one
-    ``register`` feeds to ``verify_object_signature`` (see that method's
-    docstring for why): ``exclude_none=True`` here keeps ``body`` schema-
-    valid (``data_residency``, an optional non-nullable string, must be
-    entirely absent when unset, never JSON ``null``), which is not a
-    concern for the signature-verification input since that dict is never
-    itself schema-validated, only canonicalized and hashed.
+    Per ADR-0004 (docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md,
+    applied by task-packets/E5-T00.yaml), this is now the SAME
+    ``exclude_none=True`` serialization ``register`` feeds to
+    ``verify_object_signature`` (see that method's docstring): absent/None
+    optional fields (``data_residency``, an optional non-nullable string,
+    among others) are OMITTED here and at verification alike, never
+    emitted as JSON ``null`` — one byte-definition of the manifest for
+    signing and persistence.
     """
     body: dict[str, Any] = json.loads(manifest.model_dump_json(exclude_none=True))
     return StoredObject(
@@ -240,24 +241,30 @@ class CapabilityRegistry:
         needing a rollback.
 
         The dict handed to ``verify_object_signature`` is
-        ``manifest.model_dump(mode="json")`` — a JSON-compatible
-        serialization of the *entire* manifest, exactly as
-        task-packets/E2-T02.yaml's approved design specifies. This must be
-        built the same way the signer built the bytes they signed
+        ``json.loads(manifest.model_dump_json(exclude_none=True))`` — the
+        SAME canonical ``exclude_none=True`` form ``_manifest_to_stored_object``'s
+        ``body`` uses, per ADR-0004 (docs/spec/adr/
+        ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md, applied by
+        task-packets/E5-T00.yaml): absent or ``None`` optional fields (e.g.
+        ``data_residency``, ``labels``, ``supersedes``) are OMITTED, never
+        emitted as JSON ``null``. This must be built the same way the
+        signer built the bytes they signed
         (``mrr.domain.hashing_policy.verify_object_signature`` internally
         applies ``prepare_for_signature``, which drops only the
-        ``signature`` field — ``content_hash`` and everything else,
-        including any field currently ``None``, stays and gets
-        canonicalized). Unlike ``_manifest_to_stored_object``'s ``body``
-        (built with ``exclude_none=True`` so the persisted payload stays
-        schema-valid), this dict is never schema-validated — it exists only
-        to be canonicalized and hash/signature-checked — so keeping
-        ``None`` fields present as explicit JSON ``null`` here is correct:
-        it is whatever a signer using the same ``NodeManifest`` model and
-        the same ``model_dump(mode="json")`` call would have canonicalized
-        and signed. A test (``test_register_accepts_a_validly_signed_manifest``
-        in the unit test module) constructs a real signature this same way
-        and confirms the round trip succeeds, then tampers a field and
+        ``signature`` field — ``content_hash`` and everything else stays
+        and gets canonicalized) —
+        ``mrr.services.cli.orchestration._build_node_manifest`` signs over
+        exactly this same ``exclude_none=True`` body, never a fresh
+        null-including ``model_dump(mode="json")``. The manifest is
+        re-dumped here (rather than reusing a caller-supplied dict) because
+        ``register`` only ever receives the reconstructed ``NodeManifest``
+        model, not yet persisted — contrast
+        ``mrr.services.task_bundle.service._authorize_and_verify``, which
+        verifies a stored, already-persisted ``TaskBundle`` directly
+        against its own persisted ``body``. A test
+        (``test_register_accepts_a_validly_signed_manifest`` in the unit
+        test module) constructs a real signature this same way and
+        confirms the round trip succeeds, then tampers a field and
         confirms it fails.
 
         The verifying key is caller-supplied and not validated against any
@@ -290,7 +297,7 @@ class CapabilityRegistry:
         """
         verify_object_signature(
             verifying_key,
-            manifest.model_dump(mode="json"),
+            json.loads(manifest.model_dump_json(exclude_none=True)),
             manifest.signature.value,
             algorithm=manifest.signature.algorithm,
         )

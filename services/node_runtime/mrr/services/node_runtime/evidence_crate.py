@@ -97,43 +97,32 @@ carrying ``supersedes`` set to the original's id) -- out of this task's
 scope, left for a future task, exactly as task-packets/E2-T06.yaml's
 derived_decisions directs.
 
---- Signature convention: sign over ``model_dump(mode="json")`` -----------
+--- Signature convention: sign over the exclude_none=True body (ADR-0004) --
 
-Per ADR-0004 (pending) this module uses the same construction
-E2-T02/T03 already use: ``mrr.domain.hashing_policy.sign_object(private_key,
-obj.model_dump(mode="json"))``, and later verification is
-``verify_object_signature(public_key, obj.model_dump(mode="json"),
-obj.signature.value, algorithm=obj.signature.algorithm)`` -- see
-``mrr.services.task_bundle.service.NodeTaskDecisionService
-._authorize_and_verify``.
+Per ADR-0004 (docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md,
+applied by task-packets/E5-T00.yaml), this module hashes and signs over the
+SAME canonical form the persisted ``StoredObject.body`` uses:
+schema-conformant JSON with absent/``None`` optional fields OMITTED
+(``exclude_none=True``), never emitted as JSON ``null``. Concretely,
+``EvidenceCrateSealer.seal`` builds the draft ``EvidenceCrate`` with a
+placeholder ``content_hash``/``signature.value``, takes
+``json.loads(draft.model_dump_json(exclude_none=True))`` as ``body``, sets
+the REAL ``content_hash`` (``compute_content_hash(body)``) and the REAL
+Ed25519 signature (``sign_object(node_signing_key, body)``) directly onto
+that SAME ``body`` dict -- never a second, null-including
+``model_dump(mode="json")`` -- and ``model_validate(body)`` the result. The
+persisted body (``_crate_to_stored_object``) is therefore, by construction,
+byte-identical to what the signature covers, minus the ``signature`` field
+itself: one byte-definition of "the object" for hashing, signing, and
+persistence, closing ADR-0004's "gap 2".
 
-Two DIFFERENT dict representations of the same crate matter here, and
-mixing them up would break verification silently:
-
-1. ``crate.model_dump(mode="json")`` -- the full Pydantic dump, including a
-   JSON ``null`` for any unset ``Optional`` ``BaseObject`` field
-   (``supersedes``, ``labels``; this crate never sets either). This is what
-   gets hashed (``compute_content_hash``) and signed (``sign_object``).
-2. ``json.loads(crate.model_dump_json(exclude_none=True))`` -- the
-   ``None``-dropping form every ``_x_to_stored_object`` helper in this
-   codebase persists, because schemas/common.schema.json's ``labels``
-   property is a plain ``{"type": "object"}`` with no ``null`` variant: a
-   persisted ``"labels": null`` would fail JSON Schema validation even
-   though the field is optional. This is what gets written to
-   ``StoredObject.body``.
-
-These do not have to be byte-identical to each other, but representation 1
-DOES have to be reproducible, byte-for-byte, from representation 2:
-reconstructing ``EvidenceCrate.model_validate(stored.body)`` restores the
-unset optional fields to their Pydantic default (``None``, since they were
-simply absent from the JSON, not present-and-null), so re-dumping the
-reconstructed model with ``model_dump(mode="json")`` reproduces exactly the
-same dict that was originally hashed/signed -- this is what lets "the
-sealed crate's signature still verifies from the database" hold at all
-(the integration acceptance test). This module therefore hashes and signs
-the crate model directly (``draft.model_dump(mode="json")``), and only
-switches to the ``exclude_none`` form at the very last step, to build the
-persisted body.
+This module SIGNS an ``EvidenceCrate`` but does not verify one -- no
+production verify path is wired here. Wiring
+``verify_object_signature`` for a received ``EvidenceCrate`` is E5-T05's
+scope (crossing a real node boundary); test code confirms the signature
+verifies over this same ``exclude_none=True`` body as a local check only
+(see tests/unit/services/node_runtime/test_evidence_crate.py's
+``test_sealed_crate_signature_verifies``) -- not a production call site.
 
 --- ``practice_id`` is not a separate parameter ----------------------------
 
@@ -171,6 +160,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.contracts import (
@@ -251,9 +241,11 @@ def _crate_to_stored_object(crate: EvidenceCrate) -> StoredObject:
     ``mrr.domain.repositories.ObjectRepository`` persists. ``body`` is a
     plain ``model_dump_json(exclude_none=True)`` round trip -- no added
     keys -- matching every other service's own ``_*_to_stored_object``
-    helper. See the module docstring's "Signature convention" section for
-    why this is deliberately NOT the representation the signature itself
-    covers.
+    helper. Per ADR-0004 (see the module docstring's "Signature convention"
+    section), this IS, byte-for-byte, the same representation
+    ``EvidenceCrateSealer.seal`` already hashed and signed: re-dumping
+    ``crate`` here reproduces it exactly, since ``crate`` was itself
+    ``model_validate``d from that very ``body`` dict.
     """
     body = json.loads(crate.model_dump_json(exclude_none=True))
     return StoredObject(
@@ -425,19 +417,19 @@ class EvidenceCrateSealer:
             signature=placeholder_signature,
         )
 
-        # Both the content hash and the node signature are computed over
-        # draft.model_dump(mode="json") -- NOT the exclude_none form used
-        # for persistence below -- see the module docstring's "Signature
-        # convention" section for why this specific representation is the
-        # one that must be reproducible after a database round trip.
-        real_content_hash = compute_content_hash(draft.model_dump(mode="json"))
-        draft = draft.model_copy(update={"content_hash": real_content_hash})
+        # ADR-0004: hash and sign over the SAME exclude_none=True body
+        # _crate_to_stored_object persists below -- never a null-including
+        # model_dump(mode="json") -- see the module docstring's "Signature
+        # convention" section.
+        body: dict[str, Any] = json.loads(draft.model_dump_json(exclude_none=True))
+        body["content_hash"] = compute_content_hash(body)
 
         # mrr.domain.hashing_policy.sign_object's prepare_for_signature
         # strips the entire "signature" field before signing (keeping the
         # just-updated real content_hash) -- the placeholder signature
-        # value above never influences what gets signed.
-        signature_value = sign_object(node_signing_key, draft.model_dump(mode="json"))
+        # still present in body["signature"] never influences what gets
+        # signed.
+        signature_value = sign_object(node_signing_key, body)
         signature = Signature(
             signer_practice_id=signer_practice_id,
             key_id=node_key_id,
@@ -445,13 +437,8 @@ class EvidenceCrateSealer:
             signed_at=now,
             value=signature_value,
         )
-        crate = draft.model_copy(update={"signature": signature})
-
-        # Defensive round trip through the exact persisted (exclude_none)
-        # body before writing, mirroring every other service's own
-        # "_x_to_stored_object" + "model_validate(body)" pattern.
-        persisted_body = json.loads(crate.model_dump_json(exclude_none=True))
-        crate = EvidenceCrate.model_validate(persisted_body)
+        body["signature"] = signature.model_dump(mode="json")
+        crate = EvidenceCrate.model_validate(body)
 
         obj = _crate_to_stored_object(crate)
         event = DomainEvent(

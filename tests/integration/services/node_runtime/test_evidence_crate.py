@@ -285,6 +285,11 @@ def test_sealer_has_no_update_method_and_a_second_seal_call_is_a_new_object(
 
 
 def test_signature_verifies_from_the_database(postgres_engine: Engine) -> None:
+    """Local check only (no production ``EvidenceCrate`` verify path exists
+    yet — that is E5-T05's scope): the signature verifies over the SAME
+    ``exclude_none=True`` body read back from the database (ADR-0004,
+    task-packets/E5-T00.yaml).
+    """
     sealer, object_repository, _ = _sealer_for(postgres_engine)
     bundle = _bundle()
     result = _execution_result(bundle, "completed")
@@ -299,7 +304,7 @@ def test_signature_verifies_from_the_database(postgres_engine: Engine) -> None:
     crate = EvidenceCrate.model_validate(persisted.body)
     verify_object_signature(
         node_signing_key.public_key(),
-        crate.model_dump(mode="json"),
+        persisted.body,
         crate.signature.value,
         algorithm=crate.signature.algorithm,
     )  # must not raise, straight from the database
