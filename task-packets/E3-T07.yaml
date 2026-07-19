@@ -1,0 +1,102 @@
+task_id: E3-T07
+title: Implement the claim-table and provenance-map projection (E2E-003, E3 scope)
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md section 7.9, MRR-FR-095 and
+  MRR-FR-100, and docs/spec/05_EVALUATION_AND_ACCEPTANCE.md E2E-003; approved
+  by the repository owner's direction to continue (2026-07-19). Seventh and
+  final task of Epic E3 - the read-model projection and the E3-scope E2E-003.
+objective: >
+  Provide a read-only, re-derivable projection over the authoritative claim
+  graph - a claim table (each claim with its status, evidence, verification,
+  and correction state) and a provenance map (how each claim traces back
+  through its evidence, anchors, and runs) - that surfaces unresolved critical
+  corrections, and an E2E-003 (E3-scope) test proving correction propagation
+  is visible end to end.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#79-projection-service
+  - docs/spec/01_SYSTEM_SPEC.md#411-stage-11--projection-and-publication
+  - docs/spec/05_EVALUATION_AND_ACCEPTANCE.md#e2e-003-correction-propagation
+  - schemas/claim.schema.json
+  - schemas/correction-event.schema.json
+requirements:
+  - MRR-FR-095
+  - MRR-FR-100
+  - MRR-NFR-001
+allowed_paths:
+  - services/**
+  - packages/domain/**
+  - tests/unit/**
+  - tests/integration/**
+  - tests/e2e/**
+  - pyproject.toml
+forbidden_changes:
+  - publication bundle, A4 human-approval, disclosure levels, RO-Crate/PROV
+    export (MRR-FR-101..104 are Epic E8)
+  - cross-practice transfer and recipient response (E6; the E2E-003 steps
+    about transfer/recipients are out of E3 scope)
+  - any NEW authoritative state - a projection is DERIVED and re-buildable,
+    NEVER the primary record (AGENTS.md: "Narrative reports are projections
+    and are never the primary research record")
+  - schema semantics; model/LLM; HTTP/FastAPI endpoints
+derived_decisions: >
+  The projection is a read-only view built on demand from the authoritative
+  objects, edges, events, and corrections already persisted (E3-T01..T06) -
+  it writes NO new object, no revision, no event, and is fully re-derivable
+  from a fixed graph state (section 7.9: "Builds reports ... from a fixed
+  graph revision"; MRR-FR-100: projections are generated FROM versioned claim
+  and evidence objects). It lives under services/ (a projection service that
+  reads the repositories) with any pure shaping logic in packages/domain. It
+  produces: (1) a claim table - one row per claim with assertion, status,
+  evidence relation ids, verification ids, and whether an unresolved
+  correction touches it; (2) a provenance map - per claim, the typed-edge
+  paths to its evidence anchors / source records / runs. It surfaces
+  unresolved critical corrections (MRR-FR-095): a claim that a
+  non-resolved critical CorrectionEvent has flagged is shown as such. Because
+  it is a projection, it may be recomputed anytime and MUST match the
+  authoritative state; it is never cached as truth.
+invariants:
+  - the projection introduces NO authoritative state - no object/revision/
+    event/edge is written by building it; it is a pure read-and-shape over
+    persisted data and is byte-identical on repeated builds from the same
+    graph state (deterministic, re-derivable)
+  - every projected value traces to an authoritative source object by id -
+    the projection invents nothing not present in the graph (MRR-FR-100)
+  - an unresolved critical correction that flags a claim is VISIBLE in the
+    projection for that claim; a resolved correction is not shown as
+    unresolved (MRR-FR-095)
+  - the claim table reflects the claim's current (latest-revision) status; the
+    provenance map only lists edges/objects that actually exist
+acceptance_tests:
+  - a projection over a small fixture reproduces each claim's latest status,
+    evidence/verification ids, and provenance edges, inventing nothing
+  - a claim flagged by an unresolved critical correction is shown as flagged;
+    once the correction is resolved it is no longer shown as unresolved
+  - rebuilding the projection from the same graph state yields an identical
+    result (re-derivable, no hidden state)
+  - E2E-003 (E3 scope, real PostgreSQL): a supported claim with downstream
+    dependents has its source invalidated by a critical correction; impact
+    propagation flags every dependent (review_required); the projection shows
+    the unresolved correction and the flagged claims - every dependency is
+    flagged and the unresolved correction is visible
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+  - make test-e2e
+required_output:
+  - implementation summary
+  - the projection shape (claim table + provenance map) and its read-only,
+    re-derivable guarantee
+  - changed files and any additive domain errors
+  - tests and command results, including the CI integration and e2e runs
+  - security implications
+  - open specification questions (which E2E-003 steps remain for E6/E8)
+stop_conditions:
+  - the projection cannot be built read-only from existing authoritative state
+  - implementation requires new authoritative state or paths outside the
+    packet
