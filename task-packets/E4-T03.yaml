@@ -1,0 +1,187 @@
+task_id: E4-T03
+title: Implement the Hypothesis contract and the planner/proposer role
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E4 (E4-T03),
+  docs/spec/01_SYSTEM_SPEC.md section 4.2 (Stage 2 - Hypothesis Forest;
+  MRR-FR-010..MRR-FR-014) and section 5 (A1 Draft = "clearly marked proposal"),
+  and docs/spec/02_DOMAIN_MODEL.md section 2.4 (Hypothesis and ResearchBranch;
+  the invariant "a hypothesis is not a claim of result"); building on the merged
+  E4-T01 ModelAdapter port and E4-T02 structured-generation layer. Approved by
+  the repository owner's standing direction to continue through E4 (2026-07-19).
+  Third task of Epic E4 - the first AI ROLE: the planner produces a hypothesis
+  forest of schema-valid, proposal-only branch hypotheses.
+objective: >
+  Provide (1) a Hypothesis contract (the 14th entity: schema + Pydantic) mirroring
+  docs/spec/02_DOMAIN_MODEL.md section 2.4 - hypothesis statement, branch role,
+  predicted and disconfirming observations, scope, dependencies and assumptions,
+  methods, required capabilities, branch budget, stop conditions, priority
+  rationale, lifecycle status - with branch_role a closed enum of exactly the
+  six MRR-FR-010 roles and a status enum that has NO verified/result value; and
+  (2) the planner/proposer role - a pure producer that, given a research question
+  and an injected E4-T01 ModelAdapter, uses the E4-T02 structured-generation
+  layer to propose a hypothesis forest (multiple branch hypotheses across the
+  roles), each a schema-valid PROPOSAL (A1). A hypothesis is NOT a claim of
+  result: the planner cannot mark its own hypothesis verified (MRR-FR-014),
+  structurally. This task PRODUCES proposals in memory; it persists nothing and
+  writes no authoritative state.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#42-stage-2--hypothesis-forest
+  - docs/spec/01_SYSTEM_SPEC.md#5-autonomy-model
+  - docs/spec/02_DOMAIN_MODEL.md#24-hypothesis-and-researchbranch
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e4--agent-roles-and-model-adapters
+  - adapters/llm/mrr/adapters/llm/structured_generation.py   # E4-T02 layer this role uses
+  - packages/domain/mrr/domain/model_adapter.py              # E4-T01 port
+  - schemas/common.schema.json
+  - schemas/claim.schema.json   # precedent for a conditional (if/then) entity schema + enums
+requirements:
+  - MRR-FR-010
+  - MRR-FR-012
+  - MRR-FR-014
+  - MRR-NFR-001
+  - MRR-NFR-004
+  - MRR-NFR-010
+allowed_paths:
+  - schemas/**
+  - packages/contracts/**
+  - packages/domain/**
+  - services/control_plane/**
+  - examples/**
+  - scripts/check_contracts.py
+  - tests/unit/**
+  - tests/property/**
+  - tests/contract/**
+forbidden_changes:
+  - any persistence, DB schema, migration, repository, or unit-of-work wiring -
+    the planner PRODUCES an in-memory hypothesis forest plus an audit trail and
+    writes NOTHING; persisting hypotheses as append-only revisions and wiring
+    them into a run is a LATER task (out of scope, keeps this task CI-testable
+    without PostgreSQL)
+  - any branch SELECTION / PRIORITIZATION algorithm and any score-driven
+    role-waiver POLICY engine (the MRR-FR-011 waiver policy and MRR-FR-013
+    prioritization step) - the planner produces branches across roles and
+    RECORDS a waiver reason when a role is absent and preserves every produced
+    branch with its priority rationale, but the selection/scoring logic is
+    orchestration, out of scope
+  - any verification / authoritative state - a Hypothesis is NOT a claim of
+    result (docs/spec/02_DOMAIN_MODEL.md 2.4; MRR-FR-014): it MUST have no
+    verified/supported/result/authoritative field and its status enum MUST have
+    no "verified" value; the planner cannot mark its own hypothesis verified
+  - the skeptic and verifier roles (E4-T04/T05), the prompt/version registry
+    (E4-T06), and the benchmark runner (E4-T07)
+  - any change to the E4-T01/E4-T02 SEMANTICS (mrr.domain.model_adapter,
+    mrr.adapters.llm.structured_generation, mrr.contracts.model_profile/
+    model_invocation) beyond importing them - if a change seems required, STOP
+    and report it (AGENTS rule 13/14)
+  - any provider SDK dependency or network egress - the planner reaches a model
+    SOLELY through the injected ModelAdapter via the structured-generation layer
+  - weakening or removing EITHER import-linter contract (both MUST stay KEPT)
+derived_decisions: >
+  The Hypothesis is a single contract entity carrying the branch fields (branch
+  role, branch budget, stop conditions) folded in, exactly as docs/spec/
+  02_DOMAIN_MODEL.md 2.4 lists ONE field set under "Hypothesis and
+  ResearchBranch" (no separate ResearchBranch entity; if the implementer finds a
+  material distinction the schema cannot express, STOP and report per AGENTS
+  rule 14). It is the 14th entity and follows the existing 13 verbatim: JSON
+  Schema in schemas/, hand-written Pydantic v2 in packages/contracts, an example
+  in examples/, registered in scripts/check_contracts.py, cross-validated by
+  tests/contract. branch_role is a closed enum of exactly the six MRR-FR-010
+  values (confirmatory, falsification, alternative_explanation, replication,
+  method_independent, insufficient_evidence). status is a small lifecycle enum
+  with NO verified/result value (proposed/selected/deferred/rejected is the
+  suggested set - deferred and rejected remain queryable per the section 4.2
+  acceptance); the planner emits only "proposed". MRR-FR-012 requires each
+  branch to declare falsifiable expectations, required capabilities, estimated
+  budget, stop conditions, and dependencies - modeled as REQUIRED fields, with
+  ONE conditional (mirroring the claim schema's if/then precedent): for every
+  branch_role EXCEPT insufficient_evidence, predicted_observations and
+  disconfirming_observations MUST be non-empty (a falsifiable proposition needs
+  both); the insufficient_evidence role MAY leave them empty but MUST record a
+  rationale for why evidence is insufficient (it "captures ... an explicit
+  insufficient_evidence branch", 02 2.4). Reuse mrr.contracts.common (Scope,
+  Budget, BaseObject, MRRModel) rather than new primitives. The planner role is
+  a pure application producer under services/control_plane (mrr.services.planner,
+  reusing the existing root - NO new package root, NO pyproject change): given a
+  question and an injected ModelAdapter it calls mrr.adapters.llm.
+  structured_generation with a hypothesis-forest target model, returns the
+  validated Hypothesis proposals plus the structured-generation audit trail, and
+  persists nothing. Provider neutrality and no-invalid-passes are inherited from
+  E4-T02 (the planner adds no provider SDK and no network of its own).
+invariants:
+  - the Hypothesis contract carries the docs/spec/02_DOMAIN_MODEL.md 2.4 fields;
+    branch_role is a closed enum of EXACTLY the six MRR-FR-010 roles; required
+    capabilities, branch budget, stop conditions, and dependencies are REQUIRED
+    (MRR-FR-012) and a branch missing any is rejected
+  - falsifiability - for every branch_role except insufficient_evidence,
+    predicted_observations and disconfirming_observations are non-empty; the
+    insufficient_evidence role may leave them empty but must record an
+    insufficiency rationale (enforced identically in the JSON Schema via if/then
+    and in the Pydantic model_validator, the claim-schema "enforced twice"
+    precedent)
+  - a Hypothesis is NOT a claim of result (MRR-FR-014; 02 2.4) - it has no
+    verified/supported/result/authoritative field and its status enum has no
+    "verified" value; the planner emits only "proposed" and cannot mark its own
+    hypothesis verified
+  - the planner produces a forest of schema-valid Hypothesis PROPOSALS (A1) via
+    the E4-T02 structured-generation layer over the injected ModelAdapter; an
+    output branch that is not schema-valid is NEVER emitted as a proposal
+    (no-invalid-passes inherited from E4-T02)
+  - role coverage - the forest covers the six branch roles OR records an
+    explicit waiver reason for any absent role (MRR-FR-010/011); no produced
+    branch is silently dropped, and each is preserved with its priority
+    rationale (MRR-FR-013 shape)
+  - provider neutrality and determinism - the planner imports no provider SDK
+    and opens no network (both import-linter contracts stay KEPT); given a
+    scripted fake adapter the produced forest is deterministic
+  - every underlying model call is recorded in the returned audit trail (the
+    structured-generation ModelInvocationOutcome sequence)
+acceptance_tests:
+  - Hypothesis validates against its JSON Schema and round-trips; the committed
+    example validates; tests/contract cross-validates schema <-> model <-> example
+  - a Hypothesis with an unknown branch_role, or missing any MRR-FR-012 required
+    field (capabilities, budget, stop conditions, dependencies), is rejected
+  - a non-insufficient_evidence branch with empty predicted or disconfirming
+    observations is rejected; an insufficient_evidence branch with empty
+    observations but a recorded insufficiency rationale is accepted
+  - the Hypothesis has no verified/supported/result field and its status enum
+    contains no "verified" value (structural not-a-claim-of-result)
+  - the planner, given a scripted fake adapter returning a valid hypothesis-
+    forest response, produces a forest of schema-valid proposals across branch
+    roles; the audit trail records the underlying model call(s)
+  - when the model omits a branch role, the forest records an explicit waiver
+    reason for that role; no produced branch is dropped
+  - when the model returns schema-invalid hypothesis output, the planner does
+    NOT emit it as a proposal and surfaces the failure explicitly (no-invalid-
+    passes)
+  - determinism - the same scripted fake adapter and inputs yield an identical
+    forest
+  - provider neutrality - the planner package imports no provider SDK and makes
+    no network call; both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the Hypothesis shape (incl. the branch_role/status enums and the
+    falsifiability conditional) and the planner role's API surface and
+    proposal-only / no-persistence guarantees
+  - changed files, the new schema/example, contract-checker registration, and
+    any additive errors/enums
+  - tests added and exact command results (format, lint incl. both contracts
+    KEPT, typecheck, test, test-contract) proving green
+  - security/privacy implications (proposal-only, not-a-claim-of-result, no
+    persistence, no provider SDK / no network)
+  - open specification questions (what remains for branch selection/
+    prioritization, persistence, and the skeptic/verifier roles)
+stop_conditions:
+  - the Hypothesis/ResearchBranch distinction cannot be represented as one
+    entity without losing a material domain distinction (02 2.4)
+  - MRR-FR-012's required declarations or MRR-FR-014's "not a claim of result"
+    cannot be enforced structurally on the contract
+  - the planner cannot produce schema-valid proposals on the E4-T02 layer
+    without persistence, a provider SDK, or a path outside this packet
