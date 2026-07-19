@@ -1,0 +1,150 @@
+task_id: E5-T02b
+title: Pin the canonical public-key encoding (ADR-0009) and fix trust-resolver condition (d) to compare key identity
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 as the completeness follow-up to E5-T02, from ADR-0009 (canonical
+  public-key string encoding, ACCEPTED 2026-07-20) and docs/spec/02_DOMAIN_MODEL.md
+  section 2.2. Independent review of E5-T02 (PR #34, merged) found that its trust
+  resolver condition (d) - "the descriptor's public key is one of the manifest's
+  declared public_keys" - compares strings, and the same 32-byte Ed25519 key is
+  encoded three incompatible ways across the codebase: `did:key:...` (the
+  node-manifest example / spec placeholder, no decoder built), `ed25519-raw-base64:
+  <b64>` (the production manifest builder `_public_key_reference`), and plain
+  base64 (E5-T01 descriptors / `encode_public_key`). Condition (d)'s string
+  compare only matches the plain form, so a manifest built by the PRODUCTION
+  builder is wrongly rejected as `key_not_declared` (proven by a repro: plain
+  base64 not in [`ed25519-raw-base64:` + same base64]). E5-T02's tests are green
+  only because they use plain-base64 public_keys; the production encoding is never
+  exercised. Fail-closed-safe (over-rejects) but would block E2E-002 once
+  `receive()` is wired to real manifests. This packet applies ADR-0009. It does
+  NOT change E5-T02's trust-anchoring core (the five conditions, verification
+  against the ring's key, the coarse-reason rejected event) - only which bytes
+  condition (d) compares, and the encoding the production builder/example emit.
+objective: >
+  (1) Converge every public-key STRING onto the ADR-0009 canonical encoding -
+  standard base64 (RFC 4648 section 4, with padding) of the raw 32 Ed25519 bytes:
+  change `_public_key_reference` in the CLI orchestration to emit that (reuse
+  `mrr.crypto.keys.encode_public_key`) instead of the `ed25519-raw-base64:` prefix,
+  and replace the `did:key:` placeholder in examples/node-manifest.example.json
+  with a real plain-base64 key. (2) Harden `mrr.domain.manifest_trust`'s condition
+  (d) to compare KEY IDENTITY, not strings: decode the descriptor's key and each
+  `manifest.public_keys` entry to their raw 32 bytes (via
+  `mrr.crypto.keys.decode_public_key`) and match on bytes; an entry that does not
+  decode to a valid Ed25519 key simply does not match (fail closed) - never
+  raising out of condition (d) for an undecodable sibling entry, only failing the
+  "declared" check when NO entry matches. (3) Add a test that a manifest built by
+  the real production builder is accepted end-to-end by `receive()`, and that a
+  genuinely-absent key is still rejected as `key_not_declared`. Do NOT touch the
+  other four conditions, the crypto/hash primitives, E5-T01 descriptors, or kid
+  derivation.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0009-CANONICAL-PUBLIC-KEY-ENCODING.md
+  - docs/spec/adr/ADR-0003-SIGNATURE-VALUE-ENCODING.md
+  - docs/spec/02_DOMAIN_MODEL.md#22-nodemanifest
+  - packages/crypto/mrr/crypto/keys.py
+  - packages/domain/mrr/domain/manifest_trust.py
+  - services/control_plane/mrr/services/cli/orchestration.py
+  - examples/node-manifest.example.json
+requirements:
+  - MRR-FR-020
+  - MRR-NFR-007
+  - MRR-NFR-004
+allowed_paths:
+  - packages/domain/mrr/domain/manifest_trust.py
+  - services/control_plane/mrr/services/cli/**
+  - examples/node-manifest.example.json
+  - tests/unit/**
+  - tests/property/**
+  - tests/contract/**
+  - tests/integration/**
+  - tests/e2e/**
+forbidden_changes:
+  - the FOUR other resolver conditions (a/b/c/e) and the resolver's verification
+    against the RING's key - only condition (d)'s comparison changes
+  - the crypto sign/verify/hash primitives and mrr.domain.hashing_policy /
+    prepare_for_* policy; and `decode_public_key`/`encode_public_key`'s existing
+    plain-base64 behavior (REUSE them - do not add a prefix parser to the crypto
+    layer; the canonical encoding is plain base64, so plain `decode_public_key`
+    is exactly the right decoder)
+  - kid derivation (`derive_key_id`) - a kid derives from raw bytes and is
+    unaffected; do NOT recompute or change any kid
+  - the NodeManifest, Practice, PublicKeyDescriptor, or Signature contracts /
+    schemas, and E5-T01's descriptors / `encode_public_key`
+  - the CapabilityRegistry.receive() flow and register() primitive beyond what a
+    corrected condition (d) implies (the accept/reject wiring is unchanged)
+  - introducing a `did:key`/multibase decoder (that is a later ADR) or any new
+    envelope/contract/entity; both import-linter contracts MUST stay KEPT; no
+    network/DB/migration
+derived_decisions: >
+  The canonical encoding is plain standard-base64 (ADR-0009), identical to
+  ADR-0003's signature-value encoding, so `mrr.crypto.keys.encode_public_key`
+  (already plain base64) becomes the single producer and `decode_public_key`
+  (already plain base64) the single consumer - no new encoder/decoder, no prefix
+  parser. `_public_key_reference` is either replaced by a direct
+  `encode_public_key(public_key)` call or reduced to it; the node-manifest example
+  gets a real plain-base64 key generated the same way E5-T01's practice example
+  did. Condition (d) becomes identity-based: decode `descriptor.encoded_public_key`
+  once to raw bytes, then for each entry in `manifest.public_keys` attempt
+  `decode_public_key` inside a local try/except and compare raw bytes, matching on
+  the first equal one; entries that fail to decode are skipped (an undecodable
+  sibling entry, e.g. a stray non-key string, must never abort the whole check -
+  it just is not a match). If NO entry matches, condition (d) fails with the
+  existing `ManifestKeyNotDeclaredError` (unchanged typed error and coarse reason).
+  This is strictly more correct than the string compare and is invariant to base64
+  spelling. Because `_public_key_reference` feeds the manifest's SIGNED body,
+  changing it re-signs deterministically (signer and verifier both see the new
+  plain form); no signature test breaks, they just exercise the canonical encoding.
+invariants:
+  - every public-key string the codebase EMITS (NodeManifest.public_keys via the
+    production builder, the node-manifest example, Practice descriptors) is the
+    ADR-0009 canonical plain base64; no `ed25519-raw-base64:` prefix and no
+    `did:key:` placeholder remains in emitted output or committed examples
+  - condition (d) matches when the descriptor's key and some manifest.public_keys
+    entry decode to the SAME raw 32 bytes, regardless of base64 spelling, and
+    fails closed (ManifestKeyNotDeclaredError) when none does; an undecodable
+    sibling entry never raises out of (d), it is simply not a match
+  - conditions (a),(b),(c),(e), verification against the ring's key, the typed
+    failure family, and the coarse-reason rejected event are UNCHANGED
+  - no kid, content-hash, or signature semantics change; `encode_public_key`/
+    `decode_public_key` behavior is unchanged (plain base64); both import-linter
+    contracts stay KEPT
+  - a manifest built by the real production builder is now ACCEPTED by receive()
+    when trust-anchored to a practice that lists the signing key; a manifest that
+    genuinely does not declare the resolved key is still rejected
+acceptance_tests:
+  - a NodeManifest built by the real production builder (`_build_node_manifest`,
+    now emitting plain-base64 public_keys) is accepted end-to-end by
+    CapabilityRegistry.receive() when the trusted practice's ring holds the
+    signing key - the case E5-T02's own tests did not cover
+  - condition (d) still rejects (ManifestKeyNotDeclaredError -> coarse
+    `key_not_declared`) a manifest whose public_keys do NOT include the resolved
+    descriptor's key, and does so without raising for any undecodable sibling entry
+  - the node-manifest example validates (contract test) with its new plain-base64
+    public_keys, and no committed example or emitted string contains
+    `ed25519-raw-base64:` or `did:key:`
+  - all existing E5-T02 manifest-trust and capability-registry suites stay green;
+    both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the `_public_key_reference` change, the example update, and the condition-(d)
+    identity comparison
+  - tests added (production-encoding acceptance; absent-key rejection) and exact
+    command results proving green, plus CI for integration/e2e
+  - security/privacy implications (fail-closed preserved; identity-based key
+    comparison; one canonical encoding; no crypto/kid/signature change)
+  - open specification questions (e.g. whether a future did:key resolver is wanted)
+stop_conditions:
+  - converging to plain base64 would require changing kid derivation, the crypto
+    primitives, or an E5-T01 descriptor invariant
+  - condition (d) cannot be made identity-based without touching another resolver
+    condition or the verification-against-ring-key step
+  - a consumer outside allowed_paths depends on the `ed25519-raw-base64:` prefix
+    or the `did:key:` placeholder (report it rather than change out-of-scope code)
