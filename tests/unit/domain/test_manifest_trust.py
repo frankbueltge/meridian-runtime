@@ -241,11 +241,63 @@ def test_signer_mismatch_raises_manifest_signer_mismatch_error() -> None:
 def test_key_not_declared_in_manifest_raises_manifest_key_not_declared_error() -> None:
     manifest, practice, _ = _trusted_scenario()
     ring = practice_key_ring(practice)
-    # The manifest never lists the key it actually signed with.
+    # The manifest never lists the key it actually signed with, and neither
+    # of these strings decodes to a valid Ed25519 key (ADR-0009: condition
+    # (d) must fail closed here, not raise on the undecodable entries).
     stripped = manifest.model_copy(update={"public_keys": ["a-different-key-entirely"]})
 
     with pytest.raises(ManifestKeyNotDeclaredError):
         resolve_trusted_manifest_key(stripped, practice.id, ring, at=_NOW)
+
+
+# ---------------------------------------------------------------------------
+# ADR-0009 / task-packets/E5-T02b.yaml: condition (d) compares KEY IDENTITY
+# (decoded raw bytes), not string identity, and never raises out of the
+# check for an undecodable sibling entry.
+# ---------------------------------------------------------------------------
+
+
+def test_condition_d_skips_an_undecodable_sibling_entry_and_still_resolves() -> None:
+    """A stray, non-base64 entry alongside the real declared key must not
+    abort condition (d) — it is simply not a match, and the check still
+    succeeds once the genuinely declared key is reached.
+
+    The noisy entry is part of ``public_keys`` BEFORE signing (not spliced
+    in afterwards) — ``public_keys`` is itself part of the signed body
+    (ADR-0004), so mutating it post-signature would also break condition
+    (e) and this test would no longer isolate condition (d).
+    """
+    private_key, public_key = generate_ed25519_keypair()
+    practice_id = new_urn("practice")
+    entry = _key_entry(public_key)
+    practice = _practice(practice_id=practice_id, keys=[entry])
+    manifest = _manifest(
+        signer_practice_id=practice_id,
+        key_id=entry["kid"],
+        public_keys=["not-valid-base64!!!", entry["encoded_public_key"]],
+    )
+    signed = _sign(manifest, private_key)
+    ring = practice_key_ring(practice)
+
+    resolved = resolve_trusted_manifest_key(signed, practice_id, ring, at=_NOW)
+
+    assert resolved.public_bytes_raw() == public_key.public_bytes_raw()
+
+
+def test_condition_d_rejects_when_every_declared_entry_is_undecodable() -> None:
+    """When NONE of the manifest's declared public_keys entries decode to
+    any valid Ed25519 key at all, condition (d) still fails closed with the
+    same typed error — undecodable entries are skipped, never treated as an
+    implicit match.
+    """
+    manifest, practice, _ = _trusted_scenario()
+    ring = practice_key_ring(practice)
+    all_undecodable = manifest.model_copy(
+        update={"public_keys": ["not-valid-base64!!!", "also-not-a-key!!!"]}
+    )
+
+    with pytest.raises(ManifestKeyNotDeclaredError):
+        resolve_trusted_manifest_key(all_undecodable, practice.id, ring, at=_NOW)
 
 
 def test_tampered_manifest_raises_signature_verification_error() -> None:
