@@ -61,10 +61,13 @@ of "the object" for hashing, signing, and persistence means signing and
 verifying are guaranteed to agree — see ADR-0004's "gap 2".
 
 ``ResearchScore`` carries no ``signature`` field — it is not one of the
-three cross-practice signed objects ADR-0004 unifies, and is out of
-task-packets/E5-T00.yaml's scope. ``_finalize_content_hash`` below still
-computes its ``content_hash`` over the null-including
-``draft.model_dump(mode="json")`` form, exactly as before this task.
+three cross-practice signed objects ADR-0004 unifies for signing. Per
+ADR-0004's "gap 2" and task-packets/E5-T00b.yaml (the completeness
+follow-up to E5-T00), ``_finalize_content_hash`` below ALSO computes
+``ResearchScore``'s ``content_hash`` over the ``exclude_none=True`` form —
+the same form its persisted body uses — so ``content_hash ==
+compute_content_hash(persisted body)`` holds for every first-class object,
+not only the signed three.
 """
 
 from __future__ import annotations
@@ -176,24 +179,30 @@ class LocalEvidenceLoopResult:
 
 def _finalize_content_hash[T: BaseObject](draft: T) -> T:
     """Return a copy of ``draft`` with ``content_hash`` replaced by the real
-    ``compute_content_hash`` value, computed over ``draft.model_dump(mode=
-    "json")``.
+    ``compute_content_hash`` value, computed over the ``exclude_none=True``
+    form — ``json.loads(draft.model_dump_json(exclude_none=True))`` — per
+    ADR-0004 (docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md) and
+    task-packets/E5-T00b.yaml.
 
     Used only for ``ResearchScore`` (``_build_research_score``/
     ``_add_approval_revision`` below): ``ResearchScore`` carries no
-    ``signature`` field, so it is not one of the three cross-practice signed
-    objects ADR-0004 (docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md)
-    unifies onto the ``exclude_none=True`` canonical form, and this helper
-    keeps the null-including form it always used. ``NodeManifest``/
-    ``TaskBundle`` compute their own ``content_hash`` inline, over the
-    ``exclude_none=True`` body — see ``_build_node_manifest``/
-    ``_build_task_bundle`` and the module docstring's "Hashing and signing
-    convention" section. Whatever placeholder ``content_hash`` (or
-    ``signature``) ``draft`` currently carries is irrelevant:
-    ``compute_content_hash`` -> ``prepare_for_hash`` strips both fields
-    before canonicalizing.
+    ``signature`` field, so it was never one of the three cross-practice
+    signed objects E5-T00 unified for signing — but its OWN ``content_hash``
+    was still, until E5-T00b, computed over the null-including
+    ``model_dump(mode="json")`` form, diverging from its ``exclude_none``
+    persisted body (ADR-0004's "gap 2"). This helper now matches every other
+    content-hash site in the codebase (the research_score service's own
+    transitions, ``_build_node_manifest``/``_build_task_bundle``,
+    ``EvidenceCrateSealer.seal``, ``RunManifestRecorder.record``, and the
+    planner/skeptic/verifier/correction/claim services): build the
+    ``exclude_none=True`` body first, then hash THAT. Whatever placeholder
+    ``content_hash`` (or ``signature``) ``draft`` currently carries is
+    irrelevant: ``compute_content_hash`` -> ``prepare_for_hash`` strips it
+    before canonicalizing, so this ordering (build the body, then hash it)
+    is safe.
     """
-    real_hash = compute_content_hash(draft.model_dump(mode="json"))
+    body: dict[str, Any] = json.loads(draft.model_dump_json(exclude_none=True))
+    real_hash = compute_content_hash(body)
     return draft.model_copy(update={"content_hash": real_hash})
 
 

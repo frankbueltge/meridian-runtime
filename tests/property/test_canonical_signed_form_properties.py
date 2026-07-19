@@ -1,4 +1,5 @@
-"""Property test: the ADR-0004 "gap 2" proof (task-packets/E5-T00.yaml).
+"""Property test: the ADR-0004 "gap 2" proof (task-packets/E5-T00.yaml and
+its completeness follow-up, task-packets/E5-T00b.yaml).
 
 ADR-0004 (docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md) pins one
 canonical pre-canonicalization form -- schema-conformant JSON with absent or
@@ -34,6 +35,17 @@ task-packets/E5-T00.yaml's forbidden_changes); ``verify_object_signature`` is
 called directly here as the "local check" the packet's own acceptance test
 describes -- never a production call site.
 
+``ResearchScore`` carries no ``signature`` field, so it was never one of
+the three signed objects E5-T00 unified -- but its own ``content_hash``
+was, until E5-T00b, still computed over the null-including form by the CLI
+orchestration helper ``_finalize_content_hash``, diverging from its
+``exclude_none`` persisted body (ADR-0004's "gap 2" for a non-signed
+object). The tests at the bottom of this module exercise the real
+``_build_research_score`` and prove ``content_hash`` now equals
+``compute_content_hash`` of the object's own ``exclude_none`` body, plus a
+regression proving the old null-including hash genuinely differs (the fix
+is not a no-op).
+
 Ed25519 keys are generated once at module scope, not per hypothesis example
 -- the same rationale tests/property/test_signature_roundtrip_properties.py
 documents: the property under test is about the canonicalize/sign/verify
@@ -53,12 +65,16 @@ from hypothesis import given
 from hypothesis import strategies as st
 from mrr.contracts import ArtifactRef, EvidenceCrate, NodeManifest, RunManifest, TaskBundle
 from mrr.crypto.exceptions import SignatureVerificationError
-from mrr.domain.hashing_policy import sign_object, verify_object_signature
+from mrr.domain.hashing_policy import compute_content_hash, sign_object, verify_object_signature
 from mrr.domain.identity import new_urn
 from mrr.domain.repositories import StoredObject
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
-from mrr.services.cli.orchestration import _build_node_manifest, _build_task_bundle
+from mrr.services.cli.orchestration import (
+    _build_node_manifest,
+    _build_research_score,
+    _build_task_bundle,
+)
 from mrr.services.node_runtime.evidence_crate import EvidenceCrateSealer
 from mrr.services.node_runtime.executor import ExecutionResult, ResourceUsage
 from mrr.services.node_runtime.run_manifest import RunManifestRecorder
@@ -374,3 +390,37 @@ def test_evidence_crate_old_null_including_signature_does_not_verify() -> None:
             old_form_signature,
             algorithm="Ed25519",
         )
+
+
+# ---------------------------------------------------------------------------
+# ResearchScore (task-packets/E5-T00b.yaml, the completeness follow-up):
+# content-hash site is _build_research_score. ResearchScore carries no
+# signature field, so this is a content_hash-only property, not a
+# signed-bytes one -- but the same gap-2 shape applies: content_hash must
+# equal compute_content_hash of the exclude_none persisted body.
+# ---------------------------------------------------------------------------
+
+
+def test_research_score_content_hash_equals_hash_of_its_own_persisted_body() -> None:
+    score = _build_research_score(practice_id=new_urn("practice"), actor=new_urn("agent-role"))
+    persisted_body = json.loads(score.model_dump_json(exclude_none=True))
+
+    # revision 1's supersedes/labels (inherited BaseObject optionals) are
+    # never set by _build_research_score -- always absent, never JSON null.
+    for absent_optional in ("supersedes", "labels"):
+        assert absent_optional not in persisted_body
+
+    assert score.content_hash == compute_content_hash(persisted_body)
+
+
+def test_research_score_old_null_including_hash_no_longer_matches_the_stored_hash() -> None:
+    """Regression: proves the E5-T00b fix is real, not a no-op -- the OLD
+    null-including hash a signer/auditor on the pre-fix code would have
+    computed genuinely differs from the NEW stored content_hash, for a
+    ResearchScore with an absent optional (``supersedes``/``labels``).
+    """
+    score = _build_research_score(practice_id=new_urn("practice"), actor=new_urn("agent-role"))
+
+    old_form_hash = compute_content_hash(score.model_dump(mode="json"))
+
+    assert old_form_hash != score.content_hash
