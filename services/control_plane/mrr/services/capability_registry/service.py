@@ -1,14 +1,31 @@
-"""``CapabilityRegistry`` (task-packets/E2-T02.yaml): the application-layer
-service docs/spec/01_SYSTEM_SPEC.md section 7.3 describes as the Capability
+"""``CapabilityRegistry`` (task-packets/E2-T02.yaml, extended by
+task-packets/E5-T02.yaml): the application-layer service
+docs/spec/01_SYSTEM_SPEC.md section 7.3 describes as the Capability
 Registry — "Stores signed node manifests and compatibility metadata. It does
 not grant permission." — implementing MRR-FR-020/021.
 
-Three operations:
+Four operations:
 
-- ``register``: verify a signed ``NodeManifest``'s signature (fail closed,
-  persist nothing on failure), then persist it as the next append-only
-  revision for its ``node_id`` plus a ``node_manifest.registered`` event,
-  atomically.
+- ``register``: verify a signed ``NodeManifest``'s signature against a
+  CALLER-SUPPLIED verifying key (fail closed, persist nothing on failure),
+  then persist it as the next append-only revision for its ``node_id`` plus
+  a ``node_manifest.registered`` event, atomically. Unchanged since E2-T02 —
+  this task-packets/E5-T02.yaml addition never modifies it.
+- ``receive`` (E5-T02): the TRUST-ANCHORED accept path — resolves the
+  manifest's OWN claimed signer/key id against a caller-supplied trusted
+  sender ``mrr.contracts.practice.Practice``'s ``KeyRing``
+  (``mrr.domain.manifest_trust.resolve_trusted_manifest_key``, fail closed
+  with a distinct typed error per reason) and, only on success, delegates to
+  ``register`` with the resolved key — reusing all of its persistence/event/
+  revision behavior verbatim. On any trust-resolution failure, nothing is
+  persisted and a ``node_manifest.rejected`` event carrying only a COARSE
+  reason category is recorded (docs/spec/04_SECURITY_AND_POLICY.md section
+  8.3: "a coarse reason code", detail kept local) via the event-only
+  ``RecordEvent`` path (ADR-0007's ``record_event`` — no content revision is
+  ever written for a rejection). This closes the trust-anchoring gap
+  E2-T02's ``register`` deliberately left open: an object-layer verification
+  primitive that trusted whatever key the caller handed it, with no
+  resolution against a trusted key set of its own.
 - ``get_current_manifest``: resolve the latest revision for a node and
   assert it is currently within its declared validity window.
 - ``find_nodes_with_capability``: a pure matching primitive over currently
@@ -47,7 +64,12 @@ a shared extraction — task-packets/E2-T02.yaml says to replicate the small
 pattern locally rather than refactor merged E2-T01 code. (A future task
 could lift both into one shared helper once a third caller shows the
 duplication is real, rather than guessing at the right shared shape now
-from just two.)
+from just two.) ``bind_event_unit_of_work`` (E5-T02) is the same kind of
+local copy, this time of
+``mrr.services.task_bundle.service.bind_event_unit_of_work`` — the
+EVENT-ONLY path (ADR-0007's ``mrr.persistence.unit_of_work.record_event``)
+``receive`` needs to record a rejection without writing any content
+revision.
 """
 
 from __future__ import annotations
@@ -55,20 +77,26 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from mrr.contracts import NodeManifest, Urn
+from mrr.contracts import NodeManifest, Practice, Urn
+from mrr.crypto.exceptions import SignatureVerificationError, UnsupportedAlgorithmError
 from mrr.domain.exceptions import (
+    ManifestKeyNotDeclaredError,
+    ManifestKeyNotValidError,
+    ManifestSignerMismatchError,
     NodeManifestNotFoundError,
     NodeManifestValidityError,
     ObjectNotFoundError,
+    UnknownKeyIdError,
 )
 from mrr.domain.hashing_policy import verify_object_signature
 from mrr.domain.identity import new_urn
+from mrr.domain.manifest_trust import practice_key_ring, resolve_trusted_manifest_key
 from mrr.domain.repositories import ObjectRepository, StoredObject
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import record_event, record_object_revision_with_event
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from sqlalchemy import Engine
@@ -82,6 +110,60 @@ from sqlalchemy import Engine
 #: method's docstring.
 _REGISTERED_EVENT_TYPE = "node_manifest.registered"
 
+#: E5-T02's refusal event: every ``receive()`` trust-resolution failure
+#: writes exactly one of these, event-only (ADR-0007's ``record_event`` —
+#: no content revision), carrying only a coarse ``reason_category``
+#: (docs/spec/04_SECURITY_AND_POLICY.md section 8.3: "a coarse reason
+#: code"). Never written by ``register`` itself, which is unmodified.
+_REJECTED_EVENT_TYPE = "node_manifest.rejected"
+
+#: See the module docstring's E5-T02 ``receive`` entry: a minimal, coarse,
+#: NOT schema/spec-defined vocabulary (docs/spec/04 section 8.3 only says "a
+#: coarse reason code", without naming the set) — this task's own proposal,
+#: matching ``mrr.services.task_bundle.service.RefusalReason``'s own
+#: precedent and its "flagged as an open specification question" caveat.
+#: Each member names exactly one of ``resolve_trusted_manifest_key``'s five
+#: fail-closed conditions (see ``mrr.domain.manifest_trust``'s module
+#: docstring); the SPECIFIC reason (kid, timestamps, claimed vs trusted
+#: practice id, ...) stays on the raised typed exception and is never
+#: written to the event log — only this coarse category is.
+ManifestRejectionReason = Literal[
+    "signer_mismatch",
+    "unknown_key",
+    "key_not_valid",
+    "key_not_declared",
+    "signature_invalid",
+]
+
+#: Maps each of ``resolve_trusted_manifest_key``'s five distinct typed
+#: failure exceptions to its coarse ``ManifestRejectionReason`` — the one
+#: place this service translates a specific typed reason into the public,
+#: coarse category recorded on a ``node_manifest.rejected`` event.
+#: ``SignatureVerificationError``/``UnsupportedAlgorithmError`` both map to
+#: ``"signature_invalid"``: condition (e) failing either because the
+#: signature does not verify or because the algorithm is unsupported is, at
+#: the coarse-refusal level, the same "this signature is not acceptable"
+#: category — docs/spec/04 section 8.3 asks only for a coarse code, not a
+#: crypto-internals distinction.
+_REJECTION_REASON_BY_ERROR_TYPE: dict[type[Exception], ManifestRejectionReason] = {
+    ManifestSignerMismatchError: "signer_mismatch",
+    UnknownKeyIdError: "unknown_key",
+    ManifestKeyNotValidError: "key_not_valid",
+    ManifestKeyNotDeclaredError: "key_not_declared",
+    SignatureVerificationError: "signature_invalid",
+    UnsupportedAlgorithmError: "signature_invalid",
+}
+
+#: The exact exception types ``receive()`` treats as a trust-anchoring
+#: refusal (every one of ``resolve_trusted_manifest_key``'s five fail-closed
+#: conditions) — the tuple form ``except`` needs, kept as the single source
+#: of truth alongside ``_REJECTION_REASON_BY_ERROR_TYPE`` so the two can
+#: never drift apart (a ``KeyError`` on an uncaught type would be a bug in
+#: this module, not silently swallowed).
+_MANIFEST_TRUST_FAILURES: tuple[type[Exception], ...] = tuple(
+    _REJECTION_REASON_BY_ERROR_TYPE.keys()
+)
+
 #: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
 #: takes once its ``engine``/``object_repository``/``event_log`` arguments
 #: are bound. Identical in shape to
@@ -90,6 +172,13 @@ _REGISTERED_EVENT_TYPE = "node_manifest.registered"
 RecordRevisionWithEvent = Callable[
     [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
 ]
+
+#: The callable shape ``mrr.persistence.unit_of_work.record_event`` takes
+#: once its ``engine``/``event_log`` arguments are bound — the EVENT-ONLY
+#: path ``receive`` uses to record a ``node_manifest.rejected`` event
+#: without writing any content revision (E5-T02, mirroring
+#: ``mrr.services.task_bundle.service.RecordEvent``'s own shape/rationale).
+RecordEvent = Callable[[DomainEvent], AppendedEvent]
 
 
 class _EventJournal(Protocol):
@@ -131,6 +220,23 @@ def bind_unit_of_work(
         )
 
     return _record
+
+
+def bind_event_unit_of_work(engine: Engine, event_log: PostgresEventLog) -> RecordEvent:
+    """Bind ``mrr.persistence.unit_of_work.record_event`` (ADR-0007's
+    EVENT-ONLY path — no content revision) to a concrete
+    ``sqlalchemy.Engine``/``PostgresEventLog`` pair, producing the
+    ``RecordEvent`` callable ``CapabilityRegistry.receive`` depends on to
+    record a ``node_manifest.rejected`` event. Production wiring and
+    integration tests call this once; DB-free unit tests pass their own
+    trivial callable of the same shape, backed by an in-memory fake event
+    log, instead.
+    """
+
+    def _record_event(event: DomainEvent) -> AppendedEvent:
+        return record_event(engine, event_log, event)
+
+    return _record_event
 
 
 def _manifest_to_stored_object(manifest: NodeManifest) -> StoredObject:
@@ -327,6 +433,155 @@ class CapabilityRegistry:
         )
         stored, _ = self._record(obj, expected_current_revision, event)
         return stored
+
+    # ------------------------------------------------------------------
+    # Trust-anchored acceptance (task-packets/E5-T02.yaml, MRR-FR-020).
+    # ------------------------------------------------------------------
+
+    def receive(
+        self,
+        manifest: NodeManifest,
+        trusted_sender: Practice,
+        record_rejected_event: RecordEvent,
+        *,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> StoredObject:
+        """Trust-anchor ``manifest`` to ``trusted_sender`` and, only once a
+        trusted verifying key is resolved, register it via the EXISTING
+        ``register`` — reusing all of its persistence/event/revision
+        behavior verbatim. This is the ADDITIVE accept path E2-T02's
+        ``register`` deliberately left for E5: ``register`` verifies
+        against a CALLER-SUPPLIED bare key with no trust resolution of its
+        own; ``receive`` is what actually decides whether a manifest's own
+        claimed signer/key id anchors to a practice this caller trusts,
+        before that key is ever handed to ``register``.
+
+        Trust resolution (``mrr.domain.manifest_trust.
+        resolve_trusted_manifest_key`` — see that module's docstring for the
+        full five-condition accept rule and its typed failure family) runs
+        FIRST, before ``register`` — and therefore before any object
+        repository read or write — is even reached. On success, this method
+        calls ``register`` exactly as any other caller would (with the
+        resolved key); every persistence/provenance guarantee ``register``
+        already provides (atomic write, append-only revisioning, complete
+        NFR-001 event provenance) applies unchanged, because it IS the same
+        method, not a reimplementation of it.
+
+        On any trust-resolution failure, NOTHING is persisted (no
+        ``StoredObject`` revision is ever constructed for a rejected
+        manifest — the object repository is never even read) and exactly
+        one ``node_manifest.rejected`` event is recorded via
+        ``record_rejected_event`` (ADR-0007's event-only path — no content
+        revision), carrying only a COARSE ``reason_category``
+        (docs/spec/04_SECURITY_AND_POLICY.md section 8.3: "a coarse reason
+        code"; see ``_REJECTION_REASON_BY_ERROR_TYPE`` for the mapping from
+        each specific typed error to its coarse category) — the specific
+        reason (which kid, which timestamps, the claimed vs. trusted
+        practice id, ...) stays on the raised exception and is never
+        written to the event log. The exception itself is always re-raised
+        after the rejected event is recorded, so a caller sees the same
+        typed error either way.
+
+        Args:
+            manifest: the received, not-yet-trusted ``NodeManifest``.
+            trusted_sender: the practice this caller actually trusts as
+                ``manifest``'s sender — CALLER-SUPPLIED, exactly as
+                ``register``'s ``verifying_key`` is (task-packets/
+                E5-T02.yaml forbidden_changes: no new persisted practice
+                registry; this method builds and stores nothing about
+                ``trusted_sender`` beyond this one call).
+            record_rejected_event: the event-only ``RecordEvent`` callable
+                (``bind_event_unit_of_work`` in production, an in-memory
+                fake in unit tests) this method uses ONLY on a
+                trust-resolution failure — never called at all on the
+                success path, since ``register`` already records its own
+                ``node_manifest.registered`` event.
+            actor, policy_version, correlation_id: forwarded to ``register``
+                on success, and used to construct the rejected event on
+                failure — same provenance fields either way.
+            at: the evaluation instant for the resolver's validity-window
+                check. Defaults to ``datetime.now(UTC)`` (the RECEIPT
+                instant, docs/spec/04 section 8.4), caller-overridable for
+                deterministic testing, mirroring ``get_current_manifest``'s
+                own ``at`` parameter.
+
+        Returns:
+            The persisted ``StoredObject`` — identical to what ``register``
+            itself would return for the same (already-trusted) key.
+
+        Raises:
+            mrr.domain.exceptions.ManifestSignerMismatchError,
+            mrr.domain.exceptions.UnknownKeyIdError,
+            mrr.domain.exceptions.ManifestKeyNotValidError,
+            mrr.domain.exceptions.ManifestKeyNotDeclaredError,
+            mrr.crypto.exceptions.SignatureVerificationError,
+            mrr.crypto.exceptions.UnsupportedAlgorithmError: trust
+                resolution failed for the corresponding reason (see
+                ``mrr.domain.manifest_trust.resolve_trusted_manifest_key``);
+                a ``node_manifest.rejected`` event was recorded first.
+            ValueError, mrr.domain.exceptions.RevisionConflictError: raised
+                by the delegated ``register`` call for its OWN pre-existing
+                reasons (wrong revision number, concurrent writer) — these
+                are unrelated to trust anchoring, so no rejected event is
+                recorded for them; ``register``'s own behavior is unchanged.
+        """
+        ring = practice_key_ring(trusted_sender)
+        try:
+            verifying_key = resolve_trusted_manifest_key(manifest, trusted_sender.id, ring, at=at)
+        except _MANIFEST_TRUST_FAILURES as exc:
+            reason_category = _REJECTION_REASON_BY_ERROR_TYPE[type(exc)]
+            self._record_manifest_rejected(
+                manifest,
+                record_rejected_event,
+                reason_category,
+                actor=actor,
+                policy_version=policy_version,
+                correlation_id=correlation_id,
+            )
+            raise
+
+        return self.register(
+            manifest,
+            verifying_key,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+        )
+
+    def _record_manifest_rejected(
+        self,
+        manifest: NodeManifest,
+        record_rejected_event: RecordEvent,
+        reason_category: ManifestRejectionReason,
+        *,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+    ) -> None:
+        """Append exactly one ``node_manifest.rejected`` event (ADR-0007
+        event-only path — no content revision) carrying only
+        ``reason_category``. ``object_id``/``object_revision`` name the node
+        and revision the rejected manifest claimed for itself, mirroring
+        ``register``'s own event construction, so a rejected attempt is
+        still attributable to a node/revision even though nothing was
+        persisted for it.
+        """
+        event = DomainEvent(
+            id=new_urn("domain-event"),
+            event_type=_REJECTED_EVENT_TYPE,
+            occurred_at=datetime.now(UTC),
+            actor=actor,
+            policy_version=policy_version,
+            causation_id=self._last_event_id_for(manifest.node_id),
+            correlation_id=correlation_id,
+            object_id=manifest.node_id,
+            object_revision=manifest.revision,
+            payload={"reason_category": reason_category},
+        )
+        record_rejected_event(event)
 
     # ------------------------------------------------------------------
     # Resolution (MRR-FR-021's prerequisite: knowing the CURRENT manifest).
