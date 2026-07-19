@@ -1,0 +1,170 @@
+task_id: E4-T02
+title: Implement the structured-generation adapter with bounded schema-repair
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E4 (E4-T02),
+  docs/spec/01_SYSTEM_SPEC.md section 4.5 (MRR-FR-044/045/046 and the acceptance
+  "Invalid structured model output cannot enter the claim graph"), section 5
+  (A1 Draft = "clearly marked proposal"), and the docs/spec/02_DOMAIN_MODEL.md
+  global invariant "No model output bypasses schema and domain validation";
+  building directly on the merged E4-T01 (task-packets/E4-T01.yaml) ModelAdapter
+  port and ModelInvocationOutcome value object. Approved by the repository
+  owner's standing direction to continue (2026-07-19). Second task of Epic E4 -
+  the provider-neutral layer that turns a raw model call into a schema-valid
+  PROPOSAL or an explicit failure, with a bounded repair loop.
+objective: >
+  Provide a provider-neutral structured-generation layer that, given the
+  E4-T01 ModelAdapter port, a ModelInvocationRequest, a caller-supplied target
+  schema/validator, and an explicit maximum repair count, obtains a model
+  response and validates it against the target schema; on a validation failure
+  it performs a BOUNDED number of repair attempts (feeding the validation error
+  back into a follow-up call) and, if the bound is exhausted without a valid
+  result, returns an explicit, distinct failure - never letting invalid,
+  partially parsed, or coerced output pass as valid. Every underlying call
+  (initial and each repair) is recorded as a ModelInvocationOutcome in an
+  ordered audit trail. The successful result is a "clearly marked proposal"
+  (A1) that downstream domain validation must still accept (MRR-FR-046); this
+  layer performs STRUCTURAL validation only and marks nothing authoritative.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#45-stage-5--local-execution
+  - docs/spec/01_SYSTEM_SPEC.md#5-autonomy-model
+  - docs/spec/02_DOMAIN_MODEL.md   # global invariant "No model output bypasses schema and domain validation"
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e4--agent-roles-and-model-adapters
+  - packages/domain/mrr/domain/model_adapter.py   # the E4-T01 port + value objects this builds on
+  - task-packets/E4-T01.yaml
+requirements:
+  - MRR-FR-044
+  - MRR-FR-045
+  - MRR-FR-046
+  - MRR-NFR-004
+  - MRR-NFR-010
+allowed_paths:
+  - adapters/llm/**
+  - pyproject.toml
+  - tests/unit/**
+  - tests/property/**
+forbidden_changes:
+  - any provider SDK dependency (openai, anthropic, google-generativeai, boto3,
+    litellm, ...), any real vendor binding, and any network egress - the layer
+    works SOLELY through the injected ModelAdapter port and is SDK-free; a
+    concrete vendor-SDK adapter is a LATER task in its own separate package, not
+    created here
+  - any change to the E4-T01 contracts/port SEMANTICS (mrr.domain.model_adapter,
+    mrr.contracts.model_profile, mrr.contracts.model_invocation) beyond
+    importing them - if a change there seems required, STOP and report it as a
+    blocking dependency (AGENTS rule 13/14)
+  - any new authoritative state, DB schema, migration, persistence, repository,
+    service, or HTTP/FastAPI endpoint - the layer returns TRANSIENT in-process
+    outcomes; persisting ModelInvocation into a RunManifest and wiring the
+    executor is E4-T05
+  - any new JSON Schema or contracts entity - the structured result is transient
+    orchestration output consumed in-process, NOT an externally visible or
+    persisted object (AGENTS rule 6 governs persisted/cross-boundary structures;
+    this is neither); the persisted record already exists (E4-T01 ModelInvocation)
+  - the prompt/version registry (E4-T06), the planner/proposer/skeptic/verifier
+    roles (E4-T03..T05), and the benchmark runner (E4-T07)
+  - weakening or removing EITHER import-linter contract (both MUST stay KEPT);
+    do not modify contract 2 at all
+derived_decisions: >
+  The layer lives in a NEW provider-neutral adapter package,
+  adapters/llm/mrr/adapters/llm/ (mirroring adapters/object_store/mrr/adapters/
+  object_store/). Adding a package root requires registering "adapters/llm/mrr"
+  and "adapters/llm" in EVERY pyproject.toml list where "adapters/object_store"
+  already appears - grep pyproject.toml for object_store to find them ALL: the
+  [tool.hatch.build.targets.wheel] packages list, the sources-path list, the
+  [tool.hatch.build.targets.wheel.sources] map, the [tool.mypy] mypy_path, AND
+  import-linter contract 1's source_modules (as "mrr.adapters.llm"). Adding
+  mrr.adapters.llm to contract 1 MACHINE-ENFORCES that this structured layer
+  imports no provider SDK or web/workflow framework - the same guarantee
+  object_store already carries, and exactly the provider neutrality MRR-NFR-004/
+  010 require. (When a concrete vendor-SDK adapter is built in a future task it
+  will live in its OWN separate package NOT listed in contract 1; this task does
+  not create it and does not restructure the contract.) The layer is NOT itself
+  a ModelAdapter (its return type is a parsed proposal plus an audit trail, not
+  a single ModelInvocationOutcome): it is a higher-level function/class that
+  USES an injected ModelAdapter. It reuses mrr.domain.model_adapter verbatim
+  (ModelInvocationRequest/Outcome, TerminalStatus, RedactionPolicy,
+  apply_redaction) and validates candidate output with Pydantic v2 (the
+  caller supplies the target model/validator) - it does not reimplement
+  validation or hashing. The repair prompt is built inline from the schema and
+  the validation error; the versioned named-prompt registry is a separate task
+  (E4-T06) and is out of scope here.
+invariants:
+  - bounded repair - at most `max_repair_attempts` (an explicit int >= 0)
+    additional calls after the first; the total number of underlying
+    invocations is exactly 1 + (repairs actually used) and NEVER exceeds
+    1 + max_repair_attempts; the loop always terminates (no unbounded retry)
+  - no invalid output passes - a proposal is returned ONLY if it validated
+    against the caller's target schema; otherwise an explicit, DISTINCT failure
+    result. Invalid, partially parsed, or coerced output is NEVER returned as a
+    valid proposal (MRR-FR-046; "No model output bypasses schema and domain
+    validation")
+  - proposal-only - the successful result is a schema-valid PROPOSAL; the layer
+    performs structural validation only and sets no authoritative / verified /
+    accepted flag (domain acceptance and verification are downstream, out of
+    scope)
+  - provider neutrality - the layer imports NO provider SDK and opens NO
+    network; it operates solely through the injected ModelAdapter port
+    (machine-enforced by adding mrr.adapters.llm to import-linter contract 1;
+    both contracts stay KEPT)
+  - every underlying call is recorded - each invoke (initial + each repair)
+    yields a ModelInvocationOutcome in the returned ordered audit trail;
+    redaction defaults to hashes-only, so no recorded outcome carries raw
+    prompt/response text unless the request's own policy permits it
+  - distinct failure taxonomy - a schema-invalid-after-limit failure is DISTINCT
+    from an underlying adapter refusal/error/timeout; a non-completed underlying
+    outcome is surfaced as itself, never relabeled schema-invalid, and vice versa
+  - deterministic - given a scripted fake adapter, the result (status, proposal,
+    number of attempts, audit trail) is deterministic
+acceptance_tests:
+  - valid-first - the fake adapter returns schema-valid output on the first
+    call -> the parsed proposal is returned, exactly one recorded outcome, zero
+    repairs
+  - repair-then-succeed - the fake returns invalid then valid within the limit
+    -> the parsed proposal is returned; the audit trail shows the invalid
+    attempt then the successful one; repair count == 1
+  - limit-exhausted - the fake always returns schema-invalid output with
+    max_repair_attempts=N -> an explicit, distinct schema-invalid failure (no
+    proposal); exactly 1+N recorded outcomes; invalid output is NOT returned as
+    valid
+  - zero-budget - max_repair_attempts=0 with a single invalid output -> explicit
+    failure, exactly one recorded outcome, no repair call made
+  - underlying-non-completed - the fake returns a refused / error / timed_out
+    outcome -> surfaced as that distinct failure (not relabeled schema-invalid);
+    no proposal returned
+  - redaction default - under hashes_only, no recorded outcome carries raw
+    prompt or response text
+  - provider neutrality - adapters/llm imports no provider SDK and makes no
+    network call (import-linter contract 1 KEPT with the new module; the fake is
+    the only call path); both import-linter contracts remain KEPT
+  - property - for arbitrary scripted sequences of valid/invalid/non-completed
+    outcomes and arbitrary max_repair_attempts, the recorded-outcome count never
+    exceeds 1 + max_repair_attempts and a proposal is returned IFF some attempt
+    produced schema-valid output within the budget
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+required_output:
+  - implementation summary
+  - the structured-generation API surface (inputs incl. the explicit repair
+    bound, the result/audit shape) and the bounded-repair + no-invalid-passes
+    guarantees
+  - changed files, the pyproject.toml registration points touched, and any
+    additive errors/enums
+  - tests added and exact command results (format, lint incl. both import-linter
+    contracts KEPT, typecheck, test) proving green
+  - security/privacy implications (no provider SDK / no network, redaction
+    default, proposal-only, bounded loop)
+  - open specification questions (what remains for E4-T05 persistence / E4-T06
+    prompt registry)
+stop_conditions:
+  - a bounded, no-invalid-passes structured-generation layer cannot be built on
+    the E4-T01 port without changing the port's or contracts' semantics
+  - provider neutrality cannot hold without importing a provider SDK into
+    adapters/llm (would break import-linter contract 1)
+  - the task would require a real vendor binding, network access, new
+    authoritative state, a new schema/entity, or any path outside this packet
