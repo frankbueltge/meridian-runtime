@@ -1,0 +1,171 @@
+task_id: E4-T01
+title: Implement the provider-neutral ModelProfile and ModelInvocation record
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/01_SYSTEM_SPEC.md section 4.5 (MRR-FR-044, MRR-FR-045,
+  MRR-FR-046), the vendor-neutrality requirement (MRR-NFR-004) and the
+  framework-/provider-free core requirement (MRR-NFR-010), docs/spec/
+  02_DOMAIN_MODEL.md section 2.6 (the RunManifest already records "tool and
+  model invocations"), and docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E4;
+  approved by the repository owner's standing direction to continue (2026-07-19).
+  First task of Epic E4 - the provider-neutral model contracts and adapter
+  boundary that every later E4 role (planner/proposer/skeptic/verifier) builds
+  on. It writes NO concrete provider code, opens NO network, and creates NO
+  authoritative state.
+objective: >
+  Provide the framework- and provider-neutral data and boundary for model use:
+  (1) a ModelProfile - a canonically hashable, provider-opaque description of a
+  model configuration (provider label, model family, model identifier/version,
+  decoding parameters, determinism, optional seed, optional prompt-template
+  family, optional tool permissions, config hash); (2) a ModelInvocation record
+  - an auditable, redaction-aware record of a SINGLE model call (profile
+  reference + profile hash, prompt/configuration hash, tool calls, token usage,
+  response hash, a deterministic-vs-stochastic operation kind, and a DISTINCT
+  terminal status); and (3) the abstract, provider-neutral ModelAdapter port
+  (a framework-free Protocol plus request/result value objects) that concrete
+  provider adapters will implement in E4-T02. A model result is recorded as a
+  PROPOSAL and never as authoritative state.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#45-stage-5--local-execution
+  - docs/spec/01_SYSTEM_SPEC.md   # MRR-NFR-004 vendor neutrality; MRR-NFR-010 framework-/provider-free core
+  - docs/spec/02_DOMAIN_MODEL.md#26-runmanifest
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e4--agent-roles-and-model-adapters
+  - schemas/common.schema.json
+  - schemas/run-manifest.schema.json
+requirements:
+  - MRR-FR-044
+  - MRR-FR-045
+  - MRR-FR-046
+  - MRR-NFR-004
+  - MRR-NFR-010
+  - MRR-NFR-001
+allowed_paths:
+  - schemas/**
+  - packages/contracts/**
+  - packages/domain/**
+  - packages/policy/**
+  - examples/**
+  - scripts/check_contracts.py
+  - tests/unit/**
+  - tests/property/**
+  - tests/contract/**
+  - pyproject.toml
+forbidden_changes:
+  - any concrete provider adapter or provider SDK dependency (openai, anthropic,
+    google-generativeai, boto3, litellm, etc.) and any adapters/llm/** file -
+    the port stays ABSTRACT here; the concrete structured-generation adapter is
+    E4-T02
+  - any network egress or real model call of any kind (AGENTS rule 11); tests
+    use only an in-test fake implementing the port
+  - structured-generation / JSON-schema-repair logic and repair limits (E4-T02)
+  - planner/proposer/skeptic/verifier roles (E4-T03..T05), the prompt/version
+    registry (E4-T06), and the benchmark runner/promotion policy (E4-T07)
+  - independence COMPUTATION - ModelProfile only CARRIES the dimension fields
+    (model family, prompt family) so E4-T05 can compute independence later; do
+    not implement any independence/lineage calculation here
+  - any NEW authoritative state, DB schema, migration, repository, service, or
+    HTTP/FastAPI endpoint - a ModelProfile/ModelInvocation is a contract plus a
+    port; persisting invocations into a RunManifest and wiring the executor is
+    E4-T02/E4-T05
+  - the two import-linter contracts (both MUST stay KEPT) and the hashing/
+    canonicalization policy (reuse mrr.domain hashing_policy / RFC-8785, do not
+    reimplement or weaken it)
+derived_decisions: >
+  Provider neutrality is enforced structurally, not by convention: ModelProfile,
+  ModelInvocation and the ModelAdapter port live in framework-/provider-free
+  core packages (packages/contracts, packages/domain) that import-linter
+  contract 1 already forbids from importing any provider SDK, so `provider` is a
+  plain opaque string label, never a vendor type (MRR-NFR-004, MRR-NFR-010).
+  The ModelAdapter port mirrors the existing ArtifactStore precedent
+  (packages/domain/mrr/domain/artifacts.py): a Protocol with request/result
+  value objects and no concrete implementation beyond an in-test fake; the real
+  provider adapter implements it in E4-T02 under adapters/llm. Auditability is
+  hash-first (MRR-FR-045): by default a ModelInvocation records the SHA-256
+  content hash of the prompt/configuration and of the response, plus token usage
+  and tool calls (each tool call recording name + argument/result HASHES and its
+  own status) - raw prompt/response text is retained ONLY when a local redaction
+  policy explicitly permits it; the default is hashes-only and no secret is ever
+  recorded (AGENTS rule 11). The operation kind (deterministic vs stochastic) is
+  an explicit, REQUIRED field (MRR-FR-044), never inferred silently. The
+  terminal status keeps `completed`, `refused`/`content_filtered`, `error`, and
+  `timed_out` DISTINCT (never collapsed to one generic error - AGENTS prohibited
+  shortcut). A ModelInvocation records a PROPOSAL: it carries no claim status, no
+  verification verdict, and no authoritative-acceptance field, so by shape a
+  model response cannot become authoritative state (MRR-FR-046, AGENTS rule 7) -
+  this is E4's "no model can mutate authoritative state directly" exit criterion
+  established at the data layer. New entities are registered exactly like the
+  existing eleven contracts: JSON Schema in schemas/, hand-written Pydantic v2
+  model in packages/contracts, a valid example instance in examples/, and the
+  pair registered in scripts/check_contracts.py so tests/contract cross-validates
+  schema <-> model <-> example.
+invariants:
+  - ModelProfile, ModelInvocation, and the ModelAdapter port import NO provider
+    SDK and NO web/workflow framework; `provider` is an opaque string label, not
+    a vendor type - BOTH import-linter contracts stay KEPT
+  - the operation kind is explicit and required: a deterministic and a
+    stochastic invocation are both representable and DISTINCT; a missing or
+    self-contradictory kind (e.g. deterministic while declaring nonzero sampling)
+    is rejected, not silently defaulted (MRR-FR-044)
+  - by default a ModelInvocation records only the SHA-256 hash of the prompt/
+    configuration and of the response; raw prompt/response text is present ONLY
+    when the redaction policy explicitly permits it, and no secret is ever
+    recorded (MRR-FR-045, AGENTS rule 11)
+  - the config/profile hash is canonical and stable - invariant to map key order
+    and changed by any semantic byte change - reusing the existing hashing policy
+    (same invariant family as E1-T02), not a new hash implementation
+  - terminal status values completed / refused (or content_filtered) / error /
+    timed_out are DISTINCT and never collapsed into one generic failure
+  - a ModelInvocation carries NO claim status, NO verification verdict, and NO
+    authoritative-acceptance field - a model result is a proposal by shape and
+    cannot express authoritative state (MRR-FR-046, AGENTS rule 7)
+  - token usage and tool calls are recorded per MRR-FR-045; each tool call
+    records its name plus argument/result HASHES and its own status, never raw
+    tool payloads by default
+acceptance_tests:
+  - ModelProfile and ModelInvocation validate against their JSON Schema and
+    round-trip losslessly (Pydantic <-> JSON); the committed example instance of
+    each validates and tests/contract cross-validates schema <-> model <-> example
+  - the profile/config hash is invariant to map key order and changes on any
+    semantic byte change (property tests, reusing the existing hashing policy)
+  - a ModelInvocation built under the DEFAULT redaction policy contains only the
+    prompt/response HASHES and no raw prompt/response text; retaining raw text
+    requires the policy to explicitly permit it
+  - operation kind is required and validated: deterministic and stochastic
+    invocations are both constructible and distinct; a missing kind and a
+    self-contradictory kind are both rejected
+  - the terminal statuses completed / refused / error / timed_out remain
+    distinct; a refused or filtered call is NOT recorded as completed and yields
+    no response that any field marks as accepted
+  - a ModelInvocation offers no field for claim status, verification verdict, or
+    authoritative acceptance (proposal-only shape); an in-test fake adapter
+    implementing the port produces a valid ModelInvocation without any network
+  - after adding the new modules, both import-linter contracts are still KEPT
+    (tests/unit/architecture/test_import_boundaries.py passes) and the core
+    packages import no provider SDK
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the ModelProfile and ModelInvocation shapes, the ModelAdapter port surface,
+    and the default redaction behaviour (hashes-only, no secrets)
+  - changed files, new schemas, new example instances, and any additive domain
+    errors/enums
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract) proving green
+  - security/privacy implications (redaction default, no secrets in records, no
+    provider SDK / no network, proposal-only shape)
+  - open specification questions (which model-use behaviour is deferred to
+    E4-T02..T07)
+stop_conditions:
+  - provider neutrality cannot be expressed without importing a provider SDK
+    into a core package (would break import-linter contract 1)
+  - MRR-FR-045's recording set cannot be represented without either recording a
+    secret or creating new authoritative state
+  - the task would require a concrete provider adapter, network access, DB
+    schema, a service, or any path outside this packet
