@@ -1,0 +1,204 @@
+task_id: E5-T01
+title: Implement Practice identity and node key management (contract + framework-free key primitives)
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/02_DOMAIN_MODEL.md section 2.1 (Practice aggregate),
+  section 1.3 (signatures: signer practice id, key id, algorithm, signed-at,
+  optional trust-chain ref), section 2.2 (NodeManifest already carries
+  public_keys), docs/spec/04_SECURITY_AND_POLICY.md section 4.1 (keys stored
+  outside application databases; key use and rotation audited), section 8.1
+  (trust is per practice and capability), section 8.4 (a practice can revoke a
+  node or key; existing objects stay historically attributable), and docs/spec/
+  06_IMPLEMENTATION_PLAN.md section 3 Epic E5 (E5-T01). First task of Epic E5,
+  built ON the unified ADR-0004 exclude_none canonical form (E5-T00/E5-T00b).
+  Like E4-T01, it introduces a CONTRACT plus framework-free domain/crypto
+  primitives and creates NO authoritative state, NO DB schema, NO service, and
+  NO network: persistence, a practice/key registry, and cross-node exchange are
+  E5-T02+. It is fully CI-testable without PostgreSQL (contract + domain + crypto
+  unit/property tests only).
+objective: >
+  Provide the identity and key-management foundation every later E5 task builds
+  on: (1) a first-class Practice CONTRACT (docs/spec/02 section 2.1) - an
+  autonomous research practice's identity: id, name, description, its signing/
+  identity PUBLIC key material (never private keys), governance contacts,
+  supported policy versions, optional public capability-registry endpoint, and
+  disclosure/trust metadata - canonically hashable and self-signable over the
+  ADR-0004 exclude_none form; (2) framework-free key PRIMITIVES: Ed25519 keypair
+  generation, deterministic key-identifier (kid) derivation from a public key
+  (stable, collision-resistant, never derived from mutable labels), and public-
+  key encode/decode reusing the ADR-0003 base64 convention; (3) a domain
+  KEY-MANAGEMENT module: a PublicKeyDescriptor value object (kid, algorithm,
+  encoded public key, validity window, lifecycle state active/rotated/revoked),
+  a per-practice KeyRing that resolves a kid to a descriptor and answers
+  "is this key valid at time T" (respecting BOTH the validity window AND the
+  state), and rotation that supersedes a prior key while keeping it historically
+  addressable (docs/spec/04 section 8.4). Private key material MUST NEVER appear
+  in a contract, persisted object, log, or trace (AGENTS rule 11; docs/spec/04
+  section 4.1). This task defines the DATA and the primitives; it does NOT wire
+  revocation/replay ENFORCEMENT into the runtime (E5-T07) and does NOT exchange
+  or persist anything (E5-T02+).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/adr/ADR-0003-SIGNATURE-VALUE-ENCODING.md
+  - docs/spec/02_DOMAIN_MODEL.md#21-practice
+  - docs/spec/02_DOMAIN_MODEL.md#13-signatures
+  - docs/spec/02_DOMAIN_MODEL.md#11-identifiers
+  - docs/spec/04_SECURITY_AND_POLICY.md#41-encryption
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e5--federation
+  - schemas/common.schema.json
+  - schemas/node-manifest.schema.json
+  - packages/crypto/mrr/crypto/signatures.py
+  - packages/crypto/mrr/crypto/__init__.py
+  - packages/domain/mrr/domain/identity.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - packages/contracts/mrr/contracts/common.py
+  - packages/contracts/mrr/contracts/node_manifest.py
+  - scripts/check_contracts.py
+requirements:
+  - MRR-FR-020
+  - MRR-NFR-004
+  - MRR-NFR-007
+  - MRR-NFR-001
+allowed_paths:
+  - schemas/**
+  - packages/crypto/**
+  - packages/domain/**
+  - packages/contracts/**
+  - examples/**
+  - scripts/check_contracts.py
+  - tests/unit/**
+  - tests/property/**
+  - tests/contract/**
+forbidden_changes:
+  - any NEW authoritative state, DB model/migration, repository, service, or
+    HTTP/FastAPI endpoint - a Practice/key descriptor is a contract plus
+    framework-free primitives; PERSISTING a Practice or a key registry and any
+    capability-registry wiring is E5-T02+ (mirrors E4-T01, which added a contract
+    and a port but no state)
+  - NodeManifest, the capability_registry service, and the task_bundle service -
+    E5-T01 is additive (introduces Practice + key primitives); wiring key
+    descriptors/kids into manifest verification or a registry is E5-T02
+  - any network egress, mTLS, transport, or online-node protocol (E5-T02/E5-T03)
+  - revocation/replay/expiry ENFORCEMENT and idempotency hardening (E5-T07):
+    represent key STATE (active/rotated/revoked) and answer "valid at time T",
+    but do NOT build the runtime fail-closed wiring that rejects post-revocation
+    objects across services
+  - a certificate/PKI/trust-chain implementation: the Practice/signature schema
+    MAY carry an OPTIONAL trust-chain reference field (docs/spec/02 section 1.3),
+    but building chain validation is out of scope
+  - the crypto sign/verify/hash primitives' behavior and the domain
+    hashing_policy / prepare_for_* policy (reuse them unchanged; keygen and kid
+    derivation are ADDITIVE to mrr.crypto); both import-linter contracts MUST
+    stay KEPT (core stays framework-/provider-free)
+  - storing, logging, serialising, or returning any PRIVATE key bytes inside a
+    contract, persisted object, example fixture, log, or trace (AGENTS rule 11)
+derived_decisions: >
+  Layering follows the existing architecture. (a) mrr.crypto gains ADDITIVE pure
+  primitives - generate_ed25519_keypair(), derive_key_id(public_key), and public-
+  key encode/decode - reusing the module's Ed25519 objects and the ADR-0003
+  standard-base64 encoding; the crypto module docstring already reserved keygen
+  "for E5", and this is that task. kid is derived DETERMINISTICALLY from the raw
+  public-key bytes (e.g. a prefixed base64 of SHA-256 over the 32 raw bytes) so
+  it is stable, collision-resistant, and - like mrr.domain.identity.new_urn -
+  never a function of any mutable label (docs/spec/02 section 1.1 identity
+  discipline). (b) mrr.domain.key_management (framework-free, may import mrr.crypto
+  like hashing_policy does) holds the PublicKeyDescriptor value object, the
+  KeyState enum (active | rotated | revoked), the per-practice KeyRing (kid ->
+  descriptor lookup + is_valid_at(now) that requires state == active AND
+  valid_from <= now < valid_until), and rotation (mint a successor descriptor
+  that supersedes a prior kid; the prior descriptor moves to `rotated` and stays
+  addressable per docs/spec/04 section 8.4). Descriptors carry only PUBLIC key
+  material; generate_ed25519_keypair returns the private key to the CALLER, who
+  is responsible for storing it outside any MRR database (docs/spec/04 section
+  4.1) - the domain never persists or logs it. (c) The Practice CONTRACT is a
+  first-class object registered exactly like the existing entities: a JSON Schema
+  in schemas/practice.schema.json, a hand-written Pydantic v2 model in
+  packages/contracts/mrr/contracts/practice.py exported from that package's
+  __init__, a valid example in examples/practice.example.json, and the pair
+  registered in scripts/check_contracts.py so tests/contract cross-validates
+  schema <-> model <-> example (no new pyproject root is needed - Practice lives
+  in the existing packages/contracts). Practice.keys is a list of
+  PublicKeyDescriptor-shaped entries (public material only). Practice is content-
+  hashed and MAY carry a self-signature (signer = the practice's own signing key)
+  built and verified over the ADR-0004 exclude_none form via the existing
+  hashing_policy - proving the just-unified signing works on the new object;
+  deciding whether a Practice is TRUSTED (trust-anchoring) is deferred to E5-T02+.
+invariants:
+  - Practice, PublicKeyDescriptor, the KeyRing, and the key primitives import NO
+    provider SDK and NO web/workflow framework; both import-linter contracts stay
+    KEPT and the core stays framework-free (MRR-NFR-004)
+  - a kid is derived only from the public key's raw bytes: identical public key
+    -> identical kid; different public key -> different kid; the kid never
+    changes when any mutable label/name changes (docs/spec/02 section 1.1)
+  - NO private key material is present in any contract, example, persisted shape,
+    log, or trace; generate_ed25519_keypair hands the private key to the caller
+    and the domain retains only public descriptors (docs/spec/04 section 4.1,
+    AGENTS rule 11)
+  - KeyRing.is_valid_at(now, kid) is true ONLY when the descriptor exists, its
+    state is active, and valid_from <= now < valid_until; a revoked, rotated, or
+    out-of-window key is NOT valid, and an unknown kid is NOT valid (fail closed)
+  - rotation supersedes a prior kid with a new descriptor and leaves the prior
+    one historically addressable in the ring (state rotated), never deleted
+    (docs/spec/04 section 8.4)
+  - the Practice object round-trips (Pydantic <-> JSON) and its optional self-
+    signature verifies over the ADR-0004 exclude_none form using the existing
+    hashing_policy; its content_hash equals compute_content_hash of its own
+    exclude_none body (consistent with every first-class object post-E5-T00b)
+  - a Practice never carries a NodeManifest change or any registry/persistence
+    side effect (this task is additive and stateless)
+acceptance_tests:
+  - Practice validates against schemas/practice.schema.json and round-trips
+    losslessly (Pydantic <-> JSON); the committed example validates and
+    tests/contract cross-validates schema <-> model <-> example
+  - kid derivation is deterministic and collision-sensitive: the same public key
+    yields the same kid across calls; two independently generated keys yield
+    different kids; renaming/relabelling a Practice does not change any kid
+    (property tests)
+  - generate_ed25519_keypair returns a usable private key to the caller and a
+    public descriptor that contains only public material; a test asserts no
+    private-key bytes appear in the descriptor, the Practice model, or its JSON
+  - KeyRing resolves a kid to its descriptor and is_valid_at is true for an
+    active in-window key and false for each of: revoked, rotated, before
+    valid_from, at/after valid_until, and an unknown kid (fail closed)
+  - rotation: after rotating kid A to a successor kid B, the ring returns B as
+    active and still resolves A (state rotated, supersedes/relation recorded);
+    A is no longer valid_at now, B is
+  - a Practice built with a real Ed25519 signing key carries a content_hash equal
+    to compute_content_hash of its exclude_none body and an optional self-
+    signature that verify_object_signature accepts over that same form; tampering
+    a signed field fails closed
+  - after adding the new modules both import-linter contracts are still KEPT
+    (tests/unit/architecture/test_import_boundaries.py passes) and the core
+    imports no provider SDK
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the Practice shape, the PublicKeyDescriptor/KeyState/KeyRing surface, and the
+    key primitives (keygen, kid derivation, encode/decode) with the private-key
+    handling (caller-owned, never persisted/logged)
+  - changed files, the new schema, the new example, and the check_contracts
+    registration
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract) proving green
+  - security/privacy implications (no private keys anywhere, deterministic kid,
+    fail-closed key validity, historical addressability of rotated/revoked keys,
+    no network/state)
+  - open specification questions (which identity/key behaviour is deferred to
+    E5-T02 exchange, E5-T03 mTLS, and E5-T07 revocation/replay hardening)
+stop_conditions:
+  - representing Practice identity or key material would require importing a
+    provider/identity SDK into a core package (would break import-linter contract 1)
+  - the spec cannot be satisfied without persisting a Practice/key registry or
+    opening a network path (that is E5-T02+; stop and report)
+  - key STATE/validity cannot be represented without also building revocation
+    ENFORCEMENT wiring (that is E5-T07; stop and report the boundary)
+  - a required field would force recording a private key or a secret (AGENTS
+    rule 11) - stop rather than record it
