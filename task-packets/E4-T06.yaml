@@ -1,0 +1,163 @@
+task_id: E4-T06
+title: Implement the Git-backed prompt/version registry
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E4 (E4-T06,
+  "prompt/version registry in Git"), docs/spec/01_SYSTEM_SPEC.md
+  (source-of-truth discipline: "Git for code, policies, prompt templates,
+  schemas, and specifications"; MRR-FR-045 records a prompt/configuration hash),
+  and docs/spec/04_SECURITY_AND_POLICY.md section 6.4 (Prompt and model
+  provenance: "system and task prompt hashes"; "Sensitive prompt bodies MAY
+  remain sealed at the local node while hashes and permitted summaries travel").
+  Approved by the repository owner's standing direction to continue through E4
+  (2026-07-19). Sixth task of Epic E4 - the versioned, immutable, content-hashed
+  named-prompt store the roles (E4-T03/T04) and the structured-generation layer
+  (E4-T02) build their prompts from.
+objective: >
+  Provide a Git-backed prompt/version registry: named prompt templates stored as
+  committed files under a `prompts/` directory, each addressed by (name,
+  version), IMMUTABLE per version, and content-hashed (SHA-256 via the existing
+  hashing policy) so the exact prompt used is auditable and reproducible
+  (MRR-FR-045; section 6.4 "system and task prompt hashes"). The registry
+  resolves a template by (name, version) to its content, content hash, kind
+  (system or task), and declared variables; renders a template deterministically
+  by filling its declared variables; and exposes the content hash independently
+  of the body (section 6.4 "sealed bodies ... hashes travel"). It is
+  provider-neutral, reads only committed template files, injects no secret, opens
+  no network, and calls no model.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#12-source-of-truth-discipline   # "Git for ... prompt templates"; MRR-FR-045
+  - docs/spec/04_SECURITY_AND_POLICY.md#64-prompt-and-model-provenance
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e4--agent-roles-and-model-adapters
+  - adapters/object_store/mrr/adapters/object_store/local.py   # framework-free file-reading adapter precedent
+  - task-packets/E4-T02.yaml   # the pyproject 5-point new-adapter-root registration precedent to MIRROR
+requirements:
+  - MRR-FR-045
+  - MRR-NFR-004
+  - MRR-NFR-010
+allowed_paths:
+  - adapters/prompts/**
+  - prompts/**
+  - pyproject.toml
+  - tests/unit/**
+  - tests/property/**
+forbidden_changes:
+  - any provider SDK dependency or network egress - the registry reads only
+    committed local template files and imports no provider SDK, no network
+    client, and no model adapter (machine-enforced by adding mrr.adapters.prompts
+    to import-linter contract 1, plus an AST architecture test)
+  - REWIRING the roles or the structured-generation layer to consume the registry
+    - the planner (mrr.services.planner), skeptic (mrr.services.skeptic), and
+    mrr.adapters.llm.structured_generation keep building their prompts as they do
+    today; wiring them onto the registry is a LATER integration task, out of
+    scope here (this task PROVIDES the registry; it does not adopt it)
+  - any secret material in a template or in rendering - templates are committed,
+    non-secret text; rendering injects only caller-supplied variable values; the
+    registry reads NO secret store and embeds NO secret (AGENTS rule 11; secrets
+    are referenced by id elsewhere, never inlined into a prompt)
+  - any new authoritative state, DB schema, migration, persistence, or contract
+    entity/JSON Schema - a prompt template is a Git-native file plus its hash,
+    NOT a persisted DB object (AGENTS rule 6 governs persisted/cross-boundary
+    structures; a template file is neither); the registry returns in-memory
+    value objects
+  - mutating or editing a template version in place - a change to a prompt is a
+    NEW version file; a committed (name, version) is immutable
+  - the benchmark runner (E4-T07)
+  - weakening or removing EITHER import-linter contract (both MUST stay KEPT)
+derived_decisions: >
+  The registry is a new provider-neutral adapter package,
+  adapters/prompts/mrr/adapters/prompts/ (mirroring adapters/object_store and
+  adapters/llm - both framework-free file/logic adapters). Adding a package root
+  requires registering "adapters/prompts/mrr" and "adapters/prompts" in EVERY
+  pyproject.toml list where "adapters/llm" now appears - grep pyproject.toml for
+  llm (or object_store) to find them ALL: the [tool.hatch.build.targets.wheel]
+  packages/only-include list, the dev-mode-dirs list, the
+  [tool.hatch.build.targets.wheel.sources] map, the [tool.mypy] mypy_path, AND
+  import-linter contract 1's source_modules (as "mrr.adapters.prompts") - the
+  E4-T02 packet documents this exact five-point procedure. Prompt TEMPLATE files
+  live under a top-level prompts/ data directory addressed as
+  prompts/<name>/<version>.<ext> (immutable per version); the registry locates
+  its prompts root by an injectable path (defaulting relative to the repo root,
+  the scripts/check_contracts.py "REPO_ROOT" precedent) so tests can point it at
+  a fixture directory with no packaging dependency. A template carries a small
+  header/metadata declaring its kind (system | task, for section 6.4's "system
+  and task prompt hashes") and its declared variable names; the registry parses
+  this deterministically. content_hash is the SHA-256 of the exact committed
+  template bytes via the existing mrr.crypto/mrr.domain hashing (never a new
+  hash), exposed on resolution WITHOUT requiring the body to travel with it
+  (section 6.4). Rendering fills exactly the declared variables: a missing
+  declared variable or an unknown extra variable is an explicit error, never a
+  silently unfilled placeholder or a silently ignored input; identical
+  (template, variables) yields identical rendered text and identical rendered
+  hash. No contract entity/schema is added - a RegisteredPrompt is an in-memory
+  value object (frozen dataclass), not a persisted BaseObject. At least one real
+  system template and one real task template are seeded under prompts/ so the
+  registry resolves and renders concrete content; the roles are NOT rewired onto
+  them.
+invariants:
+  - immutability and Git source of truth - a committed (name, version) resolves
+    to fixed template bytes; the registry never writes or edits a template; a
+    change to a prompt is a NEW version; content_hash is the stable SHA-256 of
+    the exact committed bytes (reusing the existing hashing, not a new one)
+  - addressing - a template is addressed by (name, version); two versions of one
+    name are both resolvable and have distinct hashes; an unknown (name, version)
+    is an explicit error, never a silent empty/None
+  - kind - each template declares its kind (system | task) and the registry
+    exposes it, so section 6.4's "system and task prompt hashes" are
+    distinguishable
+  - deterministic rendering - render fills EXACTLY the template's declared
+    variables; a missing declared variable and an unknown extra variable are each
+    an explicit error; no placeholder is left silently unfilled; identical
+    (template, variables) yields identical rendered text and hash
+  - provider neutrality and no secrets - the registry imports no provider SDK,
+    no network client, and no model adapter (both import-linter contracts stay
+    KEPT; AST architecture test), reads no secret store, and embeds no secret;
+    it reads only committed template files and injects only caller-supplied
+    variables
+  - hash without body - resolution exposes the content hash (and kind/variables)
+    independently of transmitting the body (section 6.4 sealed bodies)
+acceptance_tests:
+  - resolve(name, version) returns the committed template content, its kind, its
+    declared variables, and a stable content hash; resolving the same (name,
+    version) twice yields identical content and hash
+  - two versions of the same name are both resolvable and have different content
+    hashes; an unknown name or unknown version raises an explicit error (not a
+    silent empty/None)
+  - the content hash equals the SHA-256 of the exact committed template bytes,
+    recomputed independently
+  - render fills declared variables deterministically: identical (template,
+    variables) yields identical rendered text and hash; a missing declared
+    variable raises an explicit error; an unknown extra variable raises an
+    explicit error; no placeholder is left silently unfilled
+  - a system template and a task template each resolve and expose their kind
+  - the mrr.adapters.prompts package imports no provider SDK, no network client,
+    and no model adapter (AST architecture test); both import-linter contracts
+    remain KEPT
+  - the seeded real prompt template(s) under prompts/ resolve and render
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+required_output:
+  - implementation summary
+  - the registry API surface (resolve/render/list), the RegisteredPrompt shape,
+    the prompts/ directory layout, and the immutability / deterministic-render /
+    no-secret / hash-without-body guarantees
+  - changed files, the pyproject.toml registration points touched, the seeded
+    templates, and any additive errors
+  - tests added and exact command results (format, lint incl. both contracts
+    KEPT, typecheck, test) proving green, including the AST boundary test
+  - security/privacy implications (no secret in templates/rendering, no provider
+    SDK / no network / no model, immutable versions, hash without body)
+  - open specification questions (wiring the roles/structured-generation onto the
+    registry; wheel-packaging of prompt data for production; a template variable
+    typing/escaping scheme beyond name filling)
+stop_conditions:
+  - an immutable, content-hashed, deterministically rendered prompt registry
+    cannot be built without a provider SDK, a network call, a secret store, or a
+    new persisted entity
+  - the pyproject new-adapter-root registration cannot keep both import-linter
+    contracts KEPT
