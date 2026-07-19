@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/model-profile.schema.json",
+  "title": "MRR ModelProfile",
+  "description": "docs/spec/01_SYSTEM_SPEC.md MRR-FR-045 ('Model invocations MUST use a provider-neutral adapter and record model profile ...') and MRR-NFR-004/MRR-NFR-010 (vendor neutrality, framework-/provider-free core). First task of Epic E4 (task-packets/E4-T01.yaml); the twelfth entity schema in this repository. A ModelProfile is a canonically hashable, provider-opaque description of one model configuration — 'provider' is a plain opaque string label with no enumerated vendor vocabulary, never a vendor type, checked structurally (not by convention) by this repository's import-linter contracts. 'decoding_parameters' is a fully open object (like task-bundle.schema.json's own 'instructions' field) rather than a closed, provider-specific schema, since providers name sampling knobs differently — 'temperature' is the one key this schema gives conventional meaning to (near-universal across providers), checked by the if/then below against 'determinism' (MRR-FR-044: an explicit, REQUIRED, never-silently-defaulted deterministic/stochastic distinction; a profile declaring determinism='deterministic' while also declaring a nonzero sampling temperature is rejected, both here and by packages/contracts/mrr/contracts/model_profile.py's own model_validator — mirroring verification-result.schema.json's own 'enforced twice' precedent). 'config_hash' is a second, narrower canonical hash than the inherited baseObject 'content_hash' — computed over exactly this schema's eight own properties (provider through tool_permissions), so two independently created profiles sharing the same configuration are recognizable by comparing this one field alone, reusing mrr.domain.hashing_policy (RFC 8785 + SHA-256), never a new hash. 'model_family' and 'prompt_family' are the two MRR-FR-071 independence dimensions this profile CARRIES for E4-T05 to consume later — this schema does not itself compute independence.",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "provider",
+        "model_family",
+        "model_identifier",
+        "determinism",
+        "config_hash"
+      ],
+      "properties": {
+        "kind": {"const": "ModelProfile"},
+        "provider": {
+          "description": "Opaque provider label (e.g. 'anthropic', 'openai', 'local-ollama') — never a vendor type or enumerated vocabulary (MRR-NFR-004).",
+          "type": "string",
+          "minLength": 1
+        },
+        "model_family": {
+          "description": "MRR-FR-071 independence dimension 'model_family', carried here for E4-T05 to consume — this schema does not compute independence.",
+          "type": "string",
+          "minLength": 1
+        },
+        "model_identifier": {
+          "description": "The full model identifier/version string (e.g. a dated model snapshot name).",
+          "type": "string",
+          "minLength": 1
+        },
+        "decoding_parameters": {
+          "description": "Provider-neutral, open decoding/sampling configuration (e.g. temperature, top_p, max_output_tokens) — no closed vocabulary, since providers name these differently. 'temperature', if present, is checked against 'determinism' by the if/then below.",
+          "type": "object"
+        },
+        "determinism": {
+          "description": "MRR-FR-044: whether this profile's configuration is deterministic or stochastic. Explicit and required — never inferred or silently defaulted.",
+          "type": "string",
+          "enum": ["deterministic", "stochastic"]
+        },
+        "seed": {
+          "description": "Optional fixed sampling seed.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "prompt_family": {
+          "description": "MRR-FR-071 independence dimension 'prompt_family', carried here for E4-T05 to consume — this schema does not compute independence.",
+          "type": "string"
+        },
+        "tool_permissions": {
+          "description": "Tool names this profile is permitted to invoke; an empty array means none declared.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "config_hash": {
+          "description": "Canonical hash of exactly this schema's own eight properties (provider through tool_permissions) — narrower than, and independent of, the inherited baseObject content_hash.",
+          "$ref": "common.schema.json#/$defs/sha256"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"determinism": {"const": "deterministic"}},
+            "required": ["determinism"]
+          },
+          "then": {
+            "properties": {
+              "decoding_parameters": {
+                "not": {
+                  "required": ["temperature"],
+                  "properties": {"temperature": {"not": {"const": 0}}}
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

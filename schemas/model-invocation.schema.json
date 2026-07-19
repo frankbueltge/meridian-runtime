@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/model-invocation.schema.json",
+  "title": "MRR ModelInvocation",
+  "description": "docs/spec/01_SYSTEM_SPEC.md MRR-FR-045 ('... record model profile, prompt/configuration hash, tool calls, token usage, and response hash subject to local redaction policy') and MRR-FR-046 ('A model response MUST be treated as a proposal until domain validation accepts it'). First task of Epic E4 (task-packets/E4-T01.yaml); the thirteenth entity schema in this repository. A ModelInvocation is an auditable record of a SINGLE model call, referencing a model-profile.schema.json ModelProfile by id and pinned content hash (model_profile_hash) rather than embedding one. PROPOSAL-ONLY BY SHAPE (MRR-FR-046, AGENTS.md rule 7): this schema declares no claim_status, no verification verdict, and no authoritative-acceptance property of any kind — 'status' is the CALL's own terminal outcome, never a judgment about whether its content is true or accepted. HASH-FIRST, REDACTION-DEFAULT (MRR-FR-045, AGENTS.md rule 11): by default only prompt_config_hash/response_hash (SHA-256) are recorded; redaction_policy carries no implied default and must be stated explicitly ('hashes_only' or 'raw_permitted') — the first if/then below enforces that 'hashes_only' never coexists with a non-null raw_prompt_text/raw_response_text. TERMINAL STATUS STAYS FIVE-WAY DISTINCT: completed/refused/content_filtered/error/timed_out are never collapsed into one generic failure (AGENTS.md prohibited shortcut); the second and third if/then blocks enforce that response_hash is present if and only if status == 'completed' — 'a refused or filtered call is NOT recorded as completed and yields no response that any field marks as accepted' (task-packets/E4-T01.yaml invariant), enforced identically here and by packages/contracts/mrr/contracts/model_invocation.py's own model_validator (mirroring verification-result.schema.json's own 'enforced twice' precedent). Each tool_calls[] entry mirrors this same 'result_hash present iff status == completed' biconditional, at its own nested if/then.",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "model_profile_id",
+        "model_profile_hash",
+        "operation_kind",
+        "prompt_config_hash",
+        "token_usage",
+        "status",
+        "redaction_policy"
+      ],
+      "properties": {
+        "kind": {"const": "ModelInvocation"},
+        "model_profile_id": {
+          "description": "The ModelProfile this call used.",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "model_profile_hash": {
+          "description": "The referenced ModelProfile's own content_hash, pinned at call time.",
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "operation_kind": {
+          "description": "MRR-FR-044: this specific call's own deterministic/stochastic kind. Explicit and required — never inferred or silently defaulted.",
+          "type": "string",
+          "enum": ["deterministic", "stochastic"]
+        },
+        "prompt_config_hash": {
+          "description": "SHA-256 content hash of the prompt text plus the resolved configuration used for this call (MRR-FR-045's 'prompt/configuration hash').",
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "token_usage": {
+          "type": "object",
+          "required": ["prompt_tokens", "completion_tokens", "total_tokens"],
+          "properties": {
+            "prompt_tokens": {"type": "integer", "minimum": 0},
+            "completion_tokens": {"type": "integer", "minimum": 0},
+            "total_tokens": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        },
+        "tool_calls": {
+          "description": "Each entry records the tool's name plus argument/result HASHES and its own status — never a raw tool payload by default; an empty array means no tools were used.",
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "type": "object",
+                "required": ["name", "arguments_hash", "status"],
+                "properties": {
+                  "name": {"type": "string", "minLength": 1},
+                  "arguments_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+                  "result_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+                  "status": {
+                    "type": "string",
+                    "enum": ["completed", "refused", "error", "timed_out"]
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "if": {
+                  "properties": {"status": {"const": "completed"}},
+                  "required": ["status"]
+                },
+                "then": {"required": ["result_hash"]}
+              },
+              {
+                "if": {
+                  "properties": {"status": {"enum": ["refused", "error", "timed_out"]}},
+                  "required": ["status"]
+                },
+                "then": {"not": {"required": ["result_hash"]}}
+              }
+            ]
+          }
+        },
+        "response_hash": {
+          "description": "SHA-256 content hash of the response, present if and only if status == 'completed'.",
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "status": {
+          "description": "This call's own terminal outcome — five distinct values, never collapsed into one generic failure.",
+          "type": "string",
+          "enum": ["completed", "refused", "content_filtered", "error", "timed_out"]
+        },
+        "redaction_policy": {
+          "description": "Whether raw prompt/response text may be retained alongside its hash. No implied default — must be stated explicitly.",
+          "type": "string",
+          "enum": ["hashes_only", "raw_permitted"]
+        },
+        "raw_prompt_text": {
+          "description": "Raw prompt text, present only when redaction_policy == 'raw_permitted'.",
+          "type": "string"
+        },
+        "raw_response_text": {
+          "description": "Raw response text, present only when redaction_policy == 'raw_permitted'.",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"redaction_policy": {"const": "hashes_only"}},
+            "required": ["redaction_policy"]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {"required": ["raw_prompt_text"]},
+                {"required": ["raw_response_text"]}
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "completed"}},
+            "required": ["status"]
+          },
+          "then": {"required": ["response_hash"]}
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"enum": ["refused", "content_filtered", "error", "timed_out"]}
+            },
+            "required": ["status"]
+          },
+          "then": {"not": {"required": ["response_hash"]}}
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}
