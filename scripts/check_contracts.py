@@ -4,7 +4,8 @@ seventh entity, RunManifest, by E2-T05; extended to a eighth and ninth
 entity, SourceRecord and EvidenceAnchor, by E3-T01; extended to a tenth
 entity, SourceFamily, by E3-T03; extended to an eleventh entity,
 VerificationResult, by E3-T04; extended to a twelfth and thirteenth entity,
-ModelProfile and ModelInvocation, by E4-T01).
+ModelProfile and ModelInvocation, by E4-T01; extended to a fourteenth
+entity, Hypothesis, by E4-T03).
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -50,6 +51,7 @@ from mrr.contracts import (
     CorrectionEvent,
     EvidenceAnchor,
     EvidenceCrate,
+    Hypothesis,
     ModelInvocation,
     ModelProfile,
     NodeManifest,
@@ -84,6 +86,7 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "verification-result": VerificationResult,
     "model-profile": ModelProfile,
     "model-invocation": ModelInvocation,
+    "hypothesis": Hypothesis,
 }
 
 
