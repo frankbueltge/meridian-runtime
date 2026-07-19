@@ -3,4 +3,3 @@
 # that as EXPECTED EMPTY, never as feature completion. A task that populates
 # a tier removes its line in the same diff that adds the tests.
 adversarial
-meridianbench

@@ -115,7 +115,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 strict = true
 namespace_packages = true
 explicit_package_bases = true
-files = ["packages", "adapters", "services", "tests", "scripts"]
+files = ["packages", "adapters", "services", "tests", "scripts", "benchmarks"]
 mypy_path = [
   "packages/domain",
   "packages/crypto",
