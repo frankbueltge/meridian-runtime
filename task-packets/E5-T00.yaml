@@ -1,0 +1,179 @@
+task_id: E5-T00
+title: Unify the canonical signed form to ADR-0004 (exclude_none) across all cross-practice sign/verify paths
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 as the accepted ADR-0004 federation gate, from ADR-0004
+  (canonical object serialization, ACCEPTED 2026-07-19), ADR-0003 (signature
+  value encoding), docs/spec/02_DOMAIN_MODEL.md sections 1.2-1.3 (content hash
+  over canonical JSON with signatures excluded; the signature covers the
+  canonical payload and content hash), docs/spec/04_SECURITY_AND_POLICY.md
+  section 8 (federated security), and docs/spec/06_IMPLEMENTATION_PLAN.md
+  section 3 Epic E5 exit criteria ("compromised signatures and replay fail
+  closed"); approved by the repository owner's standing direction to continue
+  and the ADR-0003 delegation precedent. This is a PRECURSOR to E5-T01..T07,
+  not a new federation feature: it makes the single canonical signed form real
+  BEFORE any object crosses a real node boundary, so every E5 feature task
+  builds on one byte-definition of "the object". It introduces NO new entity,
+  NO key management, NO schema, NO network, and NO authoritative state.
+objective: >
+  Make signing use the SAME canonical pre-canonicalization form the codebase
+  already uses for content hashing and persistence: schema-conformant JSON with
+  absent/None optional fields OMITTED (`exclude_none=True`), then RFC 8785.
+  Concretely: flip every live sign and verify call site from the null-including
+  `obj.model_dump(mode="json")` form to the `exclude_none=True` form, for the
+  three cross-practice signed objects — NodeManifest (sign in the CLI
+  orchestration helper, verify in the capability registry), TaskBundle (sign in
+  the CLI orchestration helper, verify in the task-bundle service), and
+  EvidenceCrate (sign in the node-runtime evidence-crate builder; its verify
+  path is E5-T05 and is out of scope). After the flip, for every signed object
+  the bytes the signature covers MUST equal the bytes the persisted `body`
+  canonicalizes to, minus the `signature` field. Add a property test that
+  proves exactly that equality, plus per-object round-trip and fail-closed
+  tests. Do NOT touch the crypto primitives, the `prepare_for_*` field-selection
+  policy, or the content-hash computation (already `exclude_none` and must stay).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/adr/ADR-0003-SIGNATURE-VALUE-ENCODING.md
+  - docs/spec/02_DOMAIN_MODEL.md#12-canonical-hashing
+  - docs/spec/02_DOMAIN_MODEL.md#13-signatures
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e5--federation
+  - packages/domain/mrr/domain/hashing_policy.py
+  - services/control_plane/mrr/services/capability_registry/service.py
+  - services/control_plane/mrr/services/task_bundle/service.py
+  - services/control_plane/mrr/services/cli/orchestration.py
+  - services/node_runtime/mrr/services/node_runtime/evidence_crate.py
+requirements:
+  - MRR-NFR-007
+  - MRR-NFR-001
+  - MRR-FR-031
+  - MRR-FR-034
+allowed_paths:
+  - services/control_plane/mrr/services/capability_registry/**
+  - services/control_plane/mrr/services/task_bundle/**
+  - services/control_plane/mrr/services/cli/**
+  - services/node_runtime/mrr/services/node_runtime/**
+  - tests/unit/**
+  - tests/property/**
+  - tests/integration/**
+  - tests/e2e/**
+forbidden_changes:
+  - the crypto primitives (packages/crypto/mrr/crypto/canonical.py, hashing.py,
+    signatures.py) and the domain `prepare_for_hash` / `prepare_for_signature`
+    field-selection policy in packages/domain/mrr/domain/hashing_policy.py - the
+    flip is ONLY about which dict is fed to sign/verify (the exclude_none body),
+    never about the field-exclusion rule or the canonicalization/hash algorithm
+  - the content-hash computation: `compute_content_hash` already canonicalizes
+    the `exclude_none=True` body and MUST stay exactly as is; this task makes
+    SIGNING match it, it does not change hashing
+  - any NEW signed object, entity, JSON Schema, Pydantic contract, or example
+    fixture; do NOT regenerate the placeholder `signature.value` fields in
+    examples/*.json (they are `BBBB…`/`CCCC…`/`DDDD…` placeholders, not real
+    signatures; contract tests validate schema SHAPE only) and do NOT loosen
+    any contract test to accept them differently
+  - practice/node identity objects and key generation/storage/rotation/trust/
+    revocation - that is E5-T01 and later; this task changes serialization only
+  - EvidenceCrate signature VERIFICATION wiring - it is signed here on the new
+    form, but its verify path is E5-T05 and MUST NOT be added now
+  - any network egress, DB schema, migration, new repository, new service, or
+    HTTP/FastAPI endpoint; and both import-linter contracts MUST stay KEPT
+derived_decisions: >
+  The unification is structural, not a second convention layered on top: at each
+  call site the signed/verified dict becomes the SAME `exclude_none=True` JSON
+  object the service already builds for the persisted `body`
+  (`json.loads(obj.model_dump_json(exclude_none=True))`), so "signed payload ==
+  persisted body (minus signature)" holds by construction, closing ADR-0004
+  gap 2. Preferred shape: (a) SIGN sites (cli/orchestration.py NodeManifest and
+  TaskBundle drafts; evidence_crate.py crate draft) build the draft body with
+  `exclude_none=True`, set `content_hash = compute_content_hash(body)` on it
+  (unchanged), then `sign_object(key, body)` over that same body - never a fresh
+  `model_dump(mode="json")`. (b) VERIFY sites reconstruct/obtain the identical
+  exclude_none body and pass it to `verify_object_signature`: in the task-bundle
+  service, verify over the stored `latest.body` itself (which IS the persisted
+  exclude_none body) rather than re-dumping the reconstructed model, which makes
+  the equality impossible to drift; in the capability registry, verify over
+  `json.loads(manifest.model_dump_json(exclude_none=True))` (the incoming
+  manifest is not yet persisted, so it is reconstructed the same way the signer
+  built it). `prepare_for_signature` inside `verify_object_signature` still drops
+  only the `signature` field and keeps `content_hash`, so the content hash stays
+  under signature (docs/spec/02 section 1.3). Fail-closed behavior is unchanged:
+  `verify_object_signature` still raises (never returns a boolean) on a tampered
+  payload, tampered signature, or non-Ed25519 algorithm, and each call site keeps
+  raising before any state is written. Because the flip changes the exact bytes a
+  valid signature covers, every test/e2e HELPER that constructs a REAL signature
+  (e.g. the capability-registry and task-bundle unit tests that sign a manifest/
+  bundle, any e2e signer) must switch to signing the exclude_none body; a helper
+  left on the old `model_dump(mode="json")` form will now fail verification, which
+  is the intended, tested break (no accidental dual-accept of the old form).
+invariants:
+  - after this task, every live sign and verify call site canonicalizes the
+    `exclude_none=True` form of the object (absent/None optionals OMITTED, never
+    emitted as JSON `null`); no live call site feeds `model_dump(mode="json")`
+    (null-including) to sign_object or verify_object_signature
+  - for every signed object type (NodeManifest, TaskBundle, EvidenceCrate) the
+    bytes the signature covers EQUAL the bytes the persisted `body` canonicalizes
+    to with the `signature` field removed - one byte-definition of "the object"
+    for hashing, signing, and persistence (ADR-0004 gap 2 closed)
+  - `compute_content_hash` and the `prepare_for_hash` / `prepare_for_signature`
+    field-selection policy are unchanged; content hashing already used the
+    exclude_none form and still does
+  - signer and verifier for each object remain mutually consistent: a correctly
+    signed object round-trips (verify succeeds); the content_hash still travels
+    under the signature (prepare_for_signature keeps it)
+  - fail-closed is preserved: a tampered payload, a tampered signature value, and
+    a non-Ed25519 algorithm each still raise (SignatureVerificationError /
+    UnsupportedAlgorithmError) before any object is persisted; no boolean form
+  - an object signed over the OLD null-including form no longer verifies under
+    the new verify path (the change is a real, intended break, not a silent
+    dual-accept), and this is asserted by a test
+  - committed examples/*.json are untouched (placeholder signatures; contract
+    tests remain schema-shape-only) and both import-linter contracts stay KEPT
+acceptance_tests:
+  - NodeManifest round trip: build a manifest with at least one optional field
+    unset (e.g. data_residency or labels), sign over the exclude_none body, and
+    the capability registry verifies it; tampering any signed field fails closed;
+    tampering the signature value fails closed; a non-Ed25519 algorithm is
+    rejected (all pre-existing capability-registry tests stay green on the new form)
+  - TaskBundle round trip: sign a bundle over the exclude_none body, the
+    task-bundle service verifies it against the persisted body; a post-signing
+    content mutation and a tampered signature each fail closed (existing
+    task-bundle signature tests stay green on the new form)
+  - EvidenceCrate: the node-runtime builder signs a crate over the exclude_none
+    body and the resulting signature verifies with verify_object_signature over
+    the same exclude_none body (a local check in the test; no verify path is
+    wired into production code - that is E5-T05)
+  - property test (the ADR-0004 gap-2 proof): for each signed object type, with
+    at least one optional field None, the canonical bytes of the signed payload
+    equal the canonical bytes of the persisted body with `signature` removed, and
+    contain no `null` for the absent optional; and the object still verifies
+  - regression/break test: a signature produced over the OLD `model_dump(mode=
+    "json")` (null-including) form does NOT verify under the new verify path
+  - make test and make test-contract are green locally; make test-integration
+    and make test-e2e (which need PostgreSQL) are green in CI
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the exact call sites changed (each sign/verify site) and how each now obtains
+    the exclude_none body (reuse persisted body vs. reconstruct)
+  - the test/e2e signer helpers updated and why
+  - tests added (round-trip, fail-closed, the gap-2 property test, the old-form
+    break test) and exact command results proving green (format, lint, typecheck,
+    test, test-contract) plus the CI result for integration/e2e
+  - security/privacy implications (fail-closed preserved; one canonical signed
+    form; no fixture/secret changes; no new trust logic)
+  - open specification questions (which sign/verify wiring is deferred to E5-T01+
+    and E5-T05)
+stop_conditions:
+  - unifying the form would require changing the crypto primitives, the
+    prepare_for_* field-selection policy, or the content-hash computation
+  - any signed object's persisted `body` turns out NOT to be the exclude_none
+    form (would reveal a deeper inconsistency to resolve before flipping)
+  - a signer/verifier pair cannot be made mutually consistent without editing a
+    forbidden path, or the change would touch practice/key-management (E5-T01)
