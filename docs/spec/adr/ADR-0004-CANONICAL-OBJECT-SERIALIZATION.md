@@ -1,6 +1,6 @@
 # ADR-0004 — Canonical object serialization for hashing and signing
 
-Status: proposed (open question — surfaced by E2-T02, decision deferred)
+Status: accepted (2026-07-19, decision delegated by the repository owner per the ADR-0003 precedent)
 
 ## Context
 
@@ -12,8 +12,11 @@ explicit JSON `null` or are omitted.
 
 E2-T02 made a concrete choice and documented it: the Node Manifest signature is
 computed over `NodeManifest.model_dump(mode="json")`, which INCLUDES optional
-fields as `null` (e.g. `supersedes: null`, `labels: null`). The persisted object
-`body`, by contrast, is built with `exclude_none=True` so it stays schema-valid.
+fields as `null` (e.g. `supersedes: null`, `labels: null`). The same include-null
+convention was subsequently adopted by every other signed object — TaskBundle
+(E2-T03) and EvidenceCrate (E2-T06) sign and verify the same way — so all three
+cross-practice signed objects share this Pydantic-specific form. The persisted
+object `body`, by contrast, is built with `exclude_none=True` so it stays schema-valid.
 The registry is internally consistent — it signs and verifies the same way — and
 CI is green. But two gaps remain:
 
@@ -35,10 +38,10 @@ RFC 8785 canonicalizes key ORDER and number formatting, but it does not decide
 key PRESENCE — null-inclusion is a pre-canonicalization decision that sits
 upstream of the E1-T02 primitives.
 
-## Decision (proposed — not yet accepted)
+## Decision (accepted)
 
 Pin one canonical pre-canonicalization form for every first-class MRR object,
-used identically for content hashing, signing, and verification. Candidate rule:
+used identically for content hashing, signing, and verification. The pinned rule:
 
 > The canonical object is the JSON object containing exactly the fields defined
 > by the object's schema that are present with a non-null value; optional fields
@@ -46,23 +49,47 @@ used identically for content hashing, signing, and verification. Candidate rule:
 > transport-only fields are then excluded per the existing `prepare_for_hash` /
 > `prepare_for_signature` policy, and the result is canonicalized per RFC 8785.
 
-This would make the signed payload, the persisted body (`exclude_none=True`), and
-the content-hash input the SAME byte string, and would be reproducible by any
+This makes the signed payload, the persisted body (`exclude_none=True`), and
+the content-hash input the SAME byte string, and reproducible by any
 implementation that can emit schema-conformant JSON.
 
-## Consequences (if accepted)
+## Consequences
 
-- E2-T02's registry would sign/verify over the `exclude_none=True` form instead
-  of the null-including form; its tests and any stored fixtures would need to be
-  regenerated. Small, localized change.
-- Content hashing, signing, and persistence would share one definition of "the
+Scope correction (the original note understated this): the include-null form is
+used by ALL THREE cross-practice signed objects — NodeManifest (sign
+`services/.../cli/orchestration.py`, verify `.../capability_registry`),
+TaskBundle (sign `.../cli/orchestration.py`, verify `.../task_bundle`), and
+EvidenceCrate (sign `.../node_runtime/evidence_crate.py`; its verify path lands
+in E5-T05). That is five live call sites today — three sign, two verify.
+Accepting this ADR flips all of them to the `exclude_none=True` form and binds
+every later verify path (EvidenceCrate from E5-T05 on) to the same form.
+
+- Signing joins the already-universal `exclude_none=True` content-hashing form,
+  so content hashing, signing, and persistence share ONE definition of "the
   object's bytes" — closing gap 2 before it can silently corrupt hash checks.
-- Federation (E5) gets an implementation-neutral rule to build on.
+- The committed `examples/*.json` carry placeholder signature values (`BBBB…`,
+  `CCCC…`, `DDDD…`), not real Ed25519 signatures, and contract tests validate
+  schema SHAPE only — so no committed fixture is regenerated. Only test/e2e
+  helpers that construct REAL verifiable signatures switch to the new form.
+- Adding a future optional field no longer changes the signed bytes of objects
+  that leave it unset (omit-nulls) — safer for schema evolution than the
+  include-null form, where every absent optional must be emitted as explicit
+  `null` by every signer, including non-Python ones.
+- Federation (E5) gets an implementation-neutral rule to build on: any signer
+  that emits schema-conformant JSON (absent optionals omitted) reproduces the
+  bytes, with no Pydantic-specific null-emission step.
 
 ## Status note
 
-Left `proposed` deliberately: this is a cross-cutting serialization decision that
-touches E1-T02, E2-T02, and the whole E5 federation path. It should be accepted
-(and E2-T02 aligned) before E5 signed-manifest exchange is built, not
-retrofitted after external signatures exist. It does not block the remaining E2
-single-node tasks, which control both sides of every signature.
+Accepted now, as the E5 federation gate: unifying the canonical signed form is a
+cross-cutting serialization decision (E1-T02 primitives, the E2-T02/T03/T06
+signature paths, and the whole E5 federation path) that MUST be settled before
+any object crosses a real node boundary, not retrofitted after external
+signatures exist. The alignment is applied by a dedicated precursor packet,
+E5-T00, which flips the live sign/verify call sites (three sign, two verify
+today; EvidenceCrate verify follows in E5-T05) to the `exclude_none=True`
+form and adds a property test that the signed bytes equal the persisted-body
+bytes (minus the signature) for every signed object. E5-T01..T07 (the federation
+feature tasks) then build on the single unified form. Every new signed object
+introduced from E5-T01 on MUST sign/verify over the `exclude_none=True` form
+(reuse the persisted-body dict), never a second `model_dump(mode="json")`.
