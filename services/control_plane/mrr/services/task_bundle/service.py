@@ -955,6 +955,18 @@ class NodeTaskDecisionService:
         ``propose_modification`` — not necessarily the bundle's original
         creator.
 
+        Per ADR-0004 (docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md,
+        applied by task-packets/E5-T00.yaml), verification is performed
+        directly against ``latest.body`` — the persisted,
+        ``exclude_none=True`` canonical form — rather than re-dumping
+        ``bundle`` through ``model_dump(mode="json")``: reusing the exact
+        stored bytes makes "the bytes the signature covers equal the bytes
+        the persisted body canonicalizes to" hold by construction, so the
+        two representations can never drift apart.
+        ``mrr.services.cli.orchestration._build_task_bundle`` signs the
+        origin's bundle over this same ``exclude_none=True`` form at
+        creation time.
+
         Returns ``(latest, bundle, current_status)`` — ``latest`` the
         current stored content revision, ``bundle`` its reconstructed
         ``TaskBundle``, ``current_status`` the event-derived live lifecycle
@@ -981,7 +993,7 @@ class NodeTaskDecisionService:
         bundle = _reconstruct_bundle(latest)
         verify_object_signature(
             verifying_key,
-            bundle.model_dump(mode="json"),
+            latest.body,
             bundle.signature.value,
             algorithm=bundle.signature.algorithm,
         )

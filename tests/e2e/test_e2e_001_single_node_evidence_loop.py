@@ -129,12 +129,15 @@ def test_every_hash_and_signature_resolves(postgres_engine: Engine, tmp_path: Pa
     assert run_manifest.sealed is True
     assert run_manifest.run_state == "completed"
 
-    # The task itself resolves, and the origin's signature over it still verifies.
+    # The task itself resolves, and the origin's signature over it still
+    # verifies — over the persisted exclude_none=True body itself
+    # (ADR-0004, task-packets/E5-T00.yaml), the same form
+    # _authorize_and_verify uses in production.
     bundle_stored = object_repository.get_latest(result.task_id)
     task_bundle = TaskBundle.model_validate(bundle_stored.body)
     verify_object_signature(
         origin_key.public_key(),
-        task_bundle.model_dump(mode="json"),
+        bundle_stored.body,
         task_bundle.signature.value,
         algorithm=task_bundle.signature.algorithm,
     )
@@ -148,10 +151,13 @@ def test_every_hash_and_signature_resolves(postgres_engine: Engine, tmp_path: Pa
         stored_bytes = store.get(declared_input_hash)
         assert content_hash(stored_bytes) == declared_input_hash
 
-    # The crate's node signature verifies.
+    # The crate's node signature verifies — a local check only (no
+    # production EvidenceCrate verify path exists yet; that is E5-T05's
+    # scope), over the same exclude_none=True persisted body (ADR-0004,
+    # task-packets/E5-T00.yaml).
     verify_object_signature(
         node_key.public_key(),
-        crate.model_dump(mode="json"),
+        crate_stored.body,
         crate.signature.value,
         algorithm=crate.signature.algorithm,
     )

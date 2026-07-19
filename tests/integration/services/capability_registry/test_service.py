@@ -24,6 +24,7 @@ Acceptance-test mapping (task-packets/E2-T02.yaml, integration tier):
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -86,8 +87,14 @@ def _manifest(*, node_id: str | None = None, **overrides: Any) -> NodeManifest:
 
 
 def _signed_manifest(private_key: Ed25519PrivateKey, **overrides: Any) -> NodeManifest:
+    """Sign over the ``exclude_none=True`` form (ADR-0004,
+    task-packets/E5-T00.yaml) — the same canonical body
+    ``CapabilityRegistry.register`` verifies against.
+    """
     manifest = _manifest(**overrides)
-    signature_value = sign_object(private_key, manifest.model_dump(mode="json"))
+    signature_value = sign_object(
+        private_key, json.loads(manifest.model_dump_json(exclude_none=True))
+    )
     return manifest.model_copy(
         update={"signature": manifest.signature.model_copy(update={"value": signature_value})}
     )

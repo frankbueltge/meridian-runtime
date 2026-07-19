@@ -418,6 +418,13 @@ def test_sealed_body_is_schema_and_pydantic_valid() -> None:
 
 
 def test_sealed_crate_signature_verifies() -> None:
+    """ADR-0004 (task-packets/E5-T00.yaml) acceptance test: the sealed
+    crate's signature verifies over the SAME ``exclude_none=True`` body
+    that is persisted (``stored.body``) — a local check only, since no
+    production verify path is wired for ``EvidenceCrate`` here (that is
+    E5-T05's scope; see the module docstring's "Signature convention"
+    section).
+    """
     sealer, _ = _sealer()
     bundle = _bundle()
     result = _execution_result(bundle, "completed", output=b"x", output_hash="sha256:" + "f" * 64)
@@ -431,11 +438,11 @@ def test_sealed_crate_signature_verifies() -> None:
     crate = EvidenceCrate.model_validate(stored.body)
     verify_object_signature(
         node_signing_key.public_key(),
-        crate.model_dump(mode="json"),
+        stored.body,
         crate.signature.value,
         algorithm=crate.signature.algorithm,
     )  # must not raise
-    assert crate.content_hash == compute_content_hash(crate.model_dump(mode="json"))
+    assert crate.content_hash == compute_content_hash(stored.body)
 
 
 def _sealed_body_and_key() -> tuple[dict[str, Any], Ed25519PrivateKey]:
@@ -502,7 +509,7 @@ def test_tampering_any_sealed_field_fails_signature_verification(
     with pytest.raises(SignatureVerificationError):
         verify_object_signature(
             node_signing_key.public_key(),
-            tampered_crate.model_dump(mode="json"),
+            tampered,
             tampered_crate.signature.value,
             algorithm=tampered_crate.signature.algorithm,
         )

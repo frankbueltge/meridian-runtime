@@ -34,6 +34,7 @@ Acceptance-test mapping (task-packets/E2-T02.yaml):
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -212,10 +213,13 @@ def _sign(manifest: NodeManifest, private_key: Ed25519PrivateKey) -> NodeManifes
     ``sign_object``) and return a copy carrying the resulting signature
     value — the same canonical-bytes construction
     ``CapabilityRegistry.register`` uses to verify
-    (``manifest.model_dump(mode="json")``), so a correctly signed fixture
+    (``json.loads(manifest.model_dump_json(exclude_none=True))``, per
+    ADR-0004 — task-packets/E5-T00.yaml), so a correctly signed fixture
     round-trips through ``register`` successfully.
     """
-    signature_value = sign_object(private_key, manifest.model_dump(mode="json"))
+    signature_value = sign_object(
+        private_key, json.loads(manifest.model_dump_json(exclude_none=True))
+    )
     return manifest.model_copy(
         update={"signature": manifest.signature.model_copy(update={"value": signature_value})}
     )
@@ -675,20 +679,20 @@ def test_find_nodes_with_capability_ignores_events_from_other_object_kinds() -> 
 
 
 def test_register_round_trips_a_manifest_with_an_unset_optional_field() -> None:
-    """``data_residency`` is optional and non-nullable per the schema.
-    ``register()`` verifies against ``manifest.model_dump(mode="json")``,
-    which serializes an unset ``data_residency`` as explicit JSON ``null``
-    — this must still canonicalize, sign, and verify correctly (RFC 8785
-    handles JSON null fine), and the persisted ``body`` (built with
-    ``exclude_none=True``) must drop the field entirely rather than storing
-    it as ``null``, so a later schema validation of the stored body would
-    still pass.
+    """``data_residency`` is optional and non-nullable per the schema. Per
+    ADR-0004 (task-packets/E5-T00.yaml), ``register()`` verifies against
+    ``json.loads(manifest.model_dump_json(exclude_none=True))``, which
+    OMITS an unset ``data_residency`` entirely rather than emitting it as
+    JSON ``null`` — this is the same ``exclude_none=True`` form the
+    persisted ``body`` uses, so the verification input and the stored body
+    agree field-for-field on an absent optional.
     """
     registry, object_repository, _ = _registry()
     private_key = Ed25519PrivateKey.generate()
     node_id = new_urn("node")
     manifest = _signed_manifest(private_key, node_id=node_id, data_residency=None)
-    assert manifest.model_dump(mode="json")["data_residency"] is None  # explicit null, pre-verify
+    verified_body = json.loads(manifest.model_dump_json(exclude_none=True))
+    assert "data_residency" not in verified_body  # absent, not null — pre-verify
 
     registry.register(
         manifest,

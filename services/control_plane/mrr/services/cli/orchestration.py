@@ -29,7 +29,7 @@ identities as separate credentials) — this function does not require them to
 differ, since ``NodeTaskDecisionService.accept`` verifies against whichever
 public key the caller supplies as the bundle's current signer.
 
---- Hashing and signing convention ------------------------------------------
+--- Hashing and signing convention (ADR-0004) --------------------------------
 
 For every object this function itself constructs (``ResearchScore``,
 ``NodeManifest``, ``TaskBundle``) — as opposed to ``RunManifest``/
@@ -37,32 +37,44 @@ For every object this function itself constructs (``ResearchScore``,
 internally — this module computes the REAL ``content_hash`` via
 ``mrr.domain.hashing_policy.compute_content_hash`` (never leaves a
 placeholder in place), and, for the two signed object kinds, a REAL Ed25519
-signature via ``sign_object``. This mirrors
-``mrr.services.node_runtime.evidence_crate.EvidenceCrateSealer.seal``
-EXACTLY, including WHY it is built this specific way: build a draft Pydantic
-model with a placeholder ``content_hash``/``signature.value``, hash/sign over
-that draft's OWN ``model_dump(mode="json")`` output, then ``model_copy`` the
-real values in. This is not merely stylistic — it is required for
-correctness. If this module instead hand-built a plain ``dict`` with
-manually-formatted ISO datetime strings and signed THAT, there would be no
-guarantee that a later ``model_dump(mode="json")`` call on the
-``model_validate``-reconstructed object reproduces byte-identical strings
-(Pydantic's own datetime JSON serialization is the single source of truth for
-that format; this module must never compete with it by formatting datetimes
-itself). Every downstream signature check
-(``CapabilityRegistry.register``, ``NodeTaskDecisionService.accept``) calls
-``obj.model_dump(mode="json")`` on the very model instance (or a
-``model_copy`` of it) this module built — by always deriving the signed
-bytes from THAT SAME serializer, signing and verifying are guaranteed to
-agree.
+signature via ``sign_object``.
+
+Per ADR-0004 (docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md,
+applied by task-packets/E5-T00.yaml), ``NodeManifest`` and ``TaskBundle`` —
+the two objects this module signs — hash and sign over the SAME canonical
+``exclude_none=True`` form the persisted ``StoredObject.body`` uses: absent
+or ``None`` optional fields are OMITTED, never emitted as JSON ``null``.
+``_build_node_manifest``/``_build_task_bundle`` build the draft Pydantic
+model with a placeholder ``content_hash``/``signature.value``, take
+``json.loads(draft.model_dump_json(exclude_none=True))`` as ``body``, set
+the REAL ``content_hash`` (``compute_content_hash(body)``) and the REAL
+Ed25519 signature (``sign_object(signing_key, body)``) directly onto that
+SAME ``body`` dict — never a second, null-including
+``model_dump(mode="json")`` — and ``model_validate(body)`` the result. Every
+downstream signature check now verifies over the identical
+``exclude_none=True`` form:
+``mrr.services.capability_registry.service.CapabilityRegistry.register``
+re-dumps the incoming (not-yet-persisted) manifest the same way, and
+``mrr.services.task_bundle.service._authorize_and_verify`` verifies directly
+against the persisted ``body`` it already has in hand. One byte-definition
+of "the object" for hashing, signing, and persistence means signing and
+verifying are guaranteed to agree — see ADR-0004's "gap 2".
+
+``ResearchScore`` carries no ``signature`` field — it is not one of the
+three cross-practice signed objects ADR-0004 unifies, and is out of
+task-packets/E5-T00.yaml's scope. ``_finalize_content_hash`` below still
+computes its ``content_hash`` over the null-including
+``draft.model_dump(mode="json")`` form, exactly as before this task.
 """
 
 from __future__ import annotations
 
 import base64
+import json
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -165,11 +177,21 @@ class LocalEvidenceLoopResult:
 def _finalize_content_hash[T: BaseObject](draft: T) -> T:
     """Return a copy of ``draft`` with ``content_hash`` replaced by the real
     ``compute_content_hash`` value, computed over ``draft.model_dump(mode=
-    "json")`` — the exact pattern
-    ``EvidenceCrateSealer.seal``/``RunManifestRecorder.record`` already use
-    internally. Whatever placeholder ``content_hash`` (or ``signature``)
-    ``draft`` currently carries is irrelevant: ``compute_content_hash`` ->
-    ``prepare_for_hash`` strips both fields before canonicalizing.
+    "json")``.
+
+    Used only for ``ResearchScore`` (``_build_research_score``/
+    ``_add_approval_revision`` below): ``ResearchScore`` carries no
+    ``signature`` field, so it is not one of the three cross-practice signed
+    objects ADR-0004 (docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md)
+    unifies onto the ``exclude_none=True`` canonical form, and this helper
+    keeps the null-including form it always used. ``NodeManifest``/
+    ``TaskBundle`` compute their own ``content_hash`` inline, over the
+    ``exclude_none=True`` body — see ``_build_node_manifest``/
+    ``_build_task_bundle`` and the module docstring's "Hashing and signing
+    convention" section. Whatever placeholder ``content_hash`` (or
+    ``signature``) ``draft`` currently carries is irrelevant:
+    ``compute_content_hash`` -> ``prepare_for_hash`` strips both fields
+    before canonicalizing.
     """
     real_hash = compute_content_hash(draft.model_dump(mode="json"))
     return draft.model_copy(update={"content_hash": real_hash})
@@ -300,13 +322,19 @@ def _build_node_manifest(
             "signature": placeholder_signature,
         }
     )
-    draft = _finalize_content_hash(draft)
+    # ADR-0004: hash and sign over the SAME exclude_none=True body
+    # CapabilityRegistry._manifest_to_stored_object persists — never a
+    # null-including model_dump(mode="json") — see the module docstring's
+    # "Hashing and signing convention" section.
+    body: dict[str, Any] = json.loads(draft.model_dump_json(exclude_none=True))
+    body["content_hash"] = compute_content_hash(body)
     # sign_object's prepare_for_signature strips only "signature" (keeping
-    # the just-computed real content_hash) — the placeholder signature above
-    # never influences what gets signed.
-    signature_value = sign_object(node_signing_key, draft.model_dump(mode="json"))
+    # the just-computed real content_hash) — the placeholder signature still
+    # present in body["signature"] never influences what gets signed.
+    signature_value = sign_object(node_signing_key, body)
     final_signature = placeholder_signature.model_copy(update={"value": signature_value})
-    return draft.model_copy(update={"signature": final_signature})
+    body["signature"] = final_signature.model_dump(mode="json")
+    return NodeManifest.model_validate(body)
 
 
 def _build_task_bundle(
@@ -379,10 +407,16 @@ def _build_task_bundle(
             "status": "CREATED",
         }
     )
-    draft = _finalize_content_hash(draft)
-    signature_value = sign_object(origin_signing_key, draft.model_dump(mode="json"))
+    # ADR-0004: hash and sign over the SAME exclude_none=True body
+    # TaskBundleService's own _bundle_to_stored_object persists — never a
+    # null-including model_dump(mode="json") — see the module docstring's
+    # "Hashing and signing convention" section.
+    body: dict[str, Any] = json.loads(draft.model_dump_json(exclude_none=True))
+    body["content_hash"] = compute_content_hash(body)
+    signature_value = sign_object(origin_signing_key, body)
     final_signature = placeholder_signature.model_copy(update={"value": signature_value})
-    return draft.model_copy(update={"signature": final_signature})
+    body["signature"] = final_signature.model_dump(mode="json")
+    return TaskBundle.model_validate(body)
 
 
 def run_local_evidence_loop(
