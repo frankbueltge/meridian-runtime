@@ -1,0 +1,197 @@
+task_id: E5-T03
+title: Online node protocol — signed message envelope, deterministic inbound validator, and an abstract transport port (mTLS marked infra-dependent)
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E5 (E5-T03
+  "online node protocol and mTLS"), docs/spec/04_SECURITY_AND_POLICY.md section
+  4.1 ("mTLS between federated nodes") and section 8.2 ("Task and result
+  envelopes include nonces, expiry, recipient identity, content hashes, and
+  signatures. Processed envelope IDs are retained for replay detection according
+  to policy") and section 8.3 (a refusal returns only a coarse reason code),
+  docs/spec/01_SYSTEM_SPEC.md section 2.2 (the data plane's "Task inbox and
+  decision interface" and "Signed result outbox"), and MRR-NFR-004/007. Builds
+  on E5-T01 (Practice/KeyRing/kid) and E5-T02 (trust-anchored signer-key
+  resolution) and the ADR-0004 exclude_none signature form. Per this
+  repository's standing note, E5-T03 is INFRA-NEAR: the domain/crypto/protocol
+  OBJECT layer is built CI-testable here; the real network/TLS/mTLS transport is
+  marked infra-dependent and is NOT built or CI-tested in this packet (no local
+  PostgreSQL/containers/sockets on this machine). It defines the online-exchange
+  message + its fail-closed validation + an ABSTRACT transport port, exactly as
+  E4-T01 defined the ModelAdapter port (a Protocol + value objects + an in-test
+  fake) without any concrete provider.
+objective: >
+  Provide the online node protocol's object layer, framework-free and
+  CI-testable: (1) a signed NodeMessageEnvelope contract — the docs/spec/04
+  section 8.2 "envelope" that wraps ONE already-signed application payload for
+  point-to-point online delivery, carrying a message id / replay nonce, sender
+  node + practice id, recipient node id, sent-at and expiry timestamps, the
+  payload's content hash, a payload-kind tag, the payload itself, and a
+  transport signature by the SENDING node over the envelope (built/verified over
+  the ADR-0004 exclude_none form via the existing hashing_policy). It is
+  payload-agnostic: it references its payload by content hash and kind, so it
+  carries a TaskBundle outbound or a result inbound without hard-coding either
+  (the task-decision flow is E5-T04, the result flow E5-T05). (2) A deterministic
+  inbound validator (framework-free domain) that accepts an envelope ONLY when
+  every check holds, each a DISTINCT typed error, fail closed: recipient id ==
+  this node, the evaluation instant is within [sent_at, expires_at), the carried
+  payload's own content hash equals the declared payload_content_hash, the
+  message id has not already been processed (a replay CHECK via a caller-supplied
+  "already seen" predicate — the DURABLE processed-id store is E5-T07), and the
+  transport signature verifies under the sender node's trusted key (resolved from
+  the sender practice's KeyRing exactly as E5-T02 does — signer-practice match,
+  kid resolves, key valid at the instant, signature verifies). A rejection yields
+  only a COARSE reason category (docs/spec/04 section 8.3). (3) An ABSTRACT
+  transport port (a Protocol plus frozen request/result value objects and an
+  in-test fake, mirroring mrr.domain.model_adapter.ModelAdapter) — NO real
+  socket, TLS, or mTLS. The concrete mTLS client/server is explicitly infra-
+  dependent and out of scope; this packet builds only the port it will implement.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/adr/ADR-0009-CANONICAL-PUBLIC-KEY-ENCODING.md
+  - docs/spec/01_SYSTEM_SPEC.md#22-data-plane
+  - docs/spec/04_SECURITY_AND_POLICY.md#41-encryption
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e5--federation
+  - schemas/common.schema.json
+  - packages/contracts/mrr/contracts/common.py
+  - packages/domain/mrr/domain/model_adapter.py
+  - packages/domain/mrr/domain/key_management.py
+  - packages/domain/mrr/domain/manifest_trust.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - scripts/check_contracts.py
+requirements:
+  - MRR-NFR-007
+  - MRR-NFR-004
+  - MRR-NFR-001
+  - MRR-NFR-005
+allowed_paths:
+  - schemas/**
+  - packages/contracts/**
+  - packages/domain/**
+  - examples/**
+  - scripts/check_contracts.py
+  - tests/unit/**
+  - tests/property/**
+  - tests/contract/**
+forbidden_changes:
+  - any real network, socket, TLS, mTLS, certificate handling, HTTP client/server,
+    or FastAPI endpoint — the transport port stays ABSTRACT (a Protocol + an
+    in-test fake); the concrete mTLS transport is infra-dependent and explicitly
+    deferred (mark it clearly, build none of it)
+  - the node's DECISION on a received task (accept / modify / defer / reject) —
+    that is E5-T04; this packet validates and authenticates an envelope, it does
+    not decide the task
+  - the result CONTENT flow (EvidenceCrate result envelope handling) — E5-T05 —
+    and offline store-and-forward bundles — E5-T06; the envelope is payload-
+    agnostic and does not special-case task vs result payloads
+  - a DURABLE processed-message-id / replay store and any expiry/revocation
+    ENFORCEMENT sweep over already-accepted messages — E5-T07; this packet does a
+    per-message expiry check and a replay CHECK via a caller-supplied predicate,
+    and builds no persistence
+  - modifying existing contracts/schemas (NodeManifest, TaskBundle, EvidenceCrate,
+    Signature, Practice, ...) or the E5-T02 manifest_trust resolver — E5-T03 is
+    ADDITIVE (a new envelope + validator + port); reuse the Signature type,
+    KeyRing, and hashing_policy unchanged
+  - the crypto sign/verify/hash primitives and hashing_policy / prepare_for_*
+    policy, and encode/decode_public_key (reuse unchanged); both import-linter
+    contracts MUST stay KEPT (core stays framework-/provider-free, no network SDK)
+  - any new authoritative state, DB model, migration, repository, or service —
+    a NodeMessageEnvelope is a contract, its validator a pure function, and the
+    transport a port; wiring them into a running node is E5-T04/T05
+derived_decisions: >
+  The envelope is a schema-backed signed message registered like the existing
+  entities (JSON Schema in schemas/, a Pydantic v2 model in packages/contracts
+  exported from its __init__, a valid example in examples/, and the pair
+  registered in scripts/check_contracts.py so tests/contract cross-validates
+  schema<->model<->example) — no new pyproject root (it lives in packages/
+  contracts). It reuses the existing mrr.contracts.common.Signature type for its
+  transport signature and is signed/verified over the ADR-0004 exclude_none form
+  via mrr.domain.hashing_policy (sign_object/verify_object_signature) — never a
+  second signing recipe. It carries its payload by (payload_kind, payload_content
+  _hash, payload) so the validator can bind the envelope to its payload (the
+  payload's own content_hash must equal payload_content_hash) without the
+  envelope knowing any payload's internal shape — keeping task (E5-T04) and
+  result (E5-T05) flows out of this packet. The inbound validator is a pure
+  framework-free domain function returning None/raising, mirroring
+  mrr.domain.manifest_trust: it resolves the sender node's key exactly as E5-T02
+  resolves a manifest signer (signer-practice match, kid in the sender practice's
+  KeyRing, KeyRing.is_valid_at at the evaluation instant, signature verifies) —
+  the manifest-specific "key declared in public_keys" check (E5-T02 condition d)
+  does NOT apply to an envelope and is omitted. Replay is a CHECK only: the
+  validator takes a caller-supplied `already_processed(message_id) -> bool`
+  predicate (default: treat none as processed) and fails closed when it returns
+  True; the durable processed-id store that backs it in production is E5-T07. The
+  transport port mirrors mrr.domain.model_adapter.ModelAdapter precisely: a
+  runtime_checkable Protocol with frozen, self-validating request/result value
+  objects and an in-test fake — no concrete implementation, no import of any
+  network library. The real mTLS transport is named in docstrings as infra-
+  dependent and deferred, never stubbed with fake network behavior.
+invariants:
+  - the NodeMessageEnvelope, its validator, and the transport port import NO
+    network/TLS library and NO web/workflow framework; both import-linter
+    contracts stay KEPT and the core stays framework-free (MRR-NFR-004)
+  - the envelope is signed and verified over the ADR-0004 exclude_none form using
+    the EXISTING hashing_policy; a tampered envelope field or payload fails
+    verification; no second signing/hashing implementation is introduced
+  - the inbound validator accepts an envelope ONLY when ALL hold — recipient ==
+    this node, sent_at <= now < expires_at, payload.content_hash ==
+    payload_content_hash, message id not already processed, and the transport
+    signature verifies under the sender node's trusted (resolved, valid-at-instant)
+    key — and otherwise raises a DISTINCT typed error per failing check, never a
+    generic one, persisting/echoing only a coarse reason category
+  - replay is a CHECK via a caller-supplied predicate; NO durable processed-id
+    store is built (E5-T07), and NO real transport/mTLS is built (infra-dependent)
+  - the transport port is abstract: it opens no network, and only an in-test fake
+    implements it; no secret or private key is recorded anywhere
+  - E5-T03 adds only new modules; NodeManifest/TaskBundle/EvidenceCrate/Signature/
+    Practice and the E5-T02 resolver are unchanged
+acceptance_tests:
+  - the NodeMessageEnvelope validates against its JSON Schema and round-trips
+    losslessly; the committed example validates and tests/contract cross-validates
+    schema<->model<->example
+  - a validly-signed envelope addressed to this node, within its validity window,
+    whose carried payload's content_hash matches payload_content_hash, whose
+    message id is unseen, and whose transport signature verifies under the sender's
+    valid trusted key, is ACCEPTED
+  - fail-closed matrix, each a distinct typed error and a coarse reason, nothing
+    accepted: wrong recipient; before sent_at / at-or-after expires_at; payload
+    content_hash != payload_content_hash (payload tampered); message id reported
+    already-processed by the predicate; sender signature invalid / signer-practice
+    mismatch / kid unknown / sender key not valid at the instant
+  - a tampered envelope field (any signed field changed after signing) fails the
+    transport-signature check
+  - an in-test fake transport implements the abstract port and round-trips an
+    envelope with no network; property/unit tests show the validator returns for
+    all-hold and raises for every single failing precondition
+  - both import-linter contracts remain KEPT and the new modules import no network
+    library or provider SDK
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the NodeMessageEnvelope shape, the inbound validator's accept rule + typed
+    failure family, and the abstract transport port surface (with the in-test fake)
+  - changed files, the new schema, the new example, the check_contracts
+    registration, and any additive domain errors/enums
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract) proving green
+  - security/privacy implications (envelope authenticity + replay check +
+    fail-closed matrix + coarse reason; no real network/mTLS; no durable replay
+    store; no secrets; abstract port only)
+  - open specification questions and what is explicitly deferred (real mTLS
+    transport = infra; task decision = E5-T04; result flow = E5-T05; offline
+    bundles = E5-T06; durable replay/expiry/revocation enforcement = E5-T07)
+stop_conditions:
+  - the object-layer protocol cannot be expressed without a real network/TLS
+    library or a concrete transport (that is the infra-dependent part; build the
+    abstract port and stop there, reporting the boundary)
+  - envelope authenticity cannot be represented without changing the Signature
+    type, the hashing_policy, or the E5-T02 resolver (report rather than change)
+  - representing replay/expiry would force building the durable processed-id store
+    (E5-T07) — keep the per-message check + predicate and stop at that boundary
