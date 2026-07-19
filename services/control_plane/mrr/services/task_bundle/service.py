@@ -1,7 +1,8 @@
 """``TaskBundleService`` and ``NodeTaskDecisionService`` (task-packets/
-E2-T03.yaml): creation, offer, and the target node's authoritative decision
-on signed ``TaskBundle`` objects, up to but not including execution
-(QUEUED/RUNNING/COMPLETED — E2-T04) or evidence-crate sealing (E2-T06).
+E2-T03.yaml, extended by task-packets/E5-T04.yaml): creation, offer, and the
+target node's authoritative decision on signed ``TaskBundle`` objects, up to
+but not including execution (QUEUED/RUNNING/COMPLETED — E2-T04) or
+evidence-crate sealing (E2-T06).
 
 Two roles, two classes, deliberately separated (docs/spec/01_SYSTEM_SPEC.md
 MRR-FR-022: "The target node MUST make the authoritative accept, modify,
@@ -9,25 +10,74 @@ defer, or reject decision"):
 
 - ``TaskBundleService`` — the ORIGIN's operations: ``create`` (gated on the
   E2-T01 research-score approval and the E2-T02 capability-declaration
-  check), ``offer`` (CREATED -> OFFERED), and ``accept_modification`` (the
+  check), ``offer`` (CREATED -> OFFERED), ``accept_modification`` (the
   origin's acknowledgement of a node-proposed revision — see its own
-  docstring for why this is not a state transition). There is **no**
+  docstring for why this is not a state transition), and
+  ``accept_modification_trusted`` (E5-T04, below). There is **no**
   accept-to-ACCEPTED method here, by construction, not by convention — see
   ``test_origin_service_has_no_accept_method`` in the unit tests, which
   asserts this against the class's own public API surface.
 - ``NodeTaskDecisionService`` — the TARGET NODE's operations: ``accept``,
-  ``propose_modification``, ``defer``, ``reject``. Every one of these takes
-  a caller-supplied ``deciding_node_id`` and raises ``NodeAuthorityError``
-  before doing anything else (including before the signature check) unless
-  it equals the bundle's own ``target_node_id`` — MRR-FR-022 enforced
-  structurally, in-process, for this single-node slice: there is no HTTP
-  layer yet to authenticate a remote caller's identity, so the identity
-  arrives as an explicit parameter and is checked against the stored
-  bundle's declared target on every call. A future HTTP-facing task (outside
-  this packet's ``forbidden_changes``: "HTTP/FastAPI endpoints") is
-  responsible for deriving ``deciding_node_id`` from an authenticated
-  transport identity rather than a bare parameter; that does not change
-  this structural check, only who is trusted to populate it.
+  ``propose_modification``, ``defer``, ``reject``, and their E5-T04
+  trust-anchored counterparts ``accept_trusted``/``propose_modification_
+  trusted``/``defer_trusted``/``reject_trusted`` (below). Every one of the
+  four original methods takes a caller-supplied ``deciding_node_id`` and
+  raises ``NodeAuthorityError`` before doing anything else (including
+  before the signature check) unless it equals the bundle's own
+  ``target_node_id`` — MRR-FR-022 enforced structurally, in-process, for
+  this single-node slice: there is no HTTP layer yet to authenticate a
+  remote caller's identity, so the identity arrives as an explicit
+  parameter and is checked against the stored bundle's declared target on
+  every call. A future HTTP-facing task (outside this packet's
+  ``forbidden_changes``: "HTTP/FastAPI endpoints") is responsible for
+  deriving ``deciding_node_id`` from an authenticated transport identity
+  rather than a bare parameter; that does not change this structural
+  check, only who is trusted to populate it.
+
+--- E5-T04: trust-anchored wiring, additive, in FRONT of the above ----------
+
+Every one of the four ``NodeTaskDecisionService`` decision methods, plus
+``TaskBundleService.accept_modification``, verifies a bundle's signature
+against a CALLER-SUPPLIED bare ``verifying_key`` (or, for
+``accept_modification``, no signature check at all) — E2-T03 deliberately
+left open WHERE that key comes from, exactly as E2-T02's
+``CapabilityRegistry.register`` left open where its own verifying key came
+from. task-packets/E5-T02.yaml closed that gap for ``NodeManifest`` with
+``CapabilityRegistry.receive``; the five ``*_trusted`` methods below
+(``accept_trusted``, ``defer_trusted``, ``reject_trusted``,
+``propose_modification_trusted``, ``accept_modification_trusted``) do the
+identical thing here, for ``TaskBundle``, using
+``mrr.domain.task_trust.resolve_trusted_task_key`` (task-packets/
+E5-T04.yaml) in place of ``mrr.domain.manifest_trust.
+resolve_trusted_manifest_key``.
+
+Each ``*_trusted`` method: (1) reads the bundle's CURRENT stored content
+(``_get_latest_or_raise`` + ``_reconstruct_bundle`` — the exact same lookup
+the wrapped method's own ``_authorize_and_verify`` performs internally);
+(2) resolves a trusted verifying key for it via ``resolve_trusted_task_key``,
+anchored to a CALLER-SUPPLIED ``mrr.contracts.practice.Practice`` — the
+ORIGIN practice when a NODE is authenticating a received (origin-signed)
+task, the NODE practice when the ORIGIN is authenticating a node-proposed
+modification (MRR-FR-023) — this is what makes ``resolve_trusted_task_key``
+symmetric, per its own module docstring; (3) on success, delegates to the
+EXISTING plain method UNCHANGED, passing the resolved key as its
+``verifying_key`` argument (or, for ``accept_modification_trusted``, simply
+proceeding to call ``accept_modification`` — which takes no ``verifying_key``
+at all — only once resolution has succeeded, since trust resolution is
+itself the authentication gate for a method that performs no signature
+check of its own).
+
+On any trust-resolution failure, the typed error
+(``mrr.domain.exceptions.TaskSignerMismatchError``/``UnknownKeyIdError``/
+``TaskKeyNotValidError``/``mrr.crypto.exceptions.SignatureVerificationError``/
+``UnsupportedAlgorithmError``) propagates BEFORE the wrapped method is ever
+called — nothing is read from the object repository a second time, no
+event is appended, and MRR-FR-022's own authority/lifecycle/signature checks
+inside the wrapped method never run. Every persistence/event/authority
+guarantee the wrapped method already provides is reused verbatim, not
+reimplemented — the wrapped methods themselves, their transitions, and
+their own signature re-verification against the resolved key are completely
+UNCHANGED (task-packets/E5-T04.yaml forbidden_changes).
 
 --- ADR-0007: lifecycle transitions are events, not new signed revisions ----
 
@@ -160,7 +210,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, get_args
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from mrr.contracts import TaskBundle, Urn
+from mrr.contracts import Practice, TaskBundle, Urn
 from mrr.domain.exceptions import (
     CapabilityNotDeclaredError,
     InvalidTransitionError,
@@ -172,6 +222,7 @@ from mrr.domain.hashing_policy import verify_object_signature
 from mrr.domain.identity import new_urn
 from mrr.domain.lifecycles import TASK_BUNDLE_LIFECYCLE
 from mrr.domain.repositories import ObjectRepository, StoredObject
+from mrr.domain.task_trust import practice_key_ring, resolve_trusted_task_key
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
 from mrr.persistence.unit_of_work import record_event, record_object_revision_with_event
 from mrr.provenance.events import DomainEvent
@@ -673,6 +724,78 @@ class TaskBundleService:
         appended = self._record_event(event)
         return TaskBundleTransition(content=latest, status="OFFERED", appended_event=appended)
 
+    # ------------------------------------------------------------------
+    # E5-T04: the trust-anchored counterpart of accept_modification above —
+    # see the module docstring's "E5-T04: trust-anchored wiring" section.
+    # ------------------------------------------------------------------
+
+    def accept_modification_trusted(
+        self,
+        bundle_id: Urn,
+        trusted_node: Practice,
+        *,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> TaskBundleTransition:
+        """Trust-anchor the CURRENT stored bundle content (the node's own
+        signed modification, per MRR-FR-023) to ``trusted_node`` and, only
+        once a trusted verifying key is resolved for it, delegate to the
+        EXISTING ``accept_modification`` unchanged.
+
+        Unlike ``accept``/``defer``/``reject``/``propose_modification``,
+        plain ``accept_modification`` takes no ``verifying_key`` parameter
+        at all — it performs no signature check of its own (see its own
+        docstring). Trust resolution here IS therefore the entire
+        authentication gate for this method: on success, the resolved key
+        is discarded (there is nowhere on ``accept_modification`` to pass
+        it) and ``accept_modification`` is called exactly as any other
+        caller would; on failure, ``accept_modification`` is never called
+        at all — nothing is read from the object repository a second time
+        and no event is recorded.
+
+        Args:
+            bundle_id: the bundle whose current (node-signed) content is
+                being acknowledged.
+            trusted_node: the practice the origin actually trusts as the
+                MODIFYING node's identity — CALLER-SUPPLIED, exactly as
+                ``mrr.domain.manifest_trust.resolve_trusted_manifest_key``'s
+                own ``trusted_practice_id``/ring are. Build its ``KeyRing``
+                internally via ``mrr.domain.task_trust.practice_key_ring``.
+            at: the evaluation instant for the resolver's validity-window
+                check. Defaults to ``datetime.now(UTC)`` (the evaluation
+                instant), caller-overridable for deterministic testing.
+
+        Returns:
+            Exactly what ``accept_modification`` itself would return.
+
+        Raises:
+            mrr.domain.exceptions.TaskBundleNotFoundError: no stored bundle
+                for ``bundle_id`` — raised by the internal lookup before any
+                trust resolution is attempted.
+            mrr.domain.exceptions.TaskSignerMismatchError,
+            mrr.domain.exceptions.UnknownKeyIdError,
+            mrr.domain.exceptions.TaskKeyNotValidError,
+            mrr.crypto.exceptions.SignatureVerificationError,
+            mrr.crypto.exceptions.UnsupportedAlgorithmError: trust
+                resolution failed for the corresponding reason (see
+                ``mrr.domain.task_trust.resolve_trusted_task_key``);
+                ``accept_modification`` was never called.
+            mrr.domain.exceptions.InvalidTransitionError: raised by the
+                delegated ``accept_modification`` for its OWN pre-existing
+                reason (current status is not ``OFFERED``) — unrelated to
+                trust anchoring.
+        """
+        latest = _get_latest_or_raise(self._object_repository, bundle_id)
+        bundle = _reconstruct_bundle(latest)
+        ring = practice_key_ring(trusted_node)
+        resolve_trusted_task_key(bundle, trusted_node.id, ring, at=at)
+
+        return self.accept_modification(
+            bundle_id, actor=actor, policy_version=policy_version, correlation_id=correlation_id
+        )
+
 
 # ---------------------------------------------------------------------------
 # NodeTaskDecisionService — the TARGET NODE's operations (MRR-FR-022).
@@ -926,6 +1049,167 @@ class NodeTaskDecisionService:
         )
         stored, _ = self._record(obj, latest.revision, event)
         return stored
+
+    # ------------------------------------------------------------------
+    # E5-T04: trust-anchored counterparts of accept/defer/reject/
+    # propose_modification above — see the module docstring's "E5-T04:
+    # trust-anchored wiring" section. Each resolves a trusted verifying key
+    # for the bundle's CURRENT stored content, anchored to a CALLER-SUPPLIED
+    # ``trusted_origin: Practice``, then delegates to the matching plain
+    # method UNCHANGED, passing the resolved key as its own ``verifying_key``
+    # argument. ``trusted_origin`` names the ORIGIN practice in the normal
+    # case (a node authenticating an origin-signed task); per
+    # ``resolve_trusted_task_key``'s own symmetry, nothing prevents a caller
+    # from passing a different practice here for a bundle whose current
+    # signer is someone else (e.g. re-authenticating after a prior
+    # modification round) — the resolver only ever checks the bundle's OWN
+    # claimed ``signature.signer_practice_id`` against whichever practice id
+    # the caller supplies.
+    # ------------------------------------------------------------------
+
+    def _resolve_trusted_verifying_key(
+        self, bundle_id: Urn, trusted_origin: Practice, *, at: datetime | None
+    ) -> Ed25519PublicKey:
+        """Shared first step for every ``*_trusted`` method below: load the
+        bundle's current stored content and resolve a trusted verifying key
+        for it, anchored to ``trusted_origin``. Raises one of
+        ``resolve_trusted_task_key``'s own typed failures (see that
+        function's docstring) before anything else is read or written.
+        """
+        latest = _get_latest_or_raise(self._object_repository, bundle_id)
+        bundle = _reconstruct_bundle(latest)
+        ring = practice_key_ring(trusted_origin)
+        return resolve_trusted_task_key(bundle, trusted_origin.id, ring, at=at)
+
+    def accept_trusted(
+        self,
+        bundle_id: Urn,
+        deciding_node_id: Urn,
+        trusted_origin: Practice,
+        *,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> TaskBundleTransition:
+        """Trust-anchor the bundle's current signer to ``trusted_origin``,
+        then delegate to the EXISTING ``accept`` unchanged, passing the
+        resolved key as its ``verifying_key``. See the class's own E5-T04
+        section comment above and ``accept``'s own docstring — MRR-FR-022's
+        authority check and MRR-FR-031's own re-verification of the
+        signature under the now-resolved key both still run, inside the
+        delegated call, exactly as they do for any other caller of
+        ``accept``.
+
+        Raises:
+            mrr.domain.exceptions.TaskBundleNotFoundError: no stored bundle
+                for ``bundle_id``.
+            mrr.domain.exceptions.TaskSignerMismatchError,
+            mrr.domain.exceptions.UnknownKeyIdError,
+            mrr.domain.exceptions.TaskKeyNotValidError,
+            mrr.crypto.exceptions.SignatureVerificationError,
+            mrr.crypto.exceptions.UnsupportedAlgorithmError: trust
+                resolution failed; ``accept`` was never called, nothing
+                decided or written.
+            mrr.domain.exceptions.NodeAuthorityError,
+            mrr.domain.exceptions.InvalidTransitionError: raised by the
+                delegated ``accept`` for its OWN pre-existing reasons.
+        """
+        verifying_key = self._resolve_trusted_verifying_key(bundle_id, trusted_origin, at=at)
+        return self.accept(
+            bundle_id,
+            deciding_node_id,
+            verifying_key,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+        )
+
+    def defer_trusted(
+        self,
+        bundle_id: Urn,
+        deciding_node_id: Urn,
+        trusted_origin: Practice,
+        *,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> TaskBundleTransition:
+        """The trust-anchored counterpart of ``defer`` — see
+        ``accept_trusted``'s docstring; identical shape and rationale.
+        """
+        verifying_key = self._resolve_trusted_verifying_key(bundle_id, trusted_origin, at=at)
+        return self.defer(
+            bundle_id,
+            deciding_node_id,
+            verifying_key,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+        )
+
+    def reject_trusted(
+        self,
+        bundle_id: Urn,
+        deciding_node_id: Urn,
+        trusted_origin: Practice,
+        *,
+        reason_category: RefusalReason,
+        explanation: str | None = None,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> TaskBundleTransition:
+        """The trust-anchored counterpart of ``reject`` (MRR-FR-024) — see
+        ``accept_trusted``'s docstring; identical shape and rationale.
+        """
+        verifying_key = self._resolve_trusted_verifying_key(bundle_id, trusted_origin, at=at)
+        return self.reject(
+            bundle_id,
+            deciding_node_id,
+            verifying_key,
+            reason_category=reason_category,
+            explanation=explanation,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+        )
+
+    def propose_modification_trusted(
+        self,
+        bundle_id: Urn,
+        modified_bundle: TaskBundle,
+        deciding_node_id: Urn,
+        trusted_origin: Practice,
+        *,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> StoredObject:
+        """Trust-anchor the bundle's CURRENT (pre-modification) signer to
+        ``trusted_origin``, then delegate to the EXISTING
+        ``propose_modification`` unchanged, passing the resolved key as its
+        ``verifying_key``. ``modified_bundle`` — the deciding node's OWN new
+        signed content — is never trust-anchored by this method; only the
+        bundle content being modified (what ``deciding_node_id`` is reacting
+        to) is (MRR-FR-023's round trip is authenticated by the RECEIVER
+        resolving the SENDER's key, not by a node validating its own
+        signature). See ``accept_trusted``'s docstring for the shared
+        rationale and failure family.
+        """
+        verifying_key = self._resolve_trusted_verifying_key(bundle_id, trusted_origin, at=at)
+        return self.propose_modification(
+            bundle_id,
+            modified_bundle,
+            deciding_node_id,
+            verifying_key,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers.

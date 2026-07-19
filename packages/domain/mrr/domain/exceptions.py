@@ -403,6 +403,13 @@ class UnknownKeyIdError(DomainError):
     generic (no "Manifest"-specific wording), unlike
     ``ManifestSignerMismatchError``/``ManifestKeyNotValidError``, which are
     each mirrored by a distinctly-named ``Envelope*`` sibling below.
+
+    Also raised, a fourth time, by
+    ``mrr.domain.task_trust.resolve_trusted_task_key`` (task-packets/
+    E5-T04.yaml) for the identical fact pattern applied to a ``TaskBundle``'s
+    claimed ``signature.key_id`` — reused unchanged for the same reason,
+    mirrored by the distinctly-named ``Task*`` siblings below for the two
+    conditions that DO need a bundle-specific type.
     """
 
     def __init__(self, kid: str) -> None:
@@ -652,6 +659,63 @@ class EnvelopeKeyNotValidError(DomainError):
     ``NodeManifest``, kept as a separate type for the same reason
     ``EnvelopeSignerMismatchError`` is. Carries ``kid`` and the evaluation
     instant ``at``.
+    """
+
+    def __init__(self, kid: str, *, at: datetime) -> None:
+        self.kid = kid
+        self.at = at
+        super().__init__(
+            f"key {kid!r} is not valid at evaluation instant {at.isoformat()!r} "
+            "(revoked, rotated, expired, or not yet valid)"
+        )
+
+
+class TaskSignerMismatchError(DomainError):
+    """Raised by ``mrr.domain.task_trust.resolve_trusted_task_key``
+    (task-packets/E5-T04.yaml) when a ``TaskBundle``'s
+    ``signature.signer_practice_id`` does not equal the id of the practice
+    the caller actually trusts as THIS bundle's signer. Mirrors
+    ``ManifestSignerMismatchError``'s/``EnvelopeSignerMismatchError``'s
+    identical fact pattern (docs/spec/04_SECURITY_AND_POLICY.md section 8.1:
+    "Trust is per practice and capability, not universal"), kept as a
+    SEPARATE type rather than reused because it is raised for a different
+    carrying object (a task bundle, not a manifest or an envelope) — see
+    ``UnknownKeyIdError``'s docstring for why that one, unlike this one, IS
+    reused verbatim. Because the resolver is SYMMETRIC (task-packets/
+    E5-T04.yaml: one function authenticates both a received task and a
+    node-proposed modification), ``trusted_practice_id`` may be either the
+    origin's or the node's practice id, depending on which counterparty the
+    caller is authenticating for this call. Carries
+    ``claimed_signer_practice_id`` and ``trusted_practice_id``.
+    """
+
+    def __init__(self, *, claimed_signer_practice_id: str, trusted_practice_id: str) -> None:
+        self.claimed_signer_practice_id = claimed_signer_practice_id
+        self.trusted_practice_id = trusted_practice_id
+        super().__init__(
+            "task bundle signature.signer_practice_id "
+            f"{claimed_signer_practice_id!r} does not equal the trusted signer "
+            f"practice id {trusted_practice_id!r}"
+        )
+
+
+class TaskKeyNotValidError(DomainError):
+    """Raised by ``mrr.domain.task_trust.resolve_trusted_task_key``
+    (task-packets/E5-T04.yaml) when a ``TaskBundle``'s claimed signing key id
+    DOES resolve to a descriptor in the trusted signer practice's
+    ``KeyRing`` (see ``UnknownKeyIdError`` for the case where it does not),
+    but that descriptor is not
+    ``mrr.domain.key_management.KeyRing.is_valid_at`` the evaluation
+    instant — revoked, rotated, expired, or not yet valid. Mirrors
+    ``ManifestKeyNotValidError``'s/``EnvelopeKeyNotValidError``'s identical
+    fact pattern for a ``TaskBundle``, kept as a separate type for the same
+    reason ``TaskSignerMismatchError`` is. This is what rejects a bundle
+    signed by a key that has since been revoked or rotated even though the
+    raw Ed25519 signature itself is still cryptographically valid over the
+    bundle's bytes (docs/spec/04_SECURITY_AND_POLICY.md section 8.4: "New
+    objects are rejected after revocation.") — trust anchoring is
+    deliberately a stronger gate than raw signature verification alone.
+    Carries ``kid`` and the evaluation instant ``at``.
     """
 
     def __init__(self, kid: str, *, at: datetime) -> None:
