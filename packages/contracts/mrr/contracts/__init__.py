@@ -1,12 +1,12 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Thirteen hand-written Pydantic v2 models mirror the thirteen entity schemas
+Fourteen hand-written Pydantic v2 models mirror the fourteen entity schemas
 in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``, ``Claim``,
 ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest`` (E2-T05),
 ``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
-(E3-T03), ``VerificationResult`` (E3-T04), and ``ModelProfile``/
-``ModelInvocation`` (E4-T01). Shared building blocks mirroring
+(E3-T03), ``VerificationResult`` (E3-T04), ``ModelProfile``/
+``ModelInvocation`` (E4-T01), and ``Hypothesis`` (E4-T03). Shared building blocks mirroring
 ``schemas/common.schema.json`` live in ``mrr.contracts.common`` and are
 re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``, ``Budget``,
 ``BaseObject``, ``MRRModel``).
@@ -58,6 +58,13 @@ from mrr.contracts.evidence_crate import (
     FailureCategory,
     FailureEntry,
     RunState,
+)
+from mrr.contracts.hypothesis import (
+    BRANCH_ROLES,
+    BranchRole,
+    Hypothesis,
+    HypothesisStatus,
+    check_falsifiability,
 )
 from mrr.contracts.model_invocation import (
     ModelInvocation,
@@ -114,7 +121,9 @@ __all__ = [
     "ApprovalMode",
     "ArtifactRef",
     "AutonomyLevel",
+    "BRANCH_ROLES",
     "BaseObject",
+    "BranchRole",
     "Budget",
     "CapabilityDefinition",
     "CapabilityRef",
@@ -137,6 +146,8 @@ __all__ = [
     "FailureEntry",
     "Finding",
     "FindingSeverity",
+    "Hypothesis",
+    "HypothesisStatus",
     "IndependenceProfile",
     "MRRModel",
     "MaxDisclosure",
@@ -182,5 +193,6 @@ __all__ = [
     "Urn",
     "VerificationResult",
     "VerificationType",
+    "check_falsifiability",
     "compute_config_hash",
 ]

@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/hypothesis.schema.json",
+  "title": "MRR Hypothesis",
+  "description": "docs/spec/02_DOMAIN_MODEL.md section 2.4 ('Hypothesis and ResearchBranch'): 'Hypothesis captures a falsifiable proposition or an explicit insufficient_evidence branch.' Third task of Epic E4 (task-packets/E4-T03.yaml); the fourteenth entity schema in this repository. docs/spec/02_DOMAIN_MODEL.md lists 'dependencies and assumptions' as one bullet; this schema splits it into two fields ('dependencies', a list of URNs to other objects this branch depends on, matching MRR-FR-012's own 'dependencies' wording, and 'assumptions', a list of free-text epistemic assumptions) because MRR-FR-012 names 'dependencies' specifically as one of the five required declarations, distinct from the branch's assumptions. NOT A CLAIM OF RESULT (MRR-FR-014, AGENTS.md rule 7): this schema declares no verified/supported/result/authoritative property of any kind, and 'status' is a small, closed lifecycle enum (proposed/selected/deferred/rejected) with NO 'verified' value anywhere — a Hypothesis is a PROPOSAL (docs/spec/01_SYSTEM_SPEC.md section 5, autonomy level A1: 'propose hypotheses ... clearly marked proposal'), never an authoritative judgment about whether it holds. FALSIFIABILITY, ENFORCED TWICE (mirrors schemas/claim.schema.json's own if/then precedent, and the same 'enforced identically in JSON Schema and Pydantic' approach schemas/evidence-anchor.schema.json and schemas/verification-result.schema.json already use): for every branch_role EXCEPT 'insufficient_evidence', predicted_observations and disconfirming_observations must each have at least one entry (a falsifiable proposition needs both a predicted and a disconfirming observation); the 'insufficient_evidence' role may leave both empty but MUST record a non-null insufficiency_rationale instead (the two if/then conditionals below are mutually exclusive and jointly exhaustive over the six-value branch_role enum). insufficiency_rationale itself is not a docs/spec/02_DOMAIN_MODEL.md 2.4 bullet — it is this task's own minimal, necessary addition (the task packet's own invariant wording: 'must record an insufficiency rationale'), the same kind of documented addition schemas/evidence-anchor.schema.json's own anchor_unavailable_reason already is for its entity.",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "statement",
+        "branch_role",
+        "predicted_observations",
+        "disconfirming_observations",
+        "scope",
+        "dependencies",
+        "assumptions",
+        "methods",
+        "required_capabilities",
+        "budget",
+        "stop_conditions",
+        "priority_rationale",
+        "status"
+      ],
+      "properties": {
+        "kind": {"const": "Hypothesis"},
+        "statement": {
+          "description": "The falsifiable proposition itself (domain 2.4 'hypothesis statement'), or a plain statement of the question left unresolved when branch_role == 'insufficient_evidence'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "branch_role": {
+          "description": "MRR-FR-010's exact six branch roles — a closed enum, no seventh value accepted.",
+          "type": "string",
+          "enum": [
+            "confirmatory",
+            "falsification",
+            "alternative_explanation",
+            "replication",
+            "method_independent",
+            "insufficient_evidence"
+          ]
+        },
+        "predicted_observations": {
+          "description": "What would be observed if this hypothesis holds. Non-empty for every branch_role except insufficient_evidence (see the if/then conditionals below).",
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "disconfirming_observations": {
+          "description": "What would be observed if this hypothesis does NOT hold (the falsifying observations). Non-empty for every branch_role except insufficient_evidence.",
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "insufficiency_rationale": {
+          "description": "Non-null exactly when branch_role == 'insufficient_evidence': the recorded reason evidence is insufficient to state a falsifiable proposition. Null (and typically absent) for every other branch_role.",
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "scope": {"$ref": "common.schema.json#/$defs/scope"},
+        "dependencies": {
+          "description": "MRR-FR-012's own 'dependencies': URNs of other objects (prior hypotheses, claims, or evidence) this branch depends on. An empty array is a valid, explicit declaration of no dependencies.",
+          "type": "array",
+          "items": {"$ref": "common.schema.json#/$defs/urn"}
+        },
+        "assumptions": {
+          "description": "Free-text epistemic assumptions this branch starts from (domain 2.4's 'dependencies and assumptions', the assumptions half).",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "methods": {
+          "description": "The methods this branch proposes to use to test the hypothesis (domain 2.4 'methods').",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "required_capabilities": {
+          "description": "MRR-FR-012's 'required capabilities': plain capability names this branch needs a node to publish (mrr.contracts.node_manifest.CapabilityDefinition.name), not full {name, version} references — domain 2.4 gives no further structure for this field, flagged as an open specification question in this task's PR body, mirroring schemas/evidence-anchor.schema.json's own 'recomputation_status: not a specification-given vocabulary' precedent.",
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "budget": {"$ref": "common.schema.json#/$defs/budget"},
+        "stop_conditions": {
+          "description": "MRR-FR-012's 'stop conditions': explicit conditions under which this branch's execution must halt.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "priority_rationale": {
+          "description": "MRR-FR-013's 'reasons for deferral' shape, generalized to every branch (not just deferred ones): why this branch was proposed at the priority/role it was. Never empty.",
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "description": "A small lifecycle enum with NO 'verified'/'result' value anywhere (MRR-FR-014; a Hypothesis is never a claim of result). The planner (task-packets/E4-T03.yaml) emits only 'proposed'; 'selected'/'deferred'/'rejected' are written by a later prioritization step, out of this task's scope.",
+          "type": "string",
+          "enum": ["proposed", "selected", "deferred", "rejected"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "branch_role": {
+                "enum": [
+                  "confirmatory",
+                  "falsification",
+                  "alternative_explanation",
+                  "replication",
+                  "method_independent"
+                ]
+              }
+            },
+            "required": ["branch_role"]
+          },
+          "then": {
+            "properties": {
+              "predicted_observations": {"minItems": 1},
+              "disconfirming_observations": {"minItems": 1}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"branch_role": {"const": "insufficient_evidence"}},
+            "required": ["branch_role"]
+          },
+          "then": {
+            "required": ["insufficiency_rationale"],
+            "properties": {"insufficiency_rationale": {"not": {"type": "null"}}}
+          }
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

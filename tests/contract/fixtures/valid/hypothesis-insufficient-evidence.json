@@ -1,0 +1,44 @@
+{
+  "id": "urn:mrr:hypothesis:01J00000000000000000000050",
+  "api_version": "mrr/v1alpha1",
+  "kind": "Hypothesis",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-19T09:10:00Z",
+  "created_by": "urn:mrr:agent:01J00000000000000000000018",
+  "content_hash": "sha256:d4cf59eab0c650d881fb3ae674100dc9ef205076fc1e9e907b4c181da0a4b41e",
+  "statement": "Evidence available is not sufficient to state a falsifiable proposition about the benchmark value.",
+  "branch_role": "insufficient_evidence",
+  "predicted_observations": [],
+  "disconfirming_observations": [],
+  "scope": {
+    "population": "Benchmark fixture",
+    "time": "2026-07-19",
+    "geography": null,
+    "conditions": [
+      "Numerator 42",
+      "Denominator 100"
+    ]
+  },
+  "dependencies": [],
+  "assumptions": [
+    "The declared numerator and denominator are the intended inputs."
+  ],
+  "methods": [
+    "Exact recomputation of the declared division."
+  ],
+  "required_capabilities": [
+    "numeric-recomputation"
+  ],
+  "budget": {
+    "currency": "USD",
+    "money_limit": 5,
+    "compute_seconds": 60
+  },
+  "stop_conditions": [
+    "Stop once the recomputed value and its tolerance band are recorded."
+  ],
+  "priority_rationale": "Recorded explicitly rather than omitted: the forest must show why no falsifiable branch could yet be proposed for this question.",
+  "status": "proposed",
+  "insufficiency_rationale": "Only one data point is available for the benchmark value; no independent replication exists yet to predict or disconfirm a specific numeric convergence."
+}
