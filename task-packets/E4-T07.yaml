@@ -1,0 +1,174 @@
+task_id: E4-T07
+title: Implement the model benchmark runner and deterministic promotion policy
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E4 (E4-T07,
+  "model benchmark runner and promotion policy") and its exit criterion
+  ("MB-CIT and MB-NUM targets are evaluated against a non-agent baseline"), and
+  docs/spec/05_EVALUATION_AND_ACCEPTANCE.md section 3.1/3.2 (MB-CIT, MB-NUM
+  cases and metrics), section 4 (initial calibrated targets), and section 8
+  (Model evaluation protocol: frozen evaluation profiles; "no use of the test
+  labels in prompts or retrieval sources"; "A model upgrade ... must re-run
+  affected benchmark families before promotion"). Reuses the merged E4-T05
+  deterministic verifier for scoring and the E4-T01 ModelAdapter port for a
+  scripted agent-under-test. Approved by the repository owner's standing
+  direction to continue through E4 (2026-07-19). Seventh and final task of
+  Epic E4.
+objective: >
+  Populate the meridianbench tier (benchmarks/meridianbench/) with: (1) a
+  benchmark harness - a BenchmarkCase model that STRUCTURALLY separates the
+  case INPUT (given to the system under test) from its LABEL (used only for
+  scoring, never reaching the system - docs/spec/05 section 8 "no use of the
+  test labels in prompts"), plus a runner and a deterministic scorer; (2) an
+  MB-NUM suite (numeric fidelity, scored with the E4-T05 numeric verifier) and
+  an MB-CIT suite (citation-anchor resolution, scored with the E4-T05 source
+  verifier); (3) the docs/spec/05 section 4 calibrated targets as declared
+  constants; (4) a deterministic promotion policy that decides promote/hold from
+  metrics vs targets and produces a promotion RECORD with exact evaluation-
+  profile version attribution - it enacts no live promotion; and (5) a non-agent
+  baseline run alongside the agent-under-test on the same suites, so MB-CIT and
+  MB-NUM are evaluated against a non-agent baseline (the E4 exit criterion).
+  Make `make benchmark` run real tests and remove meridianbench from
+  tests/EMPTY_TIERS.txt in the same diff.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/05_EVALUATION_AND_ACCEPTANCE.md#31-mb-cit--citation-and-evidence-anchoring
+  - docs/spec/05_EVALUATION_AND_ACCEPTANCE.md#4-initial-calibrated-targets
+  - docs/spec/05_EVALUATION_AND_ACCEPTANCE.md#8-model-evaluation-protocol
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e4--agent-roles-and-model-adapters
+  - services/control_plane/mrr/services/verifier/numeric.py    # E4-T05 numeric scoring, reused
+  - services/control_plane/mrr/services/verifier/source.py     # E4-T05 anchor scoring, reused
+  - packages/domain/mrr/domain/model_adapter.py                # E4-T01 port for a scripted agent
+  - scripts/run_test_tier.py                                   # the meridianbench tier wiring
+requirements:
+  - MRR-FR-044
+  - MRR-FR-045
+  - MRR-NFR-004
+  - MRR-NFR-010
+allowed_paths:
+  - benchmarks/**
+  - tests/EMPTY_TIERS.txt
+  - pyproject.toml
+forbidden_changes:
+  - leaking a benchmark case's LABEL/expected answer into the system under test
+    - the runner passes only the case INPUT to the system; the label is used
+    ONLY by the scorer and MUST be structurally unreachable from what any
+    model/agent sees (docs/spec/05 section 8; docs/spec/06 section 7 stop
+    condition "benchmark labels would leak into model prompts")
+  - enacting a live promotion or mutating any live capability/state - the
+    promotion policy PRODUCES a promote/hold DECISION and a record; it does not
+    promote, adopt, cut over, or mutate anything (docs/spec/06 section 5.6 is a
+    separate gated action; AGENTS rule 15)
+  - any provider SDK dependency, network egress, or real model call - the
+    agent-under-test is a scripted fake ModelAdapter (E4-T01) in tests; the
+    non-agent baseline and both verifiers are deterministic; scoring reuses the
+    E4-T05 verifier, never a model
+  - reimplementing numeric or source verification - reuse
+    mrr.services.verifier (E4-T05) verbatim for scoring
+  - any change to E4-T01..T06 or E3 SEMANTICS beyond importing them - if a
+    change seems required, STOP and report it (AGENTS rule 13/14)
+  - any new authoritative state, DB schema, migration, persistence, or contract
+    entity/JSON Schema - benchmark cases and reports are in-memory / on-disk
+    fixtures and value objects, not persisted MRR objects
+  - weakening or removing EITHER import-linter contract (both MUST stay KEPT)
+derived_decisions: >
+  All benchmark code, suites, fixtures, and their tests live under
+  benchmarks/meridianbench/ (the tier scripts/run_test_tier.py already maps and
+  `make benchmark` runs). Because tests/EMPTY_TIERS.txt currently declares
+  meridianbench empty, this task removes that line in the same diff that adds
+  the tests (the file's own stated policy). benchmarks/ is not yet in the
+  [tool.mypy] `files` list, so add "benchmarks" there (a one-line pyproject
+  change) to type-check the harness - it is NOT an mrr.* namespace package root,
+  so it needs NO hatch/wheel/sources/import-linter registration (unlike an
+  adapters/ or packages/ root); it is standalone eval tooling, not shipped in
+  the mrr distribution. The crux is LABEL ISOLATION: BenchmarkCase carries an
+  `input` and an `expected` label, and the runner is typed so a system under
+  test is a callable receiving ONLY the input (never the BenchmarkCase, never
+  the label) - the scorer alone sees `expected`. Scoring reuses E4-T05: MB-NUM
+  cases are scored by recompute_numeric_claim (numeric verification accuracy);
+  MB-CIT cases by validate_evidence_anchor (valid citation-anchor resolution
+  rate, and false-support rate = the fraction of cases the system reports as a
+  pass/validated where the label says it must not). Targets are the docs/spec/05
+  section 4 constants (numeric accuracy >= 0.95, valid anchor resolution >= 0.95,
+  false support <= 0.02), declared as named constants with a comment that they
+  are ADR-updatable (section 4: "provisional ... updated ... through an ADR").
+  The promotion policy is a pure function: given a metrics report and the
+  targets, it returns a promote/hold decision plus a per-target pass/fail and an
+  evaluation-profile attribution (model/profile id, prompt version, fixture-set
+  id) - deterministic and reversible, enacting nothing. The non-agent baseline
+  is a trivial deterministic system (e.g. one that always abstains / always
+  says "unknown") run on the same cases so the agent-under-test's metrics are
+  reported alongside a non-agent baseline's (the E4 exit criterion), proving the
+  harness measures a difference. The scripted agent-under-test is a fake
+  ModelAdapter whose prompt is built from case INPUT only - a test asserts the
+  label never appears in the prompt the fake receives.
+invariants:
+  - label isolation - the system under test receives ONLY a case's input, never
+    its expected label; the label is reachable only by the scorer; a benchmark
+    label never appears in any prompt or input handed to a model/agent
+    (docs/spec/05 section 8; the docs/spec/06 section 7 stop condition)
+  - deterministic scoring - metrics are computed deterministically from (system
+    output, label); the same cases and the same system yield the same metrics
+    every run; scoring reuses the E4-T05 verifier, never a model
+  - promotion is deterministic, reversible, and version-attributed - the policy
+    promotes iff every relevant target is met, returns a per-target pass/fail
+    plus an evaluation-profile attribution, and ENACTS nothing (no live
+    promotion, no state mutation)
+  - the targets are the docs/spec/05 section 4 constants, declared once and
+    marked ADR-updatable; a metric at exactly its target boundary passes per the
+    section 4 comparator (>= / <=)
+  - MB-CIT and MB-NUM are each evaluated for BOTH the agent-under-test and a
+    non-agent baseline on the same fixture set (the E4 exit criterion)
+  - provider neutrality - the benchmark imports no provider SDK, opens no
+    network, and makes no real model call; both import-linter contracts stay KEPT
+acceptance_tests:
+  - label isolation - a system under test that tries to read the label cannot
+    (it is not passed one); a test asserts the scripted agent's prompt built
+    from a case never contains that case's expected label
+  - MB-NUM - a fixture suite of numeric claims scored by the E4-T05 numeric
+    verifier yields a numeric-accuracy metric; an all-correct system meets the
+    >= 0.95 target and an all-wrong system does not
+  - MB-CIT - a fixture suite of citation cases scored by the E4-T05 source
+    verifier yields a valid-anchor-resolution rate and a false-support rate; a
+    system that reports pass on an inaccessible-source case raises the
+    false-support rate (and a source that cannot be opened is never scored as a
+    valid resolution)
+  - deterministic scoring - running the same suite twice with the same system
+    yields identical metrics
+  - promotion policy - metrics meeting every target -> promote; a metrics report
+    failing any one target -> hold; the decision names the evaluation profile
+    and the per-target pass/fail; the policy mutates nothing
+  - baseline - the same suites run for a non-agent baseline produce a comparable
+    metrics report; the harness reports agent and baseline side by side
+  - a boundary metric exactly at its target (e.g. numeric accuracy == 0.95)
+    passes; false support exactly at 0.02 passes
+  - `make benchmark` runs the populated tier green; meridianbench is removed from
+    tests/EMPTY_TIERS.txt; both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make benchmark
+required_output:
+  - implementation summary
+  - the harness surface (BenchmarkCase, runner, scorer, metrics), the MB-NUM and
+    MB-CIT suites, the promotion policy, and the label-isolation / deterministic
+    / enacts-nothing guarantees
+  - changed files, the pyproject.toml mypy change, the EMPTY_TIERS.txt line
+    removed, and any additive errors
+  - tests added and exact command results (format, lint incl. both contracts
+    KEPT, typecheck, test, benchmark) proving green
+  - security/privacy implications (label isolation, no provider SDK / no network
+    / no real model, promotion enacts nothing)
+  - open specification questions (MB-CIT support/contradiction beyond anchor
+    resolution; MB-FED/MB-QUAL/MB-INJ families; human-baseline comparison;
+    multi-run stochasticity; wiring real evaluation profiles)
+stop_conditions:
+  - label isolation cannot be made structural (a system under test would need
+    access to the label to run)
+  - MB-NUM/MB-CIT cannot be scored by the E4-T05 verifier without a model, a
+    network call, or a change to E4-T05 semantics
+  - a deterministic, enacts-nothing promotion policy cannot be expressed without
+    a live capability mutation
