@@ -1,15 +1,15 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Sixteen hand-written Pydantic v2 models mirror the sixteen entity schemas
-in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``, ``Claim``,
-``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest`` (E2-T05),
-``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
+Seventeen hand-written Pydantic v2 models mirror the seventeen entity
+schemas in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``,
+``Claim``, ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest``
+(E2-T05), ``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
 (E3-T03), ``VerificationResult`` (E3-T04), ``ModelProfile``/
 ``ModelInvocation`` (E4-T01), ``Hypothesis`` (E4-T03),
-``SkepticalChallenge`` (E4-T04), and ``Practice`` (E5-T01). Shared building
-blocks mirroring ``schemas/common.schema.json`` live in ``mrr.contracts.common``
-and are
+``SkepticalChallenge`` (E4-T04), ``Practice`` (E5-T01), and
+``NodeMessageEnvelope`` (E5-T03). Shared building blocks mirroring
+``schemas/common.schema.json`` live in ``mrr.contracts.common`` and are
 re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``, ``Budget``,
 ``BaseObject``, ``MRRModel``).
 
@@ -84,6 +84,7 @@ from mrr.contracts.node_manifest import (
     NodeManifest,
     TransportMode,
 )
+from mrr.contracts.node_message_envelope import NodeMessageEnvelope
 from mrr.contracts.practice import DisclosureAndTrust, Practice, PublicKeyDescriptor
 from mrr.contracts.research_score import (
     MaxDisclosure,
@@ -166,6 +167,7 @@ __all__ = [
     "NetworkPolicyMode",
     "NetworkProfile",
     "NodeManifest",
+    "NodeMessageEnvelope",
     "NumericRecomputation",
     "OperationKind",
     "Practice",
