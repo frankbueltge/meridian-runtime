@@ -1,0 +1,180 @@
+task_id: E4-T05
+title: Implement the deterministic verifier orchestration and verification tools
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E4 (E4-T05,
+  "verifier orchestration with deterministic tools"), docs/spec/01_SYSTEM_SPEC.md
+  section 4.8 (MRR-FR-072 source verification, MRR-FR-073 numeric verification,
+  MRR-FR-075 deterministic status policy) and section 4.5 (MRR-FR-044,
+  deterministic vs stochastic), and docs/spec/05_EVALUATION_AND_ACCEPTANCE.md
+  (MB-CIT, MB-NUM cases); reusing the merged E3-T04 VerificationResult contract
+  and VerificationService (recording + self-verification gate + FR-075 status
+  policy) and the E3-T05 independence validator - NOT reimplementing them.
+  Approved by the repository owner's standing direction to continue through E4
+  (2026-07-19). Fifth task of Epic E4, and its crux: the verification DECISION
+  is DETERMINISTIC - a checked tool, never a model oracle (E4 exit criterion
+  "no model can mutate authoritative state directly").
+objective: >
+  Provide the deterministic verification TOOLS and the orchestration that runs
+  them: (1) a numeric verifier (MRR-FR-073) that recomputes a claimed value from
+  named inputs and a declared operation drawn from a CLOSED, safe set (no eval),
+  producing a NumericRecomputation (recomputed value + matches_claimed_value, or
+  an explicit impossible_reason); (2) a source verifier (MRR-FR-072) that, by
+  LOCAL inspection only (no network), checks whether a cited source's evidence
+  anchor resolves against locally available artifact content, producing an
+  AnchorValidationStatus and a source-access outcome; and (3) a deterministic
+  orchestrator that maps tool outcomes to a Recommendation (pass/fail/
+  inconclusive) by a documented, total policy and assembles a full, schema-valid
+  VerificationResult. The verifier uses NO model of any kind and opens no
+  network - identical inputs yield an identical VerificationResult. This task
+  PRODUCES a VerificationResult; recording it (and driving claim status) is the
+  existing E3-T04 VerificationService, reused unchanged.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#48-stage-8--skepticism-and-independent-verification
+  - docs/spec/01_SYSTEM_SPEC.md#45-stage-5--local-execution   # MRR-FR-044 deterministic vs stochastic
+  - docs/spec/05_EVALUATION_AND_ACCEPTANCE.md   # MB-CIT, MB-NUM cases
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e4--agent-roles-and-model-adapters
+  - packages/contracts/mrr/contracts/verification_result.py   # the contract to BUILD, verbatim
+  - packages/contracts/mrr/contracts/evidence_anchor.py       # anchor + AnchorValidationStatus
+  - services/control_plane/mrr/services/verification/service.py   # E3-T04 recorder to REUSE, not reimplement
+  - packages/domain/mrr/domain/independence.py                # E3-T05, reuse, not reimplement
+requirements:
+  - MRR-FR-072
+  - MRR-FR-073
+  - MRR-FR-075
+  - MRR-FR-044
+  - MRR-NFR-004
+  - MRR-NFR-010
+allowed_paths:
+  - services/control_plane/**
+  - packages/domain/**
+  - tests/unit/**
+  - tests/property/**
+forbidden_changes:
+  - ANY model use - the verifier MUST NOT import mrr.domain.model_adapter,
+    mrr.adapters.llm.structured_generation, or any provider SDK, and MUST make
+    no model call; the verification DECISION is DETERMINISTIC (MRR-FR-044/075),
+    never a model's output (this is the E4 exit criterion "no model can mutate
+    authoritative state directly" - the verifier is the deterministic gate)
+  - ANY network egress - source verification is LOCAL inspection only (MRR-FR-072
+    "retrieve OR locally inspect"); the caller supplies the locally available
+    artifact content/ids, and the tool opens no connection (no httpx/requests/
+    urllib3/aiohttp/socket)
+  - ANY arbitrary code execution - numeric recomputation uses a CLOSED, safe set
+    of declared operations only; NO eval/exec/compile of caller or model input
+  - ANY new authoritative state, DB schema, migration, or persistence - this
+    task PRODUCES a VerificationResult; recording it (revision + event, the
+    self-verification gate, the MRR-FR-075 status policy) is the EXISTING
+    mrr.services.verification.VerificationService (E3-T04), reused UNCHANGED, not
+    reimplemented or modified
+  - ANY new contract entity or JSON Schema - reuse VerificationResult /
+    NumericRecomputation / Finding / IndependenceProfile (E3-T04) and
+    EvidenceAnchor / AnchorValidationStatus (E3-T01) verbatim; if a needed field
+    is genuinely missing, STOP and report it (AGENTS rule 14)
+  - independence COMPUTATION or a self-verification gate - reuse E3-T05
+    (mrr.domain.independence) and E3-T04's gate; the verifier only DECLARES the
+    caller-supplied independence_profile on the VerificationResult it builds
+  - the prompt/version registry (E4-T06) and the benchmark runner (E4-T07)
+  - weakening or removing EITHER import-linter contract (both MUST stay KEPT)
+derived_decisions: >
+  E4-T05 introduces NO new contract - the E3-T04 VerificationResult already
+  carries verification_type (source/numeric), NumericRecomputation, Finding,
+  Recommendation, and IndependenceProfile, and E3-T01's EvidenceAnchor already
+  carries AnchorValidationStatus; this task only PRODUCES those objects. Because
+  packages/domain must not import mrr.contracts (that back-edge would be a
+  domain -> contracts -> domain cycle - see mrr.domain.model_adapter's own
+  docstring and mrr.domain.artifacts.Classification's local redeclaration), the
+  tools and orchestrator that BUILD a VerificationResult live in a new sibling
+  application service, services/control_plane/mrr/services/verifier/
+  (mrr.services.verifier - reuse the existing services/control_plane root, NO
+  new package root, NO pyproject change), which may import mrr.contracts and
+  mrr.domain freely. The numeric verifier recomputes with decimal.Decimal (exact,
+  no float drift) over a CLOSED operation set chosen to cover the MB-NUM cases
+  (e.g. sum, difference, product, quotient, ratio, percentage, percentage_point,
+  unit_conversion) - never eval; an unknown operation yields an explicit
+  impossible_reason, never a silent pass. The source verifier decides
+  AnchorValidationStatus by LOCAL inspection of caller-supplied available
+  artifact content only: an anchor whose artifact is available and whose locator
+  resolves is "validated"; one whose source is not locally available / cannot be
+  opened is "unvalidated" -> the source-access outcome is unverified_source_access
+  (docs/spec/01 4.8 acceptance: "cannot open the source returns
+  unverified_source_access, not verified"); an anchor pointing to content that
+  is present but does not contain the anchored location is "invalid". The
+  orchestrator's tool-outcome -> Recommendation mapping is documented and TOTAL:
+  numeric match -> pass, numeric mismatch -> fail, numeric impossible ->
+  inconclusive; anchor validated -> pass, unverified_source_access ->
+  inconclusive (NEVER pass), invalid anchor -> fail. Determinism is enforced by
+  an AST architecture test (mirroring tests/unit/architecture/
+  test_llm_adapter_boundary.py) asserting mrr.services.verifier imports no model
+  adapter, no structured-generation layer, no provider SDK, and no network
+  client - the machine-checked form of "the verifier is not an oracle".
+invariants:
+  - DETERMINISTIC, not an oracle - mrr.services.verifier imports NO
+    mrr.domain.model_adapter, NO mrr.adapters.llm, NO provider SDK, and NO
+    network client; it makes no model call; identical inputs yield an identical
+    VerificationResult (byte-identical given identical caller-supplied identity)
+    - the verification decision is a deterministic computation (MRR-FR-044/075)
+  - no unverified pass - a claim whose numeric recomputation does NOT match, or
+    whose cited source cannot be accessed / whose anchor does not resolve, is
+    NEVER recommended "pass"; a source that cannot be opened yields
+    unverified_source_access -> recommendation "inconclusive" (never "pass"),
+    matching the section 4.8 acceptance literally (MRR-FR-072)
+  - numeric fidelity - numeric recomputation uses a CLOSED, safe operation set
+    (no eval) and produces a NumericRecomputation carrying either a
+    recomputed_value (with matches_claimed_value) or an explicit impossible_reason
+    - never neither (MRR-FR-073), reusing the E3-T04 contract's own invariant
+  - the tool-outcome -> Recommendation mapping is documented and TOTAL - every
+    tool outcome maps to exactly one of pass/fail/inconclusive; no outcome is
+    unhandled or silently dropped
+  - the built VerificationResult is fully schema-valid, reuses the E3-T04
+    contract verbatim, and carries the caller-declared independence_profile; the
+    verifier persists NOTHING (recording is the reused E3-T04 VerificationService)
+acceptance_tests:
+  - numeric match -> NumericRecomputation(matches_claimed_value=True) and
+    Recommendation "pass"; mismatch -> matches_claimed_value=False and "fail";
+    recomputation impossible (unknown operation / missing input) -> impossible_reason
+    set and "inconclusive"
+  - MB-NUM cases recompute deterministically and classify correctly: a
+    numerator/denominator swap and a percentage-vs-percentage-point confusion
+    each yield a mismatch; a correct unit conversion yields a match
+  - source anchor resolving against locally available artifact content ->
+    "validated" -> "pass"; a cited source NOT locally available / anchor
+    unresolved -> unverified_source_access -> "inconclusive", NEVER "pass"
+    (section 4.8 acceptance); an anchor pointing to absent content -> "invalid"
+    -> "fail"
+  - determinism - identical inputs (with identical caller-supplied identity)
+    yield an identical VerificationResult (same content_hash)
+  - the mrr.services.verifier package imports no model adapter, no
+    structured-generation layer, no provider SDK, and no network client
+    (AST architecture test) - the verification decision is deterministic
+  - numeric recomputation never uses eval; an unknown/unsupported operation
+    yields an explicit impossible_reason (or a raised error), never a silent pass
+  - the built VerificationResult validates against the existing
+    verification-result schema and carries the caller-declared
+    independence_profile; both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+required_output:
+  - implementation summary
+  - the numeric and source verifier tool surfaces, the closed numeric operation
+    set, the documented tool-outcome -> Recommendation mapping, and the
+    deterministic / no-model / no-network / no-persistence guarantees
+  - changed files and any additive domain errors/enums
+  - tests added and exact command results (format, lint incl. both contracts
+    KEPT, typecheck, test) proving green, including the AST determinism test
+  - security/privacy implications (no eval, no network, deterministic decision,
+    no model oracle, no persistence)
+  - open specification questions (support/contradiction classification MB-CIT
+    beyond mere access, reproduction verification, and the E2E that records via
+    the E3-T04 VerificationService)
+stop_conditions:
+  - a deterministic source or numeric verification cannot be built without a
+    model, a network call, eval, or a field the E3-T04/E3-T01 contracts do not
+    carry
+  - the tool-outcome -> Recommendation mapping cannot be made total without
+    inventing a claim-status behavior that belongs to the E3-T04 VerificationService
