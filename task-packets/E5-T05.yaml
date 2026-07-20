@@ -1,0 +1,160 @@
+task_id: E5-T05
+title: Trust-anchored signed Evidence Crate result flow — verify a received result crate against the executing node practice's KeyRing, fail closed
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E5 (E5-T05
+  "signed Evidence Crate result flow"), docs/spec/01_SYSTEM_SPEC.md section 2.2
+  ("Signed result outbox") and section 4.6 (MRR-FR-050: every completed or
+  materially failed run MUST produce an EvidenceCrate or a signed failure
+  crate), docs/spec/04_SECURITY_AND_POLICY.md section 8.1/8.4 (trust per
+  practice; new objects rejected after key revocation). E2-T06
+  (mrr.services.node_runtime.evidence_crate.EvidenceCrateSealer) already SEALS
+  and SIGNS an EvidenceCrate on the executing node, and its own module docstring
+  states explicitly: "This module SIGNS an EvidenceCrate but does not verify one
+  — no verify_object_signature for a received EvidenceCrate is E5-T05's [scope]".
+  This task is exactly that: the trust-anchored VERIFICATION a receiving party
+  (the origin/control plane) runs over a result crate before accepting it — the
+  reverse-direction counterpart of E5-T04's task verification, and the
+  payload-signature validation the E5-T03 note requires (an envelope's
+  payload_content_hash is a consistency check only; a carried EvidenceCrate's OWN
+  signature must be verified by the result flow — this task). It reuses E5-T01's
+  Practice/KeyRing/kid and the ADR-0004 exclude_none signature form, additively.
+objective: >
+  Provide the trust-anchored EvidenceCrate result verification E2-T06 deferred,
+  at the OBJECT layer, CI-testable, framework-free: a resolver
+  resolve_trusted_crate_key(crate, trusted_node_practice_id, ring, *, at) ->
+  Ed25519PublicKey that returns the executing node's trusted verifying key ONLY
+  when ALL hold, each a DISTINCT typed error, fail closed: the crate's
+  signature.signer_practice_id == trusted_node_practice_id (the practice the
+  caller trusts as the RESULT's producer), its signature.key_id resolves to a
+  descriptor in ``ring``, that descriptor is KeyRing.is_valid_at(at) (active AND
+  in window — so a revoked/rotated/expired/unknown key fails closed even if the
+  raw signature is valid), and verify_object_signature (unchanged) passes over the
+  exact ADR-0004 exclude_none form under the RESOLVED descriptor's key (decoded
+  from the ring — never a key the crate itself claims — so a substituted signing
+  key cannot be accepted). It performs no manifest-specific "public_keys" check
+  (E5-T02 condition d does not apply to a crate). This mirrors
+  mrr.domain.task_trust.resolve_trusted_task_key exactly (its reverse-direction
+  sibling), with crate-specific typed errors. Because a result may arrive wrapped
+  in an E5-T03 NodeMessageEnvelope, an acceptance test demonstrates the full
+  inbound path — validate_inbound_envelope (E5-T03) then resolve_trusted_crate_key
+  over the carried crate — closing the E5-T03 "the payload flow must verify the
+  payload's own signature, not trust payload_content_hash" note for results.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/01_SYSTEM_SPEC.md#46-stage-6--evidence-crate
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e5--federation
+  - packages/contracts/mrr/contracts/evidence_crate.py
+  - packages/domain/mrr/domain/task_trust.py
+  - packages/domain/mrr/domain/manifest_trust.py
+  - packages/domain/mrr/domain/envelope_validation.py
+  - packages/domain/mrr/domain/key_management.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - services/node_runtime/mrr/services/node_runtime/evidence_crate.py
+requirements:
+  - MRR-FR-050
+  - MRR-NFR-007
+  - MRR-NFR-001
+  - MRR-NFR-006
+forbidden_changes:
+  - the E2-T06 EvidenceCrateSealer (sealing/signing) and the EvidenceCrate /
+    Signature / Practice contracts (reuse unchanged); this task ADDS the receive-
+    side verification only, it does not change how a crate is produced or signed
+  - the crypto sign/verify/hash primitives, hashing_policy / prepare_for_* policy,
+    and mrr.crypto.keys (reuse unchanged); the E5-T02 manifest_trust, E5-T03
+    envelope_validation, and E5-T04 task_trust modules are NOT refactored here — a
+    future DRY of the now-FOUR near-identical signer-key resolvers is a separate,
+    reviewed cleanup (keep this additive and low-risk)
+  - any real network / mTLS / transport (E5-T03 done; a crate may arrive in an
+    E5-T03 envelope, but building transport is not this task)
+  - offline bundles (E5-T06) and a durable processed-id/replay store or
+    revocation-sweep over already-accepted results (E5-T07 — resolve validity AT
+    the evaluation instant only)
+  - any new DB model, migration, repository, or service, and any new authoritative
+    state; both import-linter contracts MUST stay KEPT (the resolver is framework-
+    free domain code, no provider/web import)
+allowed_paths:
+  - packages/domain/**
+  - tests/unit/**
+  - tests/property/**
+  - tests/contract/**
+  - tests/integration/**
+  - tests/e2e/**
+derived_decisions: >
+  The resolver mirrors mrr.domain.task_trust.resolve_trusted_task_key precisely —
+  same four-condition, fail-closed, distinct-typed-error discipline, verifying
+  against the RESOLVED ring key over json.loads(crate.model_dump_json(
+  exclude_none=True)) — applied to an EvidenceCrate. New crate-specific typed
+  errors (CrateSignerMismatchError, CrateKeyNotValidError) live in
+  mrr.domain.exceptions; UnknownKeyIdError and the crypto Signature errors are
+  reused verbatim. mrr.domain.manifest_trust.practice_key_ring is reused unchanged
+  to build the ring. The "trusted node practice" is caller-supplied (exactly as
+  every prior resolver's trusted practice is): the origin decides which practice
+  it trusts as the result's producer; this function only anchors the crate's own
+  signature to that practice's keys. No result-intake service or run-linkage is
+  built here — wiring a verified result into a full origin-side acceptance/run
+  record is assembled at E2E-002; this task proves the verification itself and
+  the envelope->crate inbound path. A future service may map the typed failures to
+  a coarse refusal reason exactly as CapabilityRegistry.receive does for manifests
+  and envelope_validation.coarse_rejection_reason does for envelopes.
+invariants:
+  - a received EvidenceCrate is trusted ONLY when its signature resolves, via the
+    trusted node practice's KeyRing, to a key valid at the evaluation instant AND
+    under which the signature verifies over the exclude_none form; a revoked/
+    rotated/expired/unknown-kid or signer-mismatched crate is rejected even if the
+    raw Ed25519 signature is cryptographically valid
+  - verification is against the key resolved from the RING, never a key the crate
+    itself claims; a substituted signing key cannot be accepted
+  - the distinct failure reasons (signer-mismatch / unknown-kid / key-not-valid /
+    bad-signature) are DISTINCT typed errors, never one generic failure
+  - the E2-T06 sealer and the EvidenceCrate/Signature contracts are UNCHANGED; a
+    crate this resolver accepts is exactly one an EvidenceCrateSealer produced
+  - both import-linter contracts stay KEPT; the resolver imports no provider SDK /
+    opens no network / builds no persisted state
+acceptance_tests:
+  - happy path: an executing node seals+signs an EvidenceCrate (via the real
+    EvidenceCrateSealer) with an active in-window key; the origin resolves the
+    trusted key via the node practice's ring and verification succeeds
+  - fail-closed matrix, each a distinct typed error: signer_practice_id != the
+    trusted node practice; kid does not resolve in the ring; resolved key revoked /
+    rotated / expired / not-yet-valid at the instant; a tampered crate whose
+    signature no longer verifies
+  - a crate signed by a key valid at sealing but REVOKED in the ring by the
+    evaluation instant is rejected (docs/spec/04 section 8.4), while the revoked
+    descriptor stays resolvable
+  - the key-substitution attack: a crate signed by an attacker key but claiming a
+    trusted kid fails closed (SignatureVerificationError)
+  - end-to-end inbound path: a sealed crate wrapped in an E5-T03 NodeMessageEnvelope
+    is accepted by validate_inbound_envelope AND its carried crate verifies via
+    resolve_trusted_crate_key — proving the payload's own signature is checked, not
+    just payload_content_hash
+  - all existing suites stay green; both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the crate resolver's accept rule + typed failure family, and the envelope->crate
+    end-to-end inbound demonstration
+  - changed files and any additive domain errors
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract) proving green, plus CI for integration/e2e
+  - security/privacy implications (trust anchoring beyond crypto for results,
+    fail-closed matrix, verification against the ring's key, revocation at the
+    instant, payload-signature validated end-to-end, no network/new state)
+  - open specification questions and what is deferred (offline E5-T06; durable
+    replay/revocation E5-T07; result-intake/run-linkage assembled at E2E-002; the
+    future DRY of the four signer-key resolvers)
+stop_conditions:
+  - crate verification cannot be expressed without changing the E2-T06 sealer, an
+    existing contract, the crypto primitives, or hashing_policy (report)
+  - honoring "reject after revocation" (section 8.4) would force building the
+    durable revocation-sweep store (E5-T07) — keep the at-instant check and stop
+  - a result-intake service or run-linkage is unavoidable to prove verification
+    (it is not — verify the crate object directly; report if blocked)
