@@ -410,6 +410,13 @@ class UnknownKeyIdError(DomainError):
     claimed ``signature.key_id`` — reused unchanged for the same reason,
     mirrored by the distinctly-named ``Task*`` siblings below for the two
     conditions that DO need a bundle-specific type.
+
+    Also raised, a fifth time, by
+    ``mrr.domain.crate_trust.resolve_trusted_crate_key`` (task-packets/
+    E5-T05.yaml) for the identical fact pattern applied to a received
+    ``EvidenceCrate``'s claimed ``signature.key_id`` — reused unchanged for
+    the same reason, mirrored by the distinctly-named ``Crate*`` siblings
+    below for the two conditions that DO need a crate-specific type.
     """
 
     def __init__(self, kid: str) -> None:
@@ -716,6 +723,64 @@ class TaskKeyNotValidError(DomainError):
     objects are rejected after revocation.") — trust anchoring is
     deliberately a stronger gate than raw signature verification alone.
     Carries ``kid`` and the evaluation instant ``at``.
+    """
+
+    def __init__(self, kid: str, *, at: datetime) -> None:
+        self.kid = kid
+        self.at = at
+        super().__init__(
+            f"key {kid!r} is not valid at evaluation instant {at.isoformat()!r} "
+            "(revoked, rotated, expired, or not yet valid)"
+        )
+
+
+class CrateSignerMismatchError(DomainError):
+    """Raised by ``mrr.domain.crate_trust.resolve_trusted_crate_key``
+    (task-packets/E5-T05.yaml) when a received ``EvidenceCrate``'s
+    ``signature.signer_practice_id`` does not equal the id of the practice
+    the origin actually trusts as the executing node's result producer.
+    Mirrors ``ManifestSignerMismatchError``'s/``EnvelopeSignerMismatchError``'s/
+    ``TaskSignerMismatchError``'s identical fact pattern
+    (docs/spec/04_SECURITY_AND_POLICY.md section 8.1: "Trust is per practice
+    and capability, not universal"), kept as a SEPARATE type rather than
+    reused because it is raised for a different carrying object (a result
+    crate, not a manifest, envelope, or task bundle) — see
+    ``UnknownKeyIdError``'s docstring for why that one, unlike this one, IS
+    reused verbatim. Carries ``claimed_signer_practice_id`` (from the
+    crate's own signature) and ``trusted_practice_id`` (the node practice
+    the caller actually trusts as this result's producer).
+    """
+
+    def __init__(self, *, claimed_signer_practice_id: str, trusted_practice_id: str) -> None:
+        self.claimed_signer_practice_id = claimed_signer_practice_id
+        self.trusted_practice_id = trusted_practice_id
+        super().__init__(
+            "evidence crate signature.signer_practice_id "
+            f"{claimed_signer_practice_id!r} does not equal the trusted node "
+            f"practice id {trusted_practice_id!r}"
+        )
+
+
+class CrateKeyNotValidError(DomainError):
+    """Raised by ``mrr.domain.crate_trust.resolve_trusted_crate_key``
+    (task-packets/E5-T05.yaml) when a received ``EvidenceCrate``'s claimed
+    signing key id DOES resolve to a descriptor in the trusted node
+    practice's ``KeyRing`` (see ``UnknownKeyIdError`` for the case where it
+    does not), but that descriptor is not
+    ``mrr.domain.key_management.KeyRing.is_valid_at`` the evaluation
+    instant — revoked, rotated, expired, or not yet valid. Mirrors
+    ``ManifestKeyNotValidError``'s/``EnvelopeKeyNotValidError``'s/
+    ``TaskKeyNotValidError``'s identical fact pattern for an
+    ``EvidenceCrate``, kept as a separate type for the same reason
+    ``CrateSignerMismatchError`` is. This is what rejects a result crate
+    signed by a key that has since been revoked or rotated even though the
+    raw Ed25519 signature itself is still cryptographically valid over the
+    crate's bytes (docs/spec/04_SECURITY_AND_POLICY.md section 8.4: "New
+    objects are rejected after revocation.") — trust anchoring is
+    deliberately a stronger gate than raw signature verification alone, and
+    applies even to a key that was genuinely active at sealing time but has
+    since been revoked by the evaluation instant. Carries ``kid`` and the
+    evaluation instant ``at``.
     """
 
     def __init__(self, kid: str, *, at: datetime) -> None:
