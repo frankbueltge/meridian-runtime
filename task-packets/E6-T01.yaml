@@ -1,0 +1,401 @@
+task_id: E6-T01
+title: TransferContract lifecycle — a versioned, sender-signed cross-practice object binding exact source object ids/hashes with structural caveats/obligations, an event-only offer/respond decision (ADR-0007), and adaptation's new-object relation edge
+status: approved
+derivation: >
+  Derived by a planning session and reviewed in-session per
+  docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E6 (E6-T01 "TransferContract
+  lifecycle" — first of six E6 tasks: T02 caveat/obligation propagation, T03
+  cross-practice correction notification, T04 local accept/adapt/reject/defer
+  response TO A CORRECTION, T05 public unresolved-correction projection, T06
+  offline recipient delivery tracking), docs/spec/01_SYSTEM_SPEC.md section 4.9
+  ("Stage 9 — Transfer and obligations": MRR-FR-080..084) and section 2.14 of
+  docs/spec/02_DOMAIN_MODEL.md ("TransferContract"). This is a NEW object kind
+  with no existing schema/contract/service anywhere in the repository
+  (confirmed: no schemas/transfer-contract.schema.json, no
+  packages/contracts/mrr/contracts/transfer_contract.py, no `TransferContract`
+  reference anywhere under packages/ or services/ or tests/). It is the
+  nineteenth schema/contract/example entity, additive to the existing
+  eighteen. Builds on E1 (identity/hashing/signatures, StateMachine), E5
+  (Practice/KeyRing, trust-anchored signer-key resolution pattern — E5-T04
+  task_trust, E5-T05 crate_trust), and ADR-0007 (Task Bundle lifecycle
+  transitions are events, not new signed revisions) — TransferContract is, like
+  TaskBundle and UNLIKE Claim/CorrectionEvent/ResearchScore, a cross-practice,
+  origin-signed, lifecycle-bearing object, so the same asymmetry ADR-0007
+  documents for TaskBundle applies here (see derived_decisions).
+objective: >
+  Provide the TransferContract object and its create/offer/respond lifecycle,
+  framework-free at the domain layer, CI-testable, reusing the generic
+  ObjectRepository/EdgeRepository (no migration — see derived_decisions):
+  (1) schemas/transfer-contract.schema.json + a mirroring
+  packages/contracts/mrr/contracts/transfer_contract.py Pydantic model +
+  examples/transfer-contract.example.json, wired into
+  scripts/check_contracts.py's ENTITY_MODELS exactly like every other entity.
+  Required fields per docs/spec/02_DOMAIN_MODEL.md section 2.14's narrative
+  list: sender_practice_id/receiver_practice_id (both Urn; practice_id from
+  BaseObject duplicates sender_practice_id, mirroring TaskBundle's
+  practice_id==origin_practice_id precedent), transferred_objects (list of
+  {id, content_hash} pairs, minItems 1, shaped like CorrectionEvent's
+  affected_objects), purpose, permitted_uses, disclosure_rules,
+  attribution_rules, caveats, correction_subscription, obligations (STRUCTURAL
+  stubs only — kind + optional deadline, drawn from the section 2.15 Kinds
+  list; NOT persisted Obligation aggregates, which are E6-T02), nonce,
+  expires_at, signature (singular — see specification_gaps item 2), and status
+  (schema-level creation-time snapshot only, per ADR-0007 — see
+  derived_decisions). (2) A `TRANSFER_LIFECYCLE` StateMachine in
+  packages/domain/mrr/domain/lifecycles.py alongside the existing four,
+  covering only the transitions MRR-FR-080/081 and the section 3.8/5.2
+  API+event enumeration actually license: created -> offered -> {accepted,
+  adapted, rejected, deferred, unresolved} (lowercase — see derived_decisions),
+  documented with the same "open specification questions" discipline the
+  existing four machines use for undrawn edges (there is no section-6 diagram
+  for this entity — see specification_gaps item 1). (3) A
+  `resolve_trusted_transfer_key` resolver in a new
+  packages/domain/mrr/domain/transfer_trust.py, mirroring
+  mrr.domain.task_trust.resolve_trusted_task_key /
+  mrr.domain.crate_trust.resolve_trusted_crate_key exactly (four-condition,
+  fail-closed, distinct typed errors, verifying against the SENDER practice's
+  KeyRing). (4) A `TransferService` under
+  services/control_plane/mrr/services/transfer/service.py providing `create`
+  (mints + sender-signs revision 1, rejects any referenced object classified
+  PARTICIPANT_IDENTIFIABLE), `offer` (event-only ADR-0007-style transition,
+  no new revision), and `respond` (verifies the sender's signature via
+  resolve_trusted_transfer_key BEFORE recording ANY of the five outcomes —
+  including reject/defer/unresolved, not just accept; for `adapted`, takes a
+  caller-supplied already-existing local object id and atomically records an
+  `adapted_from` edge — source=the adapted object, target=the referenced
+  transferred object — alongside the `transfer.responded` event, per
+  MRR-FR-082's "preserve the relation to the source object").
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0003-SIGNATURE-VALUE-ENCODING.md
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/adr/ADR-0007-TASK-BUNDLE-TRANSITIONS-ARE-EVENTS.md
+  - docs/spec/adr/ADR-0009-CANONICAL-PUBLIC-KEY-ENCODING.md
+  - docs/spec/01_SYSTEM_SPEC.md#21-control-plane
+  - docs/spec/01_SYSTEM_SPEC.md#49-stage-9--transfer-and-obligations
+  - docs/spec/01_SYSTEM_SPEC.md#62-task-bundle
+  - docs/spec/01_SYSTEM_SPEC.md#6-state-machines
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/02_DOMAIN_MODEL.md#214-transfercontract
+  - docs/spec/02_DOMAIN_MODEL.md#215-obligation
+  - docs/spec/02_DOMAIN_MODEL.md#3-edge-vocabulary
+  - docs/spec/02_DOMAIN_MODEL.md#4-data-classification
+  - docs/spec/03_API_AND_EVENTS.md#38-transfers-and-obligations
+  - docs/spec/03_API_AND_EVENTS.md#52-required-events
+  - docs/spec/04_SECURITY_AND_POLICY.md#2-trust-boundaries
+  - docs/spec/04_SECURITY_AND_POLICY.md#42-data-minimization
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e6--transfers-obligations-and-corrections-across-practices
+  - schemas/common.schema.json
+  - schemas/correction-event.schema.json
+  - schemas/task-bundle.schema.json
+  - packages/contracts/mrr/contracts/common.py
+  - packages/contracts/mrr/contracts/correction_event.py
+  - packages/contracts/mrr/contracts/task_bundle.py
+  - packages/domain/mrr/domain/repositories.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/task_trust.py
+  - packages/domain/mrr/domain/crate_trust.py
+  - packages/domain/mrr/domain/manifest_trust.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - packages/persistence/mrr/persistence/tables.py
+  - services/control_plane/mrr/services/correction/service.py
+  - services/control_plane/mrr/services/task_bundle/service.py
+  - scripts/check_contracts.py
+requirements:
+  - MRR-FR-080
+  - MRR-FR-081
+  - MRR-FR-082
+  - MRR-FR-083
+  - MRR-NFR-001
+  - MRR-NFR-006
+  - MRR-NFR-007
+  - MRR-NFR-010
+forbidden_changes:
+  - any Alembic migration under migrations/, and any change to
+    packages/persistence/** — confirmed unnecessary, since objects_table.kind
+    (packages/persistence/mrr/persistence/tables.py) is a plain nullable=False
+    sa.Text() column with no CHECK constraint enumerating kinds (only an
+    index), so a new kind="TransferContract" is just new rows; edges_table's
+    CHECK constraint is generated at import time directly from
+    mrr.domain.repositories.EDGE_VOCABULARY, which already contains
+    `adapted_from` and `transferred_from` (added by an earlier task, unused in
+    code until now) — using them requires zero DDL change
+  - a persisted Obligation aggregate, its own lifecycle, or any
+    `subject_to_obligation` edge (E6-T02 "caveat and obligation propagation")
+    — T01 carries obligation/caveat DATA only as structural fields on
+    TransferContract's own body, exactly as TaskBundle carries
+    resource_limits/network_policy inline without those being separate
+    aggregates
+  - CorrectionEvent, the E3-T06 correction impact service, cross-practice
+    correction notification, and MRR-FR-084's reject/defer-a-correction
+    response recording (E6-T03/T04) — do not conflate the transfer's own
+    MRR-FR-081 five-way {accepted, adapted, rejected, deferred, unresolved}
+    decision with E6-T04's four-verb (accept/adapt/reject/defer, no
+    "unresolved") response to a CORRECTION notification; they are
+    structurally similar but govern different objects (see specification_gaps
+    item 6)
+  - the public unresolved-correction projection (E6-T05) and offline
+    recipient delivery tracking (E6-T06)
+  - the E5-T01..T07 federation transport, NodeMessageEnvelope,
+    OfflineBundle, and the manifest/task/crate trust resolvers (reuse
+    key_management.KeyRing and manifest_trust.practice_key_ring unchanged; do
+    not refactor them into one shared resolver even though
+    transfer_trust.resolve_trusted_transfer_key will look near-identical to
+    its three siblings — a future DRY of the now-four resolvers is a
+    separate, reviewed cleanup, matching the E5-T05/E5-T06 precedent)
+  - HTTP/FastAPI endpoints (no control-plane REST wiring; every prior E1-E5
+    task packet drew this same line)
+  - both import-linter contracts in pyproject.toml (must remain unmodified
+    and KEPT — "Core packages stay framework- and provider-free (MRR-NFR-010)"
+    and "Nothing inward imports the services layer")
+allowed_paths:
+  - schemas/transfer-contract.schema.json
+  - examples/transfer-contract.example.json
+  - packages/contracts/mrr/contracts/transfer_contract.py
+  - packages/contracts/mrr/contracts/__init__.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/domain/mrr/domain/transfer_trust.py
+  - services/control_plane/mrr/services/transfer/service.py
+  - services/control_plane/mrr/services/transfer/__init__.py
+  - scripts/check_contracts.py
+  - tests/unit/domain/**
+  - tests/unit/services/transfer/**
+  - tests/property/**
+  - tests/contract/**
+  - tests/integration/services/transfer/**
+derived_decisions: >
+  (a) ADR-0007 applies. TransferContract is cross-practice (MRR-NFR-007: "must
+  be authenticated, authorized, signed, hashed") and lifecycle-bearing
+  (MRR-FR-081), exactly TaskBundle's structural situation and UNLIKE
+  ResearchScore/Claim/CorrectionEvent (unsigned — see E3-T02's own
+  derived_decisions making this same call for Claim, the other direction).
+  Therefore: revision 1 is created once, sender-signed over the ADR-0004
+  exclude_none form, and never mutated again in this task's scope (no
+  propose_modification analog exists for a transfer); `offer` and `respond`
+  are event-only transitions (mirroring TaskBundle's `_advance` helper) that
+  append a domain event without writing a new object revision, so the sender's
+  origin signature always verifies directly against the current (only)
+  content record. The schema's own `status` field is, per ADR-0007's language
+  for TaskBundle, "that record's creation-time snapshot" — it will read
+  "created" for every stored TransferContract in this task's scope; the LIVE
+  status is event-derived (latest `transfer.offered`/`transfer.responded`
+  event, falling back to the body's own status).
+  (b) Status/decision casing is lowercase, taken verbatim from MRR-FR-081's
+  own prose ("accepted", "adapted", "rejected", "deferred", "unresolved") —
+  the same discipline lifecycles.py already applies ("State names match the
+  owning schema's status enum exactly, including casing, where one exists").
+  Unlike TaskBundle (whose ALL-CAPS states are anchored in the section 6.2
+  diagram, which does not exist for TransferContract), the FR text itself is
+  the only available anchor here, and it is lowercase.
+  (c) `respond` verifies the sender's signature (via
+  resolve_trusted_transfer_key, mirroring resolve_trusted_task_key/
+  resolve_trusted_crate_key's four-condition fail-closed discipline) BEFORE
+  recording any of the five outcomes, including reject/defer/unresolved — a
+  forged or tampered offer must not become recordable as "rejected" any more
+  than as "accepted."
+  (d) Adaptation (MRR-FR-082) does not genericize construction of the adapted
+  object's own content — this service takes an ALREADY-EXISTING local object
+  id from the caller (verified via ObjectRepository.get_latest, raising
+  ObjectNotFoundError if absent) and records an `adapted_from` edge
+  (source=adapted object id, target=the transferred object id being adapted),
+  atomically with the `transfer.responded` event — mirroring the
+  source-verb-target edge-direction convention already established for
+  `derived_from` in tests/integration/persistence/test_postgres_repositories.py
+  ("a derived_from hub" == edge(source=a, target=hub)).
+  (e) `transferred_from` and `subject_to_obligation` (both already in
+  EDGE_VOCABULARY) are declared-but-UNUSED by this task, exactly as
+  `corrects` was left declared-but-unused after E3-T06 (grep-confirmed: the
+  correction service tracks affected_objects/impact_objects as body fields
+  only, never a `corrects` edge). A future task decides their exact
+  semantics; inventing a use here would be exactly the kind of undrawn
+  behavior AGENTS.md rule 3 forbids.
+  (f) A referenced transferred object classified PARTICIPANT_IDENTIFIABLE is
+  rejected at `create` — docs/spec/02_DOMAIN_MODEL.md section 4's
+  classification table states PARTICIPANT_IDENTIFIABLE is "never exported by
+  default," and no consent-override machinery exists in this task's scope
+  (that is E7 field-research policy); MRR-NFR-006 ("Raw restricted data MUST
+  remain local unless a specific approved transfer permits export") is read
+  as licensing INTERNAL/RESTRICTED/SENSITIVE transfer via an approved
+  TransferContract, but NOT overriding PARTICIPANT_IDENTIFIABLE's stricter
+  "never by default."
+  (g) `create` additionally emits a `transfer.created` domain event — see
+  specification_gaps item 4 for why this is a judgment call, not a literal
+  requirement.
+specification_gaps:
+  - No section-6 state-machine diagram exists for TransferContract (unlike
+    ResearchScore/TaskBundle/Claim/Correction, each with an ASCII diagram in
+    docs/spec/01_SYSTEM_SPEC.md section 6). The TRANSFER_LIFECYCLE transitions
+    this task declares (created -> offered -> one of five terminal outcomes)
+    are grounded only in MRR-FR-080/081's prose and the section 3.8 API /
+    section 5.2 event enumeration, not a verified diagram — flag for the same
+    reviewer scrutiny lifecycles.py already documents as "open specification
+    questions" for its four existing machines, and treat as a candidate for a
+    future spec amendment adding an explicit section 6.5 diagram.
+  - docs/spec/02_DOMAIN_MODEL.md section 2.14 lists "signatures" (plural) as
+    a field with no further elaboration of cardinality or shape; every
+    existing schema's `signature` field (common.schema.json `$defs.signature`)
+    is singular. This task defaults to ONE sender-origin signature (mirrors
+    TaskBundle), with the recipient's response authenticated only via its own
+    domain-event actor/practice_id fields (section 5.1's event envelope),
+    NOT a second object-level signature slot. If a reviewer determines a
+    genuine recipient-side cryptographic countersignature is required, that
+    is a new schema shape needing its own ADR (no existing schema has ever
+    needed two signature fields).
+  - Whether `respond` may be called more than once for the same
+    TransferContract (e.g., DEFERRED later followed by a terminal decision,
+    or UNRESOLVED later resolved) is not addressed by MRR-FR-081 or any
+    drawn diagram. This task treats OFFERED -> respond(exactly one of five
+    outcomes) as the only drawn edge — a single terminal response event; a
+    later revisit is out of scope pending a specification decision.
+  - The section 5.2 "Required events" enumeration lists only
+    `transfer.offered`/`transfer.responded` for this entity — unlike every
+    sibling first-class object, which has a distinct create-time event
+    (task.created, claim.created, correction.opened). This task defaults to
+    additionally emitting `transfer.created` (reading "Required events" as a
+    floor, not an exhaustive ceiling, for MRR-NFR-001 provenance parity with
+    every sibling entity) — flagged in case a reviewer prefers strict literal
+    conformance to the enumerated list instead (i.e., no creation-specific
+    event, only offered/responded).
+  - The exact structured JSON shape of `caveats`/`obligations`/
+    `disclosure_rules`/`attribution_rules` is given only as unstructured
+    prose in docs/spec/02_DOMAIN_MODEL.md sections 2.14/2.15 — no schema-level
+    detail exists anywhere in the spec. This is the schema-design axis with
+    the most implementer latitude, bounded only by the stage-9 acceptance
+    criterion that caveats remain visible/queryable and are not silently
+    dropped.
+  - MRR-FR-084 ("A receiving practice MAY reject a correction, but MUST
+    record that it was notified and why it rejected or deferred it") sits
+    textually inside stage 9 alongside MRR-FR-080..083, but its two response
+    verbs (reject/defer, matching E6-T04's title "local accept/adapt/reject/
+    defer response") concern a CORRECTION notification, not the transfer's
+    own MRR-FR-081 five-way decision. Recorded here only to make explicit
+    that T01 does NOT claim MRR-FR-084 as satisfied — it belongs to E6-T03/
+    T04, and this packet's `requirements:` list omits it deliberately.
+invariants:
+  - a TransferContract's `transferred_objects` are exact {id, content_hash}
+    pairs bound at creation (MRR-FR-080) inside the one immutable,
+    sender-signed content record; no later event or (nonexistent) revision
+    ever rewrites a bound hash — "the recipient cannot silently replace the
+    source hash" (section 4.9 acceptance criterion)
+  - caveats, obligations, disclosure/attribution rules, and the correction
+    subscription travel with the transfer as fields on that SAME immutable
+    signed record (MRR-FR-083, structural scope only per derived_decisions
+    (a)); they are never silently dropped by a later `respond` event
+  - the `respond` operation records exactly one of {accepted, adapted,
+    rejected, deferred, unresolved} (MRR-FR-081); recording ANY of the five first requires the
+    sender's signature to resolve via resolve_trusted_transfer_key against
+    the sender practice's KeyRing at the evaluation instant — a revoked,
+    rotated, expired, unknown-kid, signer-mismatched, or tampered offer is
+    rejected fail-closed with a distinct typed error, before any response is
+    recorded
+  - an `adapted` decision additionally requires a caller-supplied, already-existing local
+    object id; recording it creates an `adapted_from` edge (source=adapted
+    object, target=transferred object) atomically with the `transfer.
+    responded` event (MRR-FR-082); a nonexistent adapted object id aborts
+    both the edge and the event
+  - only a legal TRANSFER_LIFECYCLE transition may be recorded
+    (created -> offered -> exactly one terminal outcome); an illegal one
+    raises InvalidTransitionError and persists/appends nothing
+  - a TransferContract referencing any object classified
+    PARTICIPANT_IDENTIFIABLE is rejected at `create`, fail-closed, with a
+    distinct typed error (MRR-NFR-006, section 4 classification table)
+  - every create/offer/respond call records a domain event with full
+    MRR-NFR-001 provenance (actor, occurred_at, policy_version, causation_id,
+    correlation_id, object_id, object_revision), written atomically with its
+    object revision or via the event-only path, through the transactional
+    outbox
+  - the `transferred_from` and `subject_to_obligation` edge types remain declared in
+    EDGE_VOCABULARY but are not created by this task (see derived_decisions
+    (e)); only `adapted_from` is used
+  - both import-linter contracts stay KEPT; packages/domain and
+    packages/contracts import no provider SDK, open no network, and persist
+    no state outside what ObjectRepository/EdgeRepository already provide
+  - no Alembic migration is added; `objects.kind="TransferContract"` and
+    edges of type `adapted_from` are accepted by the existing schema exactly
+    as-is
+acceptance_tests:
+  - happy path, accepted: create (sender-signed, PUBLIC-classified
+    transferred object, an active in-window sender key) -> offer -> respond
+    "accepted"; the sender's signature resolves via the ring and both events
+    (transfer.offered, transfer.responded) are appended with no new object
+    revision after creation
+  - happy path, adapted: respond "adapted" with a pre-existing local object
+    id records an `adapted_from` edge (source=adapted object, target=the
+    transferred object) atomically with `transfer.responded`; the edge is
+    queryable via EdgeRepository.edges_from(adapted_object_id, "adapted_from")
+  - rejected / deferred / unresolved paths each record `transfer.responded`
+    with the matching `decision` payload value and no edge
+  - illegal-transition matrix, each fails closed with no event appended:
+    respond before offer; a second respond after a terminal outcome already
+    recorded; offer called twice
+  - a create referencing an object classified PARTICIPANT_IDENTIFIABLE is
+    rejected with a distinct typed error; nothing is persisted
+  - signature fail-closed matrix at `respond`, each a distinct typed error:
+    signer_practice_id != the trusted sender practice; kid does not resolve
+    in the ring; resolved key revoked/rotated/expired/not-yet-valid at the
+    evaluation instant; a tampered content record whose signature no longer
+    verifies — mirrors the E5-T05 crate-verification matrix exactly
+  - adaptation with a nonexistent adapted object id is rejected; no edge and
+    no `transfer.responded` event are persisted (adversarial)
+  - hash-pinning property test: for any sequence of create -> offer ->
+    respond, the stored content record's `transferred_objects` content
+    hashes are byte-identical to what `create` was called with — never
+    rewritten
+  - property test: random invalid TRANSFER_LIFECYCLE transition sequences
+    never succeed (mirrors the Claim lifecycle property test's own
+    discipline)
+  - contract tier: the new schema is valid Draft 2020-12; the new example
+    validates against both the JSON Schema and the Pydantic model and
+    round-trips (the nineteenth entity, via scripts/check_contracts.py's
+    ENTITY_MODELS)
+  - integration test (real PostgreSQL): create -> offer -> respond persist
+    atomically with their events; querying the generic objects/edges tables
+    directly confirms no migration was needed (kind="TransferContract" rows
+    exist; the adapted_from edge satisfies the existing CHECK constraint)
+  - all existing suites stay green; both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+required_output:
+  - implementation summary
+  - the TransferContract schema/contract/example (nineteenth entity) pair,
+    the TRANSFER_LIFECYCLE state machine, the resolve_trusted_transfer_key
+    resolver, and the TransferService (create/offer/respond) with its
+    adapted_from edge recording
+  - changed files, additive domain errors, and explicit confirmation that
+    packages/persistence/** and migrations/ were NOT touched (generic
+    objects/edges tables sufficed)
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract, test-integration) proving green
+  - security/privacy implications (sender-signature trust-anchoring and
+    fail-closed matrix at respond, PARTICIPANT_IDENTIFIABLE rejection at
+    create, hash-pinning of transferred_objects, no network/new persisted
+    state beyond the generic tables)
+  - open specification questions exactly as listed under
+    specification_gaps, plus what is deliberately deferred (Obligation
+    aggregate/propagation E6-T02, correction notification/response E6-T03/
+    T04, public projection E6-T05, offline delivery tracking E6-T06, and the
+    future DRY of the now-four near-identical trust resolvers)
+stop_conditions:
+  - honoring MRR-FR-083's full "obligations ... MUST travel with the
+    transfer" is found to require the persisted Obligation aggregate and its
+    propagation machinery (E6-T02) rather than structural fields alone — keep
+    obligation data structural-only and stop; report for reviewer decision
+  - a reviewer determines TransferContract genuinely needs a second,
+    recipient-side signature field — stop rather than inventing a
+    two-signature schema shape; raise it as a candidate ADR addendum
+    alongside ADR-0007/ADR-0003
+  - the undrawn TRANSFER_LIFECYCLE transition set (no section-6 diagram) is
+    judged unacceptable to build against without a specification amendment —
+    stop and request one rather than guessing further transitions
+  - implementation requires any change to packages/persistence/**,
+    migrations/, or a new import-linter contract — the generic tables and
+    existing EDGE_VOCABULARY were confirmed sufficient at planning time;
+    report if that assumption turns out false

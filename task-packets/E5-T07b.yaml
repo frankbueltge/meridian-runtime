@@ -1,0 +1,408 @@
+task_id: E5-T07b
+title: Durable key-revocation record and the trust_revoked_after_creation annotation for already-accepted objects
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5, from exactly what task-packets/E5-T07.yaml's own scope_note
+  deferred: "Durable REVOCATION state — a persisted revocation record plus
+  the docs/spec/04 section 8.4 `trust_revoked_after_creation` annotation on
+  ALREADY-ACCEPTED objects — is a SEPARATE behavior (annotating existing
+  objects, not gating intake) and is deferred to a follow-up packet
+  E5-T07b, for three reasons: (1) revocation is ALREADY enforced at intake
+  by every resolver's at-instant KeyRing.is_valid_at check (E5-T02..T06) ...
+  (2) bundling a second behavior would break template rules 1 and 10 ...
+  (3) it mirrors this repo's own E5-T00/E5-T00b and E5-T02/E5-T02b splits."
+  E5-T07 is approved and open as PR #40 (CI green; merge pending the
+  owner's go-ahead) — its migration migrations/versions/983751ff8bb6_
+  processed_ids_table.py becomes the Alembic head once merged, so this
+  packet's own migration chains onto it (down_revision = "983751ff8bb6")
+  and implementation MUST NOT start before PR #40 is merged. Source:
+  docs/spec/04_SECURITY_AND_POLICY.md section 8.4 ("A practice can revoke a
+  node or key. New objects are rejected after revocation. Existing objects
+  remain historically attributable and may receive a
+  `trust_revoked_after_creation` annotation.") and section 8.2 ("Processed
+  envelope IDs are retained for replay detection according to policy" — the
+  sibling durability concern E5-T07 already closed, whose composition with
+  revocation this task must not disturb), docs/spec/02_DOMAIN_MODEL.md
+  section 1.3 (a signature carries a `signed_at` timestamp — the exact field
+  this task's annotation predicate is evaluated against), docs/spec/01_
+  SYSTEM_SPEC.md section 8.4 (federated offline import/export MUST verify
+  signatures, expiry, replay protection, and object hashes — the same
+  federated-trust context E5-T07 cited), docs/spec/06_IMPLEMENTATION_PLAN.md
+  Epic E5 (E5-T07 "replay, expiry, revocation, and idempotency hardening" —
+  this packet is the "revocation" half of that same backlog line), and
+  MRR-NFR-007/002/005/001 — the same four requirements E5-T07 itself cited,
+  reused here because this is the other half of the same task line, not a
+  new concern.
+
+  Every E5-T02..T06 resolver ALREADY fails a NEW object closed at intake
+  when its resolving key is revoked (`mrr.domain.key_management.KeyRing.
+  is_valid_at` requires `state == "active"`) — that is unchanged and out of
+  this task's scope. But nothing in the codebase durably records WHEN a key
+  was revoked, or feeds that instant back into how an ALREADY-ACCEPTED
+  object is later surfaced. `mrr.domain.key_management.revoke(ring, *,
+  kid)` mutates an in-memory `KeyRing`'s descriptor to `state="revoked"`
+  with NO timestamp at all — so even the in-memory model cannot answer "was
+  this object's signing key already revoked when it was signed, or only
+  afterward?", which is exactly the question docs/spec/04 section 8.4's
+  "existing objects remain historically attributable and may receive a
+  `trust_revoked_after_creation` annotation" requires an answer to. This
+  packet is the first place in the codebase a revocation INSTANT is
+  durably captured at all — a narrow, append-only FACT store (kid ->
+  when/who/why revoked), mirroring E5-T07's own processed_ids table in
+  shape and discipline, not a full persisted Practice/KeyRing registry
+  (still explicitly out of scope, per E5-T02's own forbidden_changes: "a
+  NEW persisted practice registry ... is a later concern").
+objective: >
+  Provide (1) a durable, append-only revocation-fact record — a new Alembic
+  migration and a `key_revocations` table keyed by `kid` alone (a kid is
+  already a global, content-derived fingerprint of one Ed25519 public key —
+  `mrr.crypto.keys.derive_key_id` — so, unlike the per-recipient-node
+  `processed_ids` table, there is no "per observer" scoping question here:
+  a key is revoked once, globally, by the practice that owns it), recording
+  `kid`, `practice_id` (the revoking practice), `revoked_at` (the instant
+  the revocation takes effect — caller-supplied, never generated
+  internally, mirroring `processed_ids.processed_at`), and an optional
+  `reason`. (2) A `PostgresKeyRevocationStore` repository
+  (packages/persistence) exposing `record_revocation(kid, *, practice_id,
+  revoked_at, reason=None) -> bool` that inserts idempotently (`INSERT ...
+  ON CONFLICT (kid) DO NOTHING`) and returns whether the row was newly
+  recorded — so revoking the SAME kid twice, even with a different
+  `revoked_at`/`reason`, is a silent no-op that PRESERVES the first-ever
+  recorded fact, never an error and never a second write — plus a
+  connection-accepting `record_revocation_with_connection` variant (mirrors
+  `PostgresProcessedIdStore`'s split) for a future caller's own transaction,
+  and `get_revocation(kid) -> RevocationRecord | None` (a read). Critically,
+  NO update and NO delete method exists anywhere on this store: "a
+  revocation, once recorded, can never be un-recorded by any public
+  interface" is enforced by the absence of any such method, not by a
+  runtime check. (3) A pure domain module
+  (`mrr.domain.trust_revocation`) — unit- and property-testable WITHOUT
+  Postgres — defining `RevocationRecord` (the frozen value object
+  `get_revocation` returns: `kid`, `practice_id`, `revoked_at`, `reason`),
+  the exact docs/spec/04 section 8.4 annotation string as a named constant
+  (`TRUST_REVOKED_AFTER_CREATION_ANNOTATION = "trust_revoked_after_
+  creation"`), and the pure predicate `trust_revoked_after_creation(
+  signed_at, record) -> bool`: `True` iff `record is not None and signed_at
+  < record.revoked_at` — an object signed strictly BEFORE its key's
+  recorded revocation instant is annotated when surfaced; an object with no
+  recorded revocation, or one evaluated at/after the revocation instant
+  (already covered by existing at-instant intake checks, not this
+  function's concern), is not. This is the whole of "annotating existing
+  objects" per the scope_note: this task builds the durable fact and the
+  pure decision function a future surfacing/projection service will call
+  (mirrors E5-T07's own precedent of building the store and the predicate,
+  leaving intake-service wiring to a later task) — it does NOT build that
+  surfacing service, a new REST field, or a domain-event trail for
+  revocation notifications.
+source_of_truth:
+  - AGENTS.md
+  - task-packets/E5-T07.yaml
+  - docs/spec/04_SECURITY_AND_POLICY.md#84-compromised-node-response
+  - docs/spec/04_SECURITY_AND_POLICY.md#82-replay-and-tampering
+  - docs/spec/01_SYSTEM_SPEC.md#84-federated-offline
+  - docs/spec/02_DOMAIN_MODEL.md#13-signatures
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e5--federation
+  - packages/domain/mrr/domain/key_management.py
+  - packages/domain/mrr/domain/replay_retention.py
+  - packages/domain/mrr/domain/manifest_trust.py
+  - packages/domain/mrr/domain/envelope_validation.py
+  - packages/domain/mrr/domain/offline_bundle.py
+  - packages/persistence/mrr/persistence/tables.py
+  - packages/persistence/mrr/persistence/repositories.py
+  - packages/persistence/mrr/persistence/unit_of_work.py
+  - migrations/versions/983751ff8bb6_processed_ids_table.py
+  - migrations/env.py
+  - tests/integration/conftest.py
+  - tests/integration/persistence/test_processed_id_store.py
+requirements:
+  - MRR-NFR-007
+  - MRR-NFR-002
+  - MRR-NFR-005
+  - MRR-NFR-001
+allowed_paths:
+  - packages/persistence/**
+  - packages/domain/**
+  - migrations/**
+  - tests/unit/**
+  - tests/property/**
+  - tests/integration/**
+forbidden_changes:
+  - the E5-T02..T06 resolvers' at-instant fail-closed checks
+    (resolve_trusted_manifest_key, validate_inbound_envelope, task_trust,
+    crate_trust, validate_inbound_bundle) and mrr.domain.key_management's
+    KeyRing/PublicKeyDescriptor/rotate/revoke — reuse UNCHANGED. This task
+    does NOT re-wire any resolver to consult the new durable store for an
+    INTAKE decision; that would reopen "no persisted practice registry"
+    (E5-T02's own forbidden_changes) and contradicts the scope_note's own
+    framing ("annotating existing objects, not gating intake")
+  - the E5-T07 processed_ids table, PostgresProcessedIdStore, and
+    mrr.domain.replay_retention (reuse UNCHANGED) — this task ADDS a new
+    table and a new repository class; it does not alter the existing ones,
+    and replay/expiry retention logic is not touched or reimplemented here
+  - the contract models (packages/contracts) and any JSON Schema semantics
+    — a key-revocation row is INTERNAL node state, exactly like
+    processed_ids (task-packets/E5-T07.yaml: "internal node state ... no
+    contract/schema/example"), not a cross-practice object; it gets no
+    schema/contract/example and no scripts/check_contracts.py entry
+  - a persisted Practice/KeyRing/PublicKeyDescriptor registry of any kind —
+    still out of scope (E5-T02's own forbidden_changes: "a NEW persisted
+    practice registry ... is a later concern"). This task persists ONLY the
+    revocation FACT (kid, practice_id, revoked_at, reason), never a full
+    key or key-lifecycle registry, and record_revocation performs NO
+    authorization check that practice_id actually owns kid — that check
+    needs a persisted practice/key registry that does not exist anywhere in
+    this codebase yet, so it is the CALLER's responsibility (mirrors
+    record_processed: the caller decides what to record; this store only
+    records it durably)
+  - any domain event, outbox row, or notification for a "key revoked" fact
+    — an event-log-based revocation notification (e.g. to other practices)
+    is a distinct, larger concern than a local durable record and is not
+    built here (see specification_gaps)
+  - any service, REST endpoint, or projection that actually SURFACES an
+    already-accepted object with the annotation attached — this task builds
+    the durable record and the pure trust_revoked_after_creation predicate
+    only; wiring it into a query/export/projection response is later
+    service work, exactly as E5-T07 built the store and predicate but left
+    "full validate-then-record intake transaction" to E2E-002
+  - API endpoints, workflow-engine integration, external message brokers or
+    delivery transports, and the physical air-gap medium (out of Epic scope
+    here, as for E5-T07); no new authoritative cross-practice object
+  - the E1-T06 domain_events/outbox tables and the E1-T05 objects/edges
+    repositories (reuse the UnitOfWork/transaction and Alembic patterns
+    unchanged; ADD a table and a repository, do not alter existing ones)
+derived_decisions: >
+  The table is keyed by `kid` ALONE, not `(practice_id, kid)`: unlike
+  `processed_ids` (where the SAME message/bundle id delivered to two
+  DIFFERENT receiving nodes is legitimately not a replay at either, which is
+  why that table's key includes the recipient), a kid is already a
+  content-derived, globally unique fingerprint of one specific Ed25519
+  public key (`derive_key_id` = `"kid:" + base64(SHA-256(raw 32 key
+  bytes))`) — the same key cannot legitimately belong to two different
+  practices, so "is this kid revoked" has exactly one true answer,
+  independent of who is asking. `record_revocation` uses `INSERT ... ON
+  CONFLICT (kid) DO NOTHING`, exactly like `PostgresProcessedIdStore.
+  record_processed`'s `ON CONFLICT (recipient_node_id, id) DO NOTHING` — the
+  idempotency and immutability anchor is the database constraint, never an
+  application-level "check then write" that could race. Because there is no
+  UPDATE path anywhere on this store (not even to "correct" a wrong
+  `revoked_at` or `reason`), the FIRST call to record a given kid's
+  revocation is permanent and authoritative for the lifetime of the row —
+  a second, differently-parameterized call is a silent no-op, proven by an
+  acceptance test that asserts the ORIGINAL values survive a second call
+  with different arguments. This is a deliberately more rigid guarantee
+  than `mrr.domain.key_management.revoke`'s in-memory, freely-repeatable
+  `replace(descriptor, state="revoked")` — appropriate because THIS store
+  is the durable, single source of truth for "when," where the in-memory
+  ring is a transient, caller-assembled view.
+
+  `RevocationRecord` (mrr.domain.trust_revocation) mirrors `mrr.domain.
+  key_management.PublicKeyDescriptor`'s discipline of validating its own
+  invariants in `__post_init__` rather than trusting the caller: `kid` and
+  `practice_id` must be non-empty, and `revoked_at` must be an aware
+  datetime (raising `ValueError`, exactly like `PublicKeyDescriptor`'s own
+  `valid_from`/`valid_until` check) — a naive datetime silently compared
+  against another naive or aware datetime is exactly the class of bug
+  `trust_revoked_after_creation`'s own correctness depends on avoiding.
+  `trust_revoked_after_creation(signed_at, record)` takes the WHOLE
+  `RevocationRecord | None` (not a bare `datetime | None`) so a future
+  caller never has to unpack a record just to hand this function a
+  timestamp, and so the function reads exactly like `mrr.domain.
+  key_management.KeyRing.is_valid_at`'s own "never raises, fails closed on
+  None" shape. The boundary is exclusive on both ends by construction:
+  `signed_at < record.revoked_at` is the ONLY case that annotates; a
+  signature timestamp equal to or after `revoked_at` is not (that instant
+  is already the "objects signed after revocation fail closed" territory
+  the E5-T02..T06 resolvers own, not this function's), so the two concerns
+  never overlap or double-count the same instant.
+
+  `PostgresKeyRevocationStore` is deliberately NOT wired to feed
+  `mrr.domain.key_management.KeyRing` (no "build a ring from durable
+  revocations" bridge function is built): doing so would re-invite exactly
+  the re-verification question the scope_note rules out — an
+  already-accepted object is never re-run through
+  resolve_trusted_manifest_key/validate_inbound_envelope/etc. with "now" set
+  to the current instant, because at-instant re-verification of a
+  historical object is precisely what "existing objects remain historically
+  attributable" (docs/spec/04 section 8.4) forbids. The composition this
+  task DOES prove is with the E5-T07 replay store: an envelope already
+  recorded as processed stays rejected by `EnvelopeAlreadyProcessedError`
+  even after its signing key is later durably revoked — revocation
+  durability and replay durability are two independent, non-competing
+  mechanisms over the same accepted object, and neither task's rejection
+  reason leaks into the other's.
+invariants:
+  - a revocation, once recorded via record_revocation(kid, ...), can never
+    be un-recorded, updated, or deleted by any public interface on
+    PostgresKeyRevocationStore — no such method exists, and a second
+    record_revocation call for the same kid (even with different
+    revoked_at/reason) is a no-op that leaves the ORIGINAL row untouched
+  - get_revocation(kid) returns the RevocationRecord for kid if and only if
+    record_revocation has ever been called for that kid; for any kid never
+    recorded it returns None — there is no other source of "is this kid
+    revoked" in this table
+  - trust_revoked_after_creation(signed_at, record) is True if and only if
+    record is not None and signed_at is strictly before record.revoked_at
+    — an object signed BEFORE its key's recorded revocation instant is
+    annotated when surfaced; a record of None, or signed_at at/after
+    revoked_at, yields False
+  - objects signed AFTER their key's revocation still fail closed at
+    intake — UNCHANGED, because this task adds no new intake-gating logic
+    and does not touch the E5-T02..T06 resolvers or mrr.domain.
+    key_management; this invariant is protected by those existing suites
+    staying green, not by any new code this task adds
+  - replay of a pre-revocation envelope/bundle after its key is later
+    durably revoked is STILL rejected by the UNCHANGED E5-T07 predicate
+    (EnvelopeAlreadyProcessedError / BundleAlreadyProcessedError) — a
+    later revocation never re-opens, weakens, or is conflated with the
+    replay check; the two mechanisms compose without either masking the
+    other's distinct typed error
+  - revocation state survives process restart: a fresh Engine/connection
+    against the same database sees exactly the same get_revocation(kid)
+    result a prior connection recorded — durability is a property of
+    PostgreSQL, not of any in-process cache this store does not keep
+  - the store is internal node state: it adds no contract/schema/example,
+    imports no provider SDK beyond SQLAlchemy, and both import-linter
+    contracts stay KEPT; the E1-T05/E1-T06/E5-T07 tables and repositories
+    are unchanged
+  - a key_revocations row is append-only: it is written exactly once by
+    record_revocation and never mutated or deleted by anything in this
+    codebase
+acceptance_tests:
+  - integration (Postgres, CI): alembic upgrade head creates the
+    key_revocations table
+  - integration: record_revocation then get_revocation returns a
+    RevocationRecord whose kid/practice_id/revoked_at/reason match exactly
+    what was recorded; a kid never recorded returns None from
+    get_revocation
+  - integration: recording the SAME kid twice with DIFFERENT
+    revoked_at/reason values leaves exactly one row, returns False (not an
+    error) on the second call, and get_revocation still returns the FIRST
+    call's original values unchanged — proving immutability is enforced by
+    the database constraint, not by application logic that could be
+    bypassed
+  - integration (restart durability): record a revocation through one
+    Engine/connection, then open a genuinely SEPARATE sqlalchemy.Engine
+    against the identical database/schema (not the same Python object, no
+    shared cache) and confirm a NEW PostgresKeyRevocationStore built on
+    that second engine still returns the identical RevocationRecord via
+    get_revocation — the fact is durable in PostgreSQL itself, not held in
+    any process-local state
+  - integration: record_revocation_with_connection participates in a
+    caller's transaction — a rollback after the call leaves no row (mirrors
+    tests/integration/persistence/test_processed_id_store.py's
+    test_record_processed_with_connection_rollback_leaves_no_row)
+  - unit (no Postgres): trust_revoked_after_creation returns True for
+    signed_at strictly before record.revoked_at, False for signed_at ==
+    revoked_at (exact boundary), False for signed_at strictly after
+    revoked_at, and False when record is None
+  - unit (no Postgres): constructing a RevocationRecord with a naive
+    (non-timezone-aware) revoked_at, or an empty kid/practice_id, raises
+    ValueError — mirrors PublicKeyDescriptor's own __post_init__ discipline
+  - property (no Postgres): for arbitrary aware datetimes signed_at and
+    revoked_at, trust_revoked_after_creation(signed_at,
+    RevocationRecord(..., revoked_at=revoked_at)) equals exactly
+    (signed_at < revoked_at), and is False for every signed_at when record
+    is None — a total, deterministic function over every instant pair
+  - integration (composition with E5-T07, end to end): using the existing
+    PostgresProcessedIdStore machinery, accept and record-as-processed a
+    real signed NodeMessageEnvelope; separately record_revocation for its
+    signing kid with a revoked_at strictly after the envelope's own
+    signature.signed_at; assert (a) trust_revoked_after_creation(envelope.
+    signature.signed_at, store.get_revocation(kid)) is True (the surfaced-
+    annotation case), and (b) resubmitting the SAME envelope is still
+    rejected by EnvelopeAlreadyProcessedError specifically — never a new or
+    competing "revoked" rejection reason for an already-processed message
+  - regression: every existing E5-T02..T06 fail-closed-on-revoked-key
+    acceptance test remains green, unmodified — proving intake-time
+    rejection behavior is untouched by this task
+  - all existing suites stay green; both import-linter contracts remain
+    KEPT; the integration tier skips VISIBLY when MRR_TEST_DATABASE_URL is
+    unset locally and FAILS (never skips) if unset in CI, per
+    tests/integration/conftest.py
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - the key_revocations table + migration (with its down_revision), the
+    PostgresKeyRevocationStore's record_revocation / get_revocation
+    contract (including why no update/delete method exists), and the pure
+    RevocationRecord / trust_revoked_after_creation module
+  - the end-to-end demonstration that a durably-recorded revocation
+    produces a True trust_revoked_after_creation result for a real signed
+    object's own signed_at, and that it composes with the E5-T07 replay
+    store without introducing a competing rejection reason
+  - changed files and the new migration revision id (and its down_revision,
+    which MUST be "983751ff8bb6", the current Alembic head)
+  - tests added and exact command results (format, lint, typecheck, test,
+    and test-integration) — for test-integration, either the CI run's pass
+    output or, if run locally without Postgres, the VISIBLE skip with its
+    reason (never a silent green)
+  - security/privacy implications (an append-only, un-erasable revocation
+    fact per key; no new intake-gating logic; no authorization check on who
+    may record a revocation, explicitly named as the caller's
+    responsibility; internal state only — no new cross-practice object, no
+    network)
+  - open specification questions and what is deferred (see
+    specification_gaps below; a surfacing/projection service that actually
+    attaches the annotation to a real API response; a domain-event trail
+    for revocation notifications; node-level, as opposed to key-level,
+    revocation)
+stop_conditions:
+  - the durable revocation fact cannot be expressed without persisting a
+    full Practice/KeyRing registry, or without changing any E5-T02..T06
+    resolver's accept rule (it can — this store is a narrow, additive fact
+    table and predicate, exactly like E5-T07's processed_ids; report if
+    genuinely blocked)
+  - "once recorded, can never be un-recorded" cannot be honored without an
+    application-level check that could race (it can — ON CONFLICT (kid) DO
+    NOTHING at the database is sufficient, mirroring E5-T07's own
+    idempotency anchor; do not add a compensating update/delete method to
+    "fix" a bad revocation — report the scenario instead)
+  - demonstrating the annotation predicate turns out to require building an
+    actual surfacing/query service or a new API field (it does not — prove
+    the predicate against a real object's own signed_at directly, exactly
+    as E5-T07 proved its predicate against validate_inbound_envelope/bundle
+    without an intake service; report if genuinely blocked)
+  - integration coverage is impossible because the repo's Postgres harness
+    cannot be reached even in CI (it can — tests/integration/conftest.py is
+    the proven E1-T05/T06/E5-T07 path; report if the harness is actually
+    broken)
+specification_gaps:
+  - docs/spec/04_SECURITY_AND_POLICY.md section 8.4 says an existing object
+    "may receive" the trust_revoked_after_creation annotation (MAY, not
+    MUST) and never states WHO computes/attaches it or on WHICH surfaced
+    objects — this packet makes the underlying fact durable and the
+    decision function deterministic, but leaves "which future service must
+    call it, and on what response shape" genuinely open, same as E5-T03's
+    own "flagged as an open specification question" caveat about its coarse
+    rejection-reason vocabulary
+  - no MRR-FR-* requirement names key/node revocation directly (it appears
+    only in NFR/section-8.4 prose and in the E5/E9 backlog descriptions);
+    whether a dedicated MRR-FR should be added for "a revoked key's
+    already-accepted objects MUST be inspectable with an honest revocation
+    annotation" is an open question for a future ADR or spec revision, not
+    decided by this packet
+  - docs/spec/04 section 8.4 says a practice "can revoke a node OR key" —
+    this packet models only KEY-level revocation (kid-keyed), matching the
+    existing KeyState vocabulary (E5-T01); NODE-level revocation (revoking
+    every key of a node/practice at once, or blocking a node id outright)
+    has no modeled vocabulary anywhere in the codebase yet and is out of
+    this packet's scope
+  - whether a revocation record itself is ever subject to a retention or
+    deletion policy (e.g. an eventual data-minimization requirement) is not
+    addressed by section 8.4 at all; this packet takes the conservative
+    reading that a security-relevant revocation fact is never deleted by
+    any mechanism this codebase provides, but the specification does not
+    explicitly rule out a future, separately-decided retention policy
+  - whether a "key revoked" durable fact should also raise a domain event
+    (for cross-practice notification, mirroring MRR-FR-094's "every
+    affected practice MUST receive a signed notification or a durable
+    pending-delivery record" for corrections) is not addressed here — this
+    packet's record is local, internal state only, exactly like
+    processed_ids; a revocation-notification flow is a distinct, larger
+    concern left for a future task
