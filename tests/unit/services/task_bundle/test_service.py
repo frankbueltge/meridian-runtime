@@ -600,14 +600,23 @@ def test_create_persists_revision_1_created_status_and_event() -> None:
 def test_origin_service_has_no_accept_method() -> None:
     """MRR-FR-022: the origin API structurally cannot move a bundle to
     ACCEPTED — assert against TaskBundleService's own public API surface,
-    not just against behavior.
+    not just against behavior. ``accept_modification_trusted`` (task-packets/
+    E5-T04.yaml) is the trust-anchored counterpart of the pre-existing
+    ``accept_modification`` — additive, not a new path to ACCEPTED — so it
+    is expected in the surface alongside it; see
+    tests/unit/services/task_bundle/test_service_trust.py for its own tests.
     """
     public_methods = {name for name in dir(TaskBundleService) if not name.startswith("_")}
     assert "accept" not in public_methods
     assert "reject" not in public_methods
     assert "defer" not in public_methods
     assert "propose_modification" not in public_methods
-    assert public_methods == {"create", "offer", "accept_modification"}
+    assert public_methods == {
+        "create",
+        "offer",
+        "accept_modification",
+        "accept_modification_trusted",
+    }
 
 
 def test_offer_then_node_accept_moves_through_full_lifecycle() -> None:
