@@ -1,14 +1,21 @@
 """Unit tests for mrr.persistence.tables: metadata sanity only, no database
-connection (E1-T05, extended by E1-T06 for domain_events/outbox). Table
-structure against a live PostgreSQL - including that the CHECK constraint
-actually rejects invalid rows - is exercised by the integration tier
-(tests/integration/persistence/).
+connection (E1-T05, extended by E1-T06 for domain_events/outbox and by
+E5-T07 for processed_ids). Table structure against a live PostgreSQL -
+including that the CHECK constraint actually rejects invalid rows - is
+exercised by the integration tier (tests/integration/persistence/).
 """
 
 from __future__ import annotations
 
+from mrr.domain.replay_retention import PROCESSED_ID_KINDS
 from mrr.domain.repositories import EDGE_VOCABULARY
-from mrr.persistence.tables import domain_events_table, edges_table, objects_table, outbox_table
+from mrr.persistence.tables import (
+    domain_events_table,
+    edges_table,
+    objects_table,
+    outbox_table,
+    processed_ids_table,
+)
 from mrr.provenance.log import OUTBOX_STATUSES
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Identity, UniqueConstraint
 
@@ -186,3 +193,45 @@ def test_outbox_table_has_status_check_constraint_over_full_vocabulary() -> None
     sqltext = str(constraint.sqltext)
     for status in OUTBOX_STATUSES:
         assert f"'{status}'" in sqltext, f"{status!r} missing from CHECK constraint text"
+
+
+# ---------------------------------------------------------------------------
+# processed_ids (E5-T07).
+# ---------------------------------------------------------------------------
+
+
+def test_processed_ids_table_primary_key_is_recipient_node_id_and_id() -> None:
+    pk_columns = {column.name for column in processed_ids_table.primary_key.columns}
+    assert pk_columns == {"recipient_node_id", "id"}
+
+
+def test_processed_ids_table_has_expected_columns() -> None:
+    expected = {"id", "id_kind", "recipient_node_id", "processed_at", "expires_at"}
+    assert {column.name for column in processed_ids_table.columns} == expected
+
+
+def test_processed_ids_table_has_no_nullable_columns() -> None:
+    # Every column is required — a processed-id row is never partially
+    # written (append-then-prune only, no UPDATE path).
+    nullable = {column.name for column in processed_ids_table.columns if column.nullable}
+    assert nullable == set()
+
+
+def test_processed_ids_table_has_id_kind_check_constraint_over_full_vocabulary() -> None:
+    check_constraints = [
+        c for c in processed_ids_table.constraints if isinstance(c, CheckConstraint)
+    ]
+    assert len(check_constraints) == 1
+    constraint = check_constraints[0]
+    assert constraint.name == "ck_processed_ids_id_kind_vocabulary"
+
+    sqltext = str(constraint.sqltext)
+    for kind in PROCESSED_ID_KINDS:
+        assert f"'{kind}'" in sqltext, f"{kind!r} missing from CHECK constraint text"
+
+
+def test_processed_ids_table_has_expires_at_index() -> None:
+    index_columns = {
+        tuple(column.name for column in index.columns) for index in processed_ids_table.indexes
+    }
+    assert ("expires_at",) in index_columns
