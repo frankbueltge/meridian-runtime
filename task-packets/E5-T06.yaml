@@ -120,6 +120,7 @@ allowed_paths:
   - packages/domain/**
   - schemas/**
   - examples/**
+  - scripts/check_contracts.py
   - tests/unit/**
   - tests/property/**
   - tests/contract/**
