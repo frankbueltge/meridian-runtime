@@ -1,0 +1,491 @@
+task_id: E6-T02
+title: Caveat and obligation propagation — materialize a TransferContract's structural obligation/caveat stubs into persisted Obligation objects, bind them to the transferred (and later adapted/derived) objects via subject_to_obligation edges deterministically and idempotently, and record resolve/defer responses
+status: draft
+depends_on: [E6-T01]
+derivation: >
+  Derived by a planning session (not yet reviewed) per
+  docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E6 (E6-T02 "caveat and
+  obligation propagation" — second of six E6 tasks, after T01 TransferContract
+  lifecycle, and before T03 cross-practice correction notification, T04 local
+  accept/adapt/reject/defer response TO A CORRECTION, T05 public
+  unresolved-correction projection, T06 offline recipient delivery
+  tracking), docs/spec/01_SYSTEM_SPEC.md section 4.9 (MRR-FR-083 —
+  "Obligations, caveats, disclosure limits, attribution, and correction
+  subscriptions MUST travel with the transfer") and section 2.15 of
+  docs/spec/02_DOMAIN_MODEL.md ("Obligation"). task-packets/E6-T01.yaml (this
+  planning session's own sibling, now present in the repository as a draft,
+  not yet approved or implemented in code) defines the TransferContract
+  object this task consumes — it carries `transferred_objects`
+  ({id, content_hash} pairs), `caveats`, and `obligations` as STRUCTURAL
+  stubs only (kind + optional deadline) — its own forbidden_changes section
+  explicitly excludes "a persisted Obligation aggregate, its own lifecycle,
+  or any subject_to_obligation edge (E6-T02 ...)", and its own
+  stop_conditions names exactly this gap — "honoring MRR-FR-083's full
+  'obligations ... MUST travel with the transfer' is found to require the
+  persisted Obligation aggregate and its propagation machinery (E6-T02)
+  rather than structural fields alone". This task is that persisted
+  aggregate and machinery. Because E6-T01 exists only as an unreviewed draft
+  packet with no TransferContract schema/contract/service yet in the
+  repository (confirmed — no schemas/transfer-contract.schema.json, no
+  packages/contracts/mrr/contracts/transfer_contract.py,
+  no services/control_plane/mrr/services/transfer/ anywhere in the tree at
+  the time this packet was derived), this packet's own `depends_on` field
+  (below) is a real sequencing dependency, not a formality — see derived_decisions
+  and stop_conditions for exactly which parts of this task can and cannot
+  proceed before E6-T01 is implemented. The closest analog for the
+  propagation LOGIC itself is task-packets/E3-T06.yaml and its
+  implementation, packages/domain/mrr/domain/correction_impact.py
+  (`compute_impact`/`IMPACT_EDGE_TYPES`) and
+  services/control_plane/mrr/services/correction/service.py
+  (`CorrectionImpactService`) — a deterministic, cycle-safe, idempotent
+  transitive-closure traversal over the same typed edge graph, paired with a
+  record()/propagate() service split. This task reuses that traversal
+  function directly rather than re-implementing a second, divergent notion
+  of "what an object built on X inherits from X" (see derived_decisions).
+  Obligation becomes the twentieth schema/contract/example entity (assuming
+  E6-T01's TransferContract lands first as the nineteenth per its own
+  packet; `scripts/check_contracts.py`'s `ENTITY_MODELS` dict is keyed by
+  name, not merge order, so either sequencing is safe for that file).
+objective: >
+  Provide the persisted Obligation object (docs/spec/02_DOMAIN_MODEL.md
+  section 2.15) and the machinery that (1) MATERIALIZES it from an
+  accepted/adapted TransferContract's structural obligation stubs and
+  non-empty `caveats` field, (2) PROPAGATES it — via `subject_to_obligation`
+  edges — onto the transferred object(s) and every object later found to be
+  built on them (adaptation, further derivation, citation, dependency, or
+  projection), deterministically, cycle-safe, and idempotently on repeated
+  runs, and (3) records the two verified response actions,
+  `resolve`/`defer` (docs/spec/03_API_AND_EVENTS.md section 3.8), each with
+  full MRR-NFR-001 provenance. An obligation, once bound to an object, is
+  never silently dropped — its binding edges are append-only and are never
+  rewritten or deleted by a later `resolve`/`defer`, and propagation is a
+  correct, callable-anytime recomputation (not a one-shot event) so that a
+  new derivative created after materialization can still be discovered by a
+  later `propagate` call. Framework-free at the domain layer, CI-testable,
+  reusing the generic ObjectRepository/EdgeRepository and the existing
+  `subject_to_obligation` EDGE_VOCABULARY member (no migration — see
+  derived_decisions).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#49-stage-9--transfer-and-obligations
+  - docs/spec/01_SYSTEM_SPEC.md#78-correction-impact-service
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/02_DOMAIN_MODEL.md#214-transfercontract
+  - docs/spec/02_DOMAIN_MODEL.md#215-obligation
+  - docs/spec/02_DOMAIN_MODEL.md#3-edge-vocabulary
+  - docs/spec/03_API_AND_EVENTS.md#38-transfers-and-obligations
+  - docs/spec/03_API_AND_EVENTS.md#52-required-events
+  - schemas/common.schema.json
+  - schemas/correction-event.schema.json
+  - packages/contracts/mrr/contracts/correction_event.py
+  - packages/domain/mrr/domain/repositories.py
+  - packages/domain/mrr/domain/correction_impact.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/exceptions.py
+  - services/control_plane/mrr/services/correction/service.py
+  - services/control_plane/mrr/services/claim/service.py
+  - scripts/check_contracts.py
+  - task-packets/E6-T01.yaml
+  - task-packets/E3-T06.yaml
+requirements:
+  - MRR-FR-083
+  - MRR-NFR-001
+  - MRR-NFR-002
+  - MRR-NFR-010
+forbidden_changes:
+  - the TransferContract schema/contract/lifecycle/trust-resolver/service
+    (E6-T01) — this task reads an already-accepted/adapted TransferContract
+    (its `transferred_objects`, `caveats`, `obligations` stubs, and the
+    recorded decision on its latest `transfer.responded` event) but does not
+    modify how a transfer is created, offered, or responded to
+  - CorrectionEvent, `mrr.domain.correction_impact`
+    (`compute_impact`/`IMPACT_EDGE_TYPES`/`FR091_IMPACT_CATEGORY_EDGE_TYPES`),
+    and `CorrectionImpactService` (E3-T06) — reused unchanged, imported, not
+    edited; this task's own propagation wrapper module calls `compute_impact`
+    rather than re-implementing or forking its traversal
+  - cross-practice correction notification / signed delivery (MRR-FR-094 is
+    E6-T03), local accept/adapt/reject/defer RESPONSE to a CORRECTION
+    notification (MRR-FR-084 is E6-T04 — do not conflate an Obligation's own
+    `resolve`/`defer` verbs, which govern a follow-up DUTY, with E6-T04's
+    four-verb response to a correction, which governs a different object),
+    public unresolved-correction projection (MRR-FR-095 is E6-T05), and
+    offline recipient delivery tracking (E6-T06)
+  - actual enforcement of any Obligation kind's real-world action — no data is
+    actually deleted or restricted for `delete_or_restrict_data`, no human-
+    approval workflow is gated for `obtain_human_approval`, no notification
+    is actually delivered for `notify_downstream_recipients`, and no analysis
+    is re-run for `re_run_analysis`. This task tracks, binds, propagates, and
+    records resolve/defer status for the DUTY only — executing any duty's
+    real-world action is out of this task's scope and a future task's concern
+  - the `mrr.domain.repositories.EDGE_VOCABULARY` constant, the edges-table
+    CHECK constraint, and any Alembic migration — confirmed unnecessary, since
+    `subject_to_obligation` is already a declared vocabulary member (added by
+    an earlier task, unused in code until now, exactly as `adapted_from`/
+    `transferred_from` were before E6-T01), so this task's edges are new rows
+    under an existing constraint, not a schema change
+  - HTTP/FastAPI endpoints (no control-plane REST wiring for
+    `/v1/obligations*`; every prior E1-E6 task packet drew this same line)
+  - both import-linter contracts in pyproject.toml (must remain unmodified
+    and KEPT; the generic "any new `mrr.domain`/`mrr.services.*` leaf" wording
+    already covers this task's two new modules, exactly as E3-T06's own
+    module needed no new contract)
+  - a TransferContract's `disclosure_rules` enforcement and
+    `correction_subscription` wiring — both remain E6-T01's own recorded
+    fields, consumed by
+    future tasks (data-classification/disclosure work, and E6-T03's
+    correction notification); this task propagates `caveats` and
+    `obligations` only (see specification_gaps item 5 for why `caveats` is
+    folded into the Obligation mechanism rather than a separate one)
+allowed_paths:
+  - schemas/obligation.schema.json
+  - examples/obligation.example.json
+  - packages/contracts/mrr/contracts/obligation.py
+  - packages/contracts/mrr/contracts/__init__.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/domain/mrr/domain/obligation_propagation.py
+  - services/control_plane/mrr/services/obligation/service.py
+  - services/control_plane/mrr/services/obligation/__init__.py
+  - scripts/check_contracts.py
+  - tests/unit/domain/**
+  - tests/unit/services/obligation/**
+  - tests/property/**
+  - tests/contract/**
+  - tests/integration/services/obligation/**
+derived_decisions: >
+  (a) Obligation is UNSIGNED and revision-based, like Claim/CorrectionEvent,
+  not event-only like TaskBundle/TransferContract — docs/spec/02_DOMAIN_MODEL.md
+  section 2.15 lists no `signature`/`signatures` field (unlike section 2.14's
+  TransferContract), and E6-T01's own derived_decisions (a) already draws
+  exactly this signed-vs-unsigned line ("TransferContract is cross-practice
+  ... and lifecycle-bearing ... UNLIKE ResearchScore/Claim/CorrectionEvent
+  (unsigned)"). `resolve`/`defer` therefore each mint a NEW REVISION (content
+  hash recomputed over the new body, exactly like
+  `CorrectionImpactService._write_impact_objects`), not an ADR-0007-style
+  event-only transition. An `OBLIGATION_LIFECYCLE` StateMachine is added to
+  `packages/domain/mrr/domain/lifecycles.py` alongside the existing four,
+  with transitions `open -> {resolved, deferred}`, lowercase (matching TransferContract's own
+  casing choice in E6-T01, the newest sibling entity, in the absence of any
+  section-6 diagram or schema precedent for Obligation — see
+  specification_gaps item 1).
+  (b) Reused traversal, not a second one. `packages/domain/mrr/domain/
+  obligation_propagation.py` is a thin, explicitly-named wrapper —
+  `compute_obligation_binding(seed_ids, edges)` — that calls
+  `mrr.domain.correction_impact.compute_impact` (over the same
+  `IMPACT_EDGE_TYPES` — depends_on, derived_from, adapted_from, uses_source,
+  transferred_from, projected_into) directly, rather than defining a second,
+  divergent "what does X's downstream dependent inherit" rule. This is a
+  DERIVED choice, not a literal requirement — no FR text defines a distinct
+  edge set for obligation propagation — but reusing the codebase's only
+  existing "builds-on" traversal is the minimal-invention option, and it is
+  exactly the drift `CorrectionImpactService`'s own module docstring warns
+  against ("to keep this from silently drifting into a SECOND, divergent
+  notion of impact"). Flagged for reviewer confirmation
+  (specification_gaps item 4). Because `adapted_from` is already inside
+  `IMPACT_EDGE_TYPES`, seeding only from a TransferContract's
+  `transferred_objects` ids and then calling `propagate()` is sufficient to
+  also discover an adapted local object automatically (via the `adapted_from`
+  edge E6-T01's own `respond()` already writes) — no separate
+  adaptation-lookup path is needed in this task's service.
+  (c) Caveat and obligation propagation is ONE mechanism, not two. Neither
+  the domain model (section 2) nor the edge vocabulary (section 3) names a
+  distinct "Caveat" entity or a "subject_to_caveat" edge type; section 2.15's
+  own Obligation Kinds list already includes `retain_caveat`. This task
+  therefore reads a TransferContract's non-empty `caveats` field as
+  materializing an ADDITIONAL Obligation of kind `retain_caveat` (carrying
+  the caveat text(s) as its payload), propagated by the identical
+  subject_to_obligation/`compute_obligation_binding` machinery as every other
+  obligation kind. An empty `caveats` field materializes no `retain_caveat`
+  Obligation. This is why the epic names both nouns in one task rather than
+  splitting them, and is this task's own reading, flagged for reviewer
+  confirmation (specification_gaps item 5).
+  (d) Materialization is gated on the TransferContract's ACTUAL recorded
+  decision, read from its event log, not its stored body. Per E6-T01's own
+  derived_decisions (a), a stored TransferContract's `status` field is a
+  permanent creation-time snapshot ("created"); the live decision is
+  event-derived from the latest `transfer.responded` event's `decision`
+  payload value (E6-T01's own acceptance_tests literally name this key —
+  "rejected / deferred / unresolved paths each record `transfer.responded`
+  with the matching `decision` payload value and no edge").
+  `materialize_from_transfer` reads that event, and proceeds only
+  for `accepted`/`adapted`; `rejected`/`deferred`/`unresolved` raise a
+  distinct typed error (`TransferNotAcceptedError`) and persist nothing —
+  nothing was actually received by the practice, so there is nothing yet to
+  bind an obligation to.
+  (e) One persisted Obligation per stub. Section 2.15's own phrasing ("An
+  Obligation represents a follow-up duty... Kinds include ...") is read as
+  one Obligation object per one duty of one kind. A TransferContract's
+  `obligations` stub list (E6-T01 — "kind + optional deadline" only, no
+  per-stub object scope) therefore materializes N independent Obligation
+  objects (plus, per (c), one more if `caveats` is non-empty), each bound
+  identically to that SAME transfer's entire `transferred_objects` set —
+  finer per-obligation object scoping is not possible without a
+  TransferContract schema change, out of this task's allowed_paths (see
+  specification_gaps item 6).
+  (f) Field defaults for what section 2.15 leaves structurally unspecified.
+  `responsible_practice_id` defaults to the TransferContract's own
+  `receiver_practice_id` (the practice that took on the duty by
+  accepting/adapting) — no responsible-ROLE data exists on the stub, so
+  `responsible_role` stays unset. `trigger` defaults to a fixed descriptive
+  string naming the transfer decision/event that created the obligation
+  (e.g. the source `transfer.responded` event's id). `resolution_evidence`
+  is null until `resolve()`. `escalation_policy` stays null/optional — no
+  escalation mechanism is implemented (see forbidden_changes and
+  specification_gaps item 3).
+  (g) record()/propagate() split, mirroring `CorrectionImpactService`
+  exactly. `materialize_from_transfer` is the one-time creation step
+  (revision 1 per Obligation, seeded `bound_objects` = the transfer's
+  `transferred_objects` ids, `propagated_objects` empty, plus one
+  `subject_to_obligation` edge per bound object written atomically with an
+  `obligation.created` event via a local `bind_edge_unit_of_work` — same
+  atomic-edge-plus-event pattern as
+  `mrr.services.claim.service.bind_edge_unit_of_work`). `propagate` is the
+  separate, REPEATABLE, idempotent step — recompute
+  `compute_obligation_binding(bound_objects, <real edge graph>)`, and for any
+  id not already covered by an existing `subject_to_obligation` edge to this
+  Obligation, write one new edge; write a new Obligation revision updating
+  `propagated_objects` (sorted, for a deterministic content hash) only if the
+  computed set actually changed since the last call, plus an
+  `obligation.propagated` event only then. A caller wanting one-shot
+  behavior calls `materialize_from_transfer` then `propagate` back to back,
+  exactly as `tests/integration/services/correction/test_service.py` already
+  does for its own record()/propagate_impact() pair.
+  (h) Additional, non-literally-required event types, reading section 5.2's
+  "Required events" as a floor, not an exhaustive ceiling — the same reading
+  E6-T01 already makes for `transfer.created`. `event_type` has no database
+  CHECK constraint anywhere (confirmed — only `edge_type` and outbox `status`
+  have one; `domain_events.event_type` is a plain non-empty `sa.Text()`),
+  so adding `obligation.propagated` (mirrors `correction.impact_computed`)
+  and `obligation.deferred` (there is a `/defer` API endpoint in section 3.8
+  but no corresponding required event name in section 5.2, only
+  `obligation.created`/`obligation.resolved`) is additive and non-breaking.
+  Flagged in specification_gaps item 2 in case a reviewer prefers strict
+  literal conformance to the enumerated list instead.
+specification_gaps:
+  - No section-6 state-machine diagram exists for Obligation (like
+    TransferContract in E6-T01). The `open -> {resolved, deferred}`
+    transition set and lowercase casing are this task's own default,
+    grounded only in section 3.8's two response verbs and section 5.2's
+    `obligation.resolved` event name — not a verified diagram. Whether a
+    `deferred` obligation may later be resolved (a second `respond`-style
+    call) is undrawn and out of scope, mirroring E6-T01's own identical open
+    question for TransferContract's own `respond`.
+  - Section 5.2 lists only `obligation.created`/`obligation.resolved` as
+    required events; there is no `obligation.deferred` (despite the
+    `/defer` endpoint) or any escalation/rejection event. This task defaults
+    to also emitting `obligation.deferred` and `obligation.propagated` (see
+    derived_decisions (h)) — flagged in case a reviewer prefers strict
+    literal conformance to the enumerated list.
+  - Section 2.15's Obligation fields (`responsible practice or role`,
+    `trigger`, `due condition or deadline`, `status`, `resolution evidence`,
+    `escalation policy`) are unstructured prose with no schema-level shape —
+    the same "most implementer latitude" axis E6-T01 flagged for
+    TransferContract's `caveats`/`obligations`. This task's concrete
+    defaults are listed in derived_decisions (f); `escalation_policy` is
+    left present-but-unused (structural only, no escalation mechanism
+    implemented — consistent with forbidden_changes).
+  - Whether obligation propagation should reuse
+    `mrr.domain.correction_impact.IMPACT_EDGE_TYPES`/`compute_impact`
+    verbatim (this task's default, derived_decisions (b)) or a distinct
+    edge-type set/direction is not settled by any FR text — no requirement
+    names which edges carry an obligation forward the way MRR-FR-091 names
+    them for correction impact. Flagged for reviewer confirmation before a
+    real cross-obligation/cross-correction edge-set divergence is ever
+    needed.
+  - Whether "caveat propagation" (derived_decisions (c) — materializing a
+    `retain_caveat` Obligation from a TransferContract's `caveats` field) is
+    the intended reading, versus some other mechanism the domain model does
+    not currently name, is not settled by a single FR. No "Caveat" entity or
+    "subject_to_caveat" edge exists anywhere in the verified vocabulary,
+    which is the strongest textual support for this task's reading, but it
+    is an interpretive step, not a literal instruction.
+  - E6-T01's obligation-stub shape (kind + optional deadline, no per-stub
+    object scope) forces every obligation on one TransferContract to bind
+    identically to that transfer's entire `transferred_objects` set
+    (derived_decisions (e)). Finer per-obligation scoping would require an
+    E6-T01 schema amendment, out of this task's allowed_paths.
+  - This task's own dependency on E6-T01 — the Obligation schema, contract,
+    example, `OBLIGATION_LIFECYCLE`, and the pure
+    `obligation_propagation.py` wrapper reference no TransferContract field
+    directly (no cross-schema `$ref`) and could in principle be implemented
+    before E6-T01 lands in code. `ObligationService.materialize_from_transfer`
+    and its unit/integration tests genuinely need TransferContract's
+    contract module and a real accepted/adapted instance to exist, however —
+    see stop_conditions for how to handle E6-T01 not yet being implemented
+    when this task starts.
+invariants:
+  - a persisted Obligation is materialized from a TransferContract's
+    structural stub ONLY when that transfer's latest recorded decision
+    (its `transfer.responded` event's `decision` payload) is `accepted` or
+    `adapted` (MRR-FR-083); `rejected`/`deferred`/`unresolved` transfers
+    materialize nothing, fail closed with a distinct typed error
+  - every object an Obligation currently binds — whether the seed
+    `transferred_objects` ids or a downstream dependent discovered by
+    `compute_obligation_binding` — carries its own `subject_to_obligation`
+    edge to that Obligation's id (MRR-FR-083, "obligations ... MUST travel
+    with the transfer"); an obligation is never silently dropped from an
+    object it has already bound
+  - propagation is deterministic, cycle-safe, and terminates on any graph
+    (including cycles and self-references), inherited directly from
+    `mrr.domain.correction_impact.compute_impact`'s own proven guarantees —
+    not re-proven or re-implemented here
+  - propagation is idempotent — calling `propagate` twice with no new edges
+    added to the graph in between writes no new Obligation revision and adds
+    no duplicate `subject_to_obligation` edge; a pre-existing duplicate
+    dependency/derivation edge in the input graph does not cause a duplicate
+    binding edge either
+  - propagation is a correct, callable-anytime recomputation, not a one-shot
+    event — calling `propagate` again after a NEW derivative edge is added
+    elsewhere in the graph discovers and binds the new object, without
+    disturbing any previously-recorded binding edge
+  - the `resolve`/`defer` actions each require the Obligation to currently
+    be `open`; an illegal call (already `resolved`/`deferred`) raises
+    `InvalidTransitionError` and persists/appends nothing (no partial state)
+  - the `resolve`/`defer` actions change only the Obligation's own `status` (and, for
+    `resolve`, `resolution_evidence`) on a NEW revision; no
+    `subject_to_obligation` edge already recorded for that Obligation is
+    ever rewritten or deleted — the binding history remains addressable
+    regardless of the obligation's current status (MRR-NFR-002,
+    append-only)
+  - every materialize/propagate/resolve/defer call records a domain event
+    with full MRR-NFR-001 provenance (actor, occurred_at, policy_version,
+    causation_id, correlation_id, object_id, object_revision), written
+    atomically with its object revision or edge insert
+  - a non-empty TransferContract `caveats` field materializes exactly one
+    additional `retain_caveat`-kind Obligation (derived_decisions (c)); an
+    empty `caveats` field materializes none
+  - both import-linter contracts stay KEPT; `packages/domain` and
+    `packages/contracts` import no provider SDK, open no network, and
+    persist no state outside what ObjectRepository/EdgeRepository already
+    provide
+  - no Alembic migration is added; `objects.kind="Obligation"` and edges of
+    type `subject_to_obligation` are accepted by the existing schema exactly
+    as-is
+acceptance_tests:
+  - happy path, single stub — an accepted TransferContract with one
+    obligation stub (`kind="retain_caveat"` or any other 2.15 kind, optional
+    deadline) materializes exactly one Obligation (revision 1, `status`
+    "open", `bound_objects` = the transfer's `transferred_objects` ids,
+    `responsible_practice_id` = the transfer's `receiver_practice_id`) plus
+    one `subject_to_obligation` edge per bound object plus an
+    `obligation.created` event
+  - multiple stubs — a TransferContract with N obligation stubs materializes
+    N distinct Obligation objects, each independently bound to the same
+    `transferred_objects` set
+  - caveats materialize a `retain_caveat` Obligation — a TransferContract with
+    a non-empty `caveats` field (and possibly zero declared obligation
+    stubs) still materializes one `retain_caveat` Obligation; an empty
+    `caveats` field materializes none
+  - no materialization on non-accepting decisions — `rejected`/`deferred`/
+    `unresolved` TransferContracts raise `TransferNotAcceptedError` when
+    `materialize_from_transfer` is called; nothing is persisted
+  - adaptation is discovered by propagation, not by materialization — for an
+    "adapted" TransferContract, `bound_objects` at materialization time
+    contains only the original transferred object id(s); after `propagate`,
+    the ADAPTED local object id (reachable via the `adapted_from` edge
+    E6-T01's `respond()` already wrote) appears in `propagated_objects` with
+    its own `subject_to_obligation` edge
+  - line graph, branching graph, cyclic graph, disconnected graph — a
+    derivation chain rooted at a bound object propagates a
+    `subject_to_obligation` edge to every downstream dependent exactly once,
+    a cycle terminates, and a disconnected component is NOT bound (mirrors
+    E3-T06's own traversal fixtures, exercised here through
+    `ObligationService.propagate`)
+  - duplicate edges — pre-existing duplicate dependency/derivation edges in
+    the graph do not cause a duplicate `subject_to_obligation` edge to be
+    written
+  - idempotency — calling `propagate` twice in a row with no graph changes in
+    between writes no new Obligation revision and adds no duplicate binding
+    edge
+  - re-propagation after new derivative work — after one `propagate` call, a
+    new `derived_from` edge is added elsewhere pointing at an already-bound
+    object; a second `propagate` call discovers and binds the new
+    derivative, without duplicating any previously-recorded edge
+  - resolve/defer happy paths — `resolve` on an `open` Obligation transitions
+    to `resolved` with `resolution_evidence` set and emits
+    `obligation.resolved`; `defer` transitions to `deferred` and emits
+    `obligation.deferred`; each writes a new revision
+  - illegal-transition matrix — `resolve`/`defer` on an already-`resolved`/
+    `deferred` Obligation each fail closed with `InvalidTransitionError`, no
+    partial state
+  - never-silently-dropped — after `resolve` or `defer`, every
+    `subject_to_obligation` edge previously recorded for that Obligation
+    remains queryable via `EdgeRepository`, and the Obligation's prior
+    `open` revision remains addressable (append-only)
+  - property test — for arbitrary graphs, `compute_obligation_binding`'s
+    result is order-independent and idempotent with respect to both seed ids
+    and edge iteration order (delegates to, and therefore inherits,
+    `compute_impact`'s own already-property-tested guarantee — exercised
+    again at this module's own entry point)
+  - contract tier — the new `obligation.schema.json` is valid Draft 2020-12;
+    the new example validates against both the JSON Schema and the Pydantic
+    model and round-trips, via `scripts/check_contracts.py`'s
+    `ENTITY_MODELS`
+  - integration test (real PostgreSQL) — an accepted/adapted TransferContract
+    (built directly against the generic objects/edges tables, standing in
+    for E6-T01's own service if not yet merged — see stop_conditions) drives
+    `materialize_from_transfer` -> `propagate` -> `resolve`; confirms
+    `subject_to_obligation` edges and Obligation revisions persist
+    atomically with their events and that no migration was needed
+  - all existing suites stay green; both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+required_output:
+  - implementation summary
+  - the Obligation schema/contract/example pair, the `OBLIGATION_LIFECYCLE`
+    state machine, the `compute_obligation_binding` wrapper over
+    `compute_impact`, and `ObligationService`
+    (`materialize_from_transfer`/`propagate`/`resolve`/`defer`) with its
+    `subject_to_obligation` edge recording
+  - the caveat-to-`retain_caveat`-Obligation reading (derived_decisions (c))
+    and the transfer-decision gating logic (derived_decisions (d)),
+    documented
+  - changed files, additive domain errors
+    (`ObligationNotFoundError`, `TransferNotAcceptedError`,
+    `ObligationSourceTransferNotFoundError`), and explicit confirmation that
+    `packages/persistence/**` and `migrations/` were NOT touched
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract, test-integration) proving green
+  - security/privacy implications (no cross-practice signature or transport
+    added by this task; propagation is local bookkeeping only; no obligation
+    kind's real-world action is actually executed; append-only binding
+    history)
+  - open specification questions exactly as listed under
+    specification_gaps, plus what is deliberately deferred (real enforcement
+    of any obligation kind's action, cross-practice correction notification
+    E6-T03, local response-to-correction E6-T04, public projection E6-T05,
+    offline delivery tracking E6-T06)
+stop_conditions:
+  - E6-T01's TransferContract contract/schema/service does not yet exist in
+    the codebase when implementation begins — the Obligation
+    schema/contract/example/`OBLIGATION_LIFECYCLE`/
+    `obligation_propagation.py` pieces MAY proceed independently (they carry
+    no TransferContract `$ref` or import), but
+    `ObligationService.materialize_from_transfer` and its unit/integration
+    tests MUST NOT invent a placeholder TransferContract shape — stop that
+    portion and report the blocking dependency instead
+  - honoring full real-world enforcement of any Obligation kind (actual data
+    deletion, actual human-approval gating, actual downstream notification
+    delivery, actual re-run of an analysis) is found necessary to satisfy an
+    acceptance criterion — that is out of scope; keep to
+    tracking/binding/propagation/resolve/defer only and stop
+  - a reviewer determines that reusing
+    `compute_impact`/`IMPACT_EDGE_TYPES` verbatim (derived_decisions (b)) is
+    the wrong semantic mapping for obligation propagation — stop rather than
+    inventing a second, divergent edge-type/direction mapping; request a
+    specification decision
+  - a reviewer determines the caveat-as-`retain_caveat`-Obligation reading
+    (derived_decisions (c)) is not the intended mechanism for "caveat
+    propagation" — stop rather than inventing a separate, unnamed Caveat
+    mechanism; request a specification decision
+  - implementation requires modifying
+    `packages/domain/mrr/domain/correction_impact.py`, `EDGE_VOCABULARY`, or
+    any `packages/persistence/**`/migration — confirmed unnecessary at
+    planning time (`subject_to_obligation` already declared, generic tables
+    sufficient); report if that assumption turns out false

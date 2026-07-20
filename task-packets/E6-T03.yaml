@@ -1,0 +1,560 @@
+task_id: E6-T03
+title: Cross-practice correction notification — a signed, replay-protected CorrectionNotification payload (reusing the E5-T03 envelope transport unchanged), the sending practice's NOTIFYING/AWAITING_RESPONSES/DELIVERY_PENDING lifecycle drive, and the receiving practice's LOCAL-ONLY impact re-computation on receipt
+status: draft
+derivation: >
+  Derived by a planning session (not yet reviewed) per
+  docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E6 (E6-T03
+  "cross-practice correction notification" — third of six E6 tasks: T01
+  TransferContract lifecycle, T02 caveat/obligation propagation, T04 local
+  accept/adapt/reject/defer response TO A CORRECTION, T05 public
+  unresolved-correction projection, T06 offline recipient delivery
+  tracking), docs/spec/01_SYSTEM_SPEC.md section 4.10 (MRR-FR-094: "Every
+  affected practice MUST receive a signed notification or a durable
+  pending-delivery record") and section 4.9 (MRR-FR-084: "A receiving
+  practice MAY reject a correction, but MUST record that it was notified
+  and why it rejected or deferred it"), docs/spec/02_DOMAIN_MODEL.md
+  section 2.16 (CorrectionEvent), and MRR-NFR-007. At derivation time,
+  task-packets/E6-T01.yaml exists (status: draft — TransferContract
+  lifecycle; NOT yet implemented in code: no schemas/transfer-contract.
+  schema.json, no packages/contracts/mrr/contracts/transfer_contract.py
+  exist anywhere in the repository, confirmed by direct search) and
+  task-packets/E6-T02.yaml does not exist at all yet (caveat/obligation
+  propagation — no draft, no code, no persisted Obligation aggregate or
+  `correction_subscription` machinery anywhere). This task packet therefore
+  treats "which practices/nodes to notify for a given correction" (the
+  MRR-FR-083 `correction_subscription` question) as an explicit,
+  caller-supplied input rather than something this task resolves — see
+  derived_decisions and specification_gaps. It depends on E6-T01/E6-T02
+  ONLY for that future wiring, not for anything built in this packet's own
+  scope (confirmed below: the receiving side needs no TransferContract code
+  at all, only the `transferred_from`/`adapted_from` edge types, which
+  already exist in `mrr.domain.repositories.EDGE_VOCABULARY` and are
+  already consulted by `mrr.domain.correction_impact.IMPACT_EDGE_TYPES`,
+  both reused unchanged).
+objective: >
+  Provide the object layer that carries a correction across the trust
+  boundary and triggers a receiving practice's own local review — building
+  on, but not re-implementing, three already-shipped pieces: (1)
+  `mrr.contracts.correction_event.CorrectionEvent` (E3-T06) — confirmed to
+  have NO `signature` field of its own (only the eight BaseObject fields
+  plus its own body; schemas/correction-event.schema.json's `required` list
+  has no `signature` entry, unlike schemas/task-bundle.schema.json's, which
+  does) — so a CorrectionEvent cannot itself travel cross-practice as a
+  self-authenticating signed object the way TaskBundle/EvidenceCrate do;
+  (2) `mrr.domain.correction_impact.compute_impact`/`IMPACT_EDGE_TYPES`
+  (E3-T06) — the pure, cycle-safe traversal, reused verbatim, never
+  modified; (3) the E5-T03/E5-T06 online+offline transport
+  (`mrr.contracts.node_message_envelope.NodeMessageEnvelope`,
+  `mrr.domain.envelope_validation.validate_inbound_envelope`,
+  `mrr.domain.envelope_transport.EnvelopeTransport`) — a payload-agnostic,
+  already-signed-and-validated carrier, reused verbatim, never modified.
+
+  This task adds exactly the missing middle layer: (a) a new
+  `CorrectionNotification` contract — a standalone, non-BaseObject signed
+  value object (deliberately mirroring `NodeMessageEnvelope`'s own
+  "one delivery attempt's worth of information, not a first-class
+  revisioned domain object" shape, per that module's own docstring,
+  rather than `TaskBundle`'s full-BaseObject shape) carrying a reference to
+  one already-recorded `CorrectionEvent` revision plus the specific
+  `notified_object_ids` relevant to ONE recipient practice, self-contained
+  (correction_type/severity/reason/requested_action/replacement_object_id
+  copied in, so the recipient never has to cross-practice-fetch the
+  originating CorrectionEvent to act on the notification), its own
+  `content_hash` (needed ONLY so the existing, UNCHANGED
+  `validate_inbound_envelope`'s payload-hash consistency check — comparing
+  `envelope.payload.get("content_hash")` to `envelope.payload_content_hash`
+  — continues to hold for this new payload kind; see derived_decisions),
+  its own `nonce`/`sent_at`/`expires_at` (a second, independent
+  replay/validity layer at the PAYLOAD level, distinct from the wrapping
+  envelope's own — mirroring `TaskBundle`'s and `OfflineBundle`'s identical
+  "own nonce/expiry, separate identifier namespace from the envelope"
+  precedent), and a `signature` by the NOTIFYING practice (verified by a
+  new, fifth trust resolver, `resolve_trusted_correction_notification_key`,
+  a fourth-condition, fail-closed clone of
+  `mrr.domain.task_trust.resolve_trusted_task_key`). (b) Sending-side
+  wiring, added to the EXISTING `CorrectionImpactService`
+  (services/control_plane/mrr/services/correction/service.py, additive
+  methods only): `notify_affected_practices` mints+signs one
+  `CorrectionNotification` per CALLER-supplied recipient, wraps each in a
+  `NodeMessageEnvelope` (payload_kind="CorrectionNotification"), attempts
+  delivery via the existing abstract `EnvelopeTransport` port, and drives
+  the ALREADY-DECLARED (E1-T04, unmodified)
+  `mrr.domain.lifecycles.CORRECTION_LIFECYCLE` forward along its
+  already-drawn edges: OPEN -> IMPACT_ANALYSIS -> NOTIFYING ->
+  AWAITING_RESPONSES, continuing on to the also-already-drawn
+  AWAITING_RESPONSES -> DELIVERY_PENDING edge within the SAME call when any
+  recipient's synchronous delivery attempt reports "failed" — recording a
+  `correction.notification_sent` domain event (section 5.2's own
+  enumerated name) per recipient with the delivery outcome in its payload,
+  which is the durable record MRR-FR-094 requires for a recipient who could
+  not be reached; no new lifecycle edge is declared, and no new
+  CorrectionEvent schema field is added (see derived_decisions on why the
+  existing status + domain events already satisfy "signed notification or
+  a durable pending-delivery record" without touching the schema). (c)
+  Receiving-side wiring, added to the same service:
+  `receive_correction_notification` validates the inbound envelope
+  (`validate_inbound_envelope`, UNCHANGED), verifies the notification's OWN
+  signature (`resolve_trusted_correction_notification_key`, new), checks a
+  caller-supplied replay predicate over the notification's OWN
+  `notification_id` (a separate namespace from the envelope's own
+  `message_id`), then treats `notified_object_ids` exactly as
+  `CorrectionImpactService.propagate_impact` already treats a LOCAL
+  correction's own `affected_objects`: gathers this practice's OWN local
+  edges via the existing `EdgeRepository`, runs the UNCHANGED
+  `compute_impact` over them, and calls the existing
+  `ClaimService.require_review` on every locally-impacted claim not already
+  at least that strict — never creating, storing, or mutating any copy of
+  the remote CorrectionEvent, and never deciding accept/adapt/reject/defer
+  (E6-T04). "Local autonomy" is the operative constraint throughout: a
+  received notification only ever triggers a LOCAL, independently
+  re-derived impact computation over THIS practice's own graph — it is
+  never itself treated as authoritative fact to be copied in.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/adr/ADR-0009-CANONICAL-PUBLIC-KEY-ENCODING.md
+  - docs/spec/01_SYSTEM_SPEC.md#49-stage-9--transfer-and-obligations
+  - docs/spec/01_SYSTEM_SPEC.md#410-stage-10--correction-propagation
+  - docs/spec/01_SYSTEM_SPEC.md#64-correction
+  - docs/spec/01_SYSTEM_SPEC.md#78-correction-impact-service
+  - docs/spec/02_DOMAIN_MODEL.md#216-correctionevent
+  - docs/spec/02_DOMAIN_MODEL.md#214-transfercontract
+  - docs/spec/02_DOMAIN_MODEL.md#215-obligation
+  - docs/spec/03_API_AND_EVENTS.md#39-corrections
+  - docs/spec/03_API_AND_EVENTS.md#4-node-protocol
+  - docs/spec/03_API_AND_EVENTS.md#5-domain-event-architecture
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e6--transfers-obligations-and-corrections-across-practices
+  - schemas/common.schema.json
+  - schemas/correction-event.schema.json
+  - schemas/node-message-envelope.schema.json
+  - schemas/task-bundle.schema.json
+  - packages/contracts/mrr/contracts/common.py
+  - packages/contracts/mrr/contracts/correction_event.py
+  - packages/contracts/mrr/contracts/node_message_envelope.py
+  - packages/domain/mrr/domain/correction_impact.py
+  - packages/domain/mrr/domain/envelope_validation.py
+  - packages/domain/mrr/domain/envelope_transport.py
+  - packages/domain/mrr/domain/task_trust.py
+  - packages/domain/mrr/domain/crate_trust.py
+  - packages/domain/mrr/domain/manifest_trust.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - packages/domain/mrr/domain/key_management.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/repositories.py
+  - services/control_plane/mrr/services/correction/service.py
+  - services/control_plane/mrr/services/claim/service.py
+  - scripts/check_contracts.py
+requirements:
+  - MRR-FR-094
+  - MRR-FR-084
+  - MRR-NFR-001
+  - MRR-NFR-002
+  - MRR-NFR-006
+  - MRR-NFR-007
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - schemas/correction-notification.schema.json
+  - examples/correction-notification.example.json
+  - packages/contracts/mrr/contracts/correction_notification.py
+  - packages/contracts/mrr/contracts/__init__.py
+  - packages/domain/mrr/domain/correction_notification.py
+  - packages/domain/mrr/domain/exceptions.py
+  - services/control_plane/mrr/services/correction/service.py
+  - scripts/check_contracts.py
+  - tests/unit/domain/**
+  - tests/unit/services/correction/**
+  - tests/property/**
+  - tests/contract/**
+  - tests/integration/services/correction/**
+forbidden_changes:
+  - schemas/correction-event.schema.json and
+    packages/contracts/mrr/contracts/correction_event.py — no new field is
+    added (not `delivery_records`, not `recipient_responses`); MRR-FR-094's
+    "signed notification or a durable pending-delivery record" is satisfied
+    entirely by (a) the CorrectionEvent's OWN already-declared
+    CORRECTION_LIFECYCLE status (NOTIFYING/AWAITING_RESPONSES/
+    DELIVERY_PENDING, all already in _CORRECTION_STATES) and (b) the
+    append-only `correction.notification_sent` domain event per recipient —
+    both already-existing mechanisms, per AGENTS.md's own source-of-truth
+    discipline ("the append-only domain event log is authoritative for
+    audit history"); see specification_gaps for the domain-model-vs-schema
+    gap this deliberately leaves open rather than closing unilaterally
+  - packages/domain/mrr/domain/lifecycles.py and CORRECTION_LIFECYCLE's
+    transitions — reused exactly as declared; no new edge is added (in
+    particular, NO direct NOTIFYING -> DELIVERY_PENDING edge is invented;
+    only the already-drawn NOTIFYING -> AWAITING_RESPONSES and
+    AWAITING_RESPONSES -> DELIVERY_PENDING edges may be used, chained in
+    one call — see derived_decisions); DELIVERY_PENDING's already-documented
+    "no drawn outgoing edge at all" open question is left exactly as-is,
+    not resolved
+  - the EXISTING CorrectionImpactService methods from E3-T06 (`record`,
+    `propagate_impact`, `_write_impact_objects`, `_gather_impact_edges`,
+    `_require_review_if_needed`, `_get_latest_correction_or_raise`,
+    `_last_event_id_for`) and `mrr.domain.correction_impact.compute_impact`/
+    `IMPACT_EDGE_TYPES`/`FR091_IMPACT_CATEGORY_EDGE_TYPES` — reused
+    verbatim, unmodified; this task only ADDS new methods to the same
+    service class
+  - mrr.contracts.node_message_envelope.NodeMessageEnvelope,
+    mrr.domain.envelope_validation.validate_inbound_envelope,
+    mrr.domain.envelope_transport.EnvelopeTransport (E5-T03) and
+    mrr.domain.offline_bundle (E5-T06) — reused unchanged; no new envelope
+    field, no real network/mTLS transport, no offline-bundle construction
+    (E6-T06's scope — see below)
+  - resolving WHICH practices/nodes to notify for a given correction from
+    TransferContract.correction_subscription (MRR-FR-083) or any persisted
+    Obligation ("notify downstream recipients") — E6-T01/E6-T02, neither
+    implemented in code yet; this task's outbound method takes the
+    recipient list as a plain caller-supplied argument (mirroring
+    EnvelopeTransport's own caller-supplied recipient_endpoint) and builds
+    no resolver, registry, or query against transfer/obligation data
+  - the recipient's own accept/adapt/reject/defer DECISION and the "why it
+    rejected or deferred it" reason recording (MRR-FR-084's second half,
+    and MRR-FR-081-style response semantics) — E6-T04; this task's
+    receiving side stops at "local impact computed, local claims marked
+    review_required", recording only that the notification was received,
+    never a disposition
+  - public unresolved-critical-correction projection (MRR-FR-095) — E6-T05
+  - durable offline delivery tracking, retry, or acknowledgement over a
+    DELIVERY_PENDING recipient (E6-T06); this task performs one
+    synchronous online delivery ATTEMPT per recipient via the abstract
+    EnvelopeTransport port and records the outcome — it does not build or
+    call `mrr.domain.offline_bundle.build_outbox_bundle`, does not enqueue
+    anything, and does not retry
+  - a durable processed-message-id/processed-notification-id STORE — both
+    `already_processed`-shaped predicates this task's functions take are,
+    like E5-T03's own, caller-supplied; no persistence is built here
+    (E5-T07's precedent — the durable store itself, if one is ever needed
+    beyond E5-T07's existing envelope-level one, is out of scope)
+  - HTTP/FastAPI endpoints (`/v1/corrections/notify`, `/v1/corrections/
+    inbox`) — no control-plane REST wiring, matching every prior E1-E6 task
+  - the four existing near-identical trust resolvers (manifest_trust,
+    task_trust, crate_trust, and E6-T01's own transfer_trust if/when it
+    lands) — not refactored into one shared function even though the new
+    resolve_trusted_correction_notification_key will look near-identical;
+    a future DRY of the now-five resolvers is a separate, reviewed cleanup
+    (E6-T01's own identical precedent)
+  - both import-linter contracts in pyproject.toml (must remain KEPT —
+    "Core packages stay framework- and provider-free (MRR-NFR-010)" and
+    "Nothing inward imports the services layer")
+derived_decisions: >
+  (a) CorrectionNotification is a standalone signed value object, NOT a
+  BaseObject. Unlike TaskBundle (a full first-class, revisioned,
+  cross-practice object per docs/spec/02_DOMAIN_MODEL.md section 1),
+  a correction notification is "one delivery attempt's worth of
+  information" — structurally the same category NodeMessageEnvelope's own
+  docstring already draws for itself ("it carries no practice_id/revision/
+  created_at/created_by/content_hash of its own ... it is a transport
+  message describing one delivery attempt, not a first-class, revisioned
+  MRR domain object"). This task follows that precedent rather than
+  TaskBundle's: no `revision`/`supersedes`/`labels`, no `api_version`/`kind`
+  BaseObject scaffolding. It still needs its OWN `content_hash` field
+  (unlike NodeMessageEnvelope, which never carries one) for one specific,
+  narrow reason: the EXISTING, unmodified
+  `validate_inbound_envelope`'s condition 3 does
+  `envelope.payload.get("content_hash") == envelope.payload_content_hash`
+  — a literal dict-key lookup against whatever payload dict is nested
+  inside, with no special-casing per payload_kind. For this new payload
+  kind to pass that unmodified check, it MUST literally carry a
+  `content_hash` key. This is not a stylistic echo of BaseObject; it is a
+  hard interoperability requirement of reusing E5-T03's validator verbatim
+  (confirmed by inspecting examples/node-message-envelope.example.json's
+  own TaskBundle-shaped payload, whose nested payload dict's only
+  reason for carrying `content_hash` is exactly this check).
+  (b) CorrectionNotification additionally carries its own
+  `notification_id`/`nonce`/`sent_at`/`expires_at`, independent of the
+  wrapping envelope's `message_id`/`sent_at`/`expires_at`. This mirrors
+  the already-established "a bundle id and a message id are different
+  identifier spaces" precedent from `mrr.domain.offline_bundle`'s own
+  module docstring (there, for OfflineBundle vs. the envelopes it carries)
+  applied one layer further in: a CorrectionNotification might, in a later
+  task (E6-T06), be re-carried inside a freshly-built OfflineBundle/
+  NodeMessageEnvelope pair after an earlier online attempt failed, and its
+  OWN replay/validity state must not depend on which specific envelope
+  most recently wrapped it.
+  (c) The sending side reuses the ALREADY-DECLARED CORRECTION_LIFECYCLE
+  (packages/domain/mrr/domain/lifecycles.py, E1-T04, unmodified) exactly as
+  drawn: `_CORRECTION_TRANSITIONS` contains
+  `("OPEN","IMPACT_ANALYSIS")`, `("IMPACT_ANALYSIS","NOTIFYING")`,
+  `("NOTIFYING","AWAITING_RESPONSES")`, and
+  `("AWAITING_RESPONSES","DELIVERY_PENDING")` (verified directly in that
+  module) — there is NO drawn `NOTIFYING -> DELIVERY_PENDING` edge. This
+  task's `notify_affected_practices` therefore ALWAYS advances through
+  AWAITING_RESPONSES first (via `CORRECTION_LIFECYCLE.assert_transition`
+  at each hop, one new persisted revision covering the whole hop-chain
+  once all hops individually validate — mirroring `_write_impact_objects`'s
+  existing "one revision, one event" economy rather than one revision per
+  hop, since section 5.2's required-events list has no per-hop event name
+  for IMPACT_ANALYSIS/NOTIFYING), and continues on to the also-legal
+  AWAITING_RESPONSES -> DELIVERY_PENDING edge WITHIN THE SAME CALL only if
+  at least one recipient's synchronous EnvelopeTransport attempt reports
+  "failed" — reading DELIVERY_PENDING as "notification attempts were made
+  to everyone, but delivery is still outstanding for someone", consistent
+  with the diagram's own column layout (DELIVERY_PENDING is drawn as a
+  branch hanging directly off AWAITING_RESPONSES, not off NOTIFYING).
+  If every recipient's attempt reports "delivered", the correction stops at
+  AWAITING_RESPONSES. This reading is a considered inference from the
+  already-fixed transition set, not a re-derivation of the diagram — flagged
+  for reviewer confirmation in specification_gaps.
+  (d) The receiving side's LOCAL seed translation reuses
+  `mrr.domain.correction_impact.compute_impact` and its full,
+  UNCHANGED `IMPACT_EDGE_TYPES` (not a hand-picked subset restricted to
+  `transferred_from`/`adapted_from`) — a notification's
+  `notified_object_ids` are fed as `seed_ids` into the exact same
+  gather-then-compute shape `CorrectionImpactService._gather_impact_edges`/
+  `propagate_impact` already uses for a LOCAL correction's own
+  `affected_objects`, over THIS practice's own `EdgeRepository`. A remote
+  object id that this practice never locally stored is not an error
+  (`EdgeRepository` has no foreign-key existence constraint on edge
+  endpoints, confirmed in `mrr.domain.repositories.EdgeRepository`'s own
+  docstring and exploited identically by E3-T06's
+  `_require_review_if_needed`) — it simply may or may not be the TARGET of
+  a local `transferred_from`/`adapted_from` edge, and if it is not, the
+  computed local impact set for that seed is legitimately empty. This
+  duplicates a small (~15-line) gather-loop already private to
+  `CorrectionImpactService._gather_impact_edges`, rather than exporting or
+  refactoring that private method — a deliberate, documented duplication
+  in the same spirit `mrr.services.claim.service.bind_edge_unit_of_work`'s
+  own docstring already flags for reviewer scrutiny in this codebase, kept
+  small and side-by-side rather than force-sharing across two services with
+  different callers and different seed provenance (local correction vs.
+  received notification).
+  (e) The receiving side records NO new CorrectionEvent-shaped object and
+  emits NO new event type of its own; the only observable trace of a
+  processed notification is (i) whatever the caller's own
+  already-processed-notification-id predicate records (infrastructure, out
+  of this task's scope, mirroring E5-T03's identical stance on envelope
+  replay) and (ii) the EXISTING `claim.status_changed` events
+  `ClaimService.require_review` already emits, UNCHANGED, for each
+  genuinely-impacted local claim. Inventing a
+  `correction.notification_received`-shaped event is deliberately NOT done
+  (section 5.2's required-events enumeration has no such name) — flagged in
+  specification_gaps as a question for the reviewer, not resolved
+  unilaterally.
+invariants:
+  - a received CorrectionNotification triggers LOCAL impact computation
+    ONLY — it never creates, stores, or mutates any local copy of the
+    remote CorrectionEvent, and the only local mutation it may cause is the
+    EXISTING, unchanged `ClaimService.require_review` transition on a claim
+    already resolvable in THIS practice's own object repository
+  - the local disposition (accept/adapt/reject/defer) toward a received
+    correction is explicitly out of scope (E6-T04); this task's receiving
+    side never records, infers, or defaults to any such decision
+  - CorrectionNotification is signed by the notifying practice and is
+    accepted only when `resolve_trusted_correction_notification_key`'s four
+    conditions all hold (signer-practice match, kid resolves in the
+    recipient's trusted view of the notifying practice's KeyRing, that
+    descriptor valid at the evaluation instant, signature verifies over the
+    exact ADR-0004 exclude_none form) — each a DISTINCT typed error, fail
+    closed, mirroring `resolve_trusted_task_key` exactly
+  - a CorrectionNotification is replay-protected at TWO independent levels
+    — the wrapping envelope's own `message_id` (existing, unchanged
+    predicate) and the notification's own `notification_id` (new, separate
+    caller-supplied predicate) — and both must pass before any local
+    impact computation runs
+  - a tampered CorrectionNotification (any field altered after signing,
+    including `notified_object_ids`, `severity`, or `requested_action`)
+    fails `resolve_trusted_correction_notification_key`'s signature check
+    and is rejected before any local claim is touched; nothing partial is
+    persisted
+  - only the already-drawn CORRECTION_LIFECYCLE edges are used
+    (OPEN -> IMPACT_ANALYSIS -> NOTIFYING -> AWAITING_RESPONSES, optionally
+    continuing to DELIVERY_PENDING); an attempt to reach any state via an
+    undrawn edge raises `InvalidTransitionError` and persists nothing
+  - a notification whose `notified_object_ids` include an id with zero
+    matching local edges is handled explicitly — the computed
+    locally-impacted set for that id is legitimately empty, returned as
+    such (never silently dropped, never treated as an error, never
+    fabricated into a false-positive impact) — MRR-NFR-012, explicit
+    degradation
+  - outbound notification is idempotent per recipient — calling
+    `notify_affected_practices` again for a correction/recipient set
+    already fully recorded as delivered does not re-transition an
+    already-past-NOTIFYING correction and does not re-send to a recipient
+    already recorded `sent` for the current impact set
+  - no raw restricted or PARTICIPANT_IDENTIFIABLE object content crosses
+    the practice boundary in a CorrectionNotification's body — only ids,
+    hashes, correction_type, severity, reason, requested_action, and
+    optional replacement_object_id (MRR-NFR-006), mirroring
+    CorrectionEvent's own no-raw-data shape
+  - every notify/receive call that mutates a CorrectionEvent revision or
+    triggers a claim transition records a domain event with full
+    MRR-NFR-001 provenance (actor, occurred_at, policy_version,
+    causation_id, correlation_id, object_id, object_revision)
+  - both import-linter contracts stay KEPT; the new domain/contracts
+    modules import no network library, no provider SDK, and open no real
+    connection
+acceptance_tests:
+  - contract tier — schemas/correction-notification.schema.json is valid
+    Draft 2020-12; the committed example round-trips losslessly through
+    the Pydantic model and back; scripts/check_contracts.py's ENTITY_MODELS
+    cross-validates schema<->model<->example for the new entity
+  - outbound happy path — two recipients, both `delivered` via the in-test
+    EnvelopeTransport fake, produce OPEN -> IMPACT_ANALYSIS -> NOTIFYING ->
+    AWAITING_RESPONSES (stopping there), one `correction.notification_sent`
+    event per recipient with delivery_status `"sent"`, no
+    DELIVERY_PENDING transition attempted
+  - outbound partial failure — one recipient `delivered`, one `failed` ->
+    the same call chains through to DELIVERY_PENDING as its final status
+    within one atomic sequence; the failed recipient's
+    `correction.notification_sent` event payload records
+    delivery_status `"pending"`
+  - outbound idempotency — calling `notify_affected_practices` twice with
+    the same correction id and the same fully-delivered recipient set does
+    not raise `InvalidTransitionError`, does not append a second
+    `correction.notification_sent` event per already-`sent` recipient, and
+    does not write a redundant CorrectionEvent revision
+  - CORRECTION_LIFECYCLE conformance (adversarial) — an attempt to persist
+    a status transition NOT in `_CORRECTION_TRANSITIONS` (e.g. a direct
+    NOTIFYING -> DELIVERY_PENDING, or OPEN -> AWAITING_RESPONSES skipping
+    intermediate hops) raises `InvalidTransitionError` and persists nothing
+    — guards that no new illegal edge was accidentally introduced
+  - inbound happy path — a validly-signed, in-window, hash-consistent,
+    unseen CorrectionNotification carried inside a validly-signed,
+    in-window, hash-consistent, unseen NodeMessageEnvelope is accepted;
+    `receive_correction_notification` correctly marks exactly the local
+    claims downstream (via local `transferred_from`/`adapted_from` and
+    further IMPACT_EDGE_TYPES edges) of the notified object ids
+    `review_required`, and leaves unrelated local claims untouched
+  - adversarial — tampered notification — any single field of an
+    otherwise-valid CorrectionNotification altered after signing (severity,
+    requested_action, a notified_object_id, sender_practice_id) is rejected
+    by `resolve_trusted_correction_notification_key`'s signature check with
+    a distinct typed error; no local claim is touched
+  - adversarial — replayed notification — a caller-supplied
+    `already_processed_notification` predicate reporting the
+    `notification_id` as already-seen is rejected before any local impact
+    computation runs, distinctly from (and in addition to) the envelope's
+    own separate replay check
+  - adversarial — notification about an unknown object — a
+    CorrectionNotification whose `notified_object_ids` contains an id with
+    zero local `edges_to` entries of any kind yields an explicit, empty
+    locally-impacted set and zero claim transitions — verified as a
+    legitimate outcome distinguishable from an error path, not a crash and
+    not silently ignored
+  - signer/key fail-closed matrix (adversarial), each a distinct typed
+    error, mirroring `resolve_trusted_task_key`'s own four-condition test
+    matrix exactly — notification signer_practice_id != the trusted
+    notifying practice; key_id does not resolve in the recipient's KeyRing
+    for that practice; resolved key revoked/rotated/expired/not-yet-valid
+    at the evaluation instant; a bad/tampered Ed25519 signature
+  - property test — the receiving-side local impact computation is
+    order-independent and idempotent over arbitrary local edge graphs
+    (re-verifies `compute_impact`'s existing guarantees hold at this new
+    call site, seeded from notification data rather than a local
+    correction's own affected_objects)
+  - integration test (real PostgreSQL) — a full outbound
+    record -> propagate_impact -> notify_affected_practices sequence
+    persists atomically with its events; a separate practice's database
+    receiving the resulting notification via `receive_correction_notification`
+    produces `claim.status_changed` events with full provenance for the
+    correct local claims only
+  - all existing suites stay green; both import-linter contracts remain
+    KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+required_output:
+  - implementation summary
+  - the CorrectionNotification schema/contract/example, the
+    `resolve_trusted_correction_notification_key` resolver, and the two new
+    `CorrectionImpactService` methods (`notify_affected_practices`,
+    `receive_correction_notification`) with their exact signatures
+  - changed files, additive domain errors, and explicit confirmation that
+    schemas/correction-event.schema.json,
+    packages/contracts/mrr/contracts/correction_event.py,
+    packages/domain/mrr/domain/lifecycles.py, and every E3-T06/E5-T03/E5-T06
+    method/function listed under forbidden_changes were NOT modified
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract, test-integration) proving green
+  - security/privacy implications (payload-level signature + two-level
+    replay protection, fail-closed signer/key matrix, no raw/participant-
+    identifiable data in the notification body, no new persisted state
+    beyond the generic objects/events tables, no real network)
+  - open specification questions exactly as listed under
+    specification_gaps
+  - what is deliberately deferred — recipient-list resolution from
+    TransferContract.correction_subscription (E6-T01/E6-T02, neither
+    implemented yet), the recipient's own accept/adapt/reject/defer
+    response and MRR-FR-084's "why" half (E6-T04), the public
+    unresolved-correction projection (E6-T05), durable offline delivery
+    tracking/retry over a DELIVERY_PENDING correction (E6-T06), and the
+    future DRY of the now-five near-identical trust resolvers
+stop_conditions:
+  - a reviewer determines MRR-FR-094's "durable pending-delivery record"
+    requires a NEW persisted/queryable field (on CorrectionEvent or
+    elsewhere) rather than the existing CORRECTION_LIFECYCLE status plus
+    domain events alone — stop rather than modifying
+    schemas/correction-event.schema.json unilaterally; report for a
+    reviewer decision
+  - a reviewer determines this task must itself resolve the recipient list
+    from TransferContract/Obligation data rather than take it as a
+    caller-supplied argument — stop rather than building E6-T01/E6-T02
+    inline; report the dependency
+  - the receiving-side local seed translation cannot be expressed by
+    feeding `notified_object_ids` into the UNCHANGED `compute_impact`/
+    `IMPACT_EDGE_TYPES` (e.g. it is judged to need a new edge type or a
+    change to EDGE_VOCABULARY) — stop and report rather than modifying
+    E3-T06's traversal or the edge vocabulary
+  - CorrectionNotification cannot be made to satisfy the EXISTING,
+    unmodified `validate_inbound_envelope`'s payload-hash consistency check
+    without changing that function — stop and report the conflict rather
+    than modifying E5-T03's validator
+  - the DELIVERY_PENDING chaining inference in derived_decisions (c) is
+    judged an incorrect reading of the section 6.4 diagram — stop and
+    request a reviewer ruling rather than guessing a different chaining
+    rule
+specification_gaps:
+  - MRR-FR-084's "why it rejected or deferred" half, and the MRR-FR-081-
+    style five-way response vocabulary applied to a correction, are NOT
+    claimed by this task — only "MUST record that it was notified" is
+    addressed (via `correction.notification_sent` on the sending side and
+    the reuse of `claim.status_changed` on the receiving side); the
+    response content itself is E6-T04.
+  - CorrectionEvent's `DELIVERY_PENDING` state has no drawn outgoing edge
+    anywhere in docs/spec/01_SYSTEM_SPEC.md section 6.4 (already flagged as
+    an open question in packages/domain/mrr/domain/lifecycles.py's own
+    module docstring). This task preserves that dead end rather than
+    inventing a resolution path; a future E6-T06 or a spec amendment must
+    decide how a correction ever leaves DELIVERY_PENDING.
+  - derived_decisions (c)'s reading of "NOTIFYING always advances through
+    AWAITING_RESPONSES before an optional continuation to
+    DELIVERY_PENDING within the same call" is inferred from the fixed
+    transition set and the diagram's column layout, not stated in prose
+    anywhere in the specification. Flagged for explicit reviewer
+    confirmation rather than treated as settled.
+  - docs/spec/03_API_AND_EVENTS.md section 5.2's required-events
+    enumeration has no event name for the RECEIVING side's own act of
+    processing a notification (only `correction.opened`/
+    `impact_computed`/`notification_sent`/`response_recorded`, all
+    sender-side). This task reuses the existing `claim.status_changed`
+    event as the only observable trace and does not invent a new
+    `correction.notification_received`-shaped event name — flagged in case
+    a reviewer prefers an explicit one added to section 5.2 in a future
+    amendment.
+  - how a sending practice discovers WHICH practices/nodes to notify
+    (TransferContract.correction_subscription, MRR-FR-083) is not yet
+    implemented anywhere in code (E6-T01 is still draft-only,
+    E6-T02 does not exist yet). This task's `notify_affected_practices`
+    takes the recipient list as a caller-supplied argument; wiring it to
+    real transfer/obligation data is necessarily a follow-up once E6-T01/
+    E6-T02 land.
+  - docs/spec/02_DOMAIN_MODEL.md section 2.16 lists "delivery and recipient
+    responses" among CorrectionEvent's fields, but
+    schemas/correction-event.schema.json never gained them (confirmed —
+    absent from its `required` list and its `properties`). This task
+    deliberately does not add them (see forbidden_changes) and instead
+    treats CORRECTION_LIFECYCLE status plus the append-only domain event
+    log as the durable record, per AGENTS.md's own source-of-truth
+    discipline — flagged in case a reviewer prefers an explicit schema
+    field once E6-T04/E6-T06 are further along and the full shape of
+    "recipient responses" is known.
+  - whether CorrectionNotification needs a schema-level cap on
+    `notified_object_ids`' length is unspecified; left unbounded, mirroring
+    CorrectionEvent's own unbounded `evidence_refs`/`impact_objects` lists.
