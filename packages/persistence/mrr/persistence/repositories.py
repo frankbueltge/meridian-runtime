@@ -684,6 +684,17 @@ class PostgresProcessedIdStore:
         expires_at: datetime,
         at: datetime,
     ) -> bool:
+        """``RETURNING`` — not ``CursorResult.rowcount`` — carries the
+        "newly inserted?" answer: SQLAlchemy memoizes ``rowcount`` only for
+        UPDATE/DELETE (the ORM versioning paths), and for a plain INSERT the
+        psycopg 3 cursor is already closed by the time ``rowcount`` is read,
+        which yields ``-1`` — i.e. ``rowcount > 0`` is ``False`` even for a
+        genuinely new row. ``ON CONFLICT DO NOTHING RETURNING`` instead
+        reports the fact directly from the server: exactly one row comes
+        back iff this statement inserted, no row iff the key already
+        existed. (``prune_expired`` below may keep using ``rowcount``
+        because DELETE is one of the memoized statement kinds.)
+        """
         stmt = (
             pg_insert(processed_ids_table)
             .values(
@@ -694,9 +705,9 @@ class PostgresProcessedIdStore:
                 expires_at=expires_at,
             )
             .on_conflict_do_nothing(index_elements=["recipient_node_id", "id"])
+            .returning(processed_ids_table.c.id)
         )
-        result = conn.execute(stmt)
-        return result.rowcount > 0
+        return conn.execute(stmt).first() is not None
 
     def prune_expired(self, now: datetime) -> int:
         """Delete every row whose retention horizon has passed at ``now``,
