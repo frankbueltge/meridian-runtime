@@ -417,6 +417,13 @@ class UnknownKeyIdError(DomainError):
     ``EvidenceCrate``'s claimed ``signature.key_id`` — reused unchanged for
     the same reason, mirrored by the distinctly-named ``Crate*`` siblings
     below for the two conditions that DO need a crate-specific type.
+
+    Also raised, a sixth time, by
+    ``mrr.domain.offline_bundle.validate_inbound_bundle`` (task-packets/
+    E5-T06.yaml) for the identical fact pattern applied to a received
+    ``OfflineBundle``'s claimed ``signature.key_id`` — reused unchanged for
+    the same reason, mirrored by the distinctly-named ``Bundle*`` siblings
+    below for the two conditions that DO need a bundle-specific type.
     """
 
     def __init__(self, kid: str) -> None:
@@ -789,4 +796,158 @@ class CrateKeyNotValidError(DomainError):
         super().__init__(
             f"key {kid!r} is not valid at evaluation instant {at.isoformat()!r} "
             "(revoked, rotated, expired, or not yet valid)"
+        )
+
+
+class BundleRecipientMismatchError(DomainError):
+    """Raised by ``mrr.domain.offline_bundle.validate_inbound_bundle``
+    (task-packets/E5-T06.yaml) when a received ``OfflineBundle``'s
+    ``recipient_node_id`` does not equal the receiving node's own id — the
+    bundle was not actually addressed to THIS node (docs/spec/01_SYSTEM_SPEC.md
+    section 8.4: "Import and export MUST verify signatures, expiry, replay
+    protection, and object hashes"; mirrors ``EnvelopeRecipientMismatchError``'s
+    identical fact pattern for a ``NodeMessageEnvelope``, kept as a SEPARATE
+    type rather than reused because it is raised for a different carrying
+    object). Checked FIRST, before any other precondition, since a bundle
+    meant for a different node has nothing further worth validating here.
+    Carries ``bundle_id``, the bundle's own claimed ``recipient_node_id``,
+    and ``this_node_id`` (the actual receiving node), so a caller can tell
+    the two apart without parsing the message string.
+    """
+
+    def __init__(self, bundle_id: str, recipient_node_id: str, this_node_id: str) -> None:
+        self.bundle_id = bundle_id
+        self.recipient_node_id = recipient_node_id
+        self.this_node_id = this_node_id
+        super().__init__(
+            f"OfflineBundle {bundle_id!r} is addressed to recipient_node_id "
+            f"{recipient_node_id!r}, not this node ({this_node_id!r})"
+        )
+
+
+class BundleNotWithinValidityWindowError(DomainError):
+    """Raised by ``validate_inbound_bundle`` (task-packets/E5-T06.yaml) when
+    the evaluation instant is not within ``[created_at, expires_at)`` —
+    either before the bundle was created, or at/after its declared expiry.
+    Mirrors ``EnvelopeNotWithinValidityWindowError``'s identical fact
+    pattern for a ``NodeMessageEnvelope`` (one class, two reasons
+    distinguished by message text), kept as a separate type for the same
+    reason ``BundleRecipientMismatchError`` is. Carries ``bundle_id``,
+    ``created_at``, ``expires_at``, and ``at`` are all carried as fields so
+    a caller can tell them apart without parsing the message string.
+    """
+
+    def __init__(
+        self, bundle_id: str, created_at: datetime, expires_at: datetime, at: datetime
+    ) -> None:
+        self.bundle_id = bundle_id
+        self.created_at = created_at
+        self.expires_at = expires_at
+        self.at = at
+        reason = (
+            f"not yet created (created_at {created_at.isoformat()!r})"
+            if at < created_at
+            else f"expired (expires_at {expires_at.isoformat()!r})"
+        )
+        super().__init__(
+            f"OfflineBundle {bundle_id!r} is {reason} at evaluation instant {at.isoformat()!r}"
+        )
+
+
+class BundleAlreadyProcessedError(DomainError):
+    """Raised by ``validate_inbound_bundle`` (task-packets/E5-T06.yaml) when
+    the caller-supplied ``already_processed`` predicate reports ``True`` for
+    the bundle's ``bundle_id`` — a replay (docs/spec/01_SYSTEM_SPEC.md
+    section 8.4: "Import and export MUST verify ... replay protection").
+    This is a CHECK only: the durable processed-id store the predicate is
+    backed by in production is task-packets/E5-T07.yaml's scope, not this
+    one's — mirrors ``EnvelopeAlreadyProcessedError``'s identical fact
+    pattern and disclaimer. Carries ``bundle_id``.
+    """
+
+    def __init__(self, bundle_id: str) -> None:
+        self.bundle_id = bundle_id
+        super().__init__(f"OfflineBundle {bundle_id!r} has already been processed (replay)")
+
+
+class BundleSignerMismatchError(DomainError):
+    """Raised by ``validate_inbound_bundle`` (task-packets/E5-T06.yaml) when
+    a received ``OfflineBundle``'s ``signature.signer_practice_id`` does not
+    equal the id of the practice the receiver actually trusts as this
+    bundle's sender. Mirrors ``EnvelopeSignerMismatchError``'s/
+    ``CrateSignerMismatchError``'s identical fact pattern
+    (docs/spec/04_SECURITY_AND_POLICY.md section 8.1: "Trust is per practice
+    and capability, not universal"), kept as a SEPARATE type rather than
+    reused because it is raised for a different carrying object (a bundle,
+    not an envelope, manifest, task bundle, or crate) — see
+    ``UnknownKeyIdError``'s docstring for why that one, unlike this one, IS
+    reused verbatim. Carries ``claimed_signer_practice_id`` and
+    ``trusted_practice_id``.
+    """
+
+    def __init__(self, *, claimed_signer_practice_id: str, trusted_practice_id: str) -> None:
+        self.claimed_signer_practice_id = claimed_signer_practice_id
+        self.trusted_practice_id = trusted_practice_id
+        super().__init__(
+            "offline bundle signature.signer_practice_id "
+            f"{claimed_signer_practice_id!r} does not equal the trusted sender "
+            f"practice id {trusted_practice_id!r}"
+        )
+
+
+class BundleKeyNotValidError(DomainError):
+    """Raised by ``validate_inbound_bundle`` (task-packets/E5-T06.yaml) when
+    a received ``OfflineBundle``'s claimed signing key id DOES resolve to a
+    descriptor in the trusted sender practice's ``KeyRing`` (see
+    ``UnknownKeyIdError`` for the case where it does not), but that
+    descriptor is not ``mrr.domain.key_management.KeyRing.is_valid_at`` the
+    evaluation instant — revoked, rotated, expired, or not yet valid.
+    Mirrors ``EnvelopeKeyNotValidError``'s/``CrateKeyNotValidError``'s
+    identical fact pattern, kept as a separate type for the same reason
+    ``BundleSignerMismatchError`` is. This is what rejects a bundle signed
+    by a key that has since been revoked or rotated even though the raw
+    Ed25519 signature itself is still cryptographically valid over the
+    bundle's bytes (docs/spec/04_SECURITY_AND_POLICY.md section 8.4: "New
+    objects are rejected after revocation.") — trust anchoring is
+    deliberately a stronger gate than raw signature verification alone, and
+    applies even to a key that was genuinely active at the bundle's own
+    ``created_at`` but has since been revoked by the evaluation instant.
+    Carries ``kid`` and the evaluation instant ``at``.
+    """
+
+    def __init__(self, kid: str, *, at: datetime) -> None:
+        self.kid = kid
+        self.at = at
+        super().__init__(
+            f"key {kid!r} is not valid at evaluation instant {at.isoformat()!r} "
+            "(revoked, rotated, expired, or not yet valid)"
+        )
+
+
+class BundleEntryHashMismatchError(DomainError):
+    """Raised by ``validate_inbound_bundle`` (task-packets/E5-T06.yaml) when
+    an entry's declared ``envelope_content_hash`` does not equal the actual
+    content hash (``mrr.domain.hashing_policy.compute_content_hash``,
+    UNCHANGED) of the carried envelope at that same position. Checked LAST,
+    only after the bundle signature itself has already verified: this is a
+    defense-in-depth check independent of the signature (AGENTS.md rule 9,
+    "No cross-practice object may be accepted without signature AND hash
+    verification") — a bundle whose signature is genuinely valid may still
+    declare an entry hash that disagrees with what its own carried envelope
+    actually hashes to, and that disagreement must fail closed rather than
+    be silently trusted from the entries list alone. Carries ``bundle_id``,
+    ``message_id`` (the offending entry's own), ``declared`` (the entry's
+    ``envelope_content_hash``), and ``actual`` (the carried envelope's real
+    content hash).
+    """
+
+    def __init__(self, bundle_id: str, message_id: str, declared: str, actual: str) -> None:
+        self.bundle_id = bundle_id
+        self.message_id = message_id
+        self.declared = declared
+        self.actual = actual
+        super().__init__(
+            f"OfflineBundle {bundle_id!r}: entry {message_id!r} declares "
+            f"envelope_content_hash {declared!r}, but its carried envelope's actual content "
+            f"hash is {actual!r}"
         )

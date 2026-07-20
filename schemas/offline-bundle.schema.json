@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/offline-bundle.schema.json",
+  "title": "MRR OfflineBundle",
+  "type": "object",
+  "required": ["bundle_id", "bundle_nonce", "sender_node_id", "sender_practice_id", "recipient_node_id", "created_at", "expires_at", "entries", "envelopes", "encryption", "signature"],
+  "properties": {
+    "bundle_id": {"$ref": "common.schema.json#/$defs/urn"},
+    "bundle_nonce": {"type": "string", "minLength": 16},
+    "sender_node_id": {"$ref": "common.schema.json#/$defs/urn"},
+    "sender_practice_id": {"$ref": "common.schema.json#/$defs/urn"},
+    "recipient_node_id": {"$ref": "common.schema.json#/$defs/urn"},
+    "created_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "expires_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["message_id", "payload_kind", "envelope_content_hash"],
+        "properties": {
+          "message_id": {"$ref": "common.schema.json#/$defs/urn"},
+          "payload_kind": {"type": "string", "minLength": 1},
+          "envelope_content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "envelopes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "node-message-envelope.schema.json"}
+    },
+    "encryption": {
+      "type": "object",
+      "required": ["scheme"],
+      "properties": {
+        "scheme": {"type": "string", "minLength": 1},
+        "recipient_key_id": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "signature": {"$ref": "common.schema.json#/$defs/signature"}
+  },
+  "additionalProperties": false
+}

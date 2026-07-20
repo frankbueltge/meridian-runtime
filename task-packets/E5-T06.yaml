@@ -1,0 +1,260 @@
+task_id: E5-T06
+title: Offline inbox/outbox bundles — a signed OfflineBundle batching store-and-forward NodeMessageEnvelopes, with deterministic export/import that verifies bundle signature, expiry, replay, and per-entry object hashes, fail closed, before deserializing nested content
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E5 (E5-T06
+  "offline inbox/outbox bundles"), docs/spec/01_SYSTEM_SPEC.md section 8.4
+  ("Federated offline: Air-gapped or intermittent nodes use signed inbox/outbox
+  bundles. Import and export MUST verify signatures, expiry, replay protection,
+  and object hashes") and section 2.2 item 9 ("Optional offline store-and-forward
+  transport"), docs/spec/03_API_AND_EVENTS.md section 4.2 ("Store-and-forward
+  envelopes": a transport envelope carrying identifier and nonce, sender and
+  intended recipient, object type and schema version, payload hash, creation and
+  expiry, encryption metadata, sender signature, optional acknowledgement request;
+  "A recipient MUST reject expired, replayed, misaddressed, untrusted, or
+  hash-invalid envelopes before deserializing untrusted nested content beyond what
+  is required for verification"), docs/spec/04_SECURITY_AND_POLICY.md section 4.1
+  ("Envelope encryption for cross-practice offline bundles") and section 8.2
+  (nonces/expiry/recipient/hashes/signatures; processed IDs retained for replay
+  detection), and MRR-NFR-007/005/006/001. Builds additively on E5-T01
+  (Practice/KeyRing/kid), E5-T02 (trust-anchored signer-key resolution), E5-T03
+  (mrr.contracts.NodeMessageEnvelope + mrr.domain.envelope_validation.
+  validate_inbound_envelope + coarse_rejection_reason) and the ADR-0004
+  exclude_none signature form. Per this repository's standing infra-near note
+  (E5-T03): the domain/crypto/protocol OBJECT layer is built CI-testable here;
+  the physical air-gap transfer medium (file/USB/media byte I/O) and real
+  envelope encryption / KMS are marked infra-dependent and are NOT built or
+  CI-tested in this packet, exactly as E5-T03 marked the concrete mTLS transport
+  out of scope while building the object layer it will carry.
+objective: >
+  Provide the offline store-and-forward layer's object contract plus deterministic
+  export/import, framework-free and CI-testable, as the OFFLINE counterpart of
+  E5-T03's online single-envelope path: (1) a new signed OfflineBundle contract —
+  the docs/spec/01 section 8.4 "inbox/outbox bundle" that batches MANY already-
+  signed E5-T03 NodeMessageEnvelopes destined for ONE recipient node into a single
+  content-addressed container, carrying a bundle id / replay nonce, sender node +
+  practice id, recipient node id, created-at and expiry timestamps, an ordered
+  list of entries (each a message id + payload kind + the carried envelope's
+  content hash), the carried envelopes themselves, structural encryption metadata,
+  and a bundle-level signature by the SENDING node over the ADR-0004 exclude_none
+  form (built/verified via the existing hashing_policy). The bundle wraps E5-T03
+  envelopes unchanged; it does not re-model or re-sign them. (2) A deterministic,
+  content-addressed export build_outbox_bundle(...) (framework-free domain) that
+  assembles a bundle for one recipient from already-signed envelopes, computing
+  each entry's envelope_content_hash over the exclude_none form and producing the
+  exact canonical form the sender signs. (3) A deterministic import
+  validate_inbound_bundle(...) (framework-free domain) that accepts a received
+  bundle ONLY when EVERY check holds, each a DISTINCT typed error, fail closed,
+  and — per docs/spec/03 section 4.2 — verifies BEFORE deserializing nested
+  content beyond what verification requires: recipient_node_id == this node; the
+  evaluation instant is within [created_at, expires_at); the bundle_id has not
+  already been processed (a replay CHECK via a caller-supplied "already seen"
+  predicate — the DURABLE processed-id store is E5-T07); the bundle signature
+  resolves under the sender node's trusted key (sender practice KeyRing exactly as
+  E5-T02/T03: signer-practice match, kid resolves, key valid at the instant,
+  signature verifies over the exclude_none form); and EVERY entry's declared
+  envelope_content_hash equals the actual content hash of its carried envelope.
+  It returns the verified envelopes, or a COARSE reason category (mirroring E5-T03
+  coarse_rejection_reason). It does NOT re-implement per-envelope validation:
+  after the batch verifies, each carried envelope flows through E5-T03's
+  validate_inbound_envelope exactly as an online-delivered one would — an
+  acceptance test demonstrates the full offline chain (bundle import -> per
+  entry validate_inbound_envelope -> for a carried result crate,
+  resolve_trusted_crate_key), proving the offline path REUSES every online
+  verification rather than bypassing it.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/adr/ADR-0009-CANONICAL-PUBLIC-KEY-ENCODING.md
+  - docs/spec/01_SYSTEM_SPEC.md#22-data-plane
+  - docs/spec/01_SYSTEM_SPEC.md#84-federated-offline
+  - docs/spec/03_API_AND_EVENTS.md#42-store-and-forward-envelopes
+  - docs/spec/04_SECURITY_AND_POLICY.md#41-encryption
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e5--federation
+  - schemas/node-message-envelope.schema.json
+  - packages/contracts/mrr/contracts/node_message_envelope.py
+  - packages/contracts/mrr/contracts/common.py
+  - packages/domain/mrr/domain/envelope_validation.py
+  - packages/domain/mrr/domain/envelope_transport.py
+  - packages/domain/mrr/domain/manifest_trust.py
+  - packages/domain/mrr/domain/key_management.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - packages/domain/mrr/domain/exceptions.py
+requirements:
+  - MRR-NFR-007
+  - MRR-NFR-005
+  - MRR-NFR-006
+  - MRR-NFR-001
+forbidden_changes:
+  - the E5-T03 NodeMessageEnvelope contract and the E5-T03
+    envelope_validation.validate_inbound_envelope / coarse_rejection_reason
+    (reuse UNCHANGED; the bundle wraps and re-uses them — it does not re-model,
+    re-sign, or re-validate an individual envelope)
+  - the crypto sign/verify/hash primitives, hashing_policy / prepare_for_* policy,
+    and mrr.crypto.keys (reuse unchanged); the E5-T02 manifest_trust, E5-T04
+    task_trust, and E5-T05 crate_trust resolvers are NOT refactored here — a
+    future DRY of the now-multiple near-identical signer-key resolvers
+    (manifest / envelope / task / crate / bundle) is a separate, reviewed cleanup
+    (keep this additive and low-risk)
+  - real envelope encryption / KMS / decryption (docs/spec/04 section 4.1) —
+    carry encryption metadata as a STRUCTURAL field only; building an actual
+    encryption scheme is infra/KMS-dependent and deferred, exactly as E5-T03
+    marked the concrete mTLS transport out of scope (section 8.4's import/export
+    MUST verify "signatures, expiry, replay protection, and object hashes" — it
+    does NOT list decryption, a separate section 4.1 concern)
+  - the physical air-gap transport medium — file / USB / media / byte I/O to move
+    a bundle between nodes — the OfflineBundle is a serializable object; the
+    transfer medium is infra and out of scope (mirrors E5-T03's abstract
+    transport port instead of a real socket)
+  - a durable processed-id / replay store or any revocation sweep over already-
+    accepted bundles (E5-T07 — replay via a caller-supplied predicate; resolve
+    validity AT the evaluation instant only)
+  - any new DB model, migration, repository, or service, and any new authoritative
+    state; both import-linter contracts MUST stay KEPT (the export/import are
+    framework-free domain code and the OfflineBundle is one Pydantic contract —
+    no provider/web/network/file import)
+allowed_paths:
+  - packages/contracts/**
+  - packages/domain/**
+  - schemas/**
+  - examples/**
+  - scripts/check_contracts.py
+  - tests/unit/**
+  - tests/property/**
+  - tests/contract/**
+  - tests/integration/**
+  - tests/e2e/**
+derived_decisions: >
+  The OfflineBundle is the offline counterpart of E5-T03's online envelope:
+  E5-T03 delivers ONE envelope point-to-point; a bundle batches MANY already-
+  signed envelopes for ONE recipient into a single signed, content-addressed
+  container for air-gapped import/export. The bundle carries its OWN sender-node
+  signature over the ADR-0004 exclude_none form, so the batch's integrity — which
+  envelopes, in which order, addressed to whom, valid until when — is itself
+  authenticated: an attacker cannot add, drop, reorder, or retarget entries
+  without breaking the bundle signature. Each entry's envelope_content_hash lets
+  the importer verify each carried envelope's bytes BEFORE deserializing its
+  nested payload beyond what verification requires (docs/spec/03 section 4.2). The
+  importer does NOT re-implement per-envelope validation: once the batch verifies,
+  each carried envelope flows through E5-T03's validate_inbound_envelope exactly
+  as an online-delivered one would — the bundle adds a batch-integrity + replay +
+  addressing layer AROUND the existing single-envelope path, nothing more. It is
+  the eighteenth schema/model pair in this repository (schemas/,
+  mrr.contracts model + export, examples/, and a Pydantic model that cross-
+  validates against its JSON Schema). New bundle-specific typed errors —
+  BundleRecipientMismatchError, BundleNotWithinValidityWindowError,
+  BundleAlreadyProcessedError, BundleSignerMismatchError, BundleKeyNotValidError,
+  BundleEntryHashMismatchError — live in mrr.domain.exceptions;
+  UnknownKeyIdError and the mrr.crypto Signature errors are reused verbatim.
+  mrr.domain.manifest_trust.practice_key_ring is reused unchanged to build the
+  sender practice's ring, and the bundle-signer resolution mirrors the
+  manifest/envelope/task/crate resolution exactly (signer-practice match, kid
+  resolves, KeyRing.is_valid_at(at), verify against the RESOLVED descriptor's key
+  decoded from the ring — never a key the bundle itself claims). Encryption stays
+  metadata-only by design (see forbidden_changes). A future service maps the typed
+  failures to a coarse refusal reason exactly as coarse_rejection_reason does for
+  envelopes; wiring imported results into a full origin-side run record is
+  assembled at E2E-002, not here.
+invariants:
+  - a received OfflineBundle is trusted ONLY when it is addressed to this node,
+    unexpired at the evaluation instant, not already processed, its bundle
+    signature resolves via the sender practice's KeyRing to a key valid at the
+    instant AND verifies over the exclude_none form, AND every entry's declared
+    envelope_content_hash equals the actual content hash of its carried envelope;
+    any single failure is a DISTINCT typed error and the bundle is rejected fail
+    closed
+  - the batch's membership, order, recipient, and validity window are
+    authenticated by the bundle signature — an added, dropped, reordered, or
+    retargeted entry breaks verification
+  - each carried envelope's bytes are hash-verified BEFORE its nested payload is
+    deserialized beyond what verification requires (docs/spec/03 section 4.2)
+  - bundle verification anchors to the key resolved from the sender practice's
+    RING, never a key the bundle claims; a revoked/rotated/expired/unknown-kid or
+    signer-mismatched bundle is rejected even if the raw Ed25519 signature is
+    cryptographically valid
+  - the distinct failure reasons (recipient-mismatch / not-in-window / already-
+    processed / signer-mismatch / unknown-kid / key-not-valid / bad-signature /
+    entry-hash-mismatch) are DISTINCT typed errors, never one generic failure
+  - the E5-T03 NodeMessageEnvelope contract and validate_inbound_envelope are
+    UNCHANGED; a bundle this importer accepts carries envelopes each still subject
+    to the existing per-envelope validation, and a bundle build_outbox_bundle
+    produces is one validate_inbound_bundle accepts round-trip
+  - both import-linter contracts stay KEPT; the module imports no provider SDK,
+    opens no network or file, and builds no persisted state
+acceptance_tests:
+  - happy path: build_outbox_bundle assembles a bundle of two already-signed
+    envelopes for a recipient node with an active in-window sender key; the
+    recipient resolves the sender key via the sender practice's ring, the bundle
+    signature verifies, every entry hash matches, and the verified envelopes are
+    returned in order
+  - round-trip determinism: building the same bundle from the same envelopes and
+    metadata yields a byte-identical canonical exclude_none form and the same
+    bundle content hash (property test)
+  - fail-closed matrix, each a distinct typed error: recipient_node_id != this
+    node; evaluation instant outside [created_at, expires_at); bundle_id reported
+    already-seen by the predicate; signer_practice_id != the trusted sender
+    practice; kid does not resolve in the ring; resolved key revoked / rotated /
+    expired / not-yet-valid at the instant; a tampered bundle whose signature no
+    longer verifies; an entry whose declared envelope_content_hash != the carried
+    envelope's actual hash
+  - batch-tamper matrix: adding, dropping, reordering, or retargeting an entry
+    after signing is rejected because the bundle signature no longer verifies over
+    the mutated exclude_none form
+  - replay: a bundle whose bundle_id the caller predicate reports as already-seen
+    is rejected (BundleAlreadyProcessedError); the durable processed-id store is
+    deferred to E5-T07
+  - revocation at the instant: a bundle signed by a key valid at creation but
+    REVOKED in the ring by the evaluation instant is rejected (docs/spec/04
+    section 8.4), while the revoked descriptor stays resolvable
+  - key-substitution attack: a bundle signed by an attacker key but claiming a
+    trusted kid fails closed (SignatureVerificationError)
+  - end-to-end offline chain: a sealed EvidenceCrate wrapped in an E5-T03
+    NodeMessageEnvelope, carried inside an OfflineBundle, survives import —
+    validate_inbound_bundle verifies the batch, then each carried envelope passes
+    validate_inbound_envelope, then the carried crate verifies via
+    resolve_trusted_crate_key — proving the offline path reuses every online
+    verification, not just batch integrity
+  - all existing suites stay green; both import-linter contracts remain KEPT; the
+    new schema/model/example (eighteenth) pair cross-validates
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - the OfflineBundle contract, the export build_outbox_bundle and import
+    validate_inbound_bundle accept rule + typed failure family, and the offline
+    chain demonstration (bundle -> envelope -> crate) proving online-verification
+    reuse
+  - changed files, the additive domain errors, and the new schema/model/example
+    (eighteenth) pair
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-contract) proving green, plus CI for integration/e2e
+  - security/privacy implications (batch integrity authenticated by the bundle
+    signature, per-entry hash verified before nested deserialization, fail-closed
+    matrix, verification against the ring's key, revocation at the instant, replay
+    via caller predicate, encryption metadata carried but decryption deferred, no
+    network/file/new state)
+  - open specification questions and what is deferred (real envelope encryption /
+    KMS; the physical air-gap transport medium; durable replay/revocation E5-T07;
+    result-intake / run-linkage assembled at E2E-002; the DRY of the now-multiple
+    signer-key resolvers)
+stop_conditions:
+  - the offline bundle cannot be expressed without changing the E5-T03 envelope
+    contract or validate_inbound_envelope, an existing contract, the crypto
+    primitives, or hashing_policy (report)
+  - honoring section 8.4 "verify signatures, expiry, replay protection, and object
+    hashes" would force building the durable processed-id/replay store or a
+    revocation sweep (E5-T07) — keep the at-instant + caller-predicate checks and
+    stop
+  - honoring section 4.1 "envelope encryption for cross-practice offline bundles"
+    would force building real KMS/decryption — carry encryption metadata
+    structurally and stop; open a specification issue if a concrete encryption
+    scheme is required for v1
+  - a physical transport medium (file/USB/media I/O) or a bundle-intake service is
+    unavoidable to prove verification (it is not — verify the bundle object
+    directly; report if blocked)
