@@ -1,8 +1,9 @@
 """SQLAlchemy Core table definitions for the ``objects``/``edges`` tables
 (task-packets/E1-T05.yaml derived_decisions: "one generic revisioned objects
 table plus one typed edges table, not per-entity tables"), the
-``domain_events``/``outbox`` tables (task-packets/E1-T06.yaml), and the
-``processed_ids`` table (task-packets/E5-T07.yaml).
+``domain_events``/``outbox`` tables (task-packets/E1-T06.yaml), the
+``processed_ids`` table (task-packets/E5-T07.yaml), and the
+``key_revocations`` table (task-packets/E5-T07b.yaml).
 
 Core ``Table`` objects are used deliberately instead of the ORM's declarative
 classes — less magic under mypy strict, and these tables are accessed only
@@ -183,4 +184,44 @@ processed_ids_table = sa.Table(
     sa.PrimaryKeyConstraint("recipient_node_id", "id", name="pk_processed_ids"),
     sa.CheckConstraint(_PROCESSED_ID_KIND_CHECK_CLAUSE, name="ck_processed_ids_id_kind_vocabulary"),
     sa.Index("ix_processed_ids_expires_at", "expires_at"),
+)
+
+#: The durable, append-only revocation-fact store (task-packets/E5-T07b.yaml)
+#: backing ``mrr.persistence.repositories.PostgresKeyRevocationStore`` and the
+#: pure ``mrr.domain.trust_revocation.trust_revoked_after_creation`` predicate
+#: — the first place in this codebase a revocation INSTANT is durably
+#: captured at all (``mrr.domain.key_management.revoke`` only mutates an
+#: in-memory ``KeyRing`` descriptor's ``state``, with no timestamp).
+#:
+#: Keyed by ``kid`` ALONE, not ``(practice_id, kid)`` — unlike
+#: ``processed_ids_table`` (where the SAME id delivered to two different
+#: RECEIVING nodes is legitimately not a replay at either, hence that
+#: table's wider two-column key), a kid (``mrr.crypto.keys.derive_key_id``)
+#: is already a content-derived, globally unique fingerprint of one specific
+#: Ed25519 public key. The same key cannot legitimately belong to two
+#: different practices, so "is this kid revoked" has exactly one true
+#: answer, independent of who is asking. The primary key is also this
+#: table's UNIQUE constraint and the sole idempotency anchor
+#: ``PostgresKeyRevocationStore.record_revocation`` relies on
+#: (``INSERT ... ON CONFLICT (kid) DO NOTHING`` targets exactly this
+#: constraint, so a duplicate insert is a silent no-op at the database,
+#: never an application-level check that could race).
+#:
+#: ``revoked_at`` is the instant the revocation takes effect —
+#: caller-supplied, never generated internally, mirroring
+#: ``processed_ids_table.processed_at``. ``reason`` is optional free text.
+#: There is no UPDATE or DELETE path anywhere in
+#: ``PostgresKeyRevocationStore`` — no such method exists on that class at
+#: all — so a row, once inserted by ``record_revocation``, is permanent and
+#: authoritative for the lifetime of the row: a second, differently-
+#: parameterized call for the same ``kid`` is a silent no-op that leaves the
+#: original row untouched.
+key_revocations_table = sa.Table(
+    "key_revocations",
+    metadata,
+    sa.Column("kid", sa.Text(), nullable=False),
+    sa.Column("practice_id", sa.Text(), nullable=False),
+    sa.Column("revoked_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("reason", sa.Text(), nullable=True),
+    sa.PrimaryKeyConstraint("kid", name="pk_key_revocations"),
 )
