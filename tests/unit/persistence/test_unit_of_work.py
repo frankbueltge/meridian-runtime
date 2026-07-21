@@ -1,6 +1,9 @@
 """Unit tests for ``mrr.persistence.unit_of_work.record_event`` (ADR-0007,
-docs/spec/adr/ADR-0007-TASK-BUNDLE-TRANSITIONS-ARE-EVENTS.md), run entirely
-DB-free — no PostgreSQL, no ``MRR_TEST_DATABASE_URL``.
+docs/spec/adr/ADR-0007-TASK-BUNDLE-TRANSITIONS-ARE-EVENTS.md) and, since
+task-packets/E9-T00b.yaml, ``bind_unit_of_work``/``RecordRevisionWithEvent``
+(the DRY consolidation of what used to be 19 identical local copies, one per
+service module) — all run entirely DB-free, no PostgreSQL, no
+``MRR_TEST_DATABASE_URL``.
 
 ``record_event`` is typed against the generic
 ``mrr.provenance.log.EventLog[Connection]`` Protocol rather than the concrete
@@ -19,23 +22,43 @@ server or container, and is never asked to run any Postgres-specific SQL
 ``pg_advisory_xact_lock`` — exactly why the real class cannot be used here
 and a fake is necessary).
 
-Acceptance mapping (this task's own instruction, not a task-packets/*.yaml
-one — ADR-0007's E1-T06 addition):
+``bind_unit_of_work`` is typed against the CONCRETE
+``PostgresObjectRepository``/``PostgresEventLog`` classes (nominal, not
+structural — unlike ``record_event``'s Protocol), so its own test below
+constructs REAL instances of both, bound to the same throwaway SQLite
+engine, rather than a hand-written fake — no ``# type: ignore`` needed
+anywhere. Those real instances are never actually queried: the test
+monkeypatches ``record_object_revision_with_event`` itself (the one function
+``bind_unit_of_work``'s closure calls), so ``insert_revision_with_connection``/
+``append`` are never reached.
+
+Acceptance mapping:
 
 - "record_event appends exactly one event + one outbox row and NO object
-  row" -> ``test_record_event_appends_exactly_one_event_and_touches_no_object_repository``.
+  row" -> ``test_record_event_appends_exactly_one_event_and_touches_no_object_repository``
+  (ADR-0007's E1-T06 addition).
 - "an injected failure leaves neither" (atomicity) ->
-  ``test_injected_failure_after_append_leaves_no_event_appended``.
+  ``test_injected_failure_after_append_leaves_no_event_appended``
+  (ADR-0007's E1-T06 addition).
+- [E9-T00b acceptance_tests, "unit-of-work, new coverage"] "bind_unit_of_work's
+  returned callable, when invoked with a (StoredObject, expected_revision,
+  DomainEvent) triple, calls record_object_revision_with_event with exactly
+  the bound engine/object_repository/event_log plus the per-call arguments
+  unchanged" -> ``test_bind_unit_of_work_threads_bound_and_per_call_arguments_through``.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any
 
+import mrr.persistence.unit_of_work as unit_of_work_module
 import pytest
 from mrr.domain.identity import new_urn
-from mrr.persistence.unit_of_work import record_event
+from mrr.domain.repositories import StoredObject
+from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
+from mrr.persistence.unit_of_work import bind_unit_of_work, record_event
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.exceptions import ChainVerificationError
 from mrr.provenance.log import AppendedEvent
@@ -108,6 +131,22 @@ def _event(*, object_id: str | None = None) -> DomainEvent:
     )
 
 
+def _stored_object() -> StoredObject:
+    return StoredObject(
+        id=new_urn("task-bundle"),
+        api_version="mrr/v1alpha1",
+        kind="TaskBundle",
+        practice_id=new_urn("practice"),
+        revision=1,
+        created_at=datetime.now(UTC),
+        created_by=new_urn("agent-role"),
+        content_hash="sha256:" + "a" * 64,
+        supersedes=None,
+        labels=None,
+        body={"status": "CREATED"},
+    )
+
+
 # ---------------------------------------------------------------------------
 # "record_event appends exactly one event + one outbox row and NO object row"
 # ---------------------------------------------------------------------------
@@ -177,4 +216,92 @@ def test_event_log_append_failure_propagates_without_a_result() -> None:
     with pytest.raises(RuntimeError, match="injected failure inside append"):
         record_event(engine, event_log, event)
 
-    assert event_log.read_all() == []
+
+# ---------------------------------------------------------------------------
+# bind_unit_of_work (task-packets/E9-T00b.yaml): the shared binder every one
+# of the 19 service modules now re-exports instead of locally redefining.
+# Proves the BINDING, not record_object_revision_with_event's own already-
+# tested transactional behavior (that stays covered by
+# tests/integration/persistence/test_event_log_and_outbox.py and the 19
+# services' own integration suites, unmodified by this packet).
+# ---------------------------------------------------------------------------
+
+
+def test_bind_unit_of_work_threads_bound_and_per_call_arguments_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``bind_unit_of_work(engine, object_repository, event_log)`` must
+    return a callable that, given ``(obj, expected_current_revision, event)``,
+    calls ``record_object_revision_with_event`` with exactly those six
+    values — the three BOUND at bind time plus the three per-call
+    arguments — unchanged, and returns exactly what that call returns.
+
+    ``record_object_revision_with_event`` itself is monkeypatched (on the
+    module object, not the imported name — ``bind_unit_of_work``'s closure
+    looks the name up in ``mrr.persistence.unit_of_work``'s own globals at
+    CALL time, so patching the module attribute is what actually takes
+    effect here) so this test never touches a real transaction; the real
+    ``PostgresObjectRepository``/``PostgresEventLog`` instances below are
+    bound to a throwaway SQLite engine only to satisfy their CONCRETE
+    (non-Protocol) parameter types — neither is ever queried.
+    """
+    engine = _sqlite_engine()
+    object_repository = PostgresObjectRepository(engine)
+    event_log = PostgresEventLog(engine)
+    obj = _stored_object()
+    event = _event(object_id=obj.id)
+    sentinel_result = (
+        obj,
+        AppendedEvent(event=event, sequence=1, content_hash="sha256:" + "c" * 64, prev_hash=None),
+    )
+
+    captured: dict[str, Any] = {}
+
+    def _fake_record_object_revision_with_event(
+        engine_arg: Engine,
+        object_repository_arg: PostgresObjectRepository,
+        event_log_arg: PostgresEventLog,
+        obj_arg: StoredObject,
+        expected_current_revision_arg: int | None,
+        event_arg: DomainEvent,
+        **_kwargs: object,
+    ) -> tuple[StoredObject, AppendedEvent]:
+        captured["engine"] = engine_arg
+        captured["object_repository"] = object_repository_arg
+        captured["event_log"] = event_log_arg
+        captured["obj"] = obj_arg
+        captured["expected_current_revision"] = expected_current_revision_arg
+        captured["event"] = event_arg
+        return sentinel_result
+
+    monkeypatch.setattr(
+        unit_of_work_module,
+        "record_object_revision_with_event",
+        _fake_record_object_revision_with_event,
+    )
+
+    record = bind_unit_of_work(engine, object_repository, event_log)
+    result = record(obj, 3, event)
+
+    assert captured["engine"] is engine
+    assert captured["object_repository"] is object_repository
+    assert captured["event_log"] is event_log
+    assert captured["obj"] is obj
+    assert captured["expected_current_revision"] == 3
+    assert captured["event"] is event
+    assert result is sentinel_result
+
+
+def test_bind_unit_of_work_returns_a_fresh_callable_each_time() -> None:
+    """Two separate ``bind_unit_of_work`` calls, even with the same
+    arguments, produce two independent closures — binding is not memoized
+    or shared global state.
+    """
+    engine = _sqlite_engine()
+    object_repository = PostgresObjectRepository(engine)
+    event_log = PostgresEventLog(engine)
+
+    first = bind_unit_of_work(engine, object_repository, event_log)
+    second = bind_unit_of_work(engine, object_repository, event_log)
+
+    assert first is not second

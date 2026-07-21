@@ -162,9 +162,17 @@ from mrr.domain.repositories import (
     TypedEdge,
 )
 from mrr.domain.transfer_trust import resolve_trusted_transfer_key
-from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
+from mrr.persistence.repositories import PostgresEventLog
 from mrr.persistence.tables import edges_table
-from mrr.persistence.unit_of_work import record_event, record_object_revision_with_event
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
+from mrr.persistence.unit_of_work import (
+    record_event,
+)
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from sqlalchemy import Engine
@@ -205,16 +213,6 @@ _ADAPTED_FROM_EDGE_TYPE = "adapted_from"
 #: ``mrr.contracts.transfer_contract.TransferStatus``'s own vocabulary minus
 #: ``"created"``/``"offered"`` (the two non-terminal states).
 TransferDecision = Literal["accepted", "adapted", "rejected", "deferred", "unresolved"]
-
-#: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
-#: takes once its ``engine``/``object_repository``/``event_log`` arguments
-#: are bound — the ONE-TIME content-revision path (``create`` only; no
-#: analog of ``propose_modification`` exists for a transfer). A local copy,
-#: not a shared import — see ``mrr.services.claim.service``'s own module
-#: docstring for why each service module keeps its own.
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
 
 #: The callable shape ``mrr.persistence.unit_of_work.record_event`` takes
 #: once its ``engine``/``event_log`` arguments are bound — the EVENT-ONLY
@@ -265,31 +263,6 @@ class TransferTransition:
     content: StoredObject
     status: str
     appended_event: AppendedEvent
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` (the ONE-TIME
-    content-revision path) to a concrete ``sqlalchemy.Engine``/
-    ``PostgresObjectRepository``/``PostgresEventLog`` triple. Production
-    wiring and integration tests call this once; DB-free unit tests pass
-    their own trivial callable of the same shape, backed by in-memory fakes,
-    instead.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 def bind_event_unit_of_work(engine: Engine, event_log: PostgresEventLog) -> RecordEvent:

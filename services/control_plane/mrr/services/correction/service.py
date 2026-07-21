@@ -407,7 +407,15 @@ from mrr.domain.repositories import (
 )
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
 from mrr.persistence.tables import edges_table
-from mrr.persistence.unit_of_work import record_event, record_object_revision_with_event
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
+from mrr.persistence.unit_of_work import (
+    record_event,
+)
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from mrr.services.claim.service import ClaimService
@@ -431,15 +439,6 @@ _CLAIM_REVIEW_ALREADY_SATISFIED_STATUSES = frozenset({"review_required", "withdr
 
 _CLAIM_KIND = "Claim"
 
-#: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
-#: takes once its ``engine``/``object_repository``/``event_log`` arguments
-#: are bound. A local copy, not a shared import — see
-#: ``mrr.services.claim.service``'s own module docstring for why each
-#: service module keeps its own.
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
-
 
 class _EventJournal(Protocol):
     """The one read operation this service needs from an event log — see
@@ -447,31 +446,6 @@ class _EventJournal(Protocol):
     """
 
     def read_all(self) -> list[AppendedEvent]: ...
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` to a concrete
-    ``sqlalchemy.Engine``/``PostgresObjectRepository``/``PostgresEventLog``
-    triple — identical in shape and purpose to
-    ``mrr.services.claim.service.bind_unit_of_work``. Production wiring and
-    integration tests call this once; DB-free unit tests pass their own
-    trivial callable of the same shape, backed by in-memory fakes.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 #: The callable shape ``mrr.persistence.unit_of_work.record_event`` (ADR-0007's

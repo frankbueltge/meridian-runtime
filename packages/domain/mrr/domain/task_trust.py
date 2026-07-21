@@ -109,20 +109,14 @@ module, per task-packets/E5-T04.yaml forbidden_changes.
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
+from datetime import datetime
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from mrr.contracts.task_bundle import TaskBundle
-from mrr.crypto.keys import decode_public_key
-from mrr.domain.exceptions import (
-    TaskKeyNotValidError,
-    TaskSignerMismatchError,
-    UnknownKeyIdError,
-)
-from mrr.domain.hashing_policy import verify_object_signature
+from mrr.domain.exceptions import TaskKeyNotValidError, TaskSignerMismatchError
 from mrr.domain.key_management import KeyRing
 from mrr.domain.manifest_trust import practice_key_ring
+from mrr.domain.trust_resolution import resolve_trusted_signer_key, verify_trusted_signature
 
 __all__ = [
     "practice_key_ring",
@@ -184,30 +178,13 @@ def resolve_trusted_task_key(
         mrr.crypto.exceptions.UnsupportedAlgorithmError: condition (d) fails
             — ``bundle.signature.algorithm`` is not ``"Ed25519"``.
     """
-    if bundle.signature.signer_practice_id != trusted_signer_practice_id:
-        raise TaskSignerMismatchError(
-            claimed_signer_practice_id=bundle.signature.signer_practice_id,
-            trusted_practice_id=trusted_signer_practice_id,
-        )
-
-    kid = bundle.signature.key_id
-    descriptor = ring.get(kid)
-    if descriptor is None:
-        raise UnknownKeyIdError(kid)
-
-    evaluation_instant = at if at is not None else datetime.now(UTC)
-    if not ring.is_valid_at(evaluation_instant, kid):
-        raise TaskKeyNotValidError(kid, at=evaluation_instant)
-
-    # Decode the RESOLVED descriptor's own key — never any key the bundle
-    # itself claims — so a substituted signing key cannot be accepted even
-    # if it happens to claim a trusted kid (task-packets/E5-T04.yaml's
-    # key-substitution acceptance test).
-    verifying_key = decode_public_key(descriptor.encoded_public_key)
-    verify_object_signature(
-        verifying_key,
-        json.loads(bundle.model_dump_json(exclude_none=True)),
-        bundle.signature.value,
-        algorithm=bundle.signature.algorithm,
+    verifying_key = resolve_trusted_signer_key(
+        bundle,
+        trusted_signer_practice_id,
+        ring,
+        at=at,
+        signer_mismatch_error=TaskSignerMismatchError,
+        key_not_valid_error=TaskKeyNotValidError,
     )
+    verify_trusted_signature(bundle, verifying_key)
     return verifying_key

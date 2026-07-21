@@ -79,18 +79,19 @@ additive to mrr.domain.exceptions only if needed").
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from mrr.contracts import EvidenceAnchor, SourceRecord, Urn
 from mrr.domain.identity import new_urn
 from mrr.domain.repositories import StoredObject
-from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
 from mrr.provenance.events import DomainEvent
-from mrr.provenance.log import AppendedEvent
-from sqlalchemy import Engine
 
 #: task-packets/E3-T01.yaml invariant: "persisting a record or anchor writes
 #: exactly one domain event with full NFR-001 provenance, atomically with
@@ -98,47 +99,6 @@ from sqlalchemy import Engine
 #: "research_score.created"/"task_bundle.created"'s existing convention.
 _EVENT_SOURCE_RECORD_CREATED = "source_record.created"
 _EVENT_EVIDENCE_ANCHOR_CREATED = "evidence_anchor.created"
-
-#: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
-#: takes once its ``engine``/``object_repository``/``event_log`` arguments
-#: are bound. Identical in shape to every other service's own
-#: ``RecordRevisionWithEvent`` — see e.g.
-#: ``mrr.services.research_score.service``'s own module docstring for why
-#: this is a local copy, not a shared import, across separate service
-#: modules.
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` to a concrete
-    ``sqlalchemy.Engine``/``PostgresObjectRepository``/``PostgresEventLog``
-    triple, producing the ``RecordRevisionWithEvent`` callable both
-    ``SourceRecordService`` and ``EvidenceAnchorService`` depend on for their
-    one atomic write each. Production wiring and integration tests call this
-    ONCE and pass the same bound callable to both services (they ultimately
-    write the same ``objects``/``domain_events`` tables — the same sharing
-    ``mrr.services.task_bundle.service.bind_unit_of_work`` documents for
-    ``TaskBundleService``/``NodeTaskDecisionService``); DB-free unit tests
-    pass their own trivial callable of the same shape, backed by in-memory
-    fakes, instead.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 def _source_record_to_stored_object(source_record: SourceRecord) -> StoredObject:

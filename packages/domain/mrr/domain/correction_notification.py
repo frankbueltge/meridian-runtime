@@ -94,19 +94,16 @@ signature trustworthy.
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
+from datetime import datetime
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from mrr.contracts.correction_notification import CorrectionNotification
-from mrr.crypto.keys import decode_public_key
 from mrr.domain.exceptions import (
     CorrectionNotificationKeyNotValidError,
     CorrectionNotificationSignerMismatchError,
-    UnknownKeyIdError,
 )
-from mrr.domain.hashing_policy import verify_object_signature
 from mrr.domain.key_management import KeyRing
+from mrr.domain.trust_resolution import resolve_trusted_signer_key, verify_trusted_signature
 
 __all__ = ["resolve_trusted_correction_notification_key"]
 
@@ -162,29 +159,13 @@ def resolve_trusted_correction_notification_key(
         mrr.crypto.exceptions.UnsupportedAlgorithmError: condition (d) fails
             — ``notification.signature.algorithm`` is not ``"Ed25519"``.
     """
-    if notification.signature.signer_practice_id != trusted_notifying_practice_id:
-        raise CorrectionNotificationSignerMismatchError(
-            claimed_signer_practice_id=notification.signature.signer_practice_id,
-            trusted_practice_id=trusted_notifying_practice_id,
-        )
-
-    kid = notification.signature.key_id
-    descriptor = ring.get(kid)
-    if descriptor is None:
-        raise UnknownKeyIdError(kid)
-
-    evaluation_instant = at if at is not None else datetime.now(UTC)
-    if not ring.is_valid_at(evaluation_instant, kid):
-        raise CorrectionNotificationKeyNotValidError(kid, at=evaluation_instant)
-
-    # Decode the RESOLVED descriptor's own key — never any key the
-    # notification itself claims — so a substituted signing key cannot be
-    # accepted even if it happens to claim a trusted kid.
-    verifying_key = decode_public_key(descriptor.encoded_public_key)
-    verify_object_signature(
-        verifying_key,
-        json.loads(notification.model_dump_json(exclude_none=True)),
-        notification.signature.value,
-        algorithm=notification.signature.algorithm,
+    verifying_key = resolve_trusted_signer_key(
+        notification,
+        trusted_notifying_practice_id,
+        ring,
+        at=at,
+        signer_mismatch_error=CorrectionNotificationSignerMismatchError,
+        key_not_valid_error=CorrectionNotificationKeyNotValidError,
     )
+    verify_trusted_signature(notification, verifying_key)
     return verifying_key

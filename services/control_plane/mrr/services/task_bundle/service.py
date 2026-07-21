@@ -223,8 +223,16 @@ from mrr.domain.identity import new_urn
 from mrr.domain.lifecycles import TASK_BUNDLE_LIFECYCLE
 from mrr.domain.repositories import ObjectRepository, StoredObject
 from mrr.domain.task_trust import practice_key_ring, resolve_trusted_task_key
-from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_event, record_object_revision_with_event
+from mrr.persistence.repositories import PostgresEventLog
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
+from mrr.persistence.unit_of_work import (
+    record_event,
+)
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from mrr.services.capability_registry.service import CapabilityRegistry
@@ -282,24 +290,6 @@ RefusalReason = Literal[
 
 _REFUSAL_REASONS: frozenset[str] = frozenset(get_args(RefusalReason))
 
-#: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
-#: takes once its ``engine``/``object_repository``/``event_log`` arguments
-#: are bound — the CONTENT-revision path (``create``, ``propose_modification``).
-#: Identical in shape to
-#: ``mrr.services.research_score.service.RecordRevisionWithEvent`` /
-#: ``mrr.services.capability_registry.service.RecordRevisionWithEvent`` —
-#: see those modules' docstrings for why this is a local copy, not a shared
-#: import, across *separate service modules*. Within *this* module, however,
-#: both ``TaskBundleService`` and ``NodeTaskDecisionService`` share the one
-#: copy below via module-level helper functions (``_advance`` etc.) rather
-#: than each duplicating it again — they operate on the very same kind of
-#: object in the very same file, so the "local copy per service module"
-#: convention's purpose (not coupling two independently evolving services)
-#: does not apply between them the way it does across E2-T01/T02/T03.
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
-
 #: The callable shape ``mrr.persistence.unit_of_work.record_event`` takes
 #: once its ``engine``/``event_log`` arguments are bound — the EVENT-ONLY
 #: path (ADR-0007: ``offer``/``accept``/``defer``/``reject``/
@@ -337,33 +327,6 @@ class TaskBundleTransition:
     content: StoredObject
     status: str
     appended_event: AppendedEvent
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` (the CONTENT-revision path)
-    to a concrete ``sqlalchemy.Engine``/``PostgresObjectRepository``/
-    ``PostgresEventLog`` triple. Production wiring and integration tests call
-    this once each for ``TaskBundleService`` and ``NodeTaskDecisionService``
-    (they may safely share the same bound callable, since both ultimately
-    write the same ``objects``/``domain_events`` tables); DB-free unit tests
-    pass their own trivial callable of the same shape, backed by in-memory
-    fakes, instead.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 def bind_event_unit_of_work(engine: Engine, event_log: PostgresEventLog) -> RecordEvent:

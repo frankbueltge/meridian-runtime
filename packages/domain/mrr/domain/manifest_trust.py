@@ -102,8 +102,7 @@ evaluation instant this call is given.
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
+from datetime import datetime
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from mrr.contracts.node_manifest import NodeManifest
@@ -114,11 +113,10 @@ from mrr.domain.exceptions import (
     ManifestKeyNotDeclaredError,
     ManifestKeyNotValidError,
     ManifestSignerMismatchError,
-    UnknownKeyIdError,
 )
-from mrr.domain.hashing_policy import verify_object_signature
 from mrr.domain.key_management import KeyRing
 from mrr.domain.key_management import PublicKeyDescriptor as DomainPublicKeyDescriptor
+from mrr.domain.trust_resolution import resolve_trusted_signer_key, verify_trusted_signature
 
 __all__ = [
     "practice_key_ring",
@@ -206,20 +204,14 @@ def resolve_trusted_manifest_key(
         mrr.crypto.exceptions.UnsupportedAlgorithmError: condition (e) fails
             — ``manifest.signature.algorithm`` is not ``"Ed25519"``.
     """
-    if manifest.signature.signer_practice_id != trusted_practice_id:
-        raise ManifestSignerMismatchError(
-            claimed_signer_practice_id=manifest.signature.signer_practice_id,
-            trusted_practice_id=trusted_practice_id,
-        )
-
-    kid = manifest.signature.key_id
-    descriptor = ring.get(kid)
-    if descriptor is None:
-        raise UnknownKeyIdError(kid)
-
-    evaluation_instant = at if at is not None else datetime.now(UTC)
-    if not ring.is_valid_at(evaluation_instant, kid):
-        raise ManifestKeyNotValidError(kid, at=evaluation_instant)
+    verifying_key = resolve_trusted_signer_key(
+        manifest,
+        trusted_practice_id,
+        ring,
+        at=at,
+        signer_mismatch_error=ManifestSignerMismatchError,
+        key_not_valid_error=ManifestKeyNotValidError,
+    )
 
     # ADR-0009: compare KEY IDENTITY, not string identity — decode the
     # resolved descriptor's key once, then decode each of the manifest's own
@@ -227,8 +219,12 @@ def resolve_trusted_manifest_key(
     # the first that decodes to the same raw bytes. An entry that fails to
     # decode (e.g. a stray non-key string) is skipped, never raising out of
     # this condition — only ManifestKeyNotDeclaredError, and only once every
-    # entry has been tried and none matched.
-    verifying_key = decode_public_key(descriptor.encoded_public_key)
+    # entry has been tried and none matched. This is manifest_trust's own
+    # unique fourth condition (task-packets/E9-T00b.yaml derived_decisions
+    # (a)/(b)): no other resolver has an analog, so it stays here rather
+    # than in the shared mrr.domain.trust_resolution core, interleaved
+    # exactly where it has always run — after key resolution, before
+    # signature verification.
     resolved_key_bytes = verifying_key.public_bytes_raw()
     key_is_declared = False
     for candidate in manifest.public_keys:
@@ -240,12 +236,7 @@ def resolve_trusted_manifest_key(
             key_is_declared = True
             break
     if not key_is_declared:
-        raise ManifestKeyNotDeclaredError(kid)
+        raise ManifestKeyNotDeclaredError(manifest.signature.key_id)
 
-    verify_object_signature(
-        verifying_key,
-        json.loads(manifest.model_dump_json(exclude_none=True)),
-        manifest.signature.value,
-        algorithm=manifest.signature.algorithm,
-    )
+    verify_trusted_signature(manifest, verifying_key)
     return verifying_key

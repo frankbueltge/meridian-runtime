@@ -35,7 +35,6 @@ what this run's own caller needs" restraint, applied here to
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -49,11 +48,14 @@ from mrr.domain.hashing_policy import compute_content_hash
 from mrr.domain.identity import new_urn
 from mrr.domain.lifecycles import QUESTION_MODEL_LIFECYCLE
 from mrr.domain.repositories import ObjectRepository, StoredObject
-from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
-from sqlalchemy import Engine
 
 #: The create/draft-publication event — additive (no
 #: docs/spec/03_API_AND_EVENTS.md section 5.2 entry exists for it), mirroring
@@ -75,15 +77,6 @@ _ACCEPTED_EVENT_TYPE = "question_model.accepted"
 #: ``QUESTION_MODEL_LIFECYCLE.states``.
 _NEW_QUESTION_MODEL_SENTINEL_STATE = "<new>"
 
-#: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
-#: takes once its ``engine``/``object_repository``/``event_log`` arguments are
-#: bound — a local copy, not a shared import, across separate service
-#: modules (see ``mrr.services.source_family.service``'s own module docstring
-#: for why).
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
-
 
 class _EventJournal(Protocol):
     """The one read operation this service needs from an event log —
@@ -92,31 +85,6 @@ class _EventJournal(Protocol):
     """
 
     def read_all(self) -> list[AppendedEvent]: ...
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` to a concrete
-    ``sqlalchemy.Engine``/``PostgresObjectRepository``/``PostgresEventLog``
-    triple, producing the ``RecordRevisionWithEvent`` callable
-    ``QuestionModelService`` depends on for its atomic writes. Production
-    wiring and integration tests call this once; DB-free unit tests pass
-    their own trivial callable of the same shape, backed by in-memory fakes.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 def _question_model_to_stored_object(question_model: QuestionModel) -> StoredObject:

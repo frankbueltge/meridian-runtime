@@ -35,7 +35,6 @@ reading the returned ``StoredObject.content_hash`` after ``lock`` returns.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -49,11 +48,14 @@ from mrr.domain.hashing_policy import compute_content_hash
 from mrr.domain.identity import new_urn
 from mrr.domain.lifecycles import METHOD_PROTOCOL_LIFECYCLE
 from mrr.domain.repositories import ObjectRepository, StoredObject
-from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
-from sqlalchemy import Engine
 
 _CREATED_EVENT_TYPE = "method_protocol.created"
 _REVIEWED_EVENT_TYPE = "method_protocol.reviewed"
@@ -65,12 +67,6 @@ _LOCKED_EVENT_TYPE = "method_protocol.locked"
 #: convention. Never a member of ``METHOD_PROTOCOL_LIFECYCLE.states``.
 _NEW_PROTOCOL_SENTINEL_STATE = "<new>"
 
-#: A local copy, not a shared import, across separate service modules — see
-#: ``mrr.services.source_family.service``'s own module docstring for why.
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
-
 
 class _EventJournal(Protocol):
     """The one read operation this service needs from an event log —
@@ -79,29 +75,6 @@ class _EventJournal(Protocol):
     """
 
     def read_all(self) -> list[AppendedEvent]: ...
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` to a concrete
-    ``sqlalchemy.Engine``/``PostgresObjectRepository``/``PostgresEventLog``
-    triple, producing the ``RecordRevisionWithEvent`` callable
-    ``MethodProtocolService`` depends on for its atomic writes.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 def _protocol_to_stored_object(protocol: MethodProtocol) -> StoredObject:

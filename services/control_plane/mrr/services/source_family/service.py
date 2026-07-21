@@ -52,60 +52,25 @@ case needs a typed error here.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from mrr.contracts import SourceFamily, Urn
 from mrr.domain.identity import new_urn
 from mrr.domain.repositories import StoredObject
-from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
 from mrr.provenance.events import DomainEvent
-from mrr.provenance.log import AppendedEvent
-from sqlalchemy import Engine
 
 #: task-packets/E3-T03.yaml invariant: "persisting a family writes exactly
 #: one domain event with full NFR-001 provenance, atomically with the
 #: revision" — one event type for this entity, dot-separated, matching
 #: "source_record.created"/"evidence_anchor.created"'s existing convention.
 _EVENT_SOURCE_FAMILY_CREATED = "source_family.created"
-
-#: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
-#: takes once its ``engine``/``object_repository``/``event_log`` arguments
-#: are bound. Identical in shape to every other service's own
-#: ``RecordRevisionWithEvent`` — see e.g.
-#: ``mrr.services.evidence.service``'s own module docstring for why this is
-#: a local copy, not a shared import, across separate service modules.
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` to a concrete
-    ``sqlalchemy.Engine``/``PostgresObjectRepository``/``PostgresEventLog``
-    triple, producing the ``RecordRevisionWithEvent`` callable
-    ``SourceFamilyService`` depends on for its one atomic write. Production
-    wiring and integration tests call this once; DB-free unit tests pass
-    their own trivial callable of the same shape, backed by an in-memory
-    fake, instead.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 def _source_family_to_stored_object(source_family: SourceFamily) -> StoredObject:
