@@ -1,7 +1,8 @@
 """SQLAlchemy Core table definitions for the ``objects``/``edges`` tables
 (task-packets/E1-T05.yaml derived_decisions: "one generic revisioned objects
-table plus one typed edges table, not per-entity tables") and the
-``domain_events``/``outbox`` tables (task-packets/E1-T06.yaml).
+table plus one typed edges table, not per-entity tables"), the
+``domain_events``/``outbox`` tables (task-packets/E1-T06.yaml), and the
+``processed_ids`` table (task-packets/E5-T07.yaml).
 
 Core ``Table`` objects are used deliberately instead of the ORM's declarative
 classes — less magic under mypy strict, and these tables are accessed only
@@ -18,6 +19,7 @@ it.
 from __future__ import annotations
 
 import sqlalchemy as sa
+from mrr.domain.replay_retention import PROCESSED_ID_KINDS
 from mrr.domain.repositories import EDGE_VOCABULARY
 from mrr.provenance.log import OUTBOX_STATUSES
 from sqlalchemy.dialects import postgresql
@@ -136,4 +138,49 @@ outbox_table = sa.Table(
     sa.PrimaryKeyConstraint("event_id", name="pk_outbox"),
     sa.ForeignKeyConstraint(["event_id"], ["domain_events.id"], name="fk_outbox_event_id"),
     sa.CheckConstraint(_OUTBOX_STATUS_CHECK_CLAUSE, name="ck_outbox_status_vocabulary"),
+)
+
+#: The IN-list clause for the ``processed_ids.id_kind`` CHECK constraint,
+#: built from the single source of truth
+#: (``mrr.domain.replay_retention.PROCESSED_ID_KINDS``) — mirrors
+#: ``_EDGE_TYPE_CHECK_CLAUSE``/``_OUTBOX_STATUS_CHECK_CLAUSE`` above.
+_PROCESSED_ID_KIND_LIST = ", ".join(f"'{k}'" for k in PROCESSED_ID_KINDS)
+_PROCESSED_ID_KIND_CHECK_CLAUSE = f"id_kind IN ({_PROCESSED_ID_KIND_LIST})"
+
+#: The durable processed-id store (task-packets/E5-T07.yaml) backing
+#: ``mrr.domain.envelope_validation.AlreadyProcessed`` (over ``message_id``)
+#: and ``mrr.domain.offline_bundle.BundleAlreadyProcessed`` (over
+#: ``bundle_id``) — one table, discriminated by ``id_kind``, rather than two
+#: near-identical tables, since the two id spaces are already distinct URN
+#: entity segments and cannot collide.
+#:
+#: Keyed by ``(recipient_node_id, id)``, NOT ``id`` alone: replay detection
+#: is per RECEIVING node — the same object id delivered to two different
+#: nodes is not a replay at either. That pair is this table's primary key,
+#: which is also its UNIQUE constraint and the single idempotency anchor
+#: ``mrr.persistence.repositories.PostgresProcessedIdStore.record_processed``
+#: relies on (``INSERT ... ON CONFLICT DO NOTHING`` targets exactly this
+#: constraint, so a duplicate insert is a silent no-op at the database, never
+#: an application-level check that could race).
+#:
+#: ``expires_at`` is the recorded object's own expiry (copied from the
+#: envelope/bundle at record time), stored so
+#: ``mrr.domain.replay_retention.processed_id_retention_horizon`` can be
+#: evaluated per row without re-fetching the original object — retention is
+#: therefore safe by construction and can never prune a row while an object
+#: bearing its id could still pass its own validity-window check. There is
+#: no UPDATE path anywhere in ``PostgresProcessedIdStore``: a row is
+#: appended once by ``record_processed`` and later removed only by
+#: ``prune_expired`` — append-then-prune only, never mutated in place.
+processed_ids_table = sa.Table(
+    "processed_ids",
+    metadata,
+    sa.Column("id", sa.Text(), nullable=False),
+    sa.Column("id_kind", sa.Text(), nullable=False),
+    sa.Column("recipient_node_id", sa.Text(), nullable=False),
+    sa.Column("processed_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.PrimaryKeyConstraint("recipient_node_id", "id", name="pk_processed_ids"),
+    sa.CheckConstraint(_PROCESSED_ID_KIND_CHECK_CLAUSE, name="ck_processed_ids_id_kind_vocabulary"),
+    sa.Index("ix_processed_ids_expires_at", "expires_at"),
 )

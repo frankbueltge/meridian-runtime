@@ -1,0 +1,228 @@
+task_id: E5-T07
+title: Durable federated replay/idempotency store — a Postgres processed-id repository backing the already_processed predicate for both envelopes and bundles, with retention that never reopens a replay window
+status: approved
+derivation: >
+  Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E5 (E5-T07
+  "replay, expiry, revocation, and idempotency hardening"), docs/spec/04_
+  SECURITY_AND_POLICY.md section 8.2 ("Task and result envelopes include nonces,
+  expiry, recipient identity, content hashes, and signatures. Processed envelope
+  IDs are retained for replay detection according to policy") and section 8.4
+  (revocation), docs/spec/03_API_AND_EVENTS.md section 5.3 ("State changes and
+  event publication MUST use a transactional outbox ... Consumers MUST be
+  idempotent"), docs/spec/01_SYSTEM_SPEC.md section 8.4 (federated offline import
+  MUST verify replay protection), and MRR-NFR-007/002/005/001. E5-T03
+  (validate_inbound_envelope) and E5-T06 (validate_inbound_bundle) each take a
+  caller-supplied replay predicate mrr.domain.envelope_validation.AlreadyProcessed
+  (``Callable[[str], bool]``) and BOTH explicitly defer the DURABLE processed-id
+  store to this task (see packages/domain/mrr/domain/offline_bundle.py: "No
+  durable processed-id store or revocation sweep is built ... is
+  task-packets/E5-T07.yaml's scope"). This task builds exactly that durable store
+  — the persistence layer behind the predicate — on the proven E1-T05/E1-T06
+  Postgres+Alembic+integration-test harness (tests/integration/conftest.py: a
+  real PostgreSQL via MRR_TEST_DATABASE_URL, a fresh alembic-migrated schema per
+  test, skipped VISIBLY outside CI, never a silent green). Unlike E5-T03/T06
+  (pure object layer), a durable store is this task's whole point and the repo's
+  integration harness makes it CI-testable.
+scope_note: >
+  The Epic-E5 line "replay, expiry, revocation, and idempotency hardening" spans
+  TWO distinct behaviors. Replay + idempotency + expiry-retention are ONE cohesive
+  behavior — the durable processed-id store — and are this packet's scope; they
+  satisfy the E5 exit criterion "compromised signatures and replay fail closed"
+  (replay) with durability. Durable REVOCATION state — a persisted revocation
+  record plus the docs/spec/04 section 8.4 ``trust_revoked_after_creation``
+  annotation on ALREADY-ACCEPTED objects — is a SEPARATE behavior (annotating
+  existing objects, not gating intake) and is deferred to a follow-up packet
+  E5-T07b, for three reasons: (1) revocation is ALREADY enforced at intake by
+  every resolver's at-instant KeyRing.is_valid_at check (E5-T02..T06) — a revoked
+  key's new objects already fail closed, so nothing about fail-closed acceptance
+  waits on T07b; (2) bundling a second behavior would break template rules 1 and
+  10 (one cohesive behavior; small enough for independent review and rollback);
+  (3) it mirrors this repo's own E5-T00/E5-T00b and E5-T02/E5-T02b splits. This
+  scope_note IS the "specification issue" AGENTS.md rule 14 asks for; the planning
+  session will derive E5-T07b next.
+objective: >
+  Provide a durable, idempotent, Postgres-backed processed-id store that implements
+  the replay predicate E5-T03/T06 deferred, framework-appropriate (persistence
+  layer, not core) and CI-integration-testable: (1) a new Alembic migration and a
+  processed-id table keyed by the recipient node and the processed object id,
+  recording id, id_kind ('envelope' | 'bundle'), recipient_node_id, processed_at,
+  and the object's own expires_at (retained so retention can never prune an id
+  whose object could still be inside its validity window). A UNIQUE constraint on
+  (recipient_node_id, id) is the idempotency anchor. (2) A PostgresProcessedIdStore
+  repository (packages/persistence) exposing: already_processed(id) -> bool bound
+  for a given recipient node — the exact mrr.domain.envelope_validation.
+  AlreadyProcessed shape, usable verbatim as the predicate argument of BOTH
+  validate_inbound_envelope (over message_id) and validate_inbound_bundle (over
+  bundle_id); record_processed(id, *, id_kind, recipient_node_id, expires_at, at)
+  that inserts idempotently (INSERT ... ON CONFLICT DO NOTHING) inside a caller
+  transaction/UnitOfWork so recording the SAME id twice is a no-op, never a
+  duplicate row and never an error, and returns whether the row was newly
+  recorded; and prune_expired(now) that deletes ONLY rows whose retention horizon
+  has passed, returning the count pruned. (3) A pure domain retention-horizon
+  function processed_id_retention_horizon(expires_at, *, grace) — unit-testable
+  WITHOUT Postgres — defining the instant an id becomes prunable (its object's
+  expires_at plus a policy grace, so an id is prunable only once NO envelope/bundle
+  bearing it could still be within its own [sent_at/created_at, expires_at) window;
+  pruning therefore never reopens a replay window). The store proves durable replay
+  fail-closed end to end: after record_processed, a resubmitted envelope/bundle is
+  rejected by validate_inbound_envelope/validate_inbound_bundle
+  (EnvelopeAlreadyProcessedError / BundleAlreadyProcessedError) because the durable
+  predicate now returns True.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#84-federated-offline
+  - docs/spec/03_API_AND_EVENTS.md#53-transactional-outbox
+  - docs/spec/04_SECURITY_AND_POLICY.md#82-replay-and-tampering
+  - docs/spec/04_SECURITY_AND_POLICY.md#84-compromised-node-response
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e5--federation
+  - packages/domain/mrr/domain/envelope_validation.py
+  - packages/domain/mrr/domain/offline_bundle.py
+  - packages/persistence/mrr/persistence/tables.py
+  - packages/persistence/mrr/persistence/repositories.py
+  - packages/persistence/mrr/persistence/unit_of_work.py
+  - migrations/env.py
+  - tests/integration/conftest.py
+requirements:
+  - MRR-NFR-007
+  - MRR-NFR-002
+  - MRR-NFR-005
+  - MRR-NFR-001
+forbidden_changes:
+  - the E5-T03 validate_inbound_envelope and E5-T06 validate_inbound_bundle and
+    their shared AlreadyProcessed predicate TYPE (reuse UNCHANGED — this task
+    supplies a durable IMPLEMENTATION of that predicate, it does not change the
+    predicate's shape or the validators' accept rule); the domain
+    manifest/envelope/task/crate/bundle resolvers are not touched
+  - the contract models (packages/contracts) and any JSON Schema semantics — a
+    processed-id row is INTERNAL node state, not a cross-practice object, so it
+    gets NO schema/contract/example and NO scripts/check_contracts.py entry
+  - the durable REVOCATION record and the docs/spec/04 section 8.4
+    ``trust_revoked_after_creation`` annotation on already-accepted objects
+    (E5-T07b — see scope_note); the at-instant revocation check in the resolvers
+    stays exactly as is
+  - API endpoints, workflow-engine integration, external message brokers or
+    delivery transports, and the physical air-gap medium (all out of Epic scope
+    here); no new authoritative cross-practice object
+  - the E1-T06 domain_events/outbox tables and the object/edge repositories
+    (reuse the UnitOfWork/transaction and Alembic patterns unchanged; ADD a table
+    and a repository, do not alter existing ones)
+allowed_paths:
+  - packages/persistence/**
+  - packages/domain/**
+  - migrations/**
+  - tests/unit/**
+  - tests/property/**
+  - tests/integration/**
+derived_decisions: >
+  The store is keyed by (recipient_node_id, id), not id alone: replay detection is
+  per receiving node (the same object id delivered to two different nodes is not a
+  replay at either), and the UNIQUE constraint on that pair is the single source of
+  idempotency — record_processed uses INSERT ... ON CONFLICT DO NOTHING so a
+  duplicate is a silent no-op at the database, not an application-level check that
+  could race. already_processed is a SELECT of that key. Both are executed inside
+  the existing UnitOfWork/Connection pattern so a real intake (validate then
+  record) can be one transaction later (that full wiring is E2E-002, not here).
+  The id_kind column keeps envelope and bundle ids in ONE table with a discriminator
+  rather than two near-identical tables — a bundle_id and a message_id are already
+  distinct URN namespaces so they cannot collide, and one table means one retention
+  sweep. expires_at is stored so retention is safe by construction:
+  processed_id_retention_horizon is a pure function (unit-tested without Postgres)
+  and prune_expired deletes only rows past it, so an id can never be pruned while an
+  object bearing it could still validate — pruning cannot reopen a replay window,
+  and an unbounded store is avoided per docs/spec/04 section 8.2 "retained ...
+  according to policy". The predicate returned to validate_inbound_envelope/bundle
+  is the store's bound already_processed; no change to those functions is needed —
+  this task fills the seam they were built with. No intake service, no run-linkage,
+  and no revocation annotation are built here (see forbidden_changes / scope_note).
+invariants:
+  - recording a processed id is idempotent: record_processed(id) twice for the same
+    (recipient_node_id, id) yields exactly one row, no error, and a stable
+    already_processed(id) == True; the UNIQUE constraint, not application logic, is
+    the idempotency anchor
+  - already_processed(id) is True if and only if a row for (recipient_node_id, id)
+    exists and has not been pruned; for any id never recorded (or pruned only after
+    its retention horizon) it is False
+  - retention never reopens a replay window: prune_expired(now) deletes a row only
+    when now is at or past processed_id_retention_horizon(row.expires_at), which is
+    at or after the object's own expiry — so no still-valid envelope/bundle's id is
+    ever pruned
+  - the store's already_processed is drop-in as the AlreadyProcessed predicate of
+    BOTH validate_inbound_envelope (message_id) and validate_inbound_bundle
+    (bundle_id) with NO change to either function; a resubmitted, already-recorded
+    object is rejected fail closed (EnvelopeAlreadyProcessedError /
+    BundleAlreadyProcessedError)
+  - the store is internal node state: it adds no contract/schema/example, imports
+    no provider SDK beyond SQLAlchemy (persistence layer), and both import-linter
+    contracts stay KEPT (core packages still import no framework); the E1-T06
+    tables and repositories are unchanged
+  - a processed-id row is append-then-prune only: it is never mutated in place, and
+    prune is the only deletion (docs/spec/04 section 8.2 retention)
+acceptance_tests:
+  - integration (Postgres, CI): record_processed then already_processed returns
+    True; an id never recorded returns False; recording the SAME (node, id) twice
+    leaves exactly one row and no error (idempotency); two different recipient nodes
+    recording the same id do not shadow each other
+  - integration: the store's already_processed wired verbatim as the predicate makes
+    validate_inbound_envelope reject a resubmitted envelope
+    (EnvelopeAlreadyProcessedError) and validate_inbound_bundle reject a resubmitted
+    bundle (BundleAlreadyProcessedError), while first submission passes — durable
+    replay fail-closed end to end (E5 exit criterion)
+  - integration: prune_expired removes rows at/after their retention horizon and
+    returns the count; a row whose object is still within its validity window is
+    NOT pruned (assert already_processed stays True across a prune that predates the
+    horizon); after a legitimate prune past the horizon, already_processed returns
+    False
+  - unit (no Postgres): processed_id_retention_horizon is at/after expires_at for
+    any non-negative grace, is monotonic in expires_at, and its boundary (now ==
+    horizon) is prunable — proving retention can never precede object expiry
+  - property (no Postgres): for arbitrary expires_at and grace >= 0,
+    processed_id_retention_horizon(expires_at, grace) >= expires_at (retention never
+    reopens a replay window)
+  - integration: idempotent record under a UnitOfWork rollback leaves no row (the
+    record participates in the caller transaction, not a side channel)
+  - all existing suites stay green; both import-linter contracts remain KEPT; the
+    integration tier skips VISIBLY when MRR_TEST_DATABASE_URL is unset locally and
+    FAILS (never skips) if unset in CI, per tests/integration/conftest.py
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - the processed-id table + migration, the PostgresProcessedIdStore
+    (already_processed / record_processed / prune_expired) accept/record/prune
+    rules, and the pure retention-horizon function
+  - the demonstration that the store's already_processed is drop-in for BOTH
+    validators and rejects a durable replay fail closed (envelope and bundle)
+  - changed files and the new migration revision id
+  - tests added and exact command results (format, lint, typecheck, test, and
+    test-integration) — for test-integration, either the CI run's pass output or,
+    if run locally without Postgres, the VISIBLE skip with its reason (never a
+    silent green)
+  - security/privacy implications (durable replay protection per recipient node,
+    idempotency anchored at the DB unique constraint, retention that cannot reopen
+    a replay window, internal state only — no new cross-practice object, no
+    network)
+  - open specification questions and what is deferred (durable revocation record +
+    trust_revoked_after_creation annotation E5-T07b; full validate-then-record
+    intake transaction + run-linkage at E2E-002; the concrete retention grace as a
+    policy value)
+stop_conditions:
+  - durable replay protection cannot be expressed without changing
+    validate_inbound_envelope / validate_inbound_bundle or the AlreadyProcessed
+    predicate type, or without a new cross-practice contract/schema (it can — the
+    store fills the existing predicate seam and is internal state; report if blocked)
+  - honoring "processed IDs are retained ... according to policy" (section 8.2)
+    would force building a general policy engine or a scheduler for prune_expired
+    (it does not — expose prune_expired as a callable with a horizon; who schedules
+    it is out of scope) — keep the callable and stop
+  - the durable revocation record / trust_revoked_after_creation annotation turns
+    out to be unavoidable to make replay fail closed (it is not — revocation is
+    already enforced at-instant at intake; if genuinely blocked, report and defer
+    to E5-T07b rather than expanding this packet)
+  - integration coverage is impossible because the repo's Postgres harness cannot
+    be reached even in CI (it can — tests/integration/conftest.py is the proven
+    E1-T05/T06 path; report if the harness is actually broken)

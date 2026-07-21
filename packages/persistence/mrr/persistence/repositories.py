@@ -3,7 +3,10 @@ protocols (task-packets/E1-T05.yaml), against a supplied
 ``sqlalchemy.Engine``, plus the ``mrr.provenance.log`` protocols
 (task-packets/E1-T06.yaml) — ``PostgresEventLog`` (the append-only,
 tamper-evident domain event log) and ``InProcessOutboxDispatcher`` (the
-at-least-once reference outbox dispatcher).
+at-least-once reference outbox dispatcher) — and ``PostgresProcessedIdStore``
+(task-packets/E5-T07.yaml), the durable replay/idempotency store backing
+``mrr.domain.envelope_validation.AlreadyProcessed`` and ``mrr.domain.
+offline_bundle.BundleAlreadyProcessed``. See that class's own docstring.
 
 Optimistic concurrency (``PostgresObjectRepository.insert_revision``) is
 belt-and-braces:
@@ -48,7 +51,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
@@ -57,12 +60,20 @@ from mrr.domain.exceptions import (
     RevisionConflictError,
     UnknownEdgeTypeError,
 )
+from mrr.domain.replay_retention import ProcessedIdKind, processed_id_retention_horizon
 from mrr.domain.repositories import EDGE_VOCABULARY, StoredObject, TypedEdge
-from mrr.persistence.tables import domain_events_table, edges_table, objects_table, outbox_table
+from mrr.persistence.tables import (
+    domain_events_table,
+    edges_table,
+    objects_table,
+    outbox_table,
+    processed_ids_table,
+)
 from mrr.provenance.events import DomainEvent, compute_event_hash
 from mrr.provenance.exceptions import EventAppendError
 from mrr.provenance.log import AppendedEvent, EventHandler, verify_appended_events
 from sqlalchemy import Connection, Engine
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
 
@@ -513,3 +524,242 @@ class InProcessOutboxDispatcher:
                 .where(outbox_table.c.event_id == event_id)
                 .values(attempts=outbox_table.c.attempts + 1)
             )
+
+
+class PostgresProcessedIdStore:
+    """Durable replay/idempotency store (task-packets/E5-T07.yaml) against
+    ``mrr.persistence.tables.processed_ids_table`` — the persistence layer
+    behind ``mrr.domain.envelope_validation.AlreadyProcessed`` and
+    ``mrr.domain.offline_bundle.BundleAlreadyProcessed``, both of which are
+    reused completely unchanged: this class only fills the predicate seam
+    those two modules were built with, it does not touch either.
+
+    Keyed by ``(recipient_node_id, id)``, not ``id`` alone — see
+    ``processed_ids_table``'s own docstring. Every method that needs a
+    recipient node takes it explicitly rather than binding one at
+    construction: ``already_processed`` returns a predicate CURRIED over a
+    specific ``recipient_node_id`` (so the returned closure has the exact
+    ``Callable[[str], bool]`` shape both validators want, with no wrapping
+    needed at the call site), while ``record_processed``/
+    ``record_processed_with_connection`` take ``recipient_node_id``
+    explicitly per call — a single store instance (bound only to an
+    ``Engine``, exactly like ``PostgresObjectRepository``/
+    ``PostgresEdgeRepository``/``PostgresEventLog`` above) can therefore
+    serve as many recipient nodes as a process needs, which is also what
+    lets ``tests/integration/persistence/test_processed_id_store.py``
+    demonstrate that two different recipient nodes recording the same id do
+    not shadow each other without constructing two separate store objects.
+
+    ``grace`` (task-packets/E5-T07.yaml: "the concrete retention grace as a
+    policy value" is left to the caller/deployment, not decided here) is
+    bound once at construction and applied by every ``prune_expired`` call
+    via ``mrr.domain.replay_retention.processed_id_retention_horizon`` — see
+    that function's own docstring for why it must be non-negative. Defaults
+    to ``timedelta(0)`` (no extra margin beyond the recorded object's own
+    ``expires_at``), an honest "no grace configured" starting point rather
+    than an invented policy number.
+    """
+
+    def __init__(self, engine: Engine, *, grace: timedelta = timedelta(0)) -> None:
+        if grace < timedelta(0):
+            raise ValueError(f"grace must be >= timedelta(0), got {grace!r}")
+        self._engine = engine
+        self._grace = grace
+
+    def already_processed(self, recipient_node_id: str) -> Callable[[str], bool]:
+        """Return a predicate bound to ``recipient_node_id`` — the exact
+        ``Callable[[str], bool]`` shape of both ``mrr.domain.
+        envelope_validation.AlreadyProcessed`` and ``mrr.domain.
+        offline_bundle.BundleAlreadyProcessed`` — usable VERBATIM as the
+        ``already_processed=`` argument of ``validate_inbound_envelope``
+        (over ``message_id``) or ``validate_inbound_bundle`` (over
+        ``bundle_id``); no adaptation needed at either call site:
+
+            validate_inbound_envelope(
+                envelope, ..., already_processed=store.already_processed(this_node_id),
+            )
+
+        Each call of the returned predicate opens its own short-lived read
+        connection — the predicate is meant to be handed straight to a
+        validator, not held open across a caller's own write transaction.
+        """
+
+        def _predicate(id: str) -> bool:
+            with self._engine.connect() as conn:
+                return self._is_processed(conn, recipient_node_id, id)
+
+        return _predicate
+
+    def _is_processed(self, conn: Connection, recipient_node_id: str, id: str) -> bool:
+        row = conn.execute(
+            sa.select(processed_ids_table.c.id).where(
+                processed_ids_table.c.recipient_node_id == recipient_node_id,
+                processed_ids_table.c.id == id,
+            )
+        ).first()
+        return row is not None
+
+    def record_processed(
+        self,
+        id: str,
+        *,
+        id_kind: ProcessedIdKind,
+        recipient_node_id: str,
+        expires_at: datetime,
+        at: datetime,
+    ) -> bool:
+        """Idempotently record ``id`` as processed for ``recipient_node_id``,
+        opening its own transaction.
+
+        ``INSERT ... ON CONFLICT (recipient_node_id, id) DO NOTHING`` is the
+        entire idempotency mechanism: recording the SAME ``(recipient_node_id,
+        id)`` twice is a no-op at the database itself — never an
+        application-level "check then insert" that could race — leaving
+        exactly one row and never raising.
+
+        Args:
+            id: the envelope's ``message_id`` or the bundle's ``bundle_id``.
+            id_kind: which id namespace ``id`` belongs to.
+            recipient_node_id: the receiving node this id was processed for.
+            expires_at: the processed object's own ``expires_at``, stored so
+                ``prune_expired`` can later evaluate this row's retention
+                horizon without re-fetching the original object.
+            at: the instant this id was recorded (stored as
+                ``processed_at``) — caller-supplied, exactly like
+                ``mrr.provenance.events.DomainEvent.occurred_at``, never
+                generated internally.
+
+        Returns:
+            ``True`` if this call newly inserted the row, ``False`` if
+            ``(recipient_node_id, id)`` already existed (the idempotent
+            no-op case).
+        """
+        with self._engine.begin() as conn:
+            return self._record_processed_core(
+                conn,
+                id,
+                id_kind=id_kind,
+                recipient_node_id=recipient_node_id,
+                expires_at=expires_at,
+                at=at,
+            )
+
+    def record_processed_with_connection(
+        self,
+        conn: Connection,
+        id: str,
+        *,
+        id_kind: ProcessedIdKind,
+        recipient_node_id: str,
+        expires_at: datetime,
+        at: datetime,
+    ) -> bool:
+        """Same as ``record_processed``, but writes through a caller-supplied
+        ``Connection`` instead of opening its own transaction — the
+        connection-accepting variant so recording a processed id can share
+        ONE transaction with whatever else a caller's unit of work does
+        (mirrors ``PostgresObjectRepository.insert_revision_with_connection``'s
+        identical split from ``insert_revision``; a full validate-then-record
+        intake transaction composing this with an accept decision is
+        E2E-002, not this task). The caller owns the transaction's
+        lifecycle: a rollback after this call leaves no row, whether or not
+        this call itself newly inserted one.
+        """
+        return self._record_processed_core(
+            conn,
+            id,
+            id_kind=id_kind,
+            recipient_node_id=recipient_node_id,
+            expires_at=expires_at,
+            at=at,
+        )
+
+    def _record_processed_core(
+        self,
+        conn: Connection,
+        id: str,
+        *,
+        id_kind: ProcessedIdKind,
+        recipient_node_id: str,
+        expires_at: datetime,
+        at: datetime,
+    ) -> bool:
+        """``RETURNING`` — not ``CursorResult.rowcount`` — carries the
+        "newly inserted?" answer: SQLAlchemy memoizes ``rowcount`` only for
+        UPDATE/DELETE (the ORM versioning paths), and for a plain INSERT the
+        psycopg 3 cursor is already closed by the time ``rowcount`` is read,
+        which yields ``-1`` — i.e. ``rowcount > 0`` is ``False`` even for a
+        genuinely new row. ``ON CONFLICT DO NOTHING RETURNING`` instead
+        reports the fact directly from the server: exactly one row comes
+        back iff this statement inserted, no row iff the key already
+        existed. (``prune_expired`` below may keep using ``rowcount``
+        because DELETE is one of the memoized statement kinds.)
+        """
+        stmt = (
+            pg_insert(processed_ids_table)
+            .values(
+                id=id,
+                id_kind=id_kind,
+                recipient_node_id=recipient_node_id,
+                processed_at=at,
+                expires_at=expires_at,
+            )
+            .on_conflict_do_nothing(index_elements=["recipient_node_id", "id"])
+            .returning(processed_ids_table.c.id)
+        )
+        return conn.execute(stmt).first() is not None
+
+    def prune_expired(self, now: datetime) -> int:
+        """Delete every row whose retention horizon has passed at ``now``,
+        and return the count deleted.
+
+        The horizon rule itself (``mrr.domain.replay_retention.
+        processed_id_retention_horizon``) is called per candidate row below
+        rather than reimplemented as an independent SQL expression, so
+        there is only ever one place a future change to the rule needs to
+        happen. This is a two-phase delete, not a single blind ``DELETE ...
+        WHERE expires_at <= now``:
+
+        1. Select every row that is at least a CANDIDATE — ``expires_at <=
+           now``. Since ``grace >= 0`` makes ``horizon = expires_at + grace
+           >= expires_at`` always, a row with ``expires_at > now`` can never
+           be prunable yet regardless of ``grace``, so this prefilter never
+           excludes a genuinely prunable row while typically excluding most
+           still-valid ones from the more precise check below.
+        2. Keep only the candidates whose actual horizon
+           (``processed_id_retention_horizon(row.expires_at, grace=self.
+           _grace)``) is at or before ``now``, and delete exactly those, in
+           one statement.
+
+        A row whose object is still within its validity window is never
+        touched by this method — pruning cannot reopen a replay window.
+        """
+        with self._engine.begin() as conn:
+            candidates = (
+                conn.execute(
+                    sa.select(
+                        processed_ids_table.c.recipient_node_id,
+                        processed_ids_table.c.id,
+                        processed_ids_table.c.expires_at,
+                    ).where(processed_ids_table.c.expires_at <= now)
+                )
+                .mappings()
+                .all()
+            )
+
+            prunable_keys = [
+                (row["recipient_node_id"], row["id"])
+                for row in candidates
+                if processed_id_retention_horizon(row["expires_at"], grace=self._grace) <= now
+            ]
+            if not prunable_keys:
+                return 0
+
+            result = conn.execute(
+                sa.delete(processed_ids_table).where(
+                    sa.tuple_(
+                        processed_ids_table.c.recipient_node_id, processed_ids_table.c.id
+                    ).in_(prunable_keys)
+                )
+            )
+            return result.rowcount
