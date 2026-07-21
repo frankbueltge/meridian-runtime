@@ -10,7 +10,8 @@ SkepticalChallenge, by E4-T04; extended to a sixteenth entity, Practice,
 by E5-T01; extended to a seventeenth entity, NodeMessageEnvelope, by
 E5-T03; extended to an eighteenth entity, OfflineBundle, by E5-T06;
 extended to a nineteenth entity, TransferContract, by E6-T01; extended to
-a twentieth entity, Obligation, by E6-T02).
+a twentieth entity, Obligation, by E6-T02; extended to a twenty-first
+entity, MethodProfile, by K0-T01).
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -57,6 +58,7 @@ from mrr.contracts import (
     EvidenceAnchor,
     EvidenceCrate,
     Hypothesis,
+    MethodProfile,
     ModelInvocation,
     ModelProfile,
     NodeManifest,
@@ -104,6 +106,7 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "offline-bundle": OfflineBundle,
     "transfer-contract": TransferContract,
     "obligation": Obligation,
+    "method-profile": MethodProfile,
 }
 
 

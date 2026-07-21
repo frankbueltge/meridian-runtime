@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/method-profile.schema.json",
+  "title": "MRR MethodProfile",
+  "description": "docs/spec/08_RESEARCH_METHOD_KERNEL.md (status ACCEPTED, 2026-07-21) section 2 ('Every Method Profile MUST declare, in a versioned MethodProfile object: profile_key and semantic version; the claim types it can produce and the maximum claim ceiling it can ever license; the protocol form that must be locked before its confirmatory work; its executor task family; its deterministic steps vs. model-assisted steps (MRR-MTH-016); its inappropriate uses') and section 3 ('Method-governance objects (Layer 1)' — MethodProfile: draft -> accepted -> superseded, composing common.schema.json#/$defs/baseObject exactly like every existing MRR object). First task of the K epic series (task-packets/K0-T01.yaml), NOT schemas/model-profile.schema.json (E4-T01's ModelProfile is an LLM configuration record; this is a research-method rulebook — the two names are kept rigorously distinct everywhere). 'claim_types' reuses mrr.contracts.claim.ClaimType's own seven-value vocabulary verbatim (task-packets/K0-T01.yaml derived_decisions (d)) rather than inventing a parallel one. 'max_claim_ceiling' is the section 4 seven-level taxonomy (insufficient_evidence < mechanism_hypothesis < descriptive < associational_unadjusted < associational_adjusted < causal_local < causal_bounded), introduced here as a new closed vocabulary (never enforced by this task — that is K1-T02's job; see MRR-MTH-003/004). 'executor_steps' declares, per step, an explicit deterministic/model_assisted kind (MRR-MTH-016) — a NEW, distinct two-value vocabulary from schemas/model-profile.schema.json's own 'determinism' (deterministic/stochastic), because the two describe different things: one model INVOCATION's configuration vs. one PROFILE STEP declared before any model is ever called. Every property in this schema's own required list is required unconditionally, on every revision including the very first draft (task-packets/K0-T01.yaml derived_decisions (h)) — this is what makes 'a profile without max-ceiling or protocol-form declaration is rejected' a schema-level fact, true before any service is ever called.",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "profile_key",
+        "version",
+        "claim_types",
+        "max_claim_ceiling",
+        "protocol_form",
+        "executor_task_family",
+        "executor_steps",
+        "inappropriate_uses",
+        "status"
+      ],
+      "properties": {
+        "kind": {"const": "MethodProfile"},
+        "profile_key": {
+          "description": "A human-legible slug naming this method (spec 08 section 2's own worked example: 'systematic_evidence_synthesis', section 5). Body-only — NOT the object-repository key (task-packets/K0-T01.yaml derived_decisions (b): unlike NodeManifest's urn-shaped node_id, profile_key has no urn shape implied anywhere in the spec text; object identity is this object's own freshly minted baseObject id).",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "version": {
+          "description": "The semantic version of this profile's own declaration (spec 08 section 2: 'profile_key and semantic version'). Body-only, like profile_key — see task-packets/K0-T01.yaml derived_decisions (b).",
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "claim_types": {
+          "description": "The Claim types this profile can produce, drawn verbatim from schemas/claim.schema.json's own 'claim_type' enum (mrr.contracts.claim.ClaimType) — no profile-specific vocabulary is invented (task-packets/K0-T01.yaml derived_decisions (d)).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["observational", "causal", "statistical", "methodological", "interpretive", "normative", "speculative"]
+          }
+        },
+        "max_claim_ceiling": {
+          "description": "The maximum claim ceiling this profile can ever license (spec 08 section 4), ordered weakest-language-permitted first. Never enforced by this schema or task — K1-T02's job (MRR-MTH-003/004/005/006).",
+          "type": "string",
+          "enum": [
+            "insufficient_evidence",
+            "mechanism_hypothesis",
+            "descriptive",
+            "associational_unadjusted",
+            "associational_adjusted",
+            "causal_local",
+            "causal_bounded"
+          ]
+        },
+        "protocol_form": {
+          "description": "The name of the protocol form that must be locked before this profile's confirmatory work (spec 08 section 2; e.g. 'synthesis_protocol', section 5's worked example). A plain string NAMING a form — never a reference to a locked MethodProtocol instance, which does not exist yet (K1-T01/K1-T02, out of this task's scope).",
+          "type": "string",
+          "minLength": 1
+        },
+        "executor_task_family": {
+          "description": "Capability names the K0-T02 dispatch layer routes to (spec 08 section 2: 'its executor task family (capability names the dispatch layer routes to)'). Plain data on the profile — this task wires no executor and imports no node_runtime module.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "executor_steps": {
+          "description": "Per-step deterministic vs. model-assisted declaration (MRR-MTH-016). Required non-empty — a profile declaring zero steps declares nothing about MTH-016 at all, which is not a valid declaration (task-packets/K0-T01.yaml derived_decisions (f)).",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "kind"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "kind": {"type": "string", "enum": ["deterministic", "model_assisted"]}
+            },
+            "additionalProperties": false
+          }
+        },
+        "inappropriate_uses": {
+          "description": "Questions this profile must refuse (spec 08 section 2). An empty array is schema-valid — spec 08 section 2 says only that a profile MUST declare its inappropriate uses, not that the list must be non-empty (task-packets/K0-T01.yaml specification_gaps, flagged for reviewer tightening if a non-empty floor is wanted).",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "status": {
+          "description": "Lifecycle status (spec 08 section 3's table: draft -> accepted -> superseded), mirroring how ResearchScore/Claim each carry their own schema-required status field alongside baseObject's identity/audit fields.",
+          "type": "string",
+          "enum": ["draft", "accepted", "superseded"]
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

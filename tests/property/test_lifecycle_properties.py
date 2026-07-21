@@ -1,5 +1,6 @@
 """Property tests for mrr.domain.lifecycles (E1-T04; extended to
-``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml).
+``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml, and to
+``METHOD_PROFILE_LIFECYCLE`` by task-packets/K0-T01.yaml).
 
 Acceptance-test mapping (task-packets/E1-T04.yaml): "property test - randomly
 generated undrawn transitions never succeed", plus the packet's plan-time
@@ -24,6 +25,7 @@ from mrr.domain.exceptions import InvalidTransitionError
 from mrr.domain.lifecycles import (
     CLAIM_LIFECYCLE,
     CORRECTION_LIFECYCLE,
+    METHOD_PROFILE_LIFECYCLE,
     RESEARCH_SCORE_LIFECYCLE,
     TASK_BUNDLE_LIFECYCLE,
     TRANSFER_LIFECYCLE,
@@ -36,6 +38,7 @@ _ALL_MACHINES = (
     CLAIM_LIFECYCLE,
     CORRECTION_LIFECYCLE,
     TRANSFER_LIFECYCLE,
+    METHOD_PROFILE_LIFECYCLE,
 )
 
 
