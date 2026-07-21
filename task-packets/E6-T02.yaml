@@ -1,6 +1,6 @@
 task_id: E6-T02
 title: Caveat and obligation propagation — materialize a TransferContract's structural obligation/caveat stubs into persisted Obligation objects, bind them to the transferred (and later adapted/derived) objects via subject_to_obligation edges deterministically and idempotently, and record resolve/defer responses
-status: draft
+status: approved
 depends_on: [E6-T01]
 derivation: >
   Derived by a planning session (not yet reviewed) per
