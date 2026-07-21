@@ -1,0 +1,19 @@
+{
+  "protocol_id": "placeholder-overwritten-at-run-time-by-establish_and_run_synthesis",
+  "protocol_lock_content_hash": "placeholder-overwritten-at-run-time-by-establish_and_run_synthesis",
+  "inclusion_filter": {
+    "primary_secondary_derived": {"allowed_values": ["primary", "secondary"]}
+  },
+  "eligibility_rules": {
+    "supported": {"min_independent_source_families": 2},
+    "contested": {"min_independent_source_families": 1}
+  },
+  "kill_conditions": {
+    "stop_insufficient_evidence": {"min_included_sources": 3}
+  },
+  "non_applicability_conditions": [
+    "Findings characterize only the pinned atlas snapshots (theory atlas sha256:f712ea4e9c6b9137fa180ad91e73a86d8d09862792f33174c77acd76a891e610, 87 entries; works atlas sha256:9d14e877efb245cc04b8451734b26285a274dda0418f5131db257d2e4312d373, 214 entries), not the full population of AI-self-consumption artworks or model-collapse literature beyond what each atlas has catalogued.",
+    "Findings do not extend to works or papers outside the deterministic candidate sets fixed before classification (works-atlas cluster-7 membership; theory-atlas model-collapse keyword match).",
+    "Findings about individual works are bounded by what each atlas's own decisive_move/summary field discloses about that work's production process; an atlas record silent on training provenance cannot license a stronger claim than the record supports."
+  ]
+}

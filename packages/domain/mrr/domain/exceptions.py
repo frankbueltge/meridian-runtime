@@ -1636,3 +1636,45 @@ class MethodRulingNotFoundError(DomainError):
     def __init__(self, method_ruling_id: str) -> None:
         self.method_ruling_id = method_ruling_id
         super().__init__(f"no MethodRuling found for id {method_ruling_id!r}")
+
+
+class QuestionModelNotFoundError(DomainError):
+    """Raised by ``mrr.services.question_model.service.QuestionModelService``
+    (task-packets/K1-T04.yaml) when a referenced ``QuestionModel`` id
+    resolves to no stored object at all. Carries ``question_model_id``.
+    Never returns ``None`` or a boolean for a missing question model —
+    mirrors ``EvidenceMatrixNotFoundError``'s/``MethodRulingNotFoundError``'s
+    own precedent for a first-class object lookup exactly.
+    """
+
+    def __init__(self, question_model_id: str) -> None:
+        self.question_model_id = question_model_id
+        super().__init__(f"no QuestionModel found for id {question_model_id!r}")
+
+
+class ConceptCharterNotFoundError(DomainError):
+    """Raised by ``mrr.services.concept_charter.service.ConceptCharterService``
+    (task-packets/K1-T04.yaml) when a referenced ``ConceptCharter`` id
+    resolves to no stored object at all. Carries ``concept_charter_id``.
+    Never returns ``None`` or a boolean for a missing charter — mirrors
+    ``EvidenceMatrixNotFoundError``'s/``MethodRulingNotFoundError``'s own
+    precedent for a first-class object lookup exactly.
+    """
+
+    def __init__(self, concept_charter_id: str) -> None:
+        self.concept_charter_id = concept_charter_id
+        super().__init__(f"no ConceptCharter found for id {concept_charter_id!r}")
+
+
+class MethodProtocolNotFoundError(DomainError):
+    """Raised by ``mrr.services.method_protocol.service.MethodProtocolService``
+    (task-packets/K1-T04.yaml) when a referenced ``MethodProtocol`` id
+    resolves to no stored object at all. Carries ``method_protocol_id``.
+    Never returns ``None`` or a boolean for a missing protocol — mirrors
+    ``EvidenceMatrixNotFoundError``'s/``MethodRulingNotFoundError``'s own
+    precedent for a first-class object lookup exactly.
+    """
+
+    def __init__(self, method_protocol_id: str) -> None:
+        self.method_protocol_id = method_protocol_id
+        super().__init__(f"no MethodProtocol found for id {method_protocol_id!r}")
