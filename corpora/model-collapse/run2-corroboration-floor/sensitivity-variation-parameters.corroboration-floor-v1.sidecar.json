@@ -1,0 +1,18 @@
+{
+  "corroboration-floor-v1": {
+    "protocol_id": "placeholder-overwritten-at-run-time-by-establish_and_run_synthesis",
+    "protocol_lock_content_hash": "placeholder-overwritten-at-run-time-by-establish_and_run_synthesis",
+    "variation_entry_id": "corroboration-floor-v1",
+    "inclusion_filter": {
+      "primary_secondary_derived": {"allowed_values": ["primary", "secondary"]}
+    },
+    "eligibility_rules": {
+      "supported": {"min_independent_source_families": 2},
+      "contested": {"min_independent_source_families": 2}
+    },
+    "kill_conditions": {
+      "stop_insufficient_evidence": {"min_included_sources": 3}
+    },
+    "source_family_overrides": {}
+  }
+}

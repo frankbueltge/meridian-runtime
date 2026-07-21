@@ -1,0 +1,14 @@
+{
+  "raw_question": "Do works catalogued under AI-self-consumption actually instantiate the model-collapse mechanism the technical literature describes, or merely reference it?",
+  "claim_type_sought": "interpretive",
+  "scope": {
+    "population": "works in the pinned works-atlas snapshot (corpora/model-collapse/works-atlas.snapshot.json, sha256:9d14e877efb245cc04b8451734b26285a274dda0418f5131db257d2e4312d373, 214 verified data/AI artworks) whose own `clusters` array contains 7 (\"AI self-consumption\" per src/data/field/clusters.json) — corroborated against the pinned theory-atlas snapshot (corpora/model-collapse/theory-atlas.snapshot.json, sha256:f712ea4e9c6b9137fa180ad91e73a86d8d09862792f33174c77acd76a891e610, 87 provenance-verified sources) for the model-collapse mechanism's own existence",
+    "time": "atlas snapshots pinned 2026-07-21 at the recorded content hashes",
+    "geography": null,
+    "conditions": [
+      "work must be catalogued in the pinned works-atlas snapshot, not merely mentioned in secondary commentary",
+      "theory-side corroboration is drawn only from the pinned theory-atlas snapshot's own model-collapse keyword match over tags/summary/work"
+    ]
+  },
+  "load_bearing_terms": ["model-collapse mechanism", "instantiate", "reference", "independent corroboration"]
+}
