@@ -52,6 +52,7 @@ from mrr.domain.exceptions import (
     CorrectionNotFoundError,
     CorrectionNotificationAlreadyProcessedError,
     CorrectionNotificationNotWithinValidityWindowError,
+    EnvelopeAlreadyProcessedError,
     InvalidTransitionError,
     ObjectNotFoundError,
     RevisionConflictError,
@@ -1259,6 +1260,72 @@ def test_receive_adversarial_replayed_notification_is_rejected() -> None:
             at=_NOTIFICATION_SENT_AT,
         )
     assert excinfo.value.notification_id == notification.notification_id
+    assert object_repository.get_latest(local_dependent.id).body["status"] == "under_review"
+
+
+def test_receive_adversarial_envelope_level_replay_is_rejected_before_notification_checks() -> None:
+    """The ENVELOPE's own ``message_id`` replay check (existing,
+    UNCHANGED ``validate_inbound_envelope`` — the FIRST of the two
+    independent replay layers task-packets/E6-T03.yaml's own invariant
+    names) rejects a CorrectionNotification-carrying envelope exactly as it
+    would any other payload kind, and does so BEFORE the notification-level
+    ``already_processed_notification`` predicate is ever consulted — a
+    replayed envelope never reaches the notification's own signature/
+    window/replay checks at all, so no local impact recomputation runs.
+    """
+    service, _, object_repository, edge_repository, _ = _services()
+    practice, private_key, key_id = _notifying_practice_fixture()
+    this_node_id = new_urn("node")
+    ring = practice_key_ring(practice)
+
+    notified_object_id = new_urn("claim")
+    local_dependent = _claim(status="under_review")
+    _seed(object_repository, local_dependent)
+    _seed_dependency_edge(
+        edge_repository, dependent_id=local_dependent.id, dependency_id=notified_object_id
+    )
+
+    notification = _build_signed_notification(
+        notifying_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_practice_id=new_urn("practice"),
+        notified_object_ids=[notified_object_id],
+    )
+    envelope = _build_signed_envelope(
+        notification,
+        sender_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_node_id=this_node_id,
+    )
+
+    def _envelope_already_seen(message_id: str) -> bool:
+        assert message_id == envelope.message_id
+        return True
+
+    def _notification_predicate_must_not_be_called(notification_id: str) -> bool:
+        raise AssertionError(
+            "already_processed_notification must not be consulted once the envelope's "
+            "own replay check has already rejected the message"
+        )
+
+    with pytest.raises(EnvelopeAlreadyProcessedError) as excinfo:
+        service.receive_correction_notification(
+            envelope,
+            this_node_id=this_node_id,
+            trusted_notifying_practice_id=practice.id,
+            ring=ring,
+            already_processed_envelope=_envelope_already_seen,
+            already_processed_notification=_notification_predicate_must_not_be_called,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_SENT_AT,
+        )
+    assert excinfo.value.message_id == envelope.message_id
+    # No impact recomputation side effect: the locally-dependent claim's
+    # status is exactly what it was before this call.
     assert object_repository.get_latest(local_dependent.id).body["status"] == "under_review"
 
 

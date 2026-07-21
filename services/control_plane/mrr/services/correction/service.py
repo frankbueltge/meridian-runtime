@@ -1027,6 +1027,20 @@ class CorrectionImpactService:
         idempotency check reads (AGENTS.md's source-of-truth discipline:
         "the append-only domain event log is authoritative for audit
         history"). No separate persisted state is built for this.
+
+        Reviewer-noted nuance: idempotency is keyed on ``recipient_practice_
+        id`` ONLY, never on the specific ``notified_object_ids`` a prior
+        call actually sent. A recipient once recorded ``"sent"`` for THIS
+        correction is therefore never re-notified by a later
+        ``notify_affected_practices`` call, even if that later call passes
+        a different (or larger) ``notified_object_ids`` set for the same
+        recipient — e.g. because ``propagate_impact`` discovered additional
+        downstream impact after the first notification round already went
+        out. Whether/how a recipient should be re-notified when the
+        correction's own known impact set grows after their first
+        acknowledged delivery is a future specification question, not
+        invented here (mirrors this task's own stance on E6-T06's deferred
+        retry/redelivery machinery).
         """
         return {
             appended.event.payload["recipient_practice_id"]
