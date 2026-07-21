@@ -1,0 +1,443 @@
+task_id: E6-T05
+title: Public unresolved-correction projection — a classification-respecting, fail-closed-redacted public read-model over the already-approved CorrectionEvent/Claim state and CORRECTION_LIFECYCLE, reusing E3-T07's claim table and E1-T04's state machine verbatim, needing no TransferContract/Obligation/CorrectionNotification code to exist
+status: draft
+depends_on: []
+derivation: >
+  Derived by a planning session (not yet reviewed) per
+  docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E6 (line 196 — "E6-T05
+  public unresolved-correction projection", fifth of six E6 tasks — T01
+  TransferContract lifecycle, T02 caveat/obligation propagation, T03
+  cross-practice correction notification, T04 local accept/adapt/reject/defer
+  response to a correction, T06 offline recipient delivery tracking; the
+  epic's own exit criteria at lines 201-202 — "correction propagation remains
+  complete and cycle-safe across nodes" and "local autonomy and visible
+  disagreement are both preserved" — name this task as the "visible
+  disagreement" half), and docs/spec/01_SYSTEM_SPEC.md line 210, MRR-FR-095
+  ("Public projections MUST display unresolved critical corrections"), which
+  sits under section 4.10 "Stage 10 — Correction propagation" (line 203), not
+  section 4.11 "Stage 11 — Projection and publication" (line 218, MRR-FR-100
+  through MRR-FR-104) — the formal publication-bundle, A4-approval, and
+  disclosure-level machinery (MRR-FR-101..104) is Epic E8, exactly as
+  task-packets/E3-T07.yaml's own forbidden_changes already established when
+  it built the claim-table/provenance-map projection this task extends.
+
+  Direct code search at derivation time confirms none of TransferContract
+  (E6-T01), Obligation (E6-T02), or CorrectionNotification (E6-T03) exist
+  anywhere in the repository — no schemas/transfer-contract.schema.json, no
+  schemas/obligation.schema.json, no schemas/correction-notification.schema.json,
+  no matching packages/contracts/mrr/contracts/*.py, no matching
+  services/control_plane/mrr/services/{transfer,obligation}/ directories —
+  only their own draft, not-yet-reviewed task-packets/E6-T01.yaml and
+  task-packets/E6-T02.yaml exist as text, and E6-T04 has no task packet at
+  all yet, drafted or otherwise. Building this task's own code against any of
+  those three still-unimplemented, still-unreviewed shapes would be
+  inventing behavior against a moving target, contrary to AGENTS.md rules 3
+  and 14. This task therefore treats none of them as a real dependency (see
+  derived_decisions (a) for why the already-approved substrate is sufficient
+  on its own) and instead builds directly on two already-merged and
+  already-approved pieces — packages/domain/mrr/domain/lifecycles.py's
+  CORRECTION_LIFECYCLE (E1-T04, docs/spec/01_SYSTEM_SPEC.md#64-correction,
+  unmodified since) and task-packets/E3-T07.yaml's own claim-table
+  projection (packages/domain/mrr/domain/projection.py,
+  services/control_plane/mrr/services/projection/service.py) — mirroring
+  that module's own explicit idiom, restated in its module docstring: "a
+  projection is a deterministic, rebuildable read-model, never authoritative
+  state."
+
+  Also confirmed by direct schema inspection: neither schemas/claim.schema.json
+  nor schemas/correction-event.schema.json (nor schemas/evidence-anchor.schema.json,
+  nor schemas/source-record.schema.json) declares a classification field of
+  its own anywhere in their required/properties lists. The only classification
+  fields anywhere in schemas/ are schemas/common.schema.json's
+  $defs.artifactRef.classification (optional, line 52) and
+  schemas/task-bundle.schema.json's own required classification field (line 9,
+  60) — neither of which is reachable from a Claim or a CorrectionEvent. This
+  is the genuine specification gap this task's own objective exists to
+  address (see derived_decisions (b) and specification_gaps item 1) — "what
+  does 'public' mean" cannot be answered today by reading a stored field, so
+  this task introduces the missing mechanism rather than silently assuming
+  everything currently in the graph is safe to disclose.
+objective: >
+  Provide a read-only, deterministically rebuildable "public" projection over
+  the already-persisted Claim/CorrectionEvent graph that (1) reuses,
+  byte-for-byte unmodified, mrr.domain.projection's
+  is_unresolved_critical_correction/RESOLVED_CORRECTION_STATUSES and
+  ProjectionService's existing build_claim_table to decide which claims and
+  corrections are an "unresolved critical correction" per MRR-FR-095 — a
+  question this task does not re-derive, since task-packets/E3-T07.yaml
+  already answered it correctly, including the REJECTED_BY_RECIPIENT case
+  ("recipient autonomy preserved, correction still unresolved"); (2) adds the
+  one mechanism no prior projection task built — classification-respecting,
+  fail-closed redaction of free text (a CorrectionEvent's reason and
+  requested_action; a Claim's assertion) given a caller-supplied
+  classification_by_object_id attestation map, defaulting every missing,
+  unrecognized, or non-PUBLIC entry to redacted; and (3) never omits the
+  structural fact of an unresolved critical correction — its id, severity,
+  status, correction_type, and the ids of every claim/object it names —
+  regardless of redaction, so that MRR-FR-095's MUST and MRR-NFR-006's MUST
+  are both honored at once rather than one being traded for the other.
+  Framework-free at the domain layer
+  (packages/domain/mrr/domain/public_correction_view.py); the companion
+  read-only I/O is two additive methods on the existing
+  services/control_plane/mrr/services/projection/service.py
+  ProjectionService, reusing its already-existing repository/event-log
+  reads. Writes nothing anywhere — no object revision, no domain event, no
+  edge — mirroring task-packets/E3-T07.yaml's own invariant that a
+  projection introduces no new authoritative state.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#410-stage-10--correction-propagation
+  - docs/spec/01_SYSTEM_SPEC.md#64-correction
+  - docs/spec/01_SYSTEM_SPEC.md#79-projection-service
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/02_DOMAIN_MODEL.md#211-claim
+  - docs/spec/02_DOMAIN_MODEL.md#216-correctionevent
+  - docs/spec/02_DOMAIN_MODEL.md#4-data-classification
+  - docs/spec/04_SECURITY_AND_POLICY.md#42-data-minimization
+  - docs/spec/05_EVALUATION_AND_ACCEPTANCE.md#e2e-003-correction-propagation
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e6--transfers-obligations-and-corrections-across-practices
+  - schemas/common.schema.json
+  - schemas/claim.schema.json
+  - schemas/correction-event.schema.json
+  - packages/domain/mrr/domain/projection.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/artifacts.py
+  - services/control_plane/mrr/services/projection/service.py
+  - tests/e2e/test_e2e_003_correction_propagation.py
+  - task-packets/E3-T07.yaml
+  - task-packets/E6-T01.yaml
+  - task-packets/E6-T02.yaml
+  - task-packets/E6-T03.yaml
+requirements:
+  - MRR-FR-095
+  - MRR-NFR-001
+  - MRR-NFR-006
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - packages/domain/mrr/domain/public_correction_view.py
+  - services/control_plane/mrr/services/projection/service.py
+  - tests/unit/domain/**
+  - tests/unit/services/projection/**
+  - tests/property/**
+  - tests/integration/services/projection/**
+forbidden_changes:
+  - packages/domain/mrr/domain/projection.py — reused strictly unmodified;
+    ClaimTableRow, is_unresolved_critical_correction,
+    RESOLVED_CORRECTION_STATUSES, and build_claim_table_row are imported and
+    called as-is, never re-derived, never forked into a second, competing
+    definition of "unresolved critical correction"
+  - packages/domain/mrr/domain/lifecycles.py and CORRECTION_LIFECYCLE — reused
+    exactly as declared since E1-T04; no new state and no new transition is
+    added, and no code in this task ever calls assert_transition itself
+    (this task only reads an already-stored status value, it drives no
+    lifecycle transition of any kind)
+  - the existing services/control_plane/mrr/services/projection/service.py
+    ProjectionService methods build_claim_table, build_provenance_map, and
+    every one of its private helpers (_discover_ids_by_event_type,
+    _read_correction_bodies, _get_object_or_none, _latest_body_or_none,
+    _trace_provenance, _outgoing_provenance_hops, _field_reference_hops) —
+    reused unmodified, called as-is; this task only ADDS two new public
+    methods to the same class
+  - schemas/claim.schema.json, schemas/correction-event.schema.json, and
+    schemas/common.schema.json — no new field is added anywhere, in
+    particular no new classification field on Claim or CorrectionEvent; the
+    classification attestation this task introduces is a caller-supplied
+    runtime argument, never a persisted schema field (see specification_gaps
+    item 1 for the schema change this deliberately leaves to a future ADR)
+  - TransferContract, Obligation, and CorrectionNotification (E6-T01/T02/T03,
+    none implemented in code at derivation time) and the undrafted E6-T04
+    response-to-a-correction recording — none is referenced, imported, or
+    built against anywhere in this task; the "visible disagreement" signal
+    this task surfaces comes entirely from CorrectionEvent's own
+    already-declared status enum, not from any cross-practice object
+  - HTTP/FastAPI endpoints (/v1/projections/*, section 3.10) — no REST
+    wiring, matching every prior E1-E6 task packet
+  - packages/persistence/** and any Alembic migration — this task persists
+    nothing new of any kind; the classification_by_object_id map lives only
+    as an in-memory argument passed by the caller at call time
+  - both import-linter contracts in pyproject.toml — must remain unmodified
+    and KEPT; the generic "any new mrr.domain/mrr.services.* leaf" wording
+    already covers this task's one new domain module
+  - tests/e2e/test_e2e_003_correction_propagation.py — not modified; the
+    E3-scope E2E-003 test stays exactly as merged. A full E6-scope extension
+    of E2E-003 (real cross-practice recipients responding differently,
+    driven through real TransferContract/CorrectionNotification/response
+    machinery) is out of this task's scope, deferred until E6-T01/T02/T03/T04
+    actually exist in code
+derived_decisions: >
+  (a) Zero code dependency on E6-T01/T02/T03/T04. MRR-FR-095's own text names
+  only corrections, not transfers or obligations, and the "visible
+  disagreement" half of the epic's exit criterion is already fully
+  representable by CORRECTION_LIFECYCLE's own eight states
+  (packages/domain/mrr/domain/lifecycles.py lines 372-395,
+  docs/spec/01_SYSTEM_SPEC.md#64-correction lines 288-295) — AWAITING_RESPONSES
+  already transitions to RESOLVED, PARTIALLY_RESOLVED, or
+  REJECTED_BY_RECIPIENT, the very three outcomes a future E6-T03/E6-T04
+  notify/respond flow will eventually drive for a cross-practice correction —
+  and task-packets/E3-T07.yaml's own is_unresolved_critical_correction
+  (packages/domain/mrr/domain/projection.py lines 110, 116, 184-191) already
+  treats exactly RESOLVED/PARTIALLY_RESOLVED as resolved, leaving
+  REJECTED_BY_RECIPIENT correctly visible as unresolved — precisely the
+  "recipient autonomy preserved, correction still unresolved" reading that
+  module's own docstring already derives and flags for reviewer scrutiny.
+  This task reuses that predicate rather than re-deriving it. Once a future
+  E6-T03/E6-T04 actually writes a cross-practice recipient outcome into a
+  real CorrectionEvent's own status, this task's public projection surfaces
+  it with zero code change on this task's side, since it already reads that
+  same field through that same unmodified function — this task's own value is
+  therefore genuinely orthogonal to, not blocked by, those three siblings.
+
+  (b) What this task actually contributes. Since no schema in schemas/
+  attaches a classification field to Claim or CorrectionEvent (confirmed by
+  direct inspection — see derivation), MRR-FR-095's word "Public" cannot be
+  answered today by reading a stored field anywhere in the graph. This task
+  introduces classification_by_object_id, a caller-supplied
+  Mapping[str, Classification] attestation (reusing the five-value
+  Classification literal already declared at
+  packages/domain/mrr/domain/artifacts.py lines 62-68, imported directly
+  rather than re-declared a fourth time or imported from mrr.contracts.common
+  — that module's own docstring already documents why importing
+  mrr.contracts back into mrr.domain would create a package cycle, domain to
+  contracts to domain, that no other module in this codebase creates), a
+  stand-in for the not-yet-built formal disclosure-review mechanism named at
+  docs/spec/04_SECURITY_AND_POLICY.md line 62 ("Derived output receives a
+  disclosure review before export") and MRR-FR-103 (Epic E8). This mirrors
+  the established idiom of every prior E6 task — E6-T03's caller-supplied
+  recipient list and already-processed-notification predicate, E6-T01's
+  caller-supplied adapted-object id — an explicit input this task consumes
+  rather than resolves; where real attestations eventually come from is a
+  future task's concern (specification_gaps item 6).
+
+  (c) The redaction rule, fail-closed per MRR-NFR-006 and AGENTS.md rule 10.
+  A piece of free text is shown only when every object id it depends on is
+  attested literally "PUBLIC" in the caller-supplied map — for a correction
+  row, its own id plus every one of its affected_objects/impact_objects ids;
+  for a claim row, its own id plus every one of its currently-flagging
+  unresolved_correction_ids. A missing entry, an unrecognized string, or any
+  of the other four classification levels (INTERNAL, RESTRICTED, SENSITIVE,
+  PARTICIPANT_IDENTIFIABLE) all redact identically — absence of proof is
+  never treated as proof of public safety, matching the classification
+  table's own reading at docs/spec/02_DOMAIN_MODEL.md#4-data-classification
+  (only PUBLIC is described as "transferable"; every other level defaults to
+  local-only or encrypted-only).
+
+  (d) What redaction never touches. An unresolved critical correction's own
+  existence, id, severity, status, correction_type, and the ids of every
+  claim or object it names remain visible unconditionally, independent of
+  any classification data. MRR-FR-095 reads as a MUST ("Public projections
+  MUST display unresolved critical corrections"), not a conditional one — a
+  design that could make an unresolved critical correction vanish entirely
+  under an incomplete classification map would silently trade FR-095's MUST
+  for NFR-006's MUST instead of honoring both; this task refuses that trade
+  by always keeping the structural fact visible and only ever redacting the
+  prose describing it.
+
+  (e) A new pure module, not a modification of mrr.domain.projection.
+  packages/domain/mrr/domain/public_correction_view.py imports and reuses
+  ClaimTableRow, is_unresolved_critical_correction, and
+  RESOLVED_CORRECTION_STATUSES from that module unchanged, mirroring the
+  "reused traversal, not a second one" idiom task-packets/E6-T02.yaml's own
+  derived_decisions (b) already established for compute_impact — a second,
+  competing notion of "unresolved critical correction" is exactly the kind
+  of drift this codebase's own established modules warn against in their own
+  docstrings.
+
+  (f) Additive-only service methods. build_public_correction_view (no
+  arguments beyond classification_by_object_id) and build_public_claim_table
+  (same) are added to the EXISTING ProjectionService class in
+  services/control_plane/mrr/services/projection/service.py, mirroring
+  E6-T03's own "additive methods only" stance toward CorrectionImpactService.
+  Both reuse the class's own existing _read_correction_bodies helper and its
+  existing public build_claim_table method rather than querying the object
+  repository or the event log a second, parallel way.
+
+  (g) No new domain error type. Unlike every prior E6 task, this task adds
+  zero entries to packages/domain/mrr/domain/exceptions.py — both new pure
+  functions and both new service methods take no single-object-id argument
+  that could resolve to "not found" (build_claim_table itself never raises,
+  per its own docstring, and this task's methods follow the identical
+  no-argument, no-raise shape), so there is no failure mode needing a
+  distinct typed error.
+specification_gaps:
+  - Neither Claim nor CorrectionEvent (nor EvidenceAnchor, nor SourceRecord)
+    carries a classification field of its own anywhere in schemas/ — only
+    schemas/common.schema.json's optional $defs.artifactRef.classification
+    and schemas/task-bundle.schema.json's own required classification field
+    exist. This task's classification_by_object_id runtime map is a
+    deliberately non-schema-changing stand-in (derived_decisions (b)). A
+    reviewer may instead prefer a genuine classification field added to
+    BaseObject or to Claim/CorrectionEvent directly — that is a schema
+    change, outside this task's allowed_paths, and a candidate for a future
+    ADR rather than something this task resolves unilaterally.
+  - This projection shows only the AGGREGATE CORRECTION_LIFECYCLE status,
+    never a per-recipient breakdown of who accepted, adapted, rejected, or
+    deferred. docs/spec/02_DOMAIN_MODEL.md section 2.16 narratively lists
+    "delivery and recipient responses" among CorrectionEvent's fields, but
+    schemas/correction-event.schema.json never gained them — already flagged
+    as an open gap by task-packets/E6-T03.yaml's own specification_gaps.
+    Once a future E6-T04 exists and records real per-recipient outcomes
+    somewhere, extending this projection to surface them is that future
+    task's own concern, not invented here.
+  - docs/spec/01_SYSTEM_SPEC.md line 200's stage-9 acceptance criterion
+    ("Transferred caveats are visible in every projection unless a local
+    adaptation explicitly changes them with rationale") is NOT addressed by
+    this task. TransferContract does not exist in code at derivation time
+    (E6-T01 is draft-only), so there is nothing to read a caveat from yet.
+    Whether that criterion should extend THIS projection, or a separate one,
+    once TransferContract lands is left to a future task.
+  - Obligation visibility (unresolved duties per E6-T02, e.g. retain_caveat
+    or notify_downstream_recipients) is likewise not addressed, for the
+    identical reason — Obligation does not exist in code at derivation time.
+  - Whether MRR-FR-095's "public projection" names the same concept as
+    MRR-FR-103's formal "public disclosure projection" (Epic E8, gated by
+    MRR-FR-102's A4 human approval) or a distinct, always-on transparency
+    view computed without any human-approval gate is a genuine judgment
+    call, not settled by a single FR read literally. This task treats them
+    as distinct — an always-computable safety property (never disclose
+    unattested content) rather than a formal, approved external publication
+    — flagged for reviewer confirmation rather than treated as settled.
+  - The classification_by_object_id map is purely an in-memory argument in
+    this task's scope — no service populates it, no persistence stores it,
+    and no workflow produces it. Where real attestations eventually come
+    from (a disclosure-review workflow, Epic E8, or something else entirely)
+    is deliberately left to a future task; inventing that machinery here
+    would be well beyond "one cohesive domain behavior".
+invariants:
+  - this task writes no object revision, no domain event, and no edge
+    anywhere — every function and method it adds is a pure read-and-shape
+    step over already-persisted data, exactly like task-packets/E3-T07.yaml's
+    own ProjectionService
+  - building either new view twice against an unchanged graph and an
+    unchanged classification_by_object_id map yields an equal result both
+    times — deterministic and re-derivable, with no hidden state and no
+    caching
+  - an unresolved critical correction is never silently omitted from the
+    public view regardless of classification data — its id, severity,
+    status, correction_type, and the ids of every claim/object it names are
+    always present; only its reason and requested_action text are ever
+    withheld
+  - a Claim's assertion text is shown only when the claim's own id and every
+    one of its currently-flagging unresolved_correction_ids are attested
+    literally PUBLIC; otherwise assertion is None and the row is marked
+    redacted
+  - a CorrectionEvent's reason and requested_action text are shown only when
+    the correction's own id and every one of its affected_objects and
+    impact_objects ids are attested literally PUBLIC; otherwise both are
+    None and the row is marked redacted
+  - a missing entry in classification_by_object_id, an unrecognized string
+    value, and every classification level other than PUBLIC all redact
+    identically — the redaction rule is fail-closed, never fail-open, and
+    never distinguishes "unknown" from "known non-public" in the direction
+    of disclosure
+  - is_unresolved_critical_correction, RESOLVED_CORRECTION_STATUSES, and
+    build_claim_table_row remain byte-for-byte unmodified imports from
+    mrr.domain.projection — this task's own unresolved-correction
+    determination is never a second, divergent copy of that logic
+  - both import-linter contracts stay KEPT — the new
+    public_correction_view.py module imports no provider SDK, no framework,
+    and no persistence driver, and opens no network connection
+acceptance_tests:
+  - fully attested happy path — a critical, unresolved correction whose own
+    id and every affected/impact object id are attested PUBLIC shows its
+    reason and requested_action in full, with redacted equal to false
+  - no attestation at all — an empty classification_by_object_id map still
+    lists the same unresolved critical correction, with id, severity,
+    status, correction_type, and every affected/impact object id present,
+    but reason and requested_action both None and redacted equal to true —
+    the correction is never dropped from the list
+  - partial attestation fails closed — the correction's own id is attested
+    PUBLIC but one of its affected_objects ids is not (or is attested
+    INTERNAL) — text is still withheld, proving the rule requires every
+    contributing id, not merely the correction's own
+  - a non-PUBLIC known classification does not unlock text — an object
+    attested INTERNAL, RESTRICTED, SENSITIVE, or PARTICIPANT_IDENTIFIABLE
+    (each exercised once) redacts identically to a missing entry, confirming
+    only the literal string PUBLIC unlocks disclosure
+  - REJECTED_BY_RECIPIENT stays visible as unresolved — a critical
+    CorrectionEvent constructed directly at status REJECTED_BY_RECIPIENT
+    (no service call needed, since no service drives this transition yet)
+    is still reported unresolved by the reused predicate, confirming
+    "recipient autonomy preserved, correction still unresolved" holds at
+    this projection layer without any E6-T03/T04 code existing
+  - RESOLVED and PARTIALLY_RESOLVED are not unresolved — a critical
+    correction at either status is reported unresolved equal to false,
+    regardless of its own classification attestation
+  - severity below critical is never flagged unresolved — a minor or
+    material correction at status OPEN is reported unresolved equal to
+    false, matching MRR-FR-095's own "critical" scoping exactly as
+    task-packets/E3-T07.yaml already established
+  - a Claim's assertion redaction mirrors the correction rule — a flagged
+    claim whose own id is attested PUBLIC but whose flagging correction id
+    is not still withholds assertion text, and vice versa
+  - determinism on rebuild — calling either new method twice with the same
+    repository state and the same classification_by_object_id map returns
+    an equal result both times
+  - writes nothing — a spy or fake ObjectRepository/EdgeRepository/event log
+    records zero insert_revision, add_edge, or append calls across both new
+    methods, mirroring task-packets/E3-T07.yaml's own "writes nothing" test
+  - property test — for arbitrary correction/claim bodies and arbitrary
+    classification maps, redacted is true exactly when at least one
+    contributing id is not attested literally PUBLIC in the map, and false
+    otherwise, over a wide generated input space
+  - integration test, real PostgreSQL — a critical correction and its
+    flagged dependent claims are built via the already-merged
+    ClaimService and CorrectionImpactService (E3-T02/E3-T06), then the new
+    build_public_correction_view and build_public_claim_table methods are
+    exercised against the real PostgresObjectRepository,
+    PostgresEdgeRepository, and PostgresEventLog, confirming redaction
+    behaves identically against a real store as against the unit-level fakes
+  - all existing suites stay green, in particular
+    tests/e2e/test_e2e_003_correction_propagation.py unmodified and passing,
+    and both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - the new packages/domain/mrr/domain/public_correction_view.py module
+    (PublicCorrectionRow, PublicClaimRow dataclasses; the redaction
+    predicate; build_public_correction_row/build_public_claim_row) and the
+    two new additive ProjectionService methods
+    (build_public_correction_view, build_public_claim_table), with their
+    exact signatures
+  - changed files, and explicit confirmation that zero new domain errors
+    were added, packages/domain/mrr/domain/projection.py and
+    packages/domain/mrr/domain/lifecycles.py were not modified, no schema
+    changed, and packages/persistence/** and migrations/ were not touched
+  - tests added and exact command results (format, lint, typecheck, test,
+    test-integration) proving green
+  - security/privacy implications — the fail-closed classification redaction
+    rule, why absence of an attestation never defaults to disclosure, and
+    confirmation that no raw restricted or participant-identifiable free
+    text can reach the public view without an explicit PUBLIC attestation
+    for every contributing object id
+  - open specification questions exactly as listed under specification_gaps
+  - what is deliberately deferred — a genuine schema-level classification
+    field (pending a future ADR), per-recipient response breakdown (E6-T04,
+    undrafted), transferred-caveat visibility (E6-T01) and Obligation
+    visibility (E6-T02), and a full E6-scope extension of E2E-003 with real
+    cross-practice recipients
+stop_conditions:
+  - a reviewer determines MRR-FR-095's "public" must be satisfied by adding a
+    genuine classification field to Claim's or CorrectionEvent's own schema
+    rather than a caller-supplied runtime map — stop rather than modifying
+    those schemas unilaterally; raise it as a candidate ADR
+  - a reviewer determines this task must also surface TransferContract
+    caveats, Obligation status, or a per-recipient delivery/response
+    breakdown before E6-T01/T02/T03/T04 exist in reviewed, merged code —
+    stop rather than inventing against draft or nonexistent shapes; report
+    the dependency instead of guessing at field names that may still change
+  - the fail-closed "every contributing id must be attested PUBLIC" redaction
+    rule is judged too strict or too permissive by a reviewer — stop rather
+    than silently loosening MRR-NFR-006's default in either direction;
+    request a specification decision
+  - honoring MRR-FR-095 in full is found to require writing new authoritative
+    state — a persisted classification field, a new domain event, or
+    anything beyond a pure read — stop and report the conflict with
+    AGENTS.md's source-of-truth discipline rather than turning this
+    projection into a second, competing record

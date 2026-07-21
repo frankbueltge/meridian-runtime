@@ -1,0 +1,685 @@
+task_id: E6-T06
+title: Offline recipient delivery tracking — a durable, per-recipient pending-delivery record for a correction notification that could not be delivered online, with retry scheduling anchored to the notification's own expiry, explicit exhaustion, and composition with the existing E5-T06 OfflineBundle export as the retry's offline channel
+status: draft
+depends_on: [E6-T03]
+derivation: >
+  Derived by a planning session (not yet reviewed) per
+  docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E6 (E6-T06 "offline
+  recipient delivery tracking" — sixth and last of six E6 tasks: T01
+  TransferContract lifecycle, T02 caveat/obligation propagation, T03
+  cross-practice correction notification, T04 local accept/adapt/reject/defer
+  response TO A CORRECTION, T05 public unresolved-correction projection, T06
+  THIS task), docs/spec/01_SYSTEM_SPEC.md section 4.10 line 209 (MRR-FR-094:
+  "Every affected practice MUST receive a signed notification or a durable
+  pending-delivery record" — the "durable pending-delivery record" half is
+  this task's whole subject) and section 6.4 / packages/domain/mrr/domain/
+  lifecycles.py lines 349-395 (the CORRECTION_LIFECYCLE state diagram and its
+  already-declared states/transitions), docs/spec/02_DOMAIN_MODEL.md section
+  2.16 (CorrectionEvent, whose narrative field list at line 381 names
+  "delivery and recipient responses" — a field the schema never gained,
+  already flagged by task-packets/E6-T03.yaml), docs/spec/03_API_AND_EVENTS.md
+  section 4.2 (store-and-forward envelope fields) and section 5.2 (the
+  required-events enumeration), docs/spec/04_SECURITY_AND_POLICY.md section
+  4.1 (offline-bundle encryption, unchanged here), section 8.2 (replay and
+  tampering: "Processed envelope IDs are retained for replay detection
+  according to policy"), and section 8.4 (federated offline import/export
+  MUST verify signatures, expiry, replay protection, and object hashes), and
+  MRR-NFR-001/002/005/006/007.
+
+  At derivation time task-packets/E6-T03.yaml (this task's own declared
+  dependency) exists only as an unreviewed draft — confirmed by direct
+  search: no packages/contracts/mrr/contracts/correction_notification.py, no
+  packages/domain/mrr/domain/correction_notification.py, no
+  `notify_affected_practices`/`receive_correction_notification` method
+  anywhere under services/control_plane/mrr/services/correction/service.py
+  exists yet in the repository. E6-T03's own forbidden_changes (lines
+  220-225) explicitly deferred exactly this task's scope: "durable offline
+  delivery tracking, retry, or acknowledgement over a DELIVERY_PENDING
+  recipient (E6-T06); this task performs one synchronous online delivery
+  ATTEMPT per recipient via the abstract EnvelopeTransport port and records
+  the outcome — it does not build or call
+  `mrr.domain.offline_bundle.build_outbox_bundle`, does not enqueue anything,
+  and does not retry." This packet is that deferred scope. Its own
+  `depends_on: [E6-T03]` is a real sequencing dependency for the
+  service-layer wiring only (see stop_conditions and specification_gaps) —
+  the pure domain/persistence pieces below carry no CorrectionNotification
+  import and can be built and tested independently of whether E6-T03 has
+  landed.
+
+  Two OTHER cited dependencies are, unlike E6-T03, already fully merged on
+  `main` (verified via `git log`/`git show`, not merely referenced): (1)
+  task-packets/E5-T06.yaml ("offline inbox/outbox bundles", status approved)
+  — `packages/contracts/mrr/contracts/offline_bundle.py` and
+  `packages/domain/mrr/domain/offline_bundle.py` (`build_outbox_bundle`,
+  `validate_inbound_bundle`) exist in the tree exactly as described in that
+  packet, and are the EXISTING offline transport this task composes with per
+  its own framing — it builds no new one. (2) task-packets/E5-T07.yaml
+  ("durable federated replay/idempotency store", status approved, merged as
+  commit e3a9713 "E5-T07: durable federated replay/idempotency store ...
+  (#40)") — `packages/persistence/mrr/persistence/tables.py` lines 141-186
+  (`processed_ids_table`) and `packages/persistence/mrr/persistence/
+  repositories.py` line 529 onward (`PostgresProcessedIdStore`) exist on
+  `main` now (the current Alembic head is `983751ff8bb6`, that packet's own
+  migration — confirmed by the `down_revision` chain across every file under
+  `migrations/versions/`). E5-T07's own forbidden_changes (line 98) states
+  plainly: "a processed-id row is INTERNAL node state, not a cross-practice
+  object, so it gets NO schema/contract/example and NO
+  scripts/check_contracts.py entry." That precedent is the direct model this
+  task's own record-shape decision follows — see derived_decisions (a).
+objective: >
+  Provide the durable, per-recipient tracking layer MRR-FR-094's
+  "pending-delivery record" half requires once a correction notification's
+  synchronous online delivery attempt has already failed (the moment
+  task-packets/E6-T03.yaml's `notify_affected_practices` chains
+  CORRECTION_LIFECYCLE through the already-drawn AWAITING_RESPONSES ->
+  DELIVERY_PENDING edge for that recipient) — retry scheduling, explicit
+  exhaustion, and eventual resolution, composed with the EXISTING,
+  unmodified E5-T06 OfflineBundle export as one legitimate retry channel,
+  never a new transport of its own: (1) a pure domain module
+  (`mrr.domain.delivery_retry`, mirroring `mrr.domain.replay_retention`'s
+  own "one pure decision function, unit-testable without Postgres" shape)
+  defining a narrow three-state machine — `pending`, `delivered`,
+  `exhausted` — built by IMPORTING the EXISTING generic `StateMachine`
+  dataclass and reusing `InvalidTransitionError` verbatim from
+  `mrr.domain.lifecycles`, never by adding a state or edge to that module's
+  own four spec-drawn machines (see derived_decisions (b) on why this keeps
+  `lifecycles.py` itself completely untouched); a pure `next_retry_at`
+  scheduling function anchored so it can never schedule a retry past the
+  wrapped notification's own `expires_at` (mirrors
+  `processed_id_retention_horizon`'s own "anchored on the object's own
+  expiry" reasoning, applied in the opposite temporal direction); and a pure
+  `is_retry_exhausted` predicate that is true once EITHER a caller-supplied
+  `max_attempts` is reached OR the evaluation instant is at/after that same
+  `expires_at` — whichever comes first, since retrying past that instant is
+  provably futile (the recipient's own, unchanged
+  `validate_inbound_envelope` would reject the envelope as expired
+  regardless of how many delivery attempts preceded it). (2) A NEW Postgres
+  table (a migration chaining onto the current head `983751ff8bb6`) and a
+  `PostgresDeliveryPendingStore` repository (packages/persistence) keyed by
+  `(recipient_node_id, notification_id)` — mirroring `processed_ids_table`'s
+  own `(recipient_node_id, id)` primary-key shape exactly, substituting the
+  correction notification's own stable `notification_id`
+  (task-packets/E6-T03.yaml derived_decisions (b): a notification's own id,
+  independent of whichever envelope/bundle most recently wrapped it, is
+  exactly the stable key multiple retry attempts across different
+  envelopes/bundles must share) — exposing: opening a pending record the
+  FIRST time a recipient's synchronous attempt reports "failed"; recording a
+  further retry attempt's outcome (incrementing `attempt_count`,
+  recomputing `next_retry_at`, or transitioning to `delivered`/`exhausted`
+  via the new narrow state machine, fail closed against an already-terminal
+  row); reading one record; and querying the records currently due for
+  retry (`status = 'pending' AND next_retry_at <= now`) — a plain query this
+  task exposes as a callable, building no scheduler, cron, or queue of its
+  own (mirrors task-packets/E5-T07.yaml's own identical `prune_expired`
+  stance: "who schedules it is out of scope"). (3) Additive methods on the
+  EXISTING `CorrectionImpactService`
+  (services/control_plane/mrr/services/correction/service.py) that open a
+  pending record when a recipient's delivery attempt fails, retry a due
+  record by EITHER another synchronous `EnvelopeTransport.send` call OR
+  wrapping the SAME already-signed `NodeMessageEnvelope` (never re-signed,
+  never re-minted) into a FRESH single-entry `OfflineBundle` via the
+  UNCHANGED `build_outbox_bundle` — proving the online and offline retry
+  channels compose without modifying either — and resolve a record once a
+  caller-supplied "delivered" signal arrives or once
+  `is_retry_exhausted` becomes true, always appending a
+  `correction.notification_sent` domain event (the only correction-delivery
+  event name docs/spec/03_API_AND_EVENTS.md section 5.2 actually enumerates)
+  recording the outcome, never silently. This task does NOT drive
+  `CorrectionEvent.status`/`CORRECTION_LIFECYCLE` out of `DELIVERY_PENDING`
+  for any reason (see derived_decisions (e) and specification_gaps — no
+  edge is drawn out of that state anywhere in section 6.4 or
+  `lifecycles.py`, and inventing one is exactly what this task must not do).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#410-stage-10--correction-propagation
+  - docs/spec/01_SYSTEM_SPEC.md#64-correction
+  - docs/spec/01_SYSTEM_SPEC.md#84-federated-offline
+  - docs/spec/02_DOMAIN_MODEL.md#216-correctionevent
+  - docs/spec/03_API_AND_EVENTS.md#39-corrections
+  - docs/spec/03_API_AND_EVENTS.md#42-store-and-forward-envelopes
+  - docs/spec/03_API_AND_EVENTS.md#52-required-events
+  - docs/spec/04_SECURITY_AND_POLICY.md#41-encryption
+  - docs/spec/04_SECURITY_AND_POLICY.md#82-replay-and-tampering
+  - docs/spec/04_SECURITY_AND_POLICY.md#84-compromised-node-response
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e6--transfers-obligations-and-corrections-across-practices
+  - task-packets/E6-T03.yaml
+  - task-packets/E5-T06.yaml
+  - task-packets/E5-T07.yaml
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/offline_bundle.py
+  - packages/domain/mrr/domain/envelope_transport.py
+  - packages/domain/mrr/domain/envelope_validation.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/contracts/mrr/contracts/node_message_envelope.py
+  - packages/contracts/mrr/contracts/offline_bundle.py
+  - packages/persistence/mrr/persistence/tables.py
+  - packages/persistence/mrr/persistence/repositories.py
+  - migrations/versions/983751ff8bb6_processed_ids_table.py
+  - services/control_plane/mrr/services/correction/service.py
+requirements:
+  - MRR-FR-094
+  - MRR-NFR-001
+  - MRR-NFR-002
+  - MRR-NFR-005
+  - MRR-NFR-006
+  - MRR-NFR-007
+allowed_paths:
+  - packages/domain/mrr/domain/delivery_retry.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/persistence/mrr/persistence/tables.py
+  - packages/persistence/mrr/persistence/repositories.py
+  - migrations/versions/**
+  - services/control_plane/mrr/services/correction/service.py
+  - tests/unit/domain/**
+  - tests/unit/persistence/**
+  - tests/property/**
+  - tests/integration/persistence/**
+  - tests/integration/services/correction/**
+forbidden_changes:
+  - >-
+    packages/domain/mrr/domain/lifecycles.py — the module, in full, stays
+    UNCHANGED, not only `CORRECTION_LIFECYCLE`'s own transitions. In
+    particular, no edge is added out of `DELIVERY_PENDING` (not
+    `DELIVERY_PENDING -> AWAITING_RESPONSES`, not
+    `DELIVERY_PENDING -> RESOLVED`, not any other state) — that dead end
+    (already documented in that module's own docstring, lines 61-64) is
+    preserved exactly as-is, per this task's own instruction to flag undrawn
+    lifecycle edges as specification_gaps rather than inventing one. The new
+    narrow three-state `pending`/`delivered`/`exhausted` machine this task
+    needs lives in the NEW `mrr.domain.delivery_retry` module and only
+    IMPORTS the existing generic `StateMachine` dataclass and
+    `InvalidTransitionError` — it is never added as a fifth machine inside
+    `lifecycles.py` itself, whose own docstring scopes it explicitly to "the
+    four MRR lifecycles defined in docs/spec/01_SYSTEM_SPEC.md section 6";
+    a per-recipient delivery-tracking record is not one of those four.
+  - >-
+    schemas/correction-event.schema.json and
+    packages/contracts/mrr/contracts/correction_event.py — no new field is
+    added (not `delivery_records`, not `recipient_responses`), mirroring
+    task-packets/E6-T03.yaml's identical stance on the same schema. The
+    per-recipient pending-delivery record stays internal node state (see
+    derived_decisions (a)); it never becomes a CorrectionEvent schema field
+    in this task.
+  - >-
+    packages/contracts/mrr/contracts/node_message_envelope.py,
+    schemas/node-message-envelope.schema.json, and
+    packages/domain/mrr/domain/envelope_validation.py — reused completely
+    unchanged. In particular, the "optional acknowledgement request" field
+    docs/spec/03_API_AND_EVENTS.md section 4.2's prose lists among the
+    store-and-forward envelope's fields is NOT added here even though it is
+    directly relevant to knowing when an offline delivery was received —
+    see specification_gaps; adding it would be a contract change, not this
+    task's additive persistence/domain/service scope.
+  - >-
+    packages/contracts/mrr/contracts/offline_bundle.py and
+    packages/domain/mrr/domain/offline_bundle.py
+    (`build_outbox_bundle`/`validate_inbound_bundle`) — reused completely
+    unchanged as the offline retry channel. This task never re-signs,
+    re-models, or otherwise touches an individual envelope or bundle's own
+    shape; it only calls `build_outbox_bundle` with an ALREADY-signed
+    `NodeMessageEnvelope` it did not create, exactly as any other caller
+    would.
+  - >-
+    packages/domain/mrr/domain/envelope_transport.py
+    (`EnvelopeTransport`/`EnvelopeDeliveryRequest`/`EnvelopeDeliveryOutcome`)
+    — reused completely unchanged as the online retry channel; no real
+    network/mTLS transport is built here, mirroring every prior E5/E6
+    packet's identical deferral.
+  - >-
+    packages/persistence/mrr/persistence/tables.py's EXISTING
+    `processed_ids_table` and packages/persistence/mrr/persistence/
+    repositories.py's EXISTING `PostgresProcessedIdStore` (task-packets/
+    E5-T07.yaml) — reused unchanged as the replay-detection layer for
+    envelopes/bundles this task's retries produce. This task's OWN new
+    table is a SEPARATE table, never merged into or piggybacked onto
+    `processed_ids_table`: a processed-id row is deliberately append-only
+    and immutable (E5-T07's own "append-then-prune only" invariant), while
+    a pending-delivery record genuinely needs controlled mutation (attempt
+    counts, status transitions) that `processed_ids_table`'s own shape
+    explicitly rules out.
+  - >-
+    the EXISTING `CorrectionImpactService` methods from E3-T06
+    (`record`, `propagate_impact`, and their private helpers) and, once it
+    lands, E6-T03's own `notify_affected_practices`/
+    `receive_correction_notification` — reused verbatim; this task only
+    ADDS new methods to the same service class, never altering an existing
+    one's signature or behavior.
+  - >-
+    task-packets/E6-T03.yaml's own `CorrectionNotification` contract
+    (schemas/correction-notification.schema.json,
+    packages/contracts/mrr/contracts/correction_notification.py) — not
+    designed, modified, or invented here even as a placeholder; see
+    stop_conditions for what happens if E6-T03 has not yet landed when
+    implementation of this task begins.
+  - >-
+    no scheduler, cron job, message queue, or background worker of any
+    kind — this task exposes callable retry-decision and retry-due-query
+    functions only, mirroring task-packets/E5-T07.yaml's own identical
+    `prune_expired` precedent ("who schedules it is out of scope").
+  - >-
+    no real network, real mTLS, real encryption/KMS, or physical air-gap
+    transport medium (file/USB/media byte I/O) — mirrors every prior E5/E6
+    packet's identical deferral; both functions and methods this task adds
+    operate on already-in-memory values.
+  - >-
+    both import-linter contracts in pyproject.toml must remain KEPT —
+    "Core packages stay framework- and provider-free (MRR-NFR-010)" and
+    "Nothing inward imports the services layer"; the new
+    `mrr.domain.delivery_retry` module imports no provider SDK and the new
+    persistence pieces import no framework beyond SQLAlchemy, exactly like
+    every existing module under `packages/persistence`.
+derived_decisions: >
+  (a) The per-recipient pending-delivery record is INTERNAL NODE STATE — a
+  new Postgres table plus a `PostgresDeliveryPendingStore` repository under
+  `packages/persistence` — NOT a first-class, schema-validated MRR domain
+  object. It gets no `schemas/*.schema.json`, no `mrr.contracts` model, no
+  `examples/*.example.json`, and no `scripts/check_contracts.py` entry. This
+  mirrors task-packets/E5-T07.yaml's own `processed_ids_table`/
+  `PostgresProcessedIdStore` precedent exactly, and that packet's own
+  forbidden_changes states the reasoning this task adopts verbatim: "a
+  processed-id row is INTERNAL node state, not a cross-practice object, so
+  it gets NO schema/contract/example". Three further, independent reasons
+  confirm the same reading for THIS record: first, `schemas/
+  correction-event.schema.json` deliberately never gained the "delivery and
+  recipient responses" field docs/spec/02_DOMAIN_MODEL.md section 2.16
+  narratively lists (confirmed absent from that schema's `properties` and
+  `required`; task-packets/E6-T03.yaml already flagged this same gap and
+  chose not to close it) — a second, independent packet reaching the same
+  "keep it out of the schema" conclusion is corroborating, not merely
+  repeating. Second, the record never itself crosses a practice trust
+  boundary — only the already-signed `CorrectionNotification`/
+  `NodeMessageEnvelope`/`OfflineBundle` it tracks delivery attempts for do,
+  and those are already first-class, already signed, already schema-backed
+  objects; the tracking record is purely this SENDING node's own
+  bookkeeping about ITS OWN delivery attempts, exactly the same category as
+  a processed-id row's own "did I already see this" bookkeeping. Third,
+  AGENTS.md's own source-of-truth discipline ("Database state is
+  authoritative for current materialized state") already names the
+  mechanism for exactly this kind of fact without requiring a schema:
+  materialized DB state, queried directly, is sufficient authority on its
+  own.
+
+  (b) The record's own `pending`/`delivered`/`exhausted` status is tracked
+  by a NEW, narrow three-state machine, built by IMPORTING (not extending)
+  the existing generic `mrr.domain.lifecycles.StateMachine` dataclass and
+  reusing `mrr.domain.exceptions.InvalidTransitionError` verbatim — zero new
+  exception classes are needed for the transition check itself (a
+  `PendingDeliveryNotFoundError` is still new, for the "no such record"
+  case, mirroring `ObjectNotFoundError`'s own precedent). This machine is
+  declared in the NEW `mrr.domain.delivery_retry` module, never added as a
+  fifth member alongside `RESEARCH_SCORE_LIFECYCLE`/`TASK_BUNDLE_LIFECYCLE`/
+  `CLAIM_LIFECYCLE`/`CORRECTION_LIFECYCLE` inside `lifecycles.py` itself —
+  that module's own docstring scopes itself explicitly to "the four MRR
+  lifecycles defined in docs/spec/01_SYSTEM_SPEC.md section 6", and a
+  per-recipient delivery-tracking record is an internal bookkeeping
+  concept this task invents, not a fifth object with its own section-6
+  diagram. Keeping `lifecycles.py` completely untouched (forbidden_changes,
+  above) while still reusing its fail-closed transition discipline is the
+  point of this split.
+
+  (c) The record's `status` transitions only `pending -> delivered` and
+  `pending -> exhausted`; both are terminal (no edge leads anywhere from
+  either). There is no `delivered -> exhausted` or `exhausted -> delivered`
+  path, and no delete/prune method — unlike `processed_ids_table`'s own
+  "append-then-prune-only" discipline, this record is never pruned, because
+  the record itself IS the durable audit fact MRR-FR-094 requires, not a
+  transient replay cache; deleting a resolved record would defeat the
+  requirement it exists to satisfy. Long-term storage growth of resolved
+  records is left an open operational question (specification_gaps), not
+  solved by inventing a retention sweep here.
+
+  (d) Retry exhaustion is triggered by whichever comes first: a
+  caller-supplied `max_attempts` policy value, or the evaluation instant
+  reaching the wrapped notification's own `expires_at`. The latter is not a
+  policy choice but a correctness observation, mirroring
+  `processed_id_retention_horizon`'s own "anchored on the object's own
+  expiry, not an independent policy number" reasoning applied in the
+  opposite temporal direction: retrying an envelope whose own validity
+  window has already closed is provably futile, because the recipient's
+  OWN, unchanged `validate_inbound_envelope` would reject it as expired
+  (`EnvelopeNotWithinValidityWindowError`) regardless of how many further
+  attempts are made or which channel carries them. The concrete
+  `max_attempts` value and the retry backoff curve between attempts are
+  policy choices this task does not fix, mirroring task-packets/
+  E5-T07.yaml's own identical deferral of "the concrete retention grace as
+  a policy value".
+
+  (e) Every retry attempt — whether a further `EnvelopeTransport.send` call
+  or a fresh `OfflineBundle` export — reuses the IDENTICAL already-signed
+  `NodeMessageEnvelope` object from the FIRST attempt; it is never re-signed
+  or re-minted with a new `message_id`/`sent_at`/`expires_at`. A new
+  `OfflineBundle` built for a later retry therefore has its OWN new
+  `bundle_id`/`bundle_nonce` (so it is not itself mistaken for a bundle
+  replay) while carrying the SAME unchanged envelope inside it (so the
+  recipient's own per-`message_id` replay defense — E5-T03's
+  `validate_inbound_envelope` backed by E5-T07's durable
+  `PostgresProcessedIdStore` — correctly treats a genuinely-received-but-
+  unacknowledged prior delivery as an idempotent duplicate rather than
+  double processing it, without this task inventing any new deduplication
+  logic of its own).
+
+  (f) This task NEVER transitions `CorrectionEvent.status`/
+  `CORRECTION_LIFECYCLE` out of `DELIVERY_PENDING`, even once EVERY
+  per-recipient pending-delivery record this task tracks for that
+  correction has resolved to `delivered` or `exhausted`. No edge is drawn
+  out of `DELIVERY_PENDING` anywhere in docs/spec/01_SYSTEM_SPEC.md section
+  6.4 or `packages/domain/mrr/domain/lifecycles.py`'s own
+  `_CORRECTION_TRANSITIONS`, and per this task's own governing instruction
+  ("flag undrawn lifecycle edges as specification_gaps rather than
+  inventing"), no such edge is added. A `CorrectionEvent` therefore remains,
+  at the aggregate level, permanently at `DELIVERY_PENDING` under this
+  task's implementation even once delivery is fully resolved per recipient
+  — flagged in specification_gaps as an open question for a future ADR or
+  spec amendment, exactly the same posture task-packets/E6-T03.yaml already
+  took toward the identical dead end.
+
+  (g) Every recorded delivery outcome (opened, retried, delivered,
+  exhausted) is emitted as a `correction.notification_sent` domain event —
+  the only correction-delivery event name docs/spec/03_API_AND_EVENTS.md
+  section 5.2 actually enumerates — carrying `attempt_number`,
+  `delivery_status` (extending task-packets/E6-T03.yaml's own
+  `"sent"`/`"pending"` payload values with `"delivered"` and `"exhausted"`),
+  and `channel` (`"online"` or `"offline_bundle"`) in its payload, rather
+  than inventing a brand-new event type string absent from that
+  enumeration. This mirrors task-packets/E6-T03.yaml's own identical stance
+  toward the receiving side's missing `correction.notification_received`
+  name — flagged, not resolved unilaterally, in specification_gaps.
+invariants:
+  - >-
+    a pending-delivery record is never silently dropped: once
+    `open_pending_delivery` creates it, its ONLY possible next states are
+    `delivered` or `exhausted`, both terminal and both requiring an
+    explicit call recording a reason/outcome; there is no code path that
+    lets a record simply disappear, expire un-recorded, or revert to an
+    earlier state.
+  - >-
+    delivery exhaustion is an explicit recorded outcome, never a silent
+    give-up: `mark_exhausted` requires a non-empty reason, always appends a
+    `correction.notification_sent` domain event with
+    `delivery_status = "exhausted"`, and is only reachable via the narrow
+    `pending -> exhausted` edge — attempting to mark an already-`delivered`
+    or already-`exhausted` record raises `InvalidTransitionError` rather
+    than silently overwriting it.
+  - >-
+    composition with the E5-T06 offline bundle export is REUSE, not
+    reimplementation: this task's offline retry path calls
+    `mrr.domain.offline_bundle.build_outbox_bundle` with the SAME
+    already-signed `NodeMessageEnvelope` unchanged, and the resulting
+    `OfflineBundle` round-trips through the SAME unmodified
+    `validate_inbound_bundle` exactly as any other bundle would — proving
+    the retry channel is a genuine composition of two independently-built,
+    independently-tested modules, not a parallel reimplementation of
+    either.
+  - >-
+    a retry is never scheduled, and a record is never left `pending`, past
+    the wrapped notification's own `expires_at`; `next_retry_at` is always
+    either `<=` that instant or absent (once exhausted), and
+    `is_retry_exhausted` is unconditionally true at/after it regardless of
+    `attempt_count`.
+  - >-
+    `CorrectionEvent.status` is never transitioned by this task; no code
+    path calls `CORRECTION_LIFECYCLE.assert_transition` with
+    `DELIVERY_PENDING` as the source state, and `lifecycles.py` itself is
+    byte-for-byte unchanged (see the dedicated regression test under
+    acceptance_tests).
+  - >-
+    the pending-delivery record's own body carries no raw restricted or
+    participant-identifiable data — only ids (`correction_id`,
+    `notification_id`, `recipient_node_id`), timestamps, attempt counts,
+    and a coarse status/reason string, mirroring `CorrectionNotification`'s
+    own no-raw-data shape (MRR-NFR-006) one layer further in.
+  - >-
+    every state-changing call (`open_pending_delivery`,
+    `record_retry_attempt`, `mark_exhausted`, and the online/offline retry
+    dispatch methods on `CorrectionImpactService`) appends a domain event
+    with full MRR-NFR-001 provenance (actor, occurred_at, policy_version,
+    causation_id, correlation_id, object_id, object_revision) or, for the
+    persistence-layer-only methods with no `CorrectionImpactService` call
+    site yet available, is documented as requiring one once the
+    service-layer wiring lands.
+  - >-
+    both import-linter contracts stay KEPT; the new
+    `mrr.domain.delivery_retry` module and the new persistence table/
+    repository import no provider SDK, no network library, and open no
+    real connection.
+acceptance_tests:
+  - >-
+    unit (no Postgres) — `next_retry_at` never returns an instant strictly
+    after the wrapped notification's own `expires_at`, and is monotonically
+    non-decreasing across successive calls with an increasing
+    `attempt_count` for a fixed backoff policy.
+  - >-
+    unit (no Postgres) — `is_retry_exhausted` is `True` once
+    `attempt_count >= max_attempts`, independently `True` once the
+    evaluation instant is at/after `expires_at` even with `attempt_count`
+    still below `max_attempts`, and `False` when neither condition holds.
+  - >-
+    property test — for arbitrary non-negative `attempt_count` sequences
+    and arbitrary `expires_at`/`max_attempts` pairs, `is_retry_exhausted`
+    is monotonic (once true for a given state, it stays true for any later
+    evaluation instant or higher attempt_count) and `next_retry_at` is
+    always `<= expires_at` whenever it is not `None`.
+  - >-
+    unit (no Postgres) — the new narrow delivery-record state machine
+    accepts exactly `pending -> delivered` and `pending -> exhausted`;
+    every other pair (`delivered -> pending`, `exhausted -> delivered`,
+    `delivered -> exhausted`, any self-transition) raises
+    `InvalidTransitionError` via the reused, unmodified
+    `StateMachine.assert_transition`.
+  - >-
+    regression (no Postgres) — `CORRECTION_LIFECYCLE.transitions` and
+    `CORRECTION_LIFECYCLE.states` are asserted byte-identical to their
+    value before this task (a frozen-set equality check against a literal
+    tuple mirroring the module's own current declaration), guarding against
+    an accidental new edge out of `DELIVERY_PENDING` ever being introduced
+    by this task or a future merge conflict.
+  - >-
+    integration (Postgres) — `open_pending_delivery` creates exactly one
+    row for a `(recipient_node_id, notification_id)` pair with
+    `status = "pending"` and `attempt_count = 1`; calling it again for the
+    SAME pair is idempotent (no duplicate row, no error).
+  - >-
+    integration (Postgres) — `record_retry_attempt` reporting `"pending"`
+    increments `attempt_count`, updates `last_attempted_at` and
+    `next_retry_at`, and leaves `status = "pending"`; reporting
+    `"delivered"` transitions the row to `status = "delivered"`,
+    sets `resolved_at`, and clears `next_retry_at`.
+  - >-
+    integration (Postgres) — a retry attempt evaluated at/after the
+    record's own `notification_expires_at`, or once `attempt_count` reaches
+    the caller's `max_attempts`, transitions the row to
+    `status = "exhausted"` with a non-null `exhausted_reason` and
+    `resolved_at`, and this holds regardless of ordering between the two
+    triggers.
+  - >-
+    adversarial (Postgres) — calling `record_retry_attempt` or
+    `mark_exhausted` against an already-`delivered` or already-`exhausted`
+    row raises `InvalidTransitionError` and leaves the row completely
+    unchanged (no partial update, no silent reopening of a terminal
+    record).
+  - >-
+    integration (Postgres) — the retry-due query returns exactly the rows
+    with `status = "pending" AND next_retry_at <= now`, excluding
+    `delivered`/`exhausted` rows and `pending` rows not yet due.
+  - >-
+    composition (no Postgres) — a recipient's failed-delivery
+    `NodeMessageEnvelope` is wrapped, via the UNCHANGED
+    `build_outbox_bundle`, into a single-entry `OfflineBundle` as a retry
+    attempt; the SAME envelope object (identical `message_id` and content
+    hash) is carried, proving no re-signing or re-minting occurred, and the
+    resulting bundle passes the UNCHANGED `validate_inbound_bundle` exactly
+    as any independently-built bundle would.
+  - >-
+    idempotent-redelivery demonstration (no Postgres) — the SAME
+    already-signed envelope, fed twice through the UNCHANGED
+    `validate_inbound_envelope` with a durable `already_processed`
+    predicate backed by `PostgresProcessedIdStore` (E5-T07), is accepted
+    once and rejected the second time with `EnvelopeAlreadyProcessedError`
+    — demonstrating that this task's "retry with the identical envelope"
+    design is safe against a genuinely-received-but-unacknowledged prior
+    delivery without this task building any deduplication logic of its
+    own.
+  - >-
+    all existing suites stay green; both import-linter contracts remain
+    KEPT; no schema, contract, or example file changes anywhere in the
+    diff (grep-checked in CI as part of this task's own verification, since
+    derived_decisions (a) depends on this staying true).
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+required_output:
+  - implementation summary
+  - >-
+    the new `mrr.domain.delivery_retry` module (its narrow state machine,
+    `next_retry_at`, and `is_retry_exhausted`), the new pending-delivery
+    table and migration (revision id and its `down_revision`, confirming it
+    chains onto `983751ff8bb6`), and the new
+    `PostgresDeliveryPendingStore` repository's exact method signatures
+  - >-
+    the additive `CorrectionImpactService` methods composing online
+    (`EnvelopeTransport`) and offline (`build_outbox_bundle`) retry
+    channels, with explicit confirmation that neither module was modified
+  - >-
+    changed files, the additive domain errors, and explicit confirmation
+    that `packages/domain/mrr/domain/lifecycles.py`,
+    `schemas/correction-event.schema.json`,
+    `packages/contracts/mrr/contracts/node_message_envelope.py`,
+    `packages/contracts/mrr/contracts/offline_bundle.py`,
+    `packages/domain/mrr/domain/offline_bundle.py`,
+    `packages/domain/mrr/domain/envelope_transport.py`, and
+    `packages/persistence/mrr/persistence/repositories.py`'s EXISTING
+    `PostgresProcessedIdStore` were NOT modified
+  - >-
+    tests added and exact command results (format, lint, typecheck, test,
+    test-integration) proving green, including the CORRECTION_LIFECYCLE
+    byte-identical regression test's result
+  - >-
+    security/privacy implications (no new cross-practice object, no raw or
+    participant-identifiable content in the tracking record, retries reuse
+    the identical already-signed envelope so replay defenses stay intact,
+    no new network/scheduler/real encryption)
+  - >-
+    open specification questions exactly as listed under
+    specification_gaps
+  - >-
+    what is deliberately deferred — the DELIVERY_PENDING dead end itself
+    (still unresolved after this task), an acknowledgement channel for
+    offline deliveries, whether exhaustion should trigger a fresh E6-T03
+    notification, the concrete retry policy values, and any scheduler to
+    invoke the retry-due query on a cadence
+stop_conditions:
+  - >-
+    task-packets/E6-T03.yaml's `notify_affected_practices`/
+    `receive_correction_notification` and its `CorrectionNotification`
+    contract do not yet exist in the repository when implementation
+    begins — the `mrr.domain.delivery_retry` module and the persistence
+    table/repository MAY proceed independently (they take a plain
+    `NodeMessageEnvelope`-shaped fixture and carry no
+    `CorrectionNotification` import), but the `CorrectionImpactService`-
+    level methods that consume a REAL notification/envelope pair MUST NOT
+    invent a placeholder `CorrectionNotification` shape — stop that portion
+    and report the blocking dependency, mirroring task-packets/
+    E6-T02.yaml's identical stance toward its own E6-T01 dependency.
+  - >-
+    a reviewer determines MRR-FR-094's "durable pending-delivery record"
+    requires a first-class, schema-validated cross-practice object rather
+    than internal node state — stop rather than unilaterally adding
+    `schemas/*.schema.json`/a `mrr.contracts` model/an example; report for
+    a reviewer decision (the mirror image of task-packets/E5-T07.yaml's own
+    stop condition for its identical `processed_ids` design choice).
+  - >-
+    a reviewer determines that resolving every per-recipient record to
+    `delivered`/`exhausted` MUST drive `CorrectionEvent.status` out of
+    `DELIVERY_PENDING` — stop rather than inventing a new
+    `CORRECTION_LIFECYCLE` edge; request a specification amendment or ADR
+    instead.
+  - >-
+    honoring durable retry tracking is found to require an actual
+    scheduler, cron job, or message queue to be built or CI-tested here —
+    keep to exposing the retry-due query as a plain callable and stop,
+    mirroring task-packets/E5-T07.yaml's own `prune_expired` precedent.
+  - >-
+    the offline retry channel cannot be expressed without modifying
+    `build_outbox_bundle`, `validate_inbound_bundle`, the
+    `NodeMessageEnvelope` contract, or `validate_inbound_envelope` — stop
+    and report the conflict rather than modifying any of E5-T03/E5-T06's
+    existing code.
+  - >-
+    proving delivery resolution is judged to require a real acknowledgement
+    channel, real network transport, or physical air-gap medium — it does
+    not; verify the domain/persistence logic directly against
+    caller-supplied outcomes and in-memory fixtures; report if genuinely
+    blocked.
+specification_gaps:
+  - >-
+    `CorrectionEvent`'s `DELIVERY_PENDING` state still has no drawn
+    outgoing edge anywhere in docs/spec/01_SYSTEM_SPEC.md section 6.4 or
+    `packages/domain/mrr/domain/lifecycles.py` (already flagged by that
+    module's own docstring and again by task-packets/E6-T03.yaml). This
+    task tracks and resolves per-recipient delivery outcomes WITHOUT ever
+    transitioning the owning `CorrectionEvent`'s own status out of
+    `DELIVERY_PENDING` — so a correction whose every recipient is fully
+    resolved (delivered or exhausted) remains permanently at
+    `DELIVERY_PENDING` at the aggregate level under this implementation.
+    Whether and how a correction should ever leave that state is left to a
+    future ADR or spec amendment, not resolved here.
+  - >-
+    docs/spec/03_API_AND_EVENTS.md section 4.2 lists "optional
+    acknowledgement request" among the store-and-forward envelope's
+    fields, but `schemas/node-message-envelope.schema.json` and
+    `mrr.contracts.node_message_envelope.NodeMessageEnvelope` have no such
+    field (confirmed absent from both `properties` and `required`) — there
+    is no in-repo mechanism for a recipient to acknowledge receipt of an
+    offline-delivered bundle back to the sender. Marking an OFFLINE retry
+    `delivered` is therefore necessarily a caller-supplied signal with no
+    automatic source in this codebase; only the ONLINE
+    `EnvelopeTransport.send` path has a synchronous `"delivered"` outcome
+    available without one. Whether a future task should add that
+    acknowledgement field is flagged, not decided, here.
+  - >-
+    whether an `exhausted` per-recipient record should cause the sending
+    practice to mint an entirely NEW `CorrectionNotification` (a fresh
+    E6-T03 `notify_affected_practices` call with a new `notification_id`
+    and a new `expires_at`) is unspecified — no `CORRECTION_LIFECYCLE` edge
+    loops back from `DELIVERY_PENDING` to `NOTIFYING` either, so this is
+    left an open workflow question for whoever schedules retries, not
+    resolved unilaterally by this task.
+  - >-
+    docs/spec/02_DOMAIN_MODEL.md section 2.16 lists "delivery and recipient
+    responses" among `CorrectionEvent`'s own narrative fields, but the
+    schema never gained them (already flagged by task-packets/
+    E6-T03.yaml). This task's own decision to keep the pending-delivery
+    record as internal, non-schema state (derived_decisions (a)) is a
+    second, independent data point toward — not a resolution of — that same
+    open gap; a reviewer may eventually want a projection surfacing
+    aggregate per-correction delivery status on
+    `GET /v1/corrections/{id}` (docs/spec/03_API_AND_EVENTS.md section
+    3.9), which would be a NEW, later, additive schema/API concern, not
+    this task's.
+  - >-
+    docs/spec/03_API_AND_EVENTS.md section 5.2's required-events
+    enumeration has no dedicated name for a retried or exhausted delivery
+    outcome. This task reuses the already-enumerated
+    `correction.notification_sent` event with extended `delivery_status`
+    payload values (`"delivered"`, `"exhausted"`) rather than inventing new
+    event type strings — mirroring task-packets/E6-T03.yaml's own identical
+    stance on the receiving side's missing `correction.notification_received`
+    name. Flagged in case a reviewer prefers dedicated event names added to
+    section 5.2 in a future amendment.
+  - >-
+    the concrete retry backoff curve and `max_attempts` policy value are
+    not fixed by this task, mirroring task-packets/E5-T07.yaml's own
+    identical deferral of "the concrete retention grace as a policy value"
+    — left to a caller/deployment policy choice, not a specification
+    requirement this task can derive.
+  - >-
+    long-term storage growth of terminally-resolved (`delivered`/
+    `exhausted`) pending-delivery records is not addressed — unlike
+    `processed_ids_table`, this task deliberately provides no prune method
+    (derived_decisions (c), since the record IS the durable audit fact
+    MRR-FR-094 requires), leaving any future retention/archival policy for
+    resolved records to a later, separate concern.

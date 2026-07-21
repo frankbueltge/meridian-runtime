@@ -1,0 +1,341 @@
+task_id: E6-T04
+title: Local accept/adapt/reject/defer response to a correction notification — a new receiving-practice-only CorrectionResponse record with mandatory reason for reject/defer and a `corrects` edge for adapt, never mutating the sender's CorrectionEvent
+status: draft
+depends_on: [E6-T03]
+derivation: >
+  Derived by a planning session (not yet reviewed) per
+  docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E6 (E6-T04 "local
+  accept/adapt/reject/defer response" — fourth of six E6 tasks: T01
+  TransferContract lifecycle, T02 caveat/obligation propagation, T03
+  cross-practice correction notification, T05 public unresolved-correction
+  projection, T06 offline recipient delivery tracking),
+  docs/spec/01_SYSTEM_SPEC.md section 4.9 (MRR-FR-084: "A receiving practice
+  MAY reject a correction, but MUST record that it was notified and why it
+  rejected or deferred it") and section 6.4 (the Correction state-machine
+  diagram: OPEN -> IMPACT_ANALYSIS -> NOTIFYING -> AWAITING_RESPONSES ->
+  RESOLVED, with PARTIALLY_RESOLVED, REJECTED_BY_RECIPIENT, and
+  DELIVERY_PENDING all also hanging off AWAITING_RESPONSES, per
+  packages/domain/mrr/domain/lifecycles.py's own verified column-reading of
+  that diagram), and task-packets/E6-T03.yaml (status draft, not yet
+  implemented in code — confirmed: no schemas/correction-notification.
+  schema.json, no packages/contracts/mrr/contracts/correction_notification.py,
+  no `resolve_trusted_correction_notification_key`/
+  `notify_affected_practices`/`receive_correction_notification` anywhere in
+  the tree at the time this packet was derived), whose own forbidden_changes
+  explicitly assigns both response halves of MRR-FR-084 to this task ("the
+  recipient's own accept/adapt/reject/defer DECISION and the 'why it
+  rejected or deferred it' reason recording ... E6-T04") and whose own
+  receiving-side method, `receive_correction_notification`, deliberately
+  stops short of any disposition ("never deciding accept/adapt/reject/defer
+  (E6-T04)"). task-packets/E6-T01.yaml's own specification_gaps item
+  (recorded there specifically "to make explicit that T01 does NOT claim
+  MRR-FR-084 as satisfied") independently draws the identical four-verb/
+  five-verb distinction this task now implements: MRR-FR-081's transfer-side
+  vocabulary is accepted/adapted/rejected/deferred/unresolved (section 4.9,
+  line 193); this task's correction-side vocabulary, named verbatim in the
+  implementation plan's own task title, is accept/adapt/reject/defer — no
+  "unresolved" analogue, because (see derived_decisions) a correction
+  response is a one-time local recording act, not a five-way transfer
+  negotiation outcome. services/control_plane/mrr/services/correction/
+  service.py (E3-T06, unmodified elsewhere in this packet) is the closest
+  existing template: its own module docstring already anticipates this
+  exact gap twice — once for CorrectionEvent's own status ("its own fate
+  runs through the CorrectionEvent's own separate resolution workflow ...
+  and eventually CORRECTION_LIFECYCLE's own NOTIFYING/AWAITING_RESPONSES
+  states — E6, out of this task's scope") and once by literally never
+  touching `status` beyond OPEN anywhere in that module. That doctrine is
+  inherited here too: this task never drives CORRECTION_LIFECYCLE past
+  whatever E6-T03 already reaches on the sending side, and never even
+  attempts to reach RESOLVED/PARTIALLY_RESOLVED/REJECTED_BY_RECIPIENT,
+  because — a load-bearing architectural fact confirmed directly against
+  E6-T03's own text — the receiving practice never stores a local copy of
+  the sender's CorrectionEvent at all ("never creating, storing, or
+  mutating any copy of the remote CorrectionEvent"). Those three states are
+  therefore states of an object this practice does not hold; recording a
+  LOCAL response cannot be the same act as advancing that remote object's
+  own lifecycle. See derived_decisions and specification_gaps for how this
+  task resolves that tension (a new, receiving-side-only CorrectionResponse
+  entity) and for the resulting epic-level gap this leaves open.
+objective: >
+  Provide the receiving practice's own local recording of exactly one
+  disposition — accept, adapt, reject, or defer — per received
+  CorrectionNotification (E6-T03), satisfying MRR-FR-084's "MUST record
+  that it was notified and why it rejected or deferred it" without ever
+  mutating the sending practice's CorrectionEvent, its CORRECTION_LIFECYCLE
+  status, or any object E6-T03 already wrote. Concretely: (1) a new
+  `CorrectionResponse` schema/contract/example entity (framework-free at the
+  domain layer, CI-testable via scripts/check_contracts.py's ENTITY_MODELS,
+  the same wiring every prior entity uses) — a receiving-practice-local,
+  UNSIGNED, single-revision record (never signed, never transported
+  cross-practice, never revised again after creation) carrying the
+  responding practice's own `practice_id` (BaseObject), the addressed
+  notification's own `correction_notification_id`, `notifying_practice_id`,
+  `origin_correction_event_id`, `origin_correction_event_revision`, and
+  `notified_object_ids` (all copied scalar fields from the CorrectionNotification
+  the caller already validated via E6-T03's `receive_correction_notification`
+  — never a nested $ref to that contract, so this entity's own schema/
+  contract/example can be implemented independently of E6-T03 landing in
+  code first), a `decision` of exactly one of accept/adapt/reject/defer, a
+  `reason` that is REQUIRED (non-null, non-empty) exactly when `decision` is
+  reject or defer and otherwise optional, and an `adaptations` list (each
+  entry pairing one already-existing local `adapted_object_id` with the
+  `notified_object_id` it addresses) that is REQUIRED (non-empty) exactly
+  when `decision` is adapt and otherwise empty. (2) A new `record_response`
+  method added to the EXISTING `CorrectionImpactService`
+  (services/control_plane/mrr/services/correction/service.py, E3-T06/
+  E6-T03's own class, additive method only) that mints and persists the
+  CorrectionResponse at revision 1, verifies every `adaptations[].
+  adapted_object_id` already exists locally (`ObjectRepository.get_latest`,
+  `ObjectNotFoundError` if absent, aborting the whole call with nothing
+  persisted), records one `corrects` edge per adaptation entry
+  (source=adapted_object_id, target=notified_object_id — the
+  declared-but-unused-since-E3-T06 `corrects` edge type, per
+  EDGE_VOCABULARY), and appends the section-5.2-enumerated
+  `correction.response_recorded` domain event with full MRR-NFR-001
+  provenance — object revision, edges, and event all written atomically in
+  ONE new local unit-of-work helper (mirroring `mrr.services.claim.service.
+  bind_edge_unit_of_work`'s exact atomic pattern, generalized from one edge
+  to zero-or-more). A caller-supplied `already_responded` predicate (keyed
+  by `correction_notification_id`, mirroring E6-T03's own
+  `already_processed_notification`) is checked first and rejects a
+  duplicate response with a distinct typed error before anything is
+  written. No signature is verified here — `record_response` trusts its
+  caller to have already run E6-T03's own trust checks; no new trust
+  resolver, envelope, or transport is added.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/01_SYSTEM_SPEC.md#49-stage-9--transfer-and-obligations
+  - docs/spec/01_SYSTEM_SPEC.md#64-correction
+  - docs/spec/01_SYSTEM_SPEC.md#78-correction-impact-service
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/02_DOMAIN_MODEL.md#216-correctionevent
+  - docs/spec/02_DOMAIN_MODEL.md#3-edge-vocabulary
+  - docs/spec/03_API_AND_EVENTS.md#38-transfers-and-obligations
+  - docs/spec/03_API_AND_EVENTS.md#39-corrections
+  - docs/spec/03_API_AND_EVENTS.md#5-domain-event-architecture
+  - docs/spec/03_API_AND_EVENTS.md#52-required-events
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e6--transfers-obligations-and-corrections-across-practices
+  - schemas/common.schema.json
+  - schemas/correction-event.schema.json
+  - packages/contracts/mrr/contracts/common.py
+  - packages/contracts/mrr/contracts/correction_event.py
+  - packages/domain/mrr/domain/repositories.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - packages/domain/mrr/domain/identity.py
+  - packages/persistence/mrr/persistence/unit_of_work.py
+  - packages/persistence/mrr/persistence/tables.py
+  - services/control_plane/mrr/services/correction/service.py
+  - services/control_plane/mrr/services/claim/service.py
+  - scripts/check_contracts.py
+  - task-packets/E3-T06.yaml
+  - task-packets/E6-T01.yaml
+  - task-packets/E6-T02.yaml
+  - task-packets/E6-T03.yaml
+requirements:
+  - MRR-FR-084
+  - MRR-NFR-001
+  - MRR-NFR-002
+  - MRR-NFR-010
+forbidden_changes:
+  - schemas/correction-event.schema.json, packages/contracts/mrr/contracts/correction_event.py, and packages/domain/mrr/domain/lifecycles.py's CORRECTION_LIFECYCLE — reused for citation only, never modified; this task adds no new CORRECTION_LIFECYCLE transition, and the sending practice's own AWAITING_RESPONSES -> RESOLVED / PARTIALLY_RESOLVED / REJECTED_BY_RECIPIENT / DELIVERY_PENDING edges are neither read nor written here (see specification_gaps for the epic-level gap this leaves open rather than closes)
+  - everything E6-T03 already ships on the sending side (schemas/correction-notification.schema.json, packages/contracts/mrr/contracts/correction_notification.py, `resolve_trusted_correction_notification_key`, `notify_affected_practices`) and its own receiving-side method `receive_correction_notification` — reused/consumed, not modified; this task only ADDS a new method (`record_response`) to the same `CorrectionImpactService` class, exactly as E6-T03 itself added methods to E3-T06's class
+  - the E3-T06 `CorrectionImpactService` methods `record`, `propagate_impact`, `_write_impact_objects`, `_gather_impact_edges`, `_require_review_if_needed`, `_get_latest_correction_or_raise`, `_last_event_id_for`, and `mrr.domain.correction_impact.compute_impact`/`IMPACT_EDGE_TYPES` — untouched; this task does not further transition any Claim, does not re-run impact computation, and does not mark any additional object review_required beyond what E6-T03's own receipt handling already did
+  - E6-T01's TransferContract and E6-T02's Obligation, whichever of the two has landed by the time this task starts — unrelated to this task's own scope, not read, not written
+  - the public unresolved-correction projection (E6-T05) and offline recipient delivery tracking (E6-T06) — neither is built here
+  - the E5-T0x federation transport, NodeMessageEnvelope, OfflineBundle, and every existing trust resolver (manifest_trust, task_trust, crate_trust, transfer_trust if landed, resolve_trusted_correction_notification_key) — CorrectionResponse is local-only and unsigned; no new trust resolver, envelope, or transport is added, and none of the existing ones is touched
+  - HTTP/FastAPI endpoints, including no control-plane REST wiring for the corrections respond action — matching every prior E1-E6 task packet's identical line, even though section 3.9 already names that endpoint
+  - the `mrr.domain.repositories.EDGE_VOCABULARY` constant, the edges-table CHECK constraint, and any Alembic migration — confirmed unnecessary, since `corrects` is already a declared vocabulary member (added by an earlier task, unused in code until now, exactly as `adapted_from`/`transferred_from`/`subject_to_obligation` were before E6-T01/E6-T02), so this task's edges are new rows under an existing constraint, not a schema change
+  - both import-linter contracts in pyproject.toml (must remain unmodified and KEPT — "Core packages stay framework- and provider-free (MRR-NFR-010)" and "Nothing inward imports the services layer")
+allowed_paths:
+  - schemas/correction-response.schema.json
+  - examples/correction-response.example.json
+  - packages/contracts/mrr/contracts/correction_response.py
+  - packages/contracts/mrr/contracts/__init__.py
+  - packages/domain/mrr/domain/exceptions.py
+  - services/control_plane/mrr/services/correction/service.py
+  - scripts/check_contracts.py
+  - tests/unit/domain/**
+  - tests/unit/services/correction/**
+  - tests/property/**
+  - tests/contract/**
+  - tests/integration/services/correction/**
+derived_decisions: >
+  (a) CorrectionResponse is a new, receiving-practice-only, UNSIGNED,
+  single-revision entity — not a signed cross-practice value object like
+  CorrectionNotification/TransferContract, and not a lifecycle-bearing
+  aggregate with its own StateMachine like CorrectionEvent/Claim.
+  docs/spec/02_DOMAIN_MODEL.md's own narrative gives CorrectionEvent a
+  "delivery and recipient responses" field (section 2.16) that
+  schemas/correction-event.schema.json never implemented (confirmed absent
+  from its required/properties list; already flagged by E6-T03's own
+  specification_gaps), but attaching the response THERE is impossible for
+  this task's own receiving-practice side: E6-T03's own invariant is that
+  the receiving practice never stores any copy of the remote CorrectionEvent
+  at all. CorrectionResponse is therefore this task's own, structurally new
+  answer to "where does the recipient's decision live" — a standalone
+  BaseObject-shaped entity (the 22nd schema/contract/example entity,
+  assuming TransferContract/Obligation/CorrectionNotification land first as
+  the 19th/20th/21st per their own packets' ordinal claims;
+  scripts/check_contracts.py's ENTITY_MODELS dict is keyed by name, not
+  merge order, so any landing sequence is safe for that file), recorded once
+  and never revised again — no new lifecycles.py StateMachine is declared,
+  mirroring the "no section-6 diagram exists for this entity" gap E6-T01/
+  E6-T02 already flag for TransferContract/Obligation, here without even a
+  domain-model narrative field list to anchor a shape against.
+  (b) The four-verb vocabulary — accept/adapt/reject/defer — is read from
+  docs/spec/06_IMPLEMENTATION_PLAN.md's own task title (line 195, "E6-T04
+  local accept/adapt/reject/defer response"), by direct analogy to
+  MRR-FR-081's five-way transfer vocabulary (accepted/adapted/rejected/
+  deferred/unresolved) minus "unresolved" — a correction response, unlike a
+  transfer negotiation, is a one-time local recording act with no further
+  "still pending" outcome to name (the response IS the record; there is no
+  separate open/pending correction-response state to occupy). MRR-FR-084's
+  own literal text mandates recording the notified-and-why fact only for
+  reject/defer ("MAY reject a correction, but MUST record that it was
+  notified and why it rejected or deferred it"); recording accept/adapt as
+  equally first-class outcomes is this task's own reading of the
+  implementation plan's task title, not a second literal FR mandate —
+  flagged in specification_gaps.
+  (c) `reason` is REQUIRED (non-null, minLength 1) exactly when `decision`
+  is reject or defer (MRR-FR-084's own literal text), enforced at TWO
+  layers exactly like Claim's own "if status == supported" precedent
+  (schemas/claim.schema.json, packages/contracts/mrr/contracts/claim.py's
+  `model_validator`): a JSON Schema conditional (decision in reject/defer
+  implies reason required with minLength 1) plus a mirroring Pydantic
+  `model_validator(mode="after")`. The OTHER direction — `reason` must be
+  null/absent for accept — is Pydantic-only in this task's design, not
+  schema-enforced, the same kind of implementer-latitude split flagged as
+  its own specification_gaps item.
+  (d) `adaptations` is REQUIRED (non-empty) exactly when `decision` is
+  adapt, by the identical two-layer conditional-plus-model_validator
+  pattern; each entry pairs a caller-supplied, ALREADY-EXISTING local
+  `adapted_object_id` (verified via `ObjectRepository.get_latest`,
+  `ObjectNotFoundError` if absent — mirroring E6-T01's own identical
+  adapted-decision verification) with the `notified_object_id` it
+  addresses, and every `adaptations[].notified_object_id` must be a member
+  of the response's own `notified_object_ids` (Pydantic-enforced
+  referential consistency; not independently re-derivable from the JSON
+  Schema alone). Each pair records one `corrects` edge (source=
+  adapted_object_id, target=notified_object_id) — the section-3 edge
+  vocabulary's own `corrects` type, declared but left entirely unused since
+  E3-T06 (confirmed by E6-T01's own derived_decisions (e): "exactly as
+  `corrects` was left declared-but-unused after E3-T06"). This is the
+  closest available edge semantically ("A corrects B") to what an adapt
+  response to a CORRECTION is doing, and is a considered analogy to
+  MRR-FR-082's TRANSFER-side "Adaptation MUST create a new local object and
+  preserve the relation to the source object" — not a literal instruction,
+  since MRR-FR-082's own text is scoped to transfers (E6-T01), not
+  corrections. `adapted_from` (E6-T01's own claimed edge type for TRANSFER
+  adaptation) is deliberately NOT reused here, to keep the two adaptation
+  concepts — adapting a TRANSFERRED object versus adapting in RESPONSE TO A
+  CORRECTION — distinguishable in the graph. Flagged for reviewer
+  confirmation in specification_gaps.
+  (e) The object revision, N `corrects` edges, and the one
+  `correction.response_recorded` event are written in ONE new local
+  unit-of-work helper inside services/control_plane/mrr/services/
+  correction/service.py — not `mrr.persistence.unit_of_work.
+  record_object_revision_with_event`, which composes only an object write
+  with ONE event, and not `mrr.services.claim.service.
+  bind_edge_unit_of_work`, which composes only ONE edge with ONE event — a
+  locally-authored generalization from one edge to zero-or-more, opening a
+  single `engine.begin()` transaction and inserting the object revision,
+  every `corrects` edge row, and the event, sharing one Connection, exactly
+  mirroring task-packets/E6-T02.yaml's own identical need ("one
+  subject_to_obligation edge per bound object written atomically with an
+  obligation.created event via a local bind_edge_unit_of_work — same
+  atomic-edge-plus-event pattern"). An aborted write (e.g. a missing
+  adapted_object_id, discovered before the transaction opens) leaves none of
+  the three persisted.
+  (f) Idempotency is caller-supplied, not internally tracked. A
+  caller-supplied `already_responded` predicate, keyed by
+  `correction_notification_id`, is checked BEFORE any write; if it reports
+  the notification already responded to, `record_response` raises a
+  distinct typed error (`CorrectionResponseAlreadyRecordedError`) and
+  persists nothing — mirroring E5-T03's `already_processed`/E6-T03's
+  `already_processed_notification` identical caller-supplied-predicate
+  precedent rather than building a new durable processed-id store (out of
+  scope, matching E6-T03's own identical stance).
+  (g) `record_response` takes the CorrectionNotification's relevant fields
+  as individual scalar arguments (`correction_notification_id`,
+  `notifying_practice_id`, `origin_correction_event_id`,
+  `origin_correction_event_revision`, `notified_object_ids`), not the
+  CorrectionNotification Pydantic object itself — so CorrectionResponse's
+  own schema/contract/example carry no cross-schema reference to
+  `mrr.contracts.correction_notification` and can be implemented even
+  before E6-T03 lands in code (see stop_conditions for the one piece that
+  genuinely cannot). No signature is re-verified — this task trusts its
+  caller to have already run E6-T03's `receive_correction_notification`
+  (and, inside it, `resolve_trusted_correction_notification_key`);
+  AGENTS.md rule 9 ("no cross-practice object may be accepted without
+  signature and hash verification") is satisfied by that PRIOR call, once
+  per notification, not re-satisfied here.
+  (h) `correction.response_recorded` (already declared,
+  docs/spec/03_API_AND_EVENTS.md section 5.2, line 307) is used verbatim —
+  the one E6-T04-relevant event name the required-events enumeration
+  already names, unlike every other E6 task so far, which had to add
+  non-literal event names (transfer.created, obligation.propagated/
+  deferred). Its `object_id`/`object_revision` reference the NEW
+  CorrectionResponse's own id/revision — the only object this task's
+  receiving-practice side actually creates — not the sender's remote
+  CorrectionEvent id, which this practice never stores. Flagged in
+  specification_gaps as an inference, not a settled mapping.
+specification_gaps:
+  - MRR-FR-084's own literal text mandates the notified-and-why recording only for reject/defer; accept and adapt as equally first-class recorded decisions come from docs/spec/06_IMPLEMENTATION_PLAN.md's own task title and by analogy to MRR-FR-081's five-way transfer vocabulary (derived_decisions (b)), not from a literal correction-specific FR mandate. Flagged for reviewer confirmation that both belong in the `decision` enum at all.
+  - The sending practice's own CORRECTION_LIFECYCLE transitions from AWAITING_RESPONSES to RESOLVED, PARTIALLY_RESOLVED, or REJECTED_BY_RECIPIENT (docs/spec/01_SYSTEM_SPEC.md section 6.4; packages/domain/mrr/domain/lifecycles.py's own `_CORRECTION_TRANSITIONS`) remain entirely undriven by any task across the current six-task E6 epic as scoped in docs/spec/06_IMPLEMENTATION_PLAN.md section 3 — confirmed by direct reading of task-packets/E6-T01.yaml, task-packets/E6-T02.yaml, and task-packets/E6-T03.yaml, none of which claims it either. This task's own CorrectionResponse is local-only and is never transported back to the notifying practice, so nothing in the current epic plan ever aggregates multiple recipients' responses into the sender's own CorrectionEvent. This mirrors CORRECTION_LIFECYCLE's own already-documented "DELIVERY_PENDING has no drawn outgoing edge at all" open question in packages/domain/mrr/domain/lifecycles.py's module docstring — left preserved rather than resolved here; a future task or spec amendment must design the response-transport-back mechanism and the sender-side aggregation rule.
+  - docs/spec/02_DOMAIN_MODEL.md section 2.16 lists "delivery and recipient responses" among CorrectionEvent's own fields, but schemas/correction-event.schema.json never gained them (already flagged by E6-T03's own specification_gaps for its sending-side scope). This task does not add them either — CorrectionResponse is a wholly separate, receiving-practice-local entity instead, since the receiving practice never holds a CorrectionEvent copy to attach a response to. Flagged in case a reviewer ultimately prefers a single unified field on CorrectionEvent once the response-transport-back mechanism above is designed.
+  - Whether adapt may address only a subset of a notification's notified_object_ids (this task's own reading, via the `adaptations` list) or must address every one of them is not settled by any FR text — MRR-FR-082 ("Adaptation MUST create a new local object and preserve the relation to the source object") is textually scoped to TRANSFER adaptation (E6-T01), not a correction response. Flagged for reviewer confirmation.
+  - Whether `corrects` (derived_decisions (d)) is the correct edge type for this exact use, versus reusing `adapted_from` or inventing a new one, is an interpretive choice — `corrects`'s own name and its total absence of any other claimed use anywhere in the codebase are the strongest textual support, but it is not a literal instruction.
+  - Whether `correction.response_recorded`'s object_id/object_revision should reference the new CorrectionResponse (this task's reading, derived_decisions (h)) or some other object once a response-transport-back mechanism exists is unsettled.
+  - Whether `reason` must be schema-enforced null/absent for accept (rather than merely Pydantic-enforced, this task's own choice per derived_decisions (c)) is left as the schema-design axis with the most implementer latitude, mirroring the analogous flag E6-T01 raised for TransferContract's own caveats/obligations structure.
+  - Whether `record_response` should itself verify that `receive_correction_notification` was actually called first for the same notification is unaddressed by any FR text; this task builds no such cross-call state machine or enforcement — it only trusts its caller's own sequencing, and enforcing that ordering, if desired, is left to a future control-plane orchestration layer.
+invariants:
+  - exactly one CorrectionResponse is ever recorded per correction_notification_id; a second `record_response` call for the same id is rejected fail-closed via the caller-supplied `already_responded` predicate with `CorrectionResponseAlreadyRecordedError`, before any object, edge, or event is written
+  - the `decision` field is exactly one of accept, adapt, reject, defer; `reason` is non-null and non-empty exactly when `decision` is reject or defer, enforced at both the JSON Schema and Pydantic layers (MRR-FR-084)
+  - the `adaptations` list is non-empty exactly when `decision` is adapt; every `adaptations[].adapted_object_id` MUST already exist locally, verified via `ObjectRepository.get_latest`; a nonexistent `adapted_object_id` aborts the entire call — no object, no edge, and no event are persisted
+  - every `adaptations[].notified_object_id` is a member of the response's own `notified_object_ids`
+  - an adapt decision records exactly one `corrects` edge per adaptation entry (source=adapted_object_id, target=notified_object_id), written atomically with the one CorrectionResponse object revision and the one `correction.response_recorded` event, in a single transaction
+  - CorrectionResponse is never mutated after creation — single revision, no lifecycle machine, no legal further transition is declared anywhere
+  - this task never mutates the sending practice's CorrectionEvent, its stored status, or any CORRECTION_LIFECYCLE transition; the sending practice's own AWAITING_RESPONSES aggregation remains untouched and undriven (see specification_gaps)
+  - this task never re-verifies the notifying practice's signature on the originating CorrectionNotification and adds no new trust resolver, envelope, or transport
+  - every `record_response` call that succeeds records one `correction.response_recorded` domain event with full MRR-NFR-001 provenance (actor, occurred_at, policy_version, causation_id, correlation_id, object_id, object_revision)
+  - both import-linter contracts stay KEPT; packages/domain and packages/contracts import no provider SDK, open no network, and persist no state outside what ObjectRepository/EdgeRepository already provide
+  - no Alembic migration is added; objects.kind equal to CorrectionResponse and edges of type `corrects` are accepted by the existing schema exactly as-is
+acceptance_tests:
+  - happy path accept — decision accept with no reason and no adaptations records a CorrectionResponse revision 1 plus one `correction.response_recorded` event; no edge is written
+  - happy path reject — decision reject with a non-empty reason records the response and event identically; an attempt to construct the same response with reason omitted or empty fails contract validation before `record_response` is ever called
+  - happy path defer — identical to reject, with decision defer instead
+  - happy path adapt, single adaptation — decision adapt with one notified_object_id/adapted_object_id pair (an already-existing local object) records the response, one `corrects` edge (source=adapted_object_id, target=notified_object_id), and the event, all atomically; the edge is queryable via `EdgeRepository.edges_from(adapted_object_id, "corrects")`
+  - happy path adapt, multiple adaptations — an adapt response with N entries records N distinct `corrects` edges, each independently queryable, plus exactly one CorrectionResponse and one event
+  - contract-tier rejection — decision reject or defer with reason null, empty, or absent fails both the JSON Schema conditional and the Pydantic model_validator
+  - contract-tier rejection — decision adapt with an empty or absent adaptations list fails both layers; decision accept, reject, or defer with a non-empty adaptations list fails the Pydantic-only check (see specification_gaps for why this direction is not also schema-enforced)
+  - adversarial — an adaptation entry whose notified_object_id is not a member of the response's own notified_object_ids is rejected by the Pydantic cross-field check; nothing is persisted
+  - adversarial — an adaptation entry whose adapted_object_id resolves to no stored object at all raises `ObjectNotFoundError`; no CorrectionResponse, no edge, and no event are persisted, even when other entries in the same adaptations list reference valid objects
+  - adversarial — duplicate response — a second `record_response` call for a correction_notification_id the caller-supplied already_responded predicate reports as already-seen raises `CorrectionResponseAlreadyRecordedError` before any write; a call for a different correction_notification_id is unaffected
+  - never-mutates-the-sender — after any `record_response` call, no CorrectionEvent object anywhere in the local object store changes revision, and `CORRECTION_LIFECYCLE.can_transition` is never invoked by this task's own code path, verified by inspection/mocking in the unit tier since there is no CorrectionEvent instance locally to assert against
+  - property test — for arbitrary decision/reason/adaptations triples, contract construction succeeds if and only if reason is present and non-empty exactly when decision is reject or defer, and adaptations is non-empty exactly when decision is adapt, and every adaptation's notified_object_id is a declared notified_object_ids member; construction never partially succeeds
+  - contract tier — schemas/correction-response.schema.json is valid Draft 2020-12; the committed example round-trips losslessly through the Pydantic model and back; scripts/check_contracts.py's ENTITY_MODELS cross-validates schema, model, and example for the new entity
+  - integration test, real PostgreSQL — an adapt `record_response` call persists the CorrectionResponse revision, every `corrects` edge, and the `correction.response_recorded` event atomically; a fault injected after the edges but before the event commit, mirroring the existing after-append test seam, leaves none of the three rows behind; querying the generic objects/edges tables directly confirms no migration was needed
+  - all existing suites stay green; both import-linter contracts remain KEPT
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+required_output:
+  - implementation summary
+  - the CorrectionResponse schema/contract/example (the entity introduced by this task; its exact ordinal depends on E6-T01/E6-T02/E6-T03's own landing order), the new `record_response` method on `CorrectionImpactService` with its exact signature, the new local atomic unit-of-work helper, and the `corrects` edge recording
+  - changed files, the additive domain error `CorrectionResponseAlreadyRecordedError`, and explicit confirmation that schemas/correction-event.schema.json, packages/contracts/mrr/contracts/correction_event.py, packages/domain/mrr/domain/lifecycles.py, packages/domain/mrr/domain/repositories.py, packages/persistence/**, and migrations/ were NOT modified
+  - tests added and exact command results (format, lint, typecheck, test, test-contract, test-integration) proving green
+  - security/privacy implications (no new signature/trust/transport surface; CorrectionResponse never crosses a practice boundary; no raw or PARTICIPANT_IDENTIFIABLE data is newly introduced since only ids, hashes, and short strings are recorded; append-only, single-revision record)
+  - open specification questions exactly as listed under specification_gaps, plus what is deliberately deferred — the sender-side response-transport-back mechanism and CORRECTION_LIFECYCLE aggregation, the public unresolved-correction projection E6-T05, and offline recipient delivery tracking E6-T06
+stop_conditions:
+  - E6-T03's CorrectionNotification contract does not yet exist in the codebase when implementation begins — the CorrectionResponse schema/contract/example pair carry no reference to it and MAY proceed independently, but `CorrectionImpactService.record_response`'s signature and its unit/integration tests genuinely need a real, validated CorrectionNotification instance, or at minimum its field shape, to exercise against — stop that portion and report the blocking dependency instead of inventing a placeholder shape, mirroring task-packets/E6-T02.yaml's identical stance toward E6-T01
+  - a reviewer determines this task must also design the sender-side response-transport-back mechanism and drive CORRECTION_LIFECYCLE's AWAITING_RESPONSES transitions onward to RESOLVED, PARTIALLY_RESOLVED, or REJECTED_BY_RECIPIENT — stop rather than inventing a new signed cross-practice message type and a CorrectionEvent-mutating method; request an epic-scope decision
+  - a reviewer determines `corrects` is not the intended edge type for an adapt response, or that `adapted_from` should be reused instead — stop rather than guessing; EDGE_VOCABULARY and any migration remain out of allowed_paths regardless
+  - a reviewer determines adapt must also drive the locally-impacted Claim or Claims toward a new resolved verdict beyond the review_required status E6-T03 already applied — stop rather than inventing new ClaimService call sites; request a decision
+  - implementation requires modifying packages/persistence/**, migrations/, EDGE_VOCABULARY, or CORRECTION_LIFECYCLE — confirmed unnecessary at planning time; report if that assumption turns out false
