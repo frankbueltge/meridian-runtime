@@ -1,0 +1,1068 @@
+task_id: K1-T03b
+title: >-
+  Execute MRR-MTH-018 sensitivity variations — extend the
+  systematic_evidence_synthesis v1 executor and orchestration to actually RUN
+  declared MethodProtocol.sensitivity_variations and report their results on
+  the EvidenceMatrix, closing the gap K1-T04's own review identified
+  ("populated, never consumed").
+status: approved
+epic: K1
+reviewer_resolution: >-
+  Approved 2026-07-21 by the main session as reviewing instance, under the
+  owner's documented same-day delegation. All primary design choices are
+  CONFIRMED: (1) the task id `K1-T03b` — code ownership (this packet
+  extends K1-T03's own executor/orchestration files) is the right anchor
+  for the b-suffix, not provenance-of-discovery (K1-T04's review merely
+  surfaced the gap); (2) execution semantics per derived_decisions (a) —
+  re-run only the four classification stages, hold extraction and evidence
+  identity fixed, never multiply extraction/model calls by variation
+  count; `source_family_overrides` as the narrowest lever satisfying
+  MTH-018's three named examples; (3) the per-variation sidecar artifact
+  mirroring ProtocolParameters, with the SYMMETRIC fail-closed coverage
+  check; (4) results as ONE optional, nullable field on `EvidenceMatrix`
+  (no new object kind — the seven-kind table stays closed; no migration;
+  exclude_none back-compat proven by test per the E1-T03b pattern);
+  (5) fail-conservative claim/ruling isolation — variations are reported
+  data, never authoritative state (the future promotion question stays
+  open in specification_gaps); (6) lock discipline per (f) — results are
+  post-lock execution artifacts, never MTH-008 amendments; (7) the
+  empty-group guard per (g), including the discipline of NOT "fixing" the
+  unreachable base-path edge case out of scope — its stop_condition
+  stands; (8) no new canonical error code (h) and no new event type (i);
+  (9) fixtures-only scope per (l) — the real, sealed K1-T04 run is
+  read-only evidence; the derivation's DB finding (the real declaration
+  names exactly one entry operationalizing the question's core term, so a
+  real re-run would be a non-comparative pseudo-demonstration) makes this
+  scope choice evidence-based, not merely cautious.
+
+  ONE PACKET CORRECTION, applied by the reviewer directly: derived_
+  decisions (i) prescribes one additive `sensitivity_variation_count` key
+  in `EvidenceMatrixService.create`'s event payload, but the packet as
+  derived simultaneously listed that service file under forbidden_changes
+  and omitted it from allowed_paths — an internal inconsistency that would
+  have forced the implementer into a stop_condition immediately. Resolved
+  by adding the file to allowed_paths with a strictly bounded permission
+  (exactly that one payload key, nothing else) and narrowing the
+  forbidden_changes entry accordingly; both edits are marked as
+  reviewer-resolution amendments in place.
+
+  SCHEDULING, binding on this session: implementation starts only AFTER
+  E9-T00b (in flight at approval time) has merged. Verified at approval
+  time: the two packets' diffs share ZERO files (E9-T00b touches the five
+  trust resolvers, unit_of_work.py, and the 19 service files' UoW blocks;
+  K1-T03b touches synthesis_executor.py, synthesis_orchestration.py,
+  evidence-matrix schema/contract, exceptions.py additively, and the one
+  bounded event-payload line) — the sequencing is discipline, not
+  necessity.
+derivation: >-
+  Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5. Closes a
+  specific, named gap in the MERGED `systematic_evidence_synthesis` v1
+  profile (K0-T01/K1-T01..T04, epic K1, formally closed at "4 tasks" per
+  `docs/design/2026-07-21-research-method-kernel-plan.md` line 35's own
+  title). This is NOT new profile behavior invented here — it is the
+  execution of a requirement (MRR-MTH-018) that has been NORMATIVE since
+  spec 08's ACCEPTED status (2026-07-21) and whose INPUT FIELD
+  (`MethodProtocol.sensitivity_variations`) has been schema-required and
+  populated in real, locked protocol instances since K1-T01, but whose
+  EXECUTION was never wired into the executor K1-T03 built or the
+  orchestration K1-T03/K1-T04 compose.
+
+  MRR-MTH-018, quoted verbatim (docs/spec/08_RESEARCH_METHOD_KERNEL.md line
+  134-136): "Where a protocol declares sensitivity analyses over
+  classifications (party families, cluster taxonomies, period boundaries),
+  the varied classifications MUST be versioned charter entries, and results
+  under each variation MUST be reported."
+
+  Gap provenance, each link independently verified against CURRENT code on
+  `main` (commit `a3a78ba`), not merely asserted:
+
+  (1) `docs/design/2026-07-21-session-handoff-first-real-run.md` section 5
+  ("Offene Urteilsfragen, bewusst NICHT entschieden"), lines 95-96: "MRR-
+  MTH-018: `sensitivity_variations` wird befüllt, aber nicht ausgeführt
+  (Executor-Erweiterung, Folgetask)" — the literal source of this packet's
+  mandate, written the same session K1-T04's real run and its independent
+  review completed (section 1 of that same document: "Unabhängiger Review:
+  alle 15 Klassifikationen gegen die Atlas-Originale geprüft ... keine
+  Blocker" — i.e. the gap was NOT a review blocker for K1-T04 itself, but
+  was explicitly carried forward as unfinished capability work).
+
+  (2) `docs/design/2026-07-21-k2-gate-decision.md` (the formal K2-gate
+  ruling, "K2 wird jetzt NICHT abgeleitet"), whose own evidence table
+  states plainly: "MRR-MTH-018 Sensitivitäts-Variationen ausgeführt |
+  NICHT ERFÜLLT (befüllt, nie konsumiert)" and whose own "Konsequenz für
+  die Arbeitsreihenfolge" section states: "Nach E1-T03b und der DRY-
+  Konsolidierung: **MTH-018-Sensitivitäts-Ausführung als eigenes Packet**
+  vor neuen Claim-Formen" — this packet answers that instruction directly,
+  named explicitly as the top-priority next capability task, ahead of any
+  K2 (causal-contract) work.
+
+  (3) Confirmed by direct code inspection, NOT by trusting either document's
+  own prose: `grep -rn "sensitivity" services/control_plane/mrr/services/cli/
+  synthesis_orchestration.py services/node_runtime/mrr/services/
+  node_runtime/synthesis_executor.py services/control_plane/mrr/services/
+  method_protocol/service.py` returns ZERO hits — the field is read by
+  NOTHING in the executor, the orchestration composition function, or the
+  MethodProtocol lifecycle service. The field IS declared and schema-
+  required: `packages/contracts/mrr/contracts/method_protocol.py` line 106
+  (`sensitivity_variations: list[str]`, no default — required),
+  `schemas/method-protocol.schema.json` lines 36/60-64 (required property,
+  `"type": "array", "items": {"type": "string"}`, own description: "MTH-018:
+  intended as a list of ConceptCharterEntry.entry_id values naming the
+  varied classifications a sensitivity analysis runs over. Not cross-
+  validated against a real ConceptCharter here (service-level, deferred)."
+  — an HONEST, already-disclosed deferral this packet does not need to
+  re-litigate, only build on). `examples/method-protocol.example.json` line
+  17 already carries a real, non-empty value:
+  `"sensitivity_variations": ["model-collapse-mechanism-v1"]`.
+
+  (4) THE REAL K1-T04 RUN'S OWN DECLARATION, verified directly against the
+  local Postgres instance the session-handoff names (`/usr/local/opt/
+  postgresql@16/bin/psql 'postgresql://mrr@127.0.0.1:54329/mrr_test'`,
+  schema `mrr_k1t04_real_run_v2`, read-only `SELECT`s only, no write
+  issued): the locked `MethodProtocol` (`urn:mrr:method-protocol:
+  01KY1SNYA6CZAYGFVVP0PA2QC0`, revision 3, `status: "locked"`) carries
+  `"sensitivity_variations": ["model-collapse-mechanism-v1"]` — the EXACT
+  same value as the already-accepted K1-T01 example, not a new one authored
+  for the real run. Resolving that single entry_id against the SAME schema's
+  real, `accepted` `ConceptCharter` (`urn:mrr:concept-charter:
+  01KY1SNY9J1WY3QJH53A75CMY1`, revision 2) shows it names the charter entry
+  that operationalizes the QUESTION'S OWN CORE TERM ("model-collapse
+  mechanism" — the technical-literature process itself), NOT an alternate,
+  second VERSION of a classification to compare the base finding against.
+  There is no `model-collapse-mechanism-v2` (or any other second variant)
+  anywhere in the real run's charter. This is a genuine, load-bearing
+  finding, not an assumption: even if this packet's new capability were
+  pointed at the real, sealed run today, there is no second, actually-
+  varied classification declared to execute a MEANINGFUL sensitivity
+  comparison against — the real declaration names WHAT is being tested
+  sensitivity over (implicitly), not two or more alternate operationalizations
+  to run and compare. This directly informs derived_decisions (l) (scope:
+  capability + fixtures, not a real re-run) and is reported prominently in
+  required_output, not buried.
+
+  (5) `task-packets/K1-T03.yaml`'s own derived_decisions (b) established the
+  precedent this packet extends: `MethodProtocol`'s own `list[str]` fields
+  (`inclusion_criteria`/`exclusion_criteria`/`sensitivity_variations`/
+  `kill_conditions`/`planned_analyses`, `method_protocol.py` lines 104-108)
+  are free HUMAN PROSE, not structured, machine-executable predicates or
+  threshold tables — which is exactly why K1-T03 invented the separate,
+  versioned, content-hash-pinned `ProtocolParameters` sidecar artifact for
+  `inclusion_filter`/`eligibility_rules`/`kill_conditions` rather than
+  proposing a structured field on the protected `MethodProtocol` contract.
+  `sensitivity_variations` is subject to the IDENTICAL constraint (a bare
+  list of `ConceptCharterEntry.entry_id` strings, no machine-executable
+  parameterization anywhere) — this packet's own derived_decisions (b)
+  applies the SAME sidecar-artifact solution, one sidecar per declared
+  variation, rather than proposing a new field on `MethodProtocol` (which
+  remains one of the six protected K1-T01 contracts, untouched here).
+
+  Task-id and epic placement, reasoned from precedent exactly as
+  `task-packets/E1-T03b.yaml`'s own derivation did (that packet's own
+  words, quoted here as the applicable method): "the repository has no
+  standing convention that names this exact case, so this packet reasons
+  from the two precedents it DOES have." Three candidates were considered:
+
+  - **`K1-T05`** — REJECTED. `docs/design/2026-07-21-research-method-kernel
+    -plan.md` line 35 titles K1 explicitly "`systematic_evidence_synthesis`
+    v1 on the atlases (4 tasks)" — a closed, already-fully-delivered count
+    (K1-T01..T04, confirmed merged: `git log --oneline` shows `9afcbd5`
+    "K1-T04: first real run" reachable from `main`, no open K1 PR). K1's own
+    "Exit criteria" (same doc, lines 71-73: "a third party can follow one
+    sealed crate from question to claim landscape entirely through recorded
+    objects; every claim's language is at or below its ruled ceiling; the
+    protocol lock predates all extraction; the run is reproducible from the
+    pinned snapshots") are independently confirmed MET by
+    `docs/design/2026-07-21-k2-gate-decision.md`'s own evidence table
+    ("K1-Exit-Kriterien ... ERFÜLLT"). Adding a fifth NUMBERED K1 task would
+    reopen an epic whose own governing documents both treat as closed —
+    exactly the reasoning `task-packets/E1-T03b.yaml`'s own derivation used
+    to reject `K1-T05` for itself (a DIFFERENT packet, ADR-0010's
+    classification field — but the SAME structural objection applies here
+    with equal force, since this packet is even MORE squarely "K1's own
+    deliverable" than E1-T03b's cross-cutting contracts work was, making
+    the "closed epic" objection, if anything, sharper, not weaker).
+  - **`K2-T00`** or similar — REJECTED. K2 is explicitly "not scheduled" and
+    was just formally deferred (`2026-07-21-k2-gate-decision.md`); K2's own
+    subject matter (causal contracts, propose-plus-human-ruling forms per
+    spec 08 section 7) is categorically DIFFERENT from executing an existing
+    profile's own declared sensitivity analysis — this work has nothing to
+    do with causal contracts and minting a K2-prefixed id would misfile it
+    under an epic that is not even open.
+  - **`E9-T00c`** or a new standalone `E9-*` id — REJECTED. E9-T00's own
+    seven items are ALL review-driven follow-ups from PR comments on
+    ALREADY-MERGED E6/K0/K1 pull requests (`task-packets/E9-T00.yaml`
+    derivation: "seven small, independently-reviewed follow-up items that
+    accumulated across the independent reviews of PR #43-#53"); this
+    packet's own gap was NOT raised as a PR review comment on any specific
+    K1-T03/K1-T04 pull request (confirmed: `gh pr view 52`/`gh pr view 53`
+    comment text, already quoted verbatim inside `task-packets/E9-T00.yaml`
+    and `task-packets/K1-T04.yaml` themselves, names OTHER items —
+    capability-name synonym, EvidenceCrateSealer parameters — never
+    sensitivity variations) — it was instead surfaced in a post-hoc session
+    handoff and formalized as a standalone K2-gate-decision priority. E9 is
+    also epic-scoped to "hardening and production operation"
+    (`docs/spec/06_IMPLEMENTATION_PLAN.md#e9`), a governance/operational
+    concern, not a profile-capability extension — a poor semantic fit for
+    "make an existing research-method requirement actually execute."
+  - **`K1-T03b`** — CHOSEN. Mirrors the b-suffix convention this repository
+    already uses four times (`E1-T03b`, `E5-T00b`, `E5-T02b`, `E5-T07b`) for
+    "a small, later, independently-reviewable addition to that SAME task's
+    own deliverable, never claiming a fresh epic-numbered slot"
+    (`task-packets/E1-T03b.yaml`'s own words). The deliverable this packet
+    extends is squarely K1-T03's OWN: the `SystematicEvidenceSynthesisExecutor`
+    (`services/node_runtime/mrr/services/node_runtime/synthesis_executor.py`)
+    and its composition function,
+    `run_synthesis_evidence_loop`
+    (`services/control_plane/mrr/services/cli/synthesis_orchestration.py`) —
+    BOTH are K1-T03's own files (confirmed: `task-packets/K1-T03.yaml`
+    objective names both as this packet's own deliverables; K1-T04's own
+    `forbidden_changes` explicitly held both "UNCHANGED" as K1-T03's
+    protected property, confirming ownership). This is DIFFERENT from
+    E1-T03b's own precedent in one respect worth stating honestly: E1-T03b's
+    b-suffix traced to a deferral NAMED IN THE ORIGINATING TASK'S OWN TEXT
+    (K1-T02.yaml's governance note, repeated in K1-T03.yaml/E9-T00.yaml);
+    THIS gap is not named in K1-T03.yaml's own specification_gaps anywhere
+    (confirmed: `grep -n "sensitivity" task-packets/K1-T03.yaml` returns
+    only one hit, at line 567, inside a LIST of every `MethodProtocol`
+    `list[str]` field the protocol-parameters sidecar precedent addresses —
+    not a dedicated deferral note). It was instead surfaced during K1-T04's
+    review of the REAL run (which is the first time `sensitivity_variations`
+    ever carried real, non-synthetic content) and recorded in the session
+    handoff succeeding that review. Given the CODE this packet touches is
+    K1-T03's own file set, not K1-T04's separate `corpora/`/three-new-
+    services/CLI file set, `K1-T03b` (extending K1-T03's own deliverable) is
+    judged the better fit than a hypothetical `K1-T04b` (which would imply
+    this packet lives inside K1-T04's own governance-object-lifecycle
+    machinery, which it does not touch at all). Flagged honestly in
+    specification_gaps as a genuine judgment call a reviewer may weigh
+    differently, exactly as `task-packets/E1-T03b.yaml`'s own derivation
+    flagged its OWN id choice for reviewer confirmation rather than treating
+    it as beyond question.
+objective: >-
+  Make `MethodProtocol.sensitivity_variations` (MRR-MTH-018) an executed
+  capability, not a schema-only declaration: extend
+  `SystematicEvidenceSynthesisExecutor`'s pure pipeline to re-run its own
+  deterministic classification steps under each declared variation (using a
+  NEW, versioned, content-hash-pinned sidecar artifact per variation,
+  mirroring K1-T03's own `ProtocolParameters` precedent exactly, since
+  `sensitivity_variations` is — like every other `MethodProtocol` `list[str]`
+  field — free prose with no machine-executable parameterization of its
+  own); extend `EvidenceMatrix` with one new, OPTIONAL, additive field,
+  `sensitivity_analysis_results`, so "results under each variation MUST be
+  reported" (MTH-018's own words) lands on the SAME governed, addressable
+  object every other synthesis output already lives on; extend
+  `run_synthesis_evidence_loop` with one new, additive, default-empty
+  keyword parameter so every EXISTING caller (K1-T03's own e2e test,
+  K1-T04's `establish_and_run_synthesis`) is byte-for-byte unaffected. Build
+  the capability and prove it on NEW, small, synthetic fixtures exercising
+  at least two variations with genuinely different — and at least one
+  divergent — outcomes; do NOT touch, re-run, or mutate the already-sealed
+  K1-T04 real run (schema `mrr_k1t04_real_run_v2`), whose own single
+  declared variation entry names the question's core term operationalization
+  itself, not a second, alternate classification a meaningful comparison
+  could run against (derivation (4)) — a genuinely separate, future decision
+  if a reviewer ever wants a fresh real run exercising this new capability.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#4-normative-requirements
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#5-profile-systematic_evidence_synthesis-v1-the-first-profile
+  - docs/design/2026-07-21-research-method-kernel-plan.md
+  - docs/design/2026-07-21-k2-gate-decision.md
+  - docs/design/2026-07-21-session-handoff-first-real-run.md
+  - task-packets/K1-T01.yaml
+  - task-packets/K1-T03.yaml
+  - task-packets/K1-T04.yaml
+  - task-packets/E1-T03b.yaml
+  - task-packets/E9-T00.yaml
+  - schemas/method-protocol.schema.json
+  - schemas/evidence-matrix.schema.json
+  - schemas/concept-charter.schema.json
+  - packages/contracts/mrr/contracts/method_protocol.py
+  - packages/contracts/mrr/contracts/evidence_matrix.py
+  - packages/contracts/mrr/contracts/concept_charter.py
+  - packages/contracts/mrr/contracts/__init__.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/domain/mrr/domain/source_independence.py
+  - packages/domain/mrr/domain/repositories.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - services/node_runtime/mrr/services/node_runtime/synthesis_executor.py
+  - services/control_plane/mrr/services/cli/synthesis_orchestration.py
+  - services/control_plane/mrr/services/method_protocol/service.py
+  - services/control_plane/mrr/services/evidence_matrix/service.py
+  - examples/method-protocol.example.json
+  - examples/evidence-matrix.example.json
+  - tests/e2e/test_k1_t03_synthesis_evidence_loop.py
+  - tests/unit/services/node_runtime/test_synthesis_executor.py
+  - tests/property/test_synthesis_executor_properties.py
+  - tests/contract/test_evidence_matrix_variants.py
+requirements:
+  - MRR-MTH-007
+  - MRR-MTH-011
+  - MRR-MTH-015
+  - MRR-MTH-016
+  - MRR-MTH-018
+  - MRR-MTH-019
+  - MRR-MTH-020
+  - MRR-FR-035
+  - MRR-NFR-001
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - services/node_runtime/mrr/services/node_runtime/synthesis_executor.py
+  - services/control_plane/mrr/services/cli/synthesis_orchestration.py
+  - >-
+    packages/domain/mrr/domain/exceptions.py — additive only: one new class,
+    `SensitivityVariationDeclarationMismatchError` (mirroring
+    `ProtocolNotLockedError`/`ProtocolLockViolationError`'s own placement
+    and docstring convention; no canonical `error_code` ClassVar — see
+    derived_decisions (h))
+  - schemas/evidence-matrix.schema.json
+  - packages/contracts/mrr/contracts/evidence_matrix.py
+  - >-
+    packages/contracts/mrr/contracts/__init__.py — additive only: export
+    the new `SensitivityAnalysisResult` symbol, mirroring how
+    `EvidenceMatrix`/`EvidenceMatrixRow` are already re-exported
+  - tests/unit/services/node_runtime/test_synthesis_executor_sensitivity_variations.py
+  - tests/property/test_synthesis_executor_sensitivity_variation_properties.py
+  - tests/integration/services/cli/test_synthesis_orchestration_sensitivity_variations.py
+  - tests/e2e/test_k1_t03b_sensitivity_variation_execution.py
+  - tests/contract/test_evidence_matrix_variants.py
+  - tests/contract/fixtures/invalid/evidence-matrix-sensitivity-result-duplicate-pair.json
+  - >-
+    services/control_plane/mrr/services/evidence_matrix/service.py —
+    ADDED BY REVIEWER RESOLUTION, strictly additive and strictly bounded:
+    exactly ONE new key (`sensitivity_variation_count`) in the existing
+    `evidence_matrix.created` event-payload construction (derived_decisions
+    (i)); NO new method, NO signature change, NO other line — the packet's
+    original forbidden_changes entry for this file was internally
+    inconsistent with derived_decisions (i) and is superseded by this
+    bounded permission
+forbidden_changes:
+  - >-
+    every OTHER K1-T01 contract kind's own schema/Pydantic model
+    (`schemas/{question-model,concept-charter,method-protocol,method-ruling,
+    research-decision}.schema.json`, `packages/contracts/mrr/contracts/
+    {question_model,concept_charter,method_protocol,method_ruling,
+    research_decision}.py`) — `MethodProtocol.sensitivity_variations`
+    (the DECLARATION) is read, never modified in shape; `EvidenceMatrix` is
+    the ONLY K1-T01 contract this packet's schema/model diff touches
+  - >-
+    `packages/domain/mrr/domain/lifecycles.py` and every `StateMachine`
+    constant, in particular `EVIDENCE_MATRIX_LIFECYCLE`/
+    `METHOD_PROTOCOL_LIFECYCLE` — no new state, no new edge; sensitivity
+    results are recorded INSIDE the matrix's existing `create` call (before
+    `activate`/`freeze`), never via a new transition
+  - >-
+    `packages/domain/mrr/domain/repositories.py`'s `EDGE_VOCABULARY` — no
+    new edge type; variation results live inline on `EvidenceMatrix.
+    sensitivity_analysis_results` and are discoverable via the SAME,
+    already-existing `governed_by_protocol` edge the matrix already receives
+    from `synthesis_orchestration.py`'s unchanged
+    `_write_governed_by_protocol_edge` call
+  - >-
+    `services/control_plane/mrr/services/method_protocol/service.py` — the
+    three already-implemented transitions (`create`/`submit_for_review`/
+    `lock`) are UNCHANGED; a locked `MethodProtocol`'s
+    `sensitivity_variations` list is never re-opened, amended, or mutated by
+    this packet — sensitivity EXECUTION never touches the protocol's own
+    revisions (derived_decisions (f))
+  - >-
+    `services/control_plane/mrr/services/evidence_matrix/service.py` beyond
+    the ONE bounded change the reviewer-amended allowed_paths entry permits
+    (the single additive event-payload key) — no new method,
+    no signature change; `EvidenceMatrixService.create`/`.activate`/
+    `.freeze` are called EXACTLY as `synthesis_orchestration.py` already
+    calls them, with a body that now MAY additionally carry the new,
+    optional field
+  - >-
+    `services/control_plane/mrr/services/{claim,method_ruling,
+    research_decision,evidence}/**` — untouched; no `Claim`, `MethodRuling`,
+    or `ResearchDecision` is ever created, superseded, or mutated as a
+    result of any sensitivity variation's own outcome (derived_decisions (e))
+  - >-
+    the K1-T04 real run's own sealed data, schema `mrr_k1t04_real_run_v2` in
+    the local test Postgres — READ-ONLY for this packet's own derivation
+    evidence-gathering; this packet's own tests connect to a FRESH test
+    database/schema (or the repository's own standard `MRR_TEST_DATABASE_URL`
+    convention with new, packet-owned fixtures) and never write to, replay
+    against, or otherwise touch `mrr_k1t04_real_run_v2`
+  - >-
+    `corpora/model-collapse/**` — untouched; this packet's own fixtures are
+    new, small, synthetic corpora (mirroring K1-T03's own "not the real
+    atlases" test-fixture discipline), not the real atlases
+  - >-
+    `docs/spec/08_RESEARCH_METHOD_KERNEL.md` — the spec is ACCEPTED,
+    governance-owned text; not amended by an implementation packet, mirroring
+    `task-packets/E1-T03b.yaml`'s own identical precedent for ADR text
+    ("the ADR is a decision record, not a progress tracker ... governance
+    commits, not implementation packets, have amended [it] elsewhere")
+  - >-
+    `examples/evidence-matrix.example.json` — stays byte-identical (the new
+    field is optional/nullable and simply absent from this already-accepted
+    example, exactly mirroring how `examples/practice.example.json` stayed
+    untouched by ADR-0010's own optional `classification` field addition)
+  - >-
+    `tests/e2e/test_k1_t03_synthesis_evidence_loop.py` — passes completely
+    UNMODIFIED (this packet's own new keyword parameter on
+    `run_synthesis_evidence_loop` defaults to `None`/empty, so this existing
+    caller's behavior, output bytes, and assertions are unaffected)
+  - HTTP/FastAPI endpoints anywhere
+  - >-
+    any Alembic migration or change to
+    `packages/persistence/mrr/persistence/tables.py` — not needed:
+    `objects.body` is unconstrained `postgresql.JSONB()` (confirmed by
+    `task-packets/E1-T03b.yaml`'s own derivation (7), reused here rather
+    than re-derived), so an `EvidenceMatrix` body that gains one new,
+    optional key round-trips today with zero persistence-layer change
+  - both import-linter contracts in `pyproject.toml` — unmodified and KEPT
+derived_decisions:
+  - >-
+    (a) WHAT "EXECUTING A VARIATION" CONCRETELY MEANS — RE-RUN THE
+    CLASSIFICATION STAGES, HOLD EXTRACTION AND EVIDENCE IDENTITY FIXED. The
+    four deterministic pipeline stages downstream of extraction —
+    `_passes_inclusion_filter` (`synthesis_executor.py` lines 446-463),
+    `_group_included_rows_by_analysis` (lines 500-516),
+    `distinct_independent_source_family_count`
+    (`mrr.domain.source_independence`, reused UNCHANGED), and
+    `_classify_analysis` (lines 562-643) — are the ones a "varied
+    classification" (MTH-018's own words: "party families, cluster
+    taxonomies, period boundaries") can meaningfully act on: inclusion
+    (which entries count at all), grouping, family membership (which
+    entries count as mutually independent), and the resulting
+    supported/contested/unsupported/insufficient_evidence classification.
+    Executing a variation means re-running exactly these four stages a
+    SECOND time, once per declared `sensitivity_variations` entry, against
+    the SAME already-parsed `CorpusEntry` objects the base run already
+    parsed (`entries = [CorpusEntry.model_validate(...) for ... in
+    raw_entries]`, line 686) — NOT against a different or re-fetched corpus.
+    HELD FIXED across the base run and every variation alike: the
+    underlying evidence identity (same `entry_id`s, therefore the SAME
+    persisted `SourceRecord`/`EvidenceAnchor` ids `run_synthesis_evidence_
+    loop` already mints — reused, never re-minted, for a variation), the
+    `extraction_and_classification_proposal` step's own output (each row's
+    already-computed `extraction` dict is copied verbatim into a variation's
+    working row, never re-invoking `extraction_callable` a second time — a
+    model-assisted extraction step is expensive, non-free, and this
+    packet's own scope explicitly does not multiply model calls by the
+    number of declared variations), the locked protocol's own content and
+    hash, `RULED_CEILING`/`DETERMINISTIC_RULE_REFERENCE`, and — per
+    derived_decisions (e) — the fact that NO `Claim`/`MethodRuling`/
+    `ResearchDecision` is ever minted from a variation's own outcome. WHAT
+    VARIES per declared variation: the classification-bearing parameters
+    only — `inclusion_filter`, `eligibility_rules`, `kill_conditions` (all
+    three already exist on `ProtocolParameters` and are reused verbatim in
+    shape), plus one genuinely NEW field, `source_family_overrides: dict[str,
+    str]` (entry_id -> an alternate `source_family_id`), the concrete
+    mechanism by which "party families"/"cluster taxonomies" are actually
+    varied — `source_independence.py`'s own `family_key` function (lines
+    134-140 of that module) already keys independence counting purely off
+    `row.source_family_id`, so overriding that ONE field per entry, per
+    variation, is a minimal, surgical, already-supported lever requiring
+    zero change to `source_independence.py` itself.
+  - >-
+    (b) THE NEW SIDECAR ARTIFACT, ONE PER DECLARED VARIATION — MIRRORING
+    `ProtocolParameters`' OWN PRECEDENT EXACTLY, FOR THE SAME REASON.
+    `sensitivity_variations` is, like every other `MethodProtocol.list[str]`
+    field, free human prose with no machine-executable content
+    (`method_protocol.py` lines 104-108; `schemas/method-protocol.schema
+    .json` line 61's own description: "Not cross-validated against a real
+    ConceptCharter here"). A NEW Pydantic model,
+    `SensitivityVariationParameters` (`synthesis_executor.py`, new,
+    alongside `ProtocolParameters`), carries: `protocol_id`,
+    `protocol_lock_content_hash` (reusing `_check_protocol_lock`
+    UNCHANGED against each variation's own declared hash — a stale or
+    mismatched variation sidecar fails exactly like a stale base-run
+    sidecar does today, same typed errors,
+    `ProtocolNotLockedError`/`ProtocolLockViolationError`, no new exception
+    needed for THIS check); `variation_entry_id: str` (self-describing,
+    checked against the resolved protocol's own `sensitivity_variations`
+    list); `inclusion_filter: dict[str, _InclusionFieldPredicate] = {}`,
+    `eligibility_rules: dict[str, _EligibilityRule]`, `kill_conditions:
+    _KillConditions` (all three literally the SAME nested Pydantic classes
+    `ProtocolParameters` already declares, reused by reference, zero
+    duplication); `source_family_overrides: dict[str, str] = {}` (new,
+    derived_decisions (a)). WIRING: `TaskBundle.instructions` (a free-form
+    `dict[str, Any]`, `task_bundle.py` line 103, confirmed unconstrained)
+    gains one new, OPTIONAL key, `sensitivity_variation_artifact_ids:
+    dict[str, str]` (`variation_entry_id -> artifact_id`), mirroring the
+    EXISTING `corpus_artifact_id`/`protocol_parameters_artifact_id`/
+    `method_protocol_artifact_id` convention (`_INSTRUCTIONS_*_KEY`
+    constants, lines 145-148) exactly — one more `_INSTRUCTIONS_
+    SENSITIVITY_VARIATION_ARTIFACT_IDS_KEY` constant, same pattern. FAIL-
+    CLOSED COVERAGE CHECK, a NEW pure helper,
+    `_check_sensitivity_variation_coverage(protocol_body, instructions) ->
+    dict[str, str]`, called from `_run_pipeline` immediately after
+    `_check_protocol_lock` (i.e. BEFORE the corpus is even parsed — a
+    precondition check, not a research finding, exactly mirroring
+    `_check_protocol_lock`'s own placement and rationale): asserts
+    `set(protocol_body.get("sensitivity_variations", [])) ==
+    set(instructions.get("sensitivity_variation_artifact_ids", {}).keys())`
+    — SYMMETRIC, not one-directional: a locked protocol that declares a
+    variation with no matching artifact supplied fails closed (the MUST
+    this whole packet exists to satisfy would otherwise be silently
+    unfulfilled); a caller that supplies an UNDECLARED variation artifact
+    ALSO fails closed (AGENTS.md's own fail-closed discipline extended
+    symmetrically, rather than silently ignoring an extra, undeclared
+    input). When BOTH sets are empty (the overwhelmingly common case today
+    — confirmed by `grep -rn "sensitivity_variations.: \[\]" tests/`
+    matching six existing fixtures across unit/contract/property/
+    integration tests), the check trivially passes with an empty mapping —
+    ZERO behavior change for every existing `sensitivity_variations: []`
+    protocol, which is every protocol in the test suite today except the
+    one real K1-T04 protocol (which this packet never re-executes,
+    derived_decisions (l)).
+  - >-
+    (c) WHERE VARIATION RESULTS LIVE — ONE NEW, OPTIONAL, NULLABLE FIELD ON
+    `EvidenceMatrix`, NO NEW OBJECT KIND, NO MIGRATION. `EvidenceMatrix`
+    (`schemas/evidence-matrix.schema.json`, `packages/contracts/mrr/
+    contracts/evidence_matrix.py`) already IS "structured evidence... one
+    row per source x claim-relevant finding" (spec 08 section 3's own
+    table) for the BASE analysis; extending it with a SECOND, parallel
+    array — `sensitivity_analysis_results: list[SensitivityAnalysisResult]
+    | None = None` — keeps "one governed object per run" intact rather than
+    inventing a new Layer-1 kind (spec 08 section 3's table is a CLOSED set
+    of seven kinds; MTH-018's own text names no new kind, only a reporting
+    obligation). Each `SensitivityAnalysisResult` entry: `variation_entry_id`
+    (str, required), `applies_to_analysis` (str, required), `outcome`
+    (the SAME four-value enum `_AnalysisResult.outcome` already uses:
+    `supported`/`contested`/`unsupported`/`insufficient_evidence`, required),
+    `included_source_count`/`verified_source_count`/`distinct_independent_
+    supporting_family_count`/`distinct_independent_contradicting_family_
+    count` (non-negative integers, required — literally
+    `_analysis_result_to_dict`'s own `base` dict fields, lines 758-769,
+    reused verbatim), `decision_rationale` (nullable string, required
+    non-null exactly when `outcome == "insufficient_evidence"`, mirroring
+    `EvidenceMatrixRow.unverifiable_reason`'s own identical co-occurrence-
+    with-another-field validator pattern, lines 74-82 of
+    `evidence_matrix.py`), `matches_base_outcome` (bool, required — whether
+    this variation's own `outcome` for this `applies_to_analysis` equals the
+    BASE run's own `outcome` for the same key; the field MTH-018's "results
+    ... MUST be reported" is chiefly FOR — a reviewer scanning
+    `sensitivity_analysis_results` can filter directly for `false` without
+    recomputing anything). A `model_validator` rejects a duplicate
+    `(variation_entry_id, applies_to_analysis)` pair within one list,
+    mirroring `EvidenceMatrixRow.row_id`'s/`ConceptCharterEntry.entry_id`'s
+    own identical uniqueness treatment. THE FIELD IS OPTIONAL/NULLABLE, NOT
+    REQUIRED (`anyOf: [{"type":"array", ...}, {"type":"null"}]` in the
+    schema, `| None = None` in Pydantic, dropped by the codebase's universal
+    `exclude_none=True` convention when absent) — mirroring
+    `task-packets/E1-T03b.yaml`'s own `BaseObject.classification` precedent
+    exactly, for the identical reason: EVERY existing `EvidenceMatrix`
+    object (the K1-T01 example, every unit/contract/property/integration
+    fixture, and the REAL, sealed K1-T04 matrix) round-trips byte-identically
+    with the new field simply absent — no backfill, no re-signing, no
+    content-hash change for any object that does not set it (the same
+    `compute_content_hash`/`_HASH_EXCLUDED_FIELDS` mechanism E1-T03b's own
+    derivation (8) already proved for exactly this shape of change). NO
+    MIGRATION: `objects.body` is unconstrained `postgresql.JSONB()`
+    (E1-T03b's own derivation (7), reused here) — a body dict that gains one
+    more optional key persists and reads back today, on the CURRENT,
+    unmodified migration head, with zero persistence-layer change, proven
+    by this packet's own integration-tier round-trip test rather than
+    merely asserted (mirroring E1-T03b's own acceptance-test discipline).
+  - >-
+    (d) DETERMINISM — VARIATIONS INHERIT THE BASE RUN'S OWN PROVEN
+    BYTE-REPRODUCIBILITY FOR FREE, BY CONSTRUCTION. `_run_pipeline`'s
+    existing output (`output: dict[str, Any]`, lines 701-706) is
+    canonicalized via ONE `canonicalize(output)` call (line 707) into the
+    bytes `execute()` hashes via `content_hash(output)` (line 938) —
+    `SystematicEvidenceSynthesisExecutor.is_deterministic` stays `True`
+    UNCONDITIONALLY (unchanged, line 878). This packet adds
+    `"sensitivity_analysis_results"` as ONE MORE key inside that SAME
+    `output` dict, computed by the SAME pure, side-effect-free, in-process
+    functions (`_passes_inclusion_filter`/`_group_included_rows_by_analysis`
+    /`_classify_analysis`, reused, plus the new coverage check and family-
+    override application, all equally pure) over the SAME parsed, in-memory
+    `entries`/`params` state. Given identical `inputs: Mapping[str, bytes]`
+    (base corpus bytes + protocol-parameters bytes + method-protocol bytes +
+    N variation-parameters bytes, ALL content-hash-pinned via
+    `ArtifactStore`/`ArtifactRef.content_hash` exactly like the three
+    existing artifacts), `_run_pipeline` returns byte-identical output on
+    every invocation — no new source of nondeterminism is introduced (no
+    wall-clock read, no random id mint, no network I/O; `new_urn` is still
+    never called anywhere inside `_run_pipeline`, matching the module
+    docstring's own "why execute() never mints an id" invariant, unchanged).
+    K1-T03's/K1-T04's own existing byte-reproducibility acceptance-test
+    PATTERN (re-run `execute()` twice, assert identical `output_hash`)
+    extends to a variation-bearing run with zero new test infrastructure —
+    only a new fixture exercising the extended path.
+  - >-
+    (e) CLAIM/RULING RELATIONSHIP — FAIL-CONSERVATIVE: A VARIATION NEVER
+    CREATES, MODIFIES, OR SUPERSEDES A `Claim`/`MethodRuling`/
+    `ResearchDecision`. MTH-018's own text says only "results under each
+    variation MUST be reported" — it does NOT say a variation outcome may
+    itself change a claim's ruled ceiling, demote/promote its status, or
+    trigger a `ResearchDecision`. Spec 08 is SILENT on this specific
+    question (unlike MTH-008's explicit "an outcome-informed amendment
+    demotes affected analyses to exploratory", which names its own
+    consequence precisely). Per this packet's own mandate to fail
+    conservative where MTH-018 is silent: `sensitivity_analysis_results` is
+    PURELY REPORTED data, attached to the EvidenceMatrix for a human
+    reviewer (via the EXISTING, unchanged `MethodRuling`/future
+    `ResearchDecision` machinery) to weigh when interpreting the base
+    claim's own scope of validity and non-applicability conditions
+    (MRR-MTH-017) — never a new, silent path by which deterministic
+    executor output becomes authoritative state beyond what MTH-004's
+    existing `ruled_by` mechanism already governs (the same spirit as
+    AGENTS.md rule 7, "No model output may directly become authoritative
+    state", applied here to a NEW deterministic-but-still-executor-produced
+    output, not merely a model one). `_persist_synthesis_output`
+    (`synthesis_orchestration.py`) is extended to read
+    `output.get("sensitivity_analysis_results", [])` and fold it into the
+    `EvidenceMatrix.model_validate(...)` call at CREATE time (before
+    `.activate`/`.freeze` — see (c)) — nothing else in that function's own
+    claim/ruling/decision loop (lines 1212-1353) changes at all.
+  - >-
+    (f) LOCK VS. EXECUTION ARTIFACTS — THE DECLARATION STAYS FROZEN AT
+    LOCK; RESULTS ARE ORDINARY POST-LOCK EXECUTION, NOT AN AMENDMENT.
+    `MethodProtocol.sensitivity_variations` (the DECLARATION — which charter
+    entries name a sensitivity axis) is fixed at lock time (MRR-MTH-007) and
+    untouched by this packet — `MethodProtocolService.lock` (`service.py`
+    lines 237-296) is not modified, and no code this packet adds ever calls
+    it, `submit_for_review`, or any future `amend`. The COMPUTED results
+    (`sensitivity_analysis_results`) are new data created strictly AFTER
+    lock, during one specific execution, referenced back to the lock via
+    the SAME `governed_by_protocol` edge every other object this run
+    produces already carries (the `EvidenceMatrix` itself already gets one,
+    `_persist_synthesis_output` lines 1198-1206, unchanged) — this is
+    ordinary post-lock EXECUTION, structurally identical to how the base
+    `EvidenceMatrix`/`Claim`s/`MethodRuling`s this run already produces are
+    also created strictly after lock. It is NOT an amendment (MRR-MTH-008
+    territory: "post-lock CHANGES [to the protocol] must be amendments") —
+    nothing about the LOCKED PROTOCOL'S OWN BODY changes; only new,
+    separate, downstream objects are created, exactly like every other
+    execution artifact this profile already produces post-lock.
+  - >-
+    (g) THE EMPTY-GROUP EDGE CASE — WHY VARIATION CLASSIFICATION IS NOT A
+    NAIVE RE-CALL OF `_classify_analysis`. `_group_included_rows_by_analysis`
+    (lines 500-516) only ever creates a dict entry for an
+    `applies_to_analysis` key that has AT LEAST ONE included row (`groups.
+    setdefault(...).append(row)`) — so in the BASE run, `_classify_analysis`
+    is NEVER called with an empty `group_rows` list, and its own "else"
+    branch (`group_rows[0].entry.claim_type`, line 630) is safe as written.
+    A VARIATION's own, potentially stricter `inclusion_filter` can
+    legitimately exclude EVERY row of a group the base run found non-empty
+    — meaning a naive re-call of the unchanged `_classify_analysis` with a
+    now-empty `group_rows` list would `IndexError` at line 630 whenever a
+    variation's own `kill_conditions.stop_insufficient_evidence.
+    min_included_sources` happens to be configured as `0` (a legal value,
+    `_KillConditionInsufficientEvidence.min_included_sources: int = Field(ge=0)`,
+    line 269) — the ONLY circumstance under which `len(verified_rows) <
+    min_included_sources` (with `verified_rows == []`) evaluates `False`,
+    falling through to the unsafe branch. This packet's own new variation-
+    classification helper NEVER calls `_classify_analysis` with a
+    variation-computed empty `group_rows` list at all: for every
+    `applies_to_analysis` key present in the BASE run's own `analyses` (the
+    set of groups worth reporting a variation comparison for — see
+    `matches_base_outcome`, derived_decisions (c)) that ends up with ZERO
+    included rows under a given variation's own `inclusion_filter`, this
+    packet's helper synthesizes the `"insufficient_evidence"` result
+    DIRECTLY (with an explicit rationale string naming the variation and
+    the zero count), bypassing `_classify_analysis` entirely for that case
+    — `_classify_analysis` itself is NOT modified, and this pre-existing
+    latent edge case in the BASE path (unreachable there, by construction)
+    is left exactly as it is, not "fixed" as an unrelated, out-of-scope
+    change.
+  - >-
+    (h) NO NEW CANONICAL ERROR CODE. Spec 08 section 3's own error-code list
+    is CLOSED and explicit: "`CLAIM_CEILING_EXCEEDED`, `PROTOCOL_NOT_LOCKED`,
+    `PROTOCOL_LOCK_VIOLATION`, `SYNTHETIC_FIXTURE_NOT_EVIDENCE`,
+    `KILL_CONDITION_TRIGGERED`, `REPLICATION_NOT_INDEPENDENT`" — MTH-018 is
+    not among the requirements that named a canonical code, and minting a
+    NEW one (e.g. a hypothetical `SENSITIVITY_VARIATION_NOT_COVERED`) would
+    be a spec addition, out of this implementation packet's own authority
+    (mirrors `docs/spec/08_RESEARCH_METHOD_KERNEL.md` being forbidden_
+    changes territory, above). The new
+    `SensitivityVariationDeclarationMismatchError(DomainError)` (carrying
+    `protocol_id`, `declared: frozenset[str]`, `supplied: frozenset[str]`)
+    therefore carries NO `error_code: ClassVar[str]` — mirroring
+    `EvidenceMatrixNotFoundError`/`MethodRulingNotFoundError`/
+    `QuestionModelNotFoundError`'s own identical "plain `DomainError`
+    subclass, no canonical code" precedent (the MAJORITY of this file's
+    exception classes), not `ProtocolNotLockedError`'s minority "carries a
+    spec-08-declared code" pattern. Raised from `_check_sensitivity_
+    variation_coverage` (derived_decisions (b)), caught by the SAME outer
+    exception handling `_execute_uncached` already applies to every pipeline
+    exception (mirroring `ProtocolNotLockedError`'s own precedent exactly),
+    reported as a `failed` `ExecutionResult` — a genuine execution
+    precondition failure (a declared-but-uncovered, or covered-but-
+    undeclared, variation), never a research finding.
+  - >-
+    (i) NO NEW DOMAIN EVENT TYPE — MTH-019's OWN LIST DOES NOT NAME
+    SENSITIVITY EXECUTION. MRR-MTH-019 names five specific triggers ("Profile
+    activation, protocol lock, ruling issuance, kill triggers, and research
+    decisions") — sensitivity-variation execution is not among them. This
+    packet mints NO new event type. The EXISTING `evidence_matrix.created`
+    event (`EvidenceMatrixService.create`, `_CREATED_EVENT_TYPE`,
+    `service.py` line 46) already fires exactly once per matrix, with a
+    `payload` this packet extends by ONE additive key,
+    `sensitivity_variation_count` (`len(matrix.sensitivity_analysis_results
+    or [])`), alongside the EXISTING `protocol_id`/`row_count` keys
+    (`synthesis_orchestration.py`'s own `evidence_matrix_service.create(...)`
+    call site is unchanged; only the `EvidenceMatrix` document it is handed
+    now optionally carries the new field, and
+    `EvidenceMatrixService.create`'s own event-payload construction, line
+    177, gains this one additive key) — an additive observability choice
+    BEYOND the letter of MTH-019, exactly mirroring
+    `task-packets/K1-T04.yaml`'s own identical, disclosed precedent
+    (specification_gaps: "this packet emits [an event] for both anyway, for
+    consistency with every other Layer-1 kind's own existing precedent ...
+    an additive choice beyond the letter of MTH-019, not itself mandated").
+  - >-
+    (j) BACKWARD COMPATIBILITY — ONE NEW, DEFAULT-EMPTY KEYWORD PARAMETER,
+    ZERO BEHAVIOR CHANGE FOR EVERY EXISTING CALLER. `run_synthesis_evidence
+    _loop` gains exactly one new parameter,
+    `sensitivity_variation_parameters: Mapping[str, dict[str, Any]] | None =
+    None` (keyed by `variation_entry_id`, mirroring `protocol_parameters:
+    dict[str, Any]`'s own existing shape one level up), mirroring
+    `task-packets/E9-T00.yaml`'s own item 7 established precedent for
+    extending an already-shipped function signature safely ("three new,
+    additive, default-empty keyword parameters ... every EXISTING caller ...
+    is byte-for-byte unaffected"). When `None`/empty (every EXISTING call
+    site: `tests/e2e/test_k1_t03_synthesis_evidence_loop.py`'s own direct
+    call, and K1-T04's `establish_and_run_synthesis`, which this packet does
+    NOT modify and which does not pass this new keyword), this function
+    mints ZERO new artifacts, adds ZERO new keys to `instructions`, and the
+    resolved `TaskBundle`/executor input set is byte-for-byte identical to
+    today — the `_check_sensitivity_variation_coverage` check trivially
+    passes (both sets empty, derived_decisions (b)) and
+    `sensitivity_analysis_results` ends up `None` on the resulting
+    `EvidenceMatrix`, exactly as if this packet did not exist. When
+    non-empty, `run_synthesis_evidence_loop` stores each variation's own
+    parameters dict via `artifact_store.put(...)` (the SAME pattern already
+    used for the corpus/protocol-parameters/method-protocol artifacts,
+    lines 781-801), mints one more `ArtifactRef` per variation (appended to
+    `input_artifact_refs`, so the EXISTING `missing_artifact_ids` check at
+    the executor's own outer layer, lines 897-906, automatically covers
+    "declared-in-TaskBundle-but-unresolved" for variation artifacts too,
+    with ZERO new code at that layer), and adds one new
+    `instructions["sensitivity_variation_artifact_ids"]` key.
+  - >-
+    (k) TASK-ID AND EPIC PLACEMENT — SEE DERIVATION. `K1-T03b`, chosen over
+    `K1-T05` (epic closed at 4 tasks, both governing documents treat it as
+    such), `K2-T00`-style (wrong epic, K2 not scheduled, unrelated subject
+    matter), and `E9-T00c`-style (E9's own items are PR-review-comment-
+    driven follow-ups on ALREADY-MERGED PRs, a provenance shape this gap
+    does not share; E9 is also the wrong epic semantically — hardening, not
+    profile capability). The b-suffix attaches to K1-T03 (whose own
+    `synthesis_executor.py`/`synthesis_orchestration.py` this packet
+    extends) rather than K1-T04 (whose review surfaced the gap, but whose
+    OWN separate file set — `corpora/`, three new governance-object
+    services, `synthesis_setup.py`/`synthesis_main.py` — this packet does
+    not touch at all). Flagged honestly (specification_gaps): unlike
+    `E1-T03b`'s own b-suffix precedent, K1-T03's own packet text does not
+    itself name this exact deferral — the gap surfaced only once K1-T04's
+    real run gave `sensitivity_variations` its first non-empty, real-world
+    content. A reviewer may prefer a different id for this reason.
+  - >-
+    (l) SCOPE — CAPABILITY + NEW SYNTHETIC FIXTURES ONLY; NO RE-RUN OF THE
+    REAL K1-T04 CORPUS, NO MUTATION OF THE SEALED SCHEMA. Per this packet's
+    own mandate and AGENTS.md's/frankbueltge.de's shared "no backfill"
+    ethos (retroactively altering an already-sealed, already-reviewed
+    research output is a form of dishonest backdating this codebase
+    explicitly rejects elsewhere): `mrr_k1t04_real_run_v2` is read ONLY,
+    for this packet's OWN derivation evidence (derivation (4)), never
+    written to, never re-executed against, by this packet's own
+    implementation or its own tests. This is not merely caution — derivation
+    (4)'s own direct DB finding shows the real run's `sensitivity_variations`
+    names exactly ONE charter entry, and that entry operationalizes the
+    QUESTION'S CORE TERM, not a second, alternate classification a
+    meaningful sensitivity COMPARISON could run against; pointing this new
+    capability at the real, sealed protocol today would, at best, produce a
+    single, non-comparative "variation" result trivially identical in scope
+    to the base run, which teaches nothing and risks reading as a
+    fabricated demonstration of "coverage" rather than an honest one. This
+    packet instead proves the capability on NEW, small, synthetic fixture
+    corpora (2-6 entries, mirroring `test_synthesis_executor.py`'s own
+    existing fixture scale) explicitly constructed so that at least one
+    declared variation's own `source_family_overrides`/`inclusion_filter`
+    genuinely FLIPS an outcome relative to the base run (`matches_base_
+    outcome == False` for at least one reported entry) — an honest,
+    deliberately-engineered proof that the mechanism works, not merely that
+    it runs without error. Whether and how to author a SECOND, genuinely
+    alternate `ConceptCharterEntry` for the real model-collapse question (so
+    THIS capability could eventually run a meaningful sensitivity comparison
+    on the real corpus) is an explicit, separate, future decision — named
+    here, not designed, not stubbed (AGENTS.md rule 12).
+invariants:
+  - >-
+    every existing `EvidenceMatrix` document (the K1-T01 example, every
+    unit/contract/property/integration fixture, and the real K1-T04 matrix)
+    continues to validate against both the schema and the Pydantic model,
+    unmodified, with `sensitivity_analysis_results` absent — and produces a
+    byte-identical `model_dump_json(exclude_none=True)` output to before
+    this change.
+  - >-
+    for any `EvidenceMatrix` body that does not contain a
+    `"sensitivity_analysis_results"` key,
+    `mrr.domain.hashing_policy.compute_content_hash(body)` returns the
+    IDENTICAL value before and after this change — no existing matrix's
+    `content_hash` is invalidated.
+  - >-
+    a locked `MethodProtocol` with `sensitivity_variations: []` (the
+    overwhelming majority of existing fixtures) exercises ZERO new code
+    paths beyond the trivial, always-passing coverage check — no new
+    artifact is required, minted, or resolved.
+  - >-
+    a locked `MethodProtocol` that declares one or more
+    `sensitivity_variations` entries with NO matching
+    `sensitivity_variation_artifact_ids` coverage causes `execute()` to
+    return a `failed` outcome (never `completed`) whose `detail` names
+    `SensitivityVariationDeclarationMismatchError` — the MUST this packet
+    exists to satisfy is never silently skipped.
+  - >-
+    `run_synthesis_evidence_loop`'s own two existing callers
+    (`tests/e2e/test_k1_t03_synthesis_evidence_loop.py`,
+    `establish_and_run_synthesis` inside K1-T04's `synthesis_setup.py`) are
+    touched in zero lines and pass unmodified in the same test run this
+    packet's own new tests run in.
+  - >-
+    a variation never mints, modifies, or supersedes a `Claim`,
+    `MethodRuling`, or `ResearchDecision` — confirmed by a test asserting
+    the SAME claim/ruling/decision id sets result from a run with and
+    without a non-empty `sensitivity_variation_parameters` argument, all
+    else held equal.
+  - >-
+    two invocations of `execute()` with byte-identical `inputs` (including
+    every variation-parameters artifact) produce a byte-identical
+    `output_hash`, extending K1-T03's own existing determinism guarantee.
+  - >-
+    `_classify_analysis` itself is never called with an empty `group_rows`
+    list by this packet's own new variation-classification code path
+    (derived_decisions (g)).
+  - both import-linter contracts remain KEPT throughout.
+acceptance_tests:
+  - >-
+    [unit, executor core] a `SystematicEvidenceSynthesisExecutor.execute()`
+    call whose locked protocol declares `sensitivity_variations: ["variant-
+    a"]` and whose `TaskBundle.instructions["sensitivity_variation_artifact_
+    ids"]` correctly maps `"variant-a"` to a resolved artifact returns
+    `outcome == "completed"` with `output["sensitivity_analysis_results"]`
+    containing exactly one entry per `applies_to_analysis` group present in
+    the base `output["analyses"]`, each carrying the six required numeric/
+    string fields plus `matches_base_outcome`.
+  - >-
+    [unit, divergence] a small, deliberately constructed fixture corpus and
+    variation (`source_family_overrides` collapsing two previously
+    independent source families into one) produces
+    `matches_base_outcome == False` for at least one reported entry — the
+    base run's own outcome for that `applies_to_analysis` group differs from
+    the variation's own outcome for the same group, proving the mechanism
+    changes something real, not a no-op pass-through.
+  - >-
+    [unit, coverage — missing] a locked protocol declaring
+    `sensitivity_variations: ["variant-a", "variant-b"]` with
+    `sensitivity_variation_artifact_ids` covering only `"variant-a"` causes
+    `execute()` to return `outcome == "failed"`, `detail` containing
+    `"SensitivityVariationDeclarationMismatchError"`; the underlying,
+    directly-called `_check_sensitivity_variation_coverage` raises that
+    typed error naming both the missing (`{"variant-b"}`) and covered
+    (`{"variant-a"}`) sets.
+  - >-
+    [unit, coverage — undeclared extra] the symmetric case — an artifact
+    supplied for a variation entry_id NOT present in the locked protocol's
+    own `sensitivity_variations` — is equally rejected, same exception type.
+  - >-
+    [unit, empty declaration, regression] a locked protocol with
+    `sensitivity_variations: []` and no `sensitivity_variation_artifact_ids`
+    key in `instructions` at all completes exactly as it did before this
+    packet, `output.get("sensitivity_analysis_results")` absent or `[]`.
+  - >-
+    [unit, empty-group guard] a variation whose own `inclusion_filter`
+    excludes every row of a base-run-non-empty `applies_to_analysis` group,
+    combined with that variation's own `kill_conditions.
+    stop_insufficient_evidence.min_included_sources == 0`, produces an
+    `"insufficient_evidence"` result for that group WITHOUT raising
+    `IndexError` — pinning derived_decisions (g) directly.
+  - >-
+    [unit, extraction reuse] a variation never re-invokes an injected
+    `extraction_callable` — proven by a spy callable whose call count after
+    a variation-bearing `execute()` equals its call count for an equivalent
+    run with zero declared variations (i.e., exactly once per included base
+    row, never once per row per variation).
+  - >-
+    [unit, claim/ruling isolation] `_persist_synthesis_output`, given
+    executor output carrying non-empty `sensitivity_analysis_results`,
+    creates a matrix carrying that field, but mints the SAME set of
+    `Claim`/`MethodRuling`/`ResearchDecision` ids as an otherwise-identical
+    run with empty `sensitivity_analysis_results` — no new claim, ruling, or
+    decision traceable to a variation's own outcome.
+  - >-
+    [property, determinism] over many randomly generated small synthetic
+    corpora, eligibility tables, and 1-3 variations each with randomized
+    `source_family_overrides`/`inclusion_filter` predicates, two calls to
+    `execute()` with identical inputs always produce identical `output_hash`
+    — extending `tests/property/test_synthesis_executor_properties.py`'s own
+    existing discipline to the new code path.
+  - >-
+    [property, ceiling discipline regression] the existing property (every
+    proposed claim's `ruled_ceiling == "associational_unadjusted"`, never
+    higher) continues to hold unchanged when sensitivity variations are
+    present — variations never touch claim minting at all (derived_decisions
+    (e)), so this is a structural regression check, not new behavior.
+  - >-
+    [contract tier] an `EvidenceMatrix` document with a non-empty, valid
+    `sensitivity_analysis_results` array validates against BOTH
+    `schemas/evidence-matrix.schema.json` and
+    `EvidenceMatrix.model_validate`; the SAME document with two entries
+    sharing an identical `(variation_entry_id, applies_to_analysis)` pair is
+    REJECTED at the Pydantic tier (`ValidationError`) — committed as
+    `tests/contract/fixtures/invalid/evidence-matrix-sensitivity-result-
+    duplicate-pair.json`, picked up by `test_negative_fixtures.py`'s
+    existing glob-based discovery; the existing, unmodified
+    `examples/evidence-matrix.example.json` (no `sensitivity_analysis_
+    results` key) continues to validate exactly as before.
+  - >-
+    [integration tier] `run_synthesis_evidence_loop`, called against a real
+    test database with `sensitivity_variation_parameters` supplied and a
+    locked protocol declaring the matching entries, persists an
+    `EvidenceMatrix` whose `sensitivity_analysis_results` round-trips via
+    `ObjectRepository.get_latest` byte-for-byte; the SAME call with
+    `sensitivity_variation_parameters=None` (the default) produces a matrix
+    identical in every respect to a K1-T03-era call, proving derived_
+    decisions (j) by direct execution, not merely by reading the diff.
+  - >-
+    [e2e tier, gated behind `MRR_TEST_DATABASE_URL` like every other
+    Postgres-backed test in this repo] a full `run_synthesis_evidence_loop`
+    run over a small, synthetic, multi-variation fixture completes with
+    `run_state == "completed"`, produces a sealed `EvidenceCrate`
+    independently traceable via the existing `governed_by_protocol` edges,
+    and the resulting `EvidenceMatrix`'s `sensitivity_analysis_results`
+    contains at least one `matches_base_outcome == False` entry (derived_
+    decisions (l)'s own "honest, deliberately-engineered proof" — asserted
+    as a property of the fixture's own DESIGN, never hardcoded as an
+    expected claim value).
+  - >-
+    [regression] `tests/e2e/test_k1_t03_synthesis_evidence_loop.py`, every
+    existing test in `tests/unit/services/node_runtime/
+    test_synthesis_executor.py`, and every existing test in
+    `tests/property/test_synthesis_executor_properties.py` all pass
+    completely unmodified.
+  - all pre-existing suites stay green; both import-linter contracts remain KEPT.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+  - make security-check
+required_output:
+  - implementation summary
+  - >-
+    files changed, with explicit confirmation that every path under
+    forbidden_changes was NOT touched — in particular that
+    `synthesis_executor.py`'s OTHER exported symbols
+    (`CAPABILITY_NAME`/`RULED_CEILING`/`_check_protocol_lock`/
+    `_classify_analysis`/`_group_included_rows_by_analysis`) are unchanged
+    in signature and behavior for the base (no-variation) path
+  - >-
+    the exact `SensitivityVariationParameters`/`SensitivityAnalysisResult`
+    shapes actually implemented, and the exact `sensitivity_variation_
+    artifact_ids` instructions-key convention used
+  - >-
+    the exact fixture design proving `matches_base_outcome == False` for at
+    least one entry (derived_decisions (l)) — quoted in full, so a reviewer
+    can independently confirm the divergence is real, not an artifact of a
+    trivial or degenerate test
+  - >-
+    explicit confirmation, with test output as evidence, that the real
+    K1-T04 schema (`mrr_k1t04_real_run_v2`) was never written to or executed
+    against by this packet's own implementation or test run
+  - tests added or changed, and exact command results for every command in `commands`
+  - >-
+    security/privacy implications: no new network surface; variation
+    parameters are caller-supplied, content-hash-pinned, non-restricted
+    synthetic test data (same classification discipline as the existing
+    corpus/protocol-parameters artifacts); fail-closed direction of
+    `SensitivityVariationDeclarationMismatchError` and of the reused
+    `ProtocolNotLockedError`/`ProtocolLockViolationError` checks against
+    each variation's own declared hash
+  - open specification questions exactly as listed under specification_gaps
+stop_conditions:
+  - >-
+    a reviewer determines `K1-T03b` is the wrong id (e.g. preferring
+    `K1-T04b` on the grounds that the gap surfaced during K1-T04's review,
+    not K1-T03's own text) — stop and re-file under the reviewer's preferred
+    id before implementation begins; the technical design (derived_decisions
+    (a)-(j), (l)) is unaffected by which id it is filed under.
+  - >-
+    a reviewer determines variation results MUST be able to influence claim
+    ceiling, status, or trigger a `ResearchDecision` (contra derived_
+    decisions (e)'s fail-conservative "report only" reading) — stop before
+    implementing the reporting-only path and report the exact mechanism the
+    reviewer wants instead, rather than guessing a design and having to
+    unwind claim/ruling coupling later.
+  - >-
+    a reviewer determines `EvidenceMatrix` is the wrong home for
+    `sensitivity_analysis_results` (e.g. preferring a new, dedicated Layer-1
+    object kind with its own lifecycle) — stop rather than inventing a new
+    schema-bearing kind unilaterally; report the exact case that forces a
+    departure from the "closed seven-kind table" reading derived_decisions
+    (c) relies on.
+  - >-
+    implementing `_check_sensitivity_variation_coverage`'s fail-closed check
+    is found to break any EXISTING caller of `execute()`/`_run_pipeline`
+    that today relies on a non-empty `sensitivity_variations` declaration
+    silently being ignored — stop and report exactly which caller (expected:
+    none, since `sensitivity_variations` is read by nothing today), rather
+    than silently loosening the check to accommodate it.
+  - >-
+    the empty-group guard (derived_decisions (g)) is found to be reachable
+    from the UNCHANGED base-run path too (i.e. `_group_included_rows_by_
+    analysis` can, under some input this packet's own derivation missed,
+    already produce a zero-row group) — stop and report the exact input,
+    since that would mean the pre-existing `_classify_analysis` has a real,
+    already-shipped latent bug this packet must not paper over by scoping
+    around it.
+  - >-
+    extending `run_synthesis_evidence_loop`'s signature is found to require
+    touching `EvidenceCrateSealer.seal()`, `RunManifestRecorder.record`, or
+    any other MTH-020 "unchanged E2/E5 machinery" call site — stop and
+    report; this packet is scoped to the matrix/executor/instructions layer
+    only, never the crate-sealing or run-manifest layer.
+specification_gaps:
+  - >-
+    the task-id choice, `K1-T03b` over a hypothetical `K1-T04b` (derivation,
+    derived_decisions (k)) — this packet's own gap did not surface from
+    K1-T03's own packet text the way E1-T03b's precedent did from K1-T02's;
+    it surfaced from K1-T04's review. Flagged for explicit reviewer
+    confirmation, not silently treated as the only defensible choice.
+  - >-
+    whether a sufficiently divergent variation outcome (e.g. base =
+    `supported`, variation = `contested`) should, in a FUTURE task, be
+    promoted from "reported data" into something that MANDATES a new
+    non-applicability condition on the base claim's own `MethodRuling`, or
+    triggers a `ResearchDecision` review flag, is explicitly NOT decided
+    here (derived_decisions (e)) — a natural follow-up once real,
+    multi-variation data exists to motivate the design, not designed,
+    stubbed, or hinted at in code by this packet.
+  - >-
+    `source_family_overrides` is this packet's own chosen mechanism for
+    "party families"/"cluster taxonomies" (derived_decisions (a)) — a
+    reviewer may prefer a richer mechanism (e.g. a whole alternate corpus
+    snapshot per variation, letting a variation change WHICH sources exist,
+    not just how they group) as a later, separate extension; this packet's
+    own choice deliberately holds evidence identity fixed and varies only
+    inclusion/grouping/family membership, the narrowest reading that still
+    satisfies MTH-018's own three named examples.
+  - >-
+    whether the future task named in derived_decisions (l) — authoring a
+    genuinely alternate second `ConceptCharterEntry` for the real
+    model-collapse question so THIS capability can run a meaningful
+    sensitivity comparison on the real corpus, and whether that would
+    constitute a fresh K1-T04-style real run or a smaller, targeted one — is
+    left entirely open, named but not designed, per this packet's own scope
+    decision.
+  - >-
+    nothing in this packet cross-validates that a declared
+    `sensitivity_variations` entry_id actually resolves to a real
+    `ConceptCharterEntry.entry_id` on a real, accepted `ConceptCharter` —
+    this is the SAME already-disclosed, inherited limitation
+    `schemas/method-protocol.schema.json`'s own description already states
+    ("not cross-validated against a real ConceptCharter here (service-level,
+    deferred)") and this packet does not resolve it, only builds on top of
+    it exactly as K1-T03/K1-T04 both already did for the OTHER cross-object
+    references on this same contract (`profile_id`, `extraction_fields`).
