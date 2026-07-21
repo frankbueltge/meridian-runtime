@@ -165,8 +165,21 @@ ceiling rules; crate sealing. Model-assisted steps (each per MTH-016): extractio
 classification proposals against protocol-declared fields, verified against the anchored
 source or downgraded to marked proposals.
 
-Claim statuses produced: `supported_within_scope`, `partially_supported`, `contested`,
-`unsupported`, `insufficient_evidence`.
+**Finding statuses vs. claim statuses (amended 2026-07-21).** The synthesis output's
+per-finding statuses — `supported_within_scope`, `partially_supported`, `contested`,
+`unsupported`, `insufficient_evidence` — are **finding-level** statuses carried by the
+evidence matrix aggregation and the `MethodRuling`'s scope, not values of the runtime's
+protected `Claim.status` vocabulary. Mapping: a `supported_within_scope` or
+`partially_supported` finding yields a claim **narrowed to what the evidence actually
+supports** (mandatory scope of validity plus non-applicability conditions naming the
+unsupported portion, per MRR-MTH-017) — never a broad claim marked "partial";
+`contested` and `unsupported` map to the existing claim statuses of the same name
+(contested means the evidence conflicts — a different epistemic situation from partial
+support); `insufficient_evidence` yields **no claim** and a
+`ResearchDecision(stop_insufficient_evidence)`. A synthesis run mints claim
+**candidates** in `proposed` status and MUST NOT author its own supporting
+`VerificationResult`s (no executor approves its own result); claims advance through the
+unchanged claim/verification lifecycle afterward.
 
 **First corpus and first question.** The profile's first real inputs are the two existing
 human-curated evidence ledgers — the theory atlas (87 provenance-verified sources) and

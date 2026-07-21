@@ -1,0 +1,1372 @@
+task_id: K1-T03
+title: >-
+  systematic_evidence_synthesis v1 executor task family — deterministic
+  snapshot ingestion, machine-checkable inclusion filtering, matrix assembly,
+  source-family independence counting, eligibility/ceiling rules,
+  deterministic MethodRuling issuance, ResearchDecision (incl.
+  stop_insufficient_evidence), crate sealing through the unchanged E2/E5
+  machinery. Model-assisted extraction (MTH-016) is a separately-testable,
+  NOT-required add-on; v1 MUST complete the full loop model-free.
+status: approved
+depends_on: [K1-T01, K1-T02]
+reviewer_resolution: >-
+  Approved 2026-07-21 with two overriding resolutions, both anchored in a
+  same-day spec-08 section-5 amendment (finding statuses vs. claim
+  statuses): (1) The packet's proposed partially_supported -> contested
+  mapping is REJECTED — partial support and conflicting evidence are
+  different epistemic situations. A supported_within_scope or
+  partially_supported finding yields a claim NARROWED to what the
+  evidence actually supports (mandatory MTH-017 scope plus
+  non-applicability naming the unsupported portion); contested stays
+  reserved for genuinely conflicting evidence; insufficient_evidence
+  yields no claim plus ResearchDecision(stop_insufficient_evidence),
+  as the packet already decided. (2) The self-verification question is
+  resolved conservatively: the synthesis run mints claim candidates in
+  proposed status only and MUST NOT author its own supporting
+  VerificationResults — claims advance through the unchanged
+  claim/verification lifecycle afterwards (AGENTS rule 8). The packet's
+  crate shape (proposed_claims) already matches this. Where the packet
+  body says otherwise, this resolution and the amended spec 08 section 5
+  take precedence. The protocol-parameters sidecar is accepted as a
+  packet-defined shape, to be schematized when experience stabilizes it.
+derivation: >-
+  Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/design/2026-07-21-research-method-kernel-plan.md's K1 epic ("K1-T03 —
+  Synthesis executor task family", lines 50-59) and
+  docs/spec/08_RESEARCH_METHOD_KERNEL.md section 5 ("Profile:
+  systematic_evidence_synthesis v1", lines 142-178, the I/O contract at
+  lines 150-160) and section 4's MRR-MTH-007/010/011/013/015/016/020 (lines
+  98-112, 117-119, 126-131, 139-140). Third task of the K1 sub-epic; the two
+  preceding tasks are K1-T01 (governance contracts, MERGED — commit `2ec8b25`,
+  PR #47, with a governance follow-up `79dc70d`) and K1-T02 (edges, ceilings,
+  gates — APPROVED but UNIMPLEMENTED at this derivation's time: commit
+  `cd389b4` "Governance: ADR-0010 ACCEPTED + K1-T02 approved" records the
+  approval; `git log main..task/K1-T02-edges-ceilings-gates` is EMPTY
+  (confirmed by direct inspection) — the branch exists but has not diverged
+  from `main` at all, and `gh pr list --search "K1-T02"` returns no open PR.
+  Every K1-T02 capability this packet consumes (`EDGE_VOCABULARY`'s four new
+  members, `ClaimService.attach_ruling`/`apply_kill_condition`,
+  `mrr.domain.claim_ceiling`, the three new exception classes) is therefore
+  PROSPECTIVE, not yet present on `main`, as of this derivation — see the
+  dedicated coordination_note below for exactly how this packet's own
+  allowed_paths/sequencing account for that.
+
+  ADR-0010 (docs/spec/adr/ADR-0010-OBJECT-LEVEL-DATA-CLASSIFICATION.md line 3:
+  "Status: ACCEPTED (2026-07-21)") was accepted in the SAME commit `cd389b4`
+  that approved K1-T02, but K1-T02's own governance note (commit message,
+  confirmed by `git show cd389b4`) states the classification field's actual
+  introduction is staged into "ein eigenes Task-Packet" (its own, separate,
+  not-yet-derived task packet) — NOT K1-T02 itself and NOT this packet. This
+  packet therefore inherits K1-T02's ADR-0010 split UNCHANGED: no real
+  `baseObject.classification` field exists anywhere yet, so MRR-MTH-012
+  (`SYNTHETIC_FIXTURE_NOT_EVIDENCE`) wiring against any object this packet
+  touches is out of scope here too, exactly as it was for K1-T02 — this
+  packet's own corpus `SourceRecord`s carry no real/wired synthetic-fixture
+  marker, and none is invented locally (see forbidden_changes).
+
+  The six K1-T01 contracts were read in full, on `main`
+  (`packages/contracts/mrr/contracts/{question_model,concept_charter,
+  method_protocol,evidence_matrix,method_ruling,research_decision}.py`) and
+  cross-checked against their lifecycle state machines
+  (`packages/domain/mrr/domain/lifecycles.py` lines 632-829:
+  `QUESTION_MODEL_LIFECYCLE`/`CONCEPT_CHARTER_LIFECYCLE` both `draft ->
+  accepted -> superseded`; `METHOD_PROTOCOL_LIFECYCLE` five edges `draft ->
+  reviewed -> locked -> amended | executed`, `amended -> reviewed`;
+  `EVIDENCE_MATRIX_LIFECYCLE` `draft -> active -> frozen -> superseded`;
+  `METHOD_RULING_LIFECYCLE` `pending -> issued -> superseded`;
+  `RESEARCH_DECISION_LIFECYCLE` one state `issued`, zero transitions) and
+  against the already-ACCEPTED K0-T01 `MethodProfile` worked example,
+  `examples/method-profile.example.json` (confirmed present on `main`,
+  `profile_key: "systematic_evidence_synthesis"`,
+  `executor_task_family: ["mrr.method.systematic_evidence_synthesis/1"]`,
+  and the exact seven `executor_steps` this packet's MTH-016 declaration
+  reuses verbatim — see derived_decisions (c)). This packet reuses that
+  EXACT capability name and step list rather than inventing new ones — the
+  example is already-accepted content this packet must remain consistent
+  with, not free to redesign.
+
+  `packages/contracts/mrr/contracts/claim.py` (lines 24-35: `ClaimStatus =
+  Literal["draft","under_review","supported","contested","contradicted",
+  "unsupported","unresolved","review_required","withdrawn","superseded",
+  "legacy_unverified"]`) was read in full and compared against spec 08
+  section 5's own prose ("Claim statuses produced:
+  supported_within_scope, partially_supported, contested, unsupported,
+  insufficient_evidence", line 168-169): only TWO of the five spec-08 names
+  (`contested`, `unsupported`) appear verbatim in the actual, existing,
+  UNCHANGED `ClaimStatus` enum; `supported_within_scope`,
+  `partially_supported`, and `insufficient_evidence` do not exist as
+  `Claim.status` values anywhere in this repository, and `claim.schema.json`/
+  `claim.py` are outside this packet's forbidden_changes (a foundational
+  E1-T03/E3-T02 contract, not one of the six K1-T01 kinds, but still not
+  this packet's to redesign without explicit reviewer sign-off) — this
+  mismatch is a genuine, load-bearing specification gap, resolved by a
+  disclosed mapping in derived_decisions (d), not silently assumed away.
+
+  `packages/domain/mrr/domain/independence.py` (E3-T05, the "existing
+  validator" spec 08 section 5 names for the "independence validation"
+  deterministic step) was read in full: its two public functions,
+  `is_independent_of_producer`/`distinct_independent_reviews`, operate
+  EXCLUSIVELY over `mrr.contracts.verification_result.IndependenceProfile`
+  (six reviewer-identity dimensions: principal, model_family, prompt_family,
+  retrieval_path, code_path, data_access_path) — a REVIEWER/verification
+  independence concept (E3-T04/T05, "who verified a claim and how
+  independently of its producer"), structurally unable to accept an
+  `EvidenceMatrixRow`/`SourceFamily` value (no shared shape). Cross-checked
+  against `packages/contracts/mrr/contracts/source_family.py`'s own docstring
+  claim ("The independence CALCULATION that actually consumes a
+  SourceFamily ... is E3-T05") and `services/control_plane/mrr/services/
+  source_family/service.py`'s identical claim (line 40: "The independence
+  CALCULATION that consumes a SourceFamily is E3-T05") — BOTH assertions are
+  now confirmed, by direct reading of the actual E3-T05 module, to be
+  imprecise: E3-T05 never imports, references, or computes over
+  `SourceFamily` anywhere; it is scoped, by its own governing packet
+  (task-packets/E3-T05.yaml, read in full), to reviewer/verification
+  independence only. Spec 08 section 5's "independence validation (existing
+  validator)" therefore cannot mean literal reuse of E3-T05's two functions
+  for "minimum independent source families per status" — see derived
+  decisions (e) for the new, small, analogous module this packet adds
+  instead, and specification_gaps for the two-sentence correction this
+  packet flags against `SourceFamily`'s/`SourceFamilyService`'s own existing
+  docstrings.
+
+  `packages/contracts/mrr/contracts/claim.py`'s `_supported_requires_evidence_
+  and_verification` validator (line 94: "if status == 'supported':
+  evidence_relations and verification_ids both non-empty") and
+  `services/control_plane/mrr/services/verification/service.py`'s
+  self-verification gate (lines 264-275: `verification.reviewer_id ==
+  claim.proposer_id` or `== run_executor_id` both raise
+  `SelfVerificationError`) were read in full: moving a claim to `"supported"`
+  (this packet's realization of `supported_within_scope`, derived_decisions
+  (d)) structurally requires at least one real `VerificationResult`, whose
+  `reviewer_id` differs from the claim's `proposer_id` and from the run's
+  `executor_id`. Resolved in derived_decisions (l) using this loop's own
+  ALREADY-EXISTING origin/node identity split (`run_local_evidence_loop`'s
+  `resolved_actor` vs. `resolved_node_id`, `services/control_plane/mrr/
+  services/cli/orchestration.py` lines 564-577) rather than inventing a new
+  identity concept or requiring a human in the loop for v1 to complete.
+
+  `services/node_runtime/mrr/services/node_runtime/executor.py` (E2-T04,
+  `Executor` Protocol + `ReferenceTaskExecutor`, read in full) and
+  `services/node_runtime/mrr/services/node_runtime/dispatch.py` (K0-T02,
+  MERGED PR #45, read in full) are this packet's direct structural
+  templates for the new `Executor` implementation and its dispatch-table
+  registration. `services/control_plane/mrr/services/cli/orchestration.py`'s
+  `run_local_evidence_loop` (E2-T07, read in full, all 830 lines) is the
+  template for the new composition function threading Research Score ->
+  capability registration -> Task Bundle -> execute -> Run Manifest ->
+  Evidence Crate — MTH-020 requires this SAME chain, unmodified, for the
+  synthesis run too.
+
+  PR #45's own review comment (`gh pr view 45 --json comments`, comment
+  `IC_kwDOTcACkc8AAAABK8c7dA`, confirmed verbatim) reads: "Follow-up for
+  K1-T03 (non-blocking, latent): de-duplicate declared capability names in
+  build_dispatch_table before invoking factories — with two accepted
+  profiles sharing a capability name, a factory is currently invoked once
+  per profile with one instance silently discarded; unreachable until a
+  second real profile exists." `build_dispatch_table`
+  (`dispatch.py` lines 121-170) confirmed: its first pass iterates
+  `for profile in accepted_profiles: for capability_name in
+  profile.executor_task_family: ... table[capability_name] = factory()` with
+  NO deduplication of `capability_name` across profiles/entries before
+  calling `factory()` — if two currently-accepted `MethodProfile` revisions
+  (e.g. a profile mid-supersession, or two distinct profiles that happen to
+  declare the same capability name) both name
+  `"mrr.method.systematic_evidence_synthesis/1"`, `factory()` is invoked
+  twice and one constructed `Executor` instance is silently discarded. This
+  packet is the "second real capability" the review flagged as the trigger
+  condition (`reference.deterministic-transform` was the first,
+  grandfathered, ungoverned entry; `mrr.method.systematic_evidence_synthesis/1`
+  is the first capability actually DECLARED BY an accepted `MethodProfile`)
+  — see derived_decisions (k) for the one-line fix this packet includes.
+
+  Corpus scope, per the plan doc (docs/design/2026-07-21-research-method-
+  kernel-plan.md lines 50-59 and the K1-T03/K1-T04 boundary at lines 60-69):
+  this packet's OWN test fixtures are SMALL, synthetic/sample corpus
+  excerpts sized to exercise every deterministic branch (zero eligible
+  sources, exactly-at-threshold, above-threshold, mixed
+  supporting/contradicting evidence, an unverifiable row) — NOT the two real
+  atlases (87/214 sources). Loading and running against the real atlases is
+  explicitly task-packets/K1-T04.yaml's job ("First real run"); this
+  packet's acceptance does not depend on the real atlas files existing or
+  being reachable.
+objective: >-
+  Deliver the `systematic_evidence_synthesis` v1 executor task family end to
+  end, in FIVE parts, precisely scoped:
+
+  (a) `SystematicEvidenceSynthesisExecutor`
+  (`services/node_runtime/mrr/services/node_runtime/synthesis_executor.py`,
+  new, sibling to `executor.py`/`dispatch.py`) — an `Executor` Protocol
+  implementation satisfying the IDENTICAL contract `ReferenceTaskExecutor`
+  does (explicit `ExecutionResult` for every terminal outcome, MRR-FR-035
+  per-`(task_id, revision, execution_attempt)` idempotency via an in-memory
+  memo, a wall-clock `timeout_seconds` bound, an injectable `policy_gate`/
+  `is_cancelled`, `is_deterministic=True` unconditionally). Its `execute()`
+  body is a PURE, DB-free, in-process transform (no SQLAlchemy import, no
+  network) over already-resolved `inputs: Mapping[str, bytes]` — see
+  derived_decisions (a) for why this is a hard boundary, not a convenience:
+  it performs the six deterministic steps (snapshot loading + hash
+  verification is a NO-OP here beyond parsing, since `ArtifactStore.get()`'s
+  own content-addressing already guarantees byte-identity to the declared
+  hash — ArtifactStore never returns bytes that don't hash to the requested
+  key; inclusion/exclusion filtering against a pinned, machine-parseable
+  filter spec; matrix-row assembly; source-family independence counting via
+  a NEW pure domain function, not E3-T05's; eligibility/ceiling
+  determination; and packaging its own result into one canonical,
+  deterministic JSON blob) and returns that blob as `ExecutionResult.output`.
+  It does NOT itself construct or persist any `EvidenceMatrix`/
+  `MethodRuling`/`Claim`/`ResearchDecision`/`EvidenceCrate` object, exactly
+  mirroring `ReferenceTaskExecutor`'s own "does not persist a RunManifest,
+  does not seal a crate" scope note (`executor.py` lines 9-21).
+
+  (b) Three new, minimal, additive-only persistence services — mirroring
+  `services/control_plane/mrr/services/source_family/service.py`'s EXACT
+  shape (one `bind_unit_of_work`, one `RecordRevisionWithEvent`-typed local
+  callable, one service class) — for the three K1-T01 object kinds THIS RUN
+  PRODUCES: `EvidenceMatrixService`
+  (`services/control_plane/mrr/services/evidence_matrix/service.py`:
+  `create` [draft, revision 1] + `activate` [draft -> active] + `freeze`
+  [active -> frozen], driving `EVIDENCE_MATRIX_LIFECYCLE`);
+  `MethodRulingService`
+  (`services/control_plane/mrr/services/method_ruling/service.py`: `create`
+  [pending, revision 1] + `issue` [pending -> issued], driving
+  `METHOD_RULING_LIFECYCLE`); `ResearchDecisionService`
+  (`services/control_plane/mrr/services/research_decision/service.py`:
+  `create` only [issued, revision 1, append-only — mirrors
+  `SourceFamilyService`'s own single-method shape exactly, since
+  `RESEARCH_DECISION_LIFECYCLE` has zero legal transitions]). `QuestionModel`/
+  `ConceptCharter`/`MethodProtocol` get NO new service here — this packet
+  only READS already-accepted/locked instances via the generic
+  `ObjectRepository`, exactly like K1-T02's own tests already do for THEIR
+  prerequisite objects; driving those three kinds through their OWN
+  draft/lock/amend lifecycles is out of this packet's scope (see
+  specification_gaps and the K1-T03/K1-T04 boundary in derivation).
+
+  (c) A new orchestration composition function,
+  `run_synthesis_evidence_loop`
+  (`services/control_plane/mrr/services/cli/synthesis_orchestration.py`,
+  new file — NOT a modification of `orchestration.py`, to keep this
+  packet's diff isolated from any other in-flight work touching that file;
+  see derived_decisions (a)), mirroring `run_local_evidence_loop`'s EXACT
+  choreography (Research Score -> capability registration -> Task Bundle ->
+  `dispatch()` -> `execute()` -> `RunManifestRecorder.record` (UNCHANGED) ->
+  `EvidenceCrateSealer.seal` (UNCHANGED)) but inserting, between `execute()`
+  returning and `RunManifestRecorder.record`, the deserialization of the
+  executor's JSON output into real, persisted `EvidenceMatrix`/
+  `MethodRuling`/`Claim`(s)/`ResearchDecision` objects plus the
+  `governed_by_protocol`/`ruled_by`/`decided_by` typed edges spec 08 section
+  3 names — see derived_decisions (i) for the exact sequencing and crate
+  contents.
+
+  (d) A new pure domain module,
+  `packages/domain/mrr/domain/source_independence.py` — NOT a modification
+  of `packages/domain/mrr/domain/independence.py` (E3-T05, forbidden_changes)
+  — implementing "minimum independent source families" counting over
+  `EvidenceMatrixRow`-shaped data (dedup key: `source_family_id` when
+  present, else a singleton key derived from `source_record_id`), mirroring
+  E3-T05's OWN "dedup-key-then-count" pattern and its "additive,
+  non-destructive, pure, deterministic" invariants, but over a genuinely
+  different data shape E3-T05 cannot accept — see derived_decisions (e).
+
+  (e) The one-line `build_dispatch_table` dedup fix PR #45's review flagged
+  (derived_decisions (k)), delivered here since this packet introduces the
+  second real, profile-declared capability that makes the latent bug
+  reachable for the first time.
+
+  Deliberately and explicitly deferred, with reasons given rather than left
+  silent: real model-assisted extraction (MTH-016's `model_assisted` step,
+  "extraction_and_classification_proposal") is IMPLEMENTED as a genuinely
+  separate, independently-testable code path (see derived_decisions (m)) but
+  is NEVER required for `execute()` to reach a terminal outcome — v1's own
+  acceptance tests exercise the FULL loop (ingestion through sealed crate)
+  with `MethodProtocol.extraction_fields` left semantically unused (rows'
+  `extraction: dict[str, str]` populated only from HUMAN-SUPPLIED corpus
+  fixture data, never from a model call) — mirroring exactly how E2E-001
+  runs with no LLM dependency anywhere (docs/spec/06 E2 exit criteria, cited
+  by `orchestration.py`'s own module docstring).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#4-normative-requirements
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#5-profile-systematic_evidence_synthesis-v1-the-first-profile
+  - docs/design/2026-07-21-research-method-kernel-plan.md
+  - task-packets/K1-T01.yaml
+  - task-packets/K1-T02.yaml
+  - task-packets/K0-T01.yaml
+  - task-packets/K0-T02.yaml
+  - task-packets/E3-T05.yaml
+  - task-packets/E2-T04.yaml
+  - task-packets/E2-T07.yaml
+  - examples/method-profile.example.json
+  - examples/question-model.example.json
+  - examples/concept-charter.example.json
+  - examples/method-protocol.example.json
+  - examples/evidence-matrix.example.json
+  - examples/method-ruling.example.json
+  - examples/research-decision.example.json
+  - packages/contracts/mrr/contracts/question_model.py
+  - packages/contracts/mrr/contracts/concept_charter.py
+  - packages/contracts/mrr/contracts/method_protocol.py
+  - packages/contracts/mrr/contracts/evidence_matrix.py
+  - packages/contracts/mrr/contracts/method_ruling.py
+  - packages/contracts/mrr/contracts/research_decision.py
+  - packages/contracts/mrr/contracts/method_profile.py
+  - packages/contracts/mrr/contracts/claim.py
+  - packages/contracts/mrr/contracts/source_record.py
+  - packages/contracts/mrr/contracts/source_family.py
+  - packages/contracts/mrr/contracts/evidence_anchor.py
+  - packages/contracts/mrr/contracts/verification_result.py
+  - packages/contracts/mrr/contracts/evidence_crate.py
+  - packages/contracts/mrr/contracts/task_bundle.py
+  - packages/domain/mrr/domain/repositories.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/independence.py
+  - packages/domain/mrr/domain/artifacts.py
+  - packages/domain/mrr/domain/exceptions.py
+  - services/node_runtime/mrr/services/node_runtime/executor.py
+  - services/node_runtime/mrr/services/node_runtime/dispatch.py
+  - services/control_plane/mrr/services/cli/orchestration.py
+  - services/control_plane/mrr/services/method_profile/service.py
+  - services/control_plane/mrr/services/source_family/service.py
+  - services/control_plane/mrr/services/claim/service.py
+  - services/control_plane/mrr/services/verification/service.py
+  - services/control_plane/mrr/services/evidence/service.py
+  - services/control_plane/mrr/services/node_runtime/run_manifest.py
+  - services/control_plane/mrr/services/node_runtime/evidence_crate.py
+  - adapters/llm/mrr/adapters/llm/structured_generation.py
+  - packages/persistence/mrr/persistence/tables.py
+  - pyproject.toml (import-linter contracts)
+requirements:
+  - MRR-MTH-001
+  - MRR-MTH-004
+  - MRR-MTH-006
+  - MRR-MTH-007
+  - MRR-MTH-010
+  - MRR-MTH-011
+  - MRR-MTH-013
+  - MRR-MTH-015
+  - MRR-MTH-016
+  - MRR-MTH-019
+  - MRR-MTH-020
+  - MRR-FR-035
+  - MRR-FR-040
+  - MRR-FR-041
+  - MRR-FR-042
+  - MRR-FR-043
+  - MRR-FR-044
+  - MRR-FR-050
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - services/node_runtime/mrr/services/node_runtime/synthesis_executor.py
+  - >-
+    services/node_runtime/mrr/services/node_runtime/dispatch.py — ONE
+    change only: deduplicate capability names across `accepted_profiles`
+    before invoking a factory in `build_dispatch_table`'s first pass (PR #45
+    review, derived_decisions (k)); no other line in this file changes
+  - services/control_plane/mrr/services/evidence_matrix/**
+  - services/control_plane/mrr/services/method_ruling/**
+  - services/control_plane/mrr/services/research_decision/**
+  - services/control_plane/mrr/services/cli/synthesis_orchestration.py
+  - packages/domain/mrr/domain/source_independence.py
+  - packages/domain/mrr/domain/exceptions.py
+  - tests/unit/**
+  - tests/integration/**
+  - tests/e2e/**
+  - tests/property/**
+forbidden_changes:
+  - >-
+    the six K1-T01 contract kinds' own schemas/Pydantic models and their
+    `packages/domain/mrr/domain/lifecycles.py` `StateMachine` constants
+    (`QUESTION_MODEL_LIFECYCLE`, `CONCEPT_CHARTER_LIFECYCLE`,
+    `METHOD_PROTOCOL_LIFECYCLE`, `EVIDENCE_MATRIX_LIFECYCLE`,
+    `METHOD_RULING_LIFECYCLE`, `RESEARCH_DECISION_LIFECYCLE`) — this packet
+    only reads/writes already-defined shapes and drives already-drawn
+    transitions; no field, state, or edge is added to any of them
+  - >-
+    `schemas/claim.schema.json`/`packages/contracts/mrr/contracts/claim.py`
+    — including `ClaimStatus` — even though spec 08 section 5's claim-status
+    prose does not literally match the existing enum (see derived_decisions
+    (d) for the disclosed mapping this packet uses instead). If
+    implementation discovers this mapping is genuinely unworkable, STOP
+    (stop_conditions) and report the exact case, rather than adding
+    `supported_within_scope`/`partially_supported`/`insufficient_evidence`
+    as new `ClaimStatus` values unilaterally
+  - >-
+    K1-T02's own deliverables once merged — `mrr.domain.claim_ceiling`,
+    `mrr.domain.synthetic_fixture`, `mrr.domain.kill_condition`
+    (`assert_licenses_kill` and the transition-plumbing method
+    `ClaimService.apply_kill_condition`), the `_transition` ceiling re-check,
+    `ClaimService.attach_ruling`, the `EDGE_VOCABULARY` migration, and the
+    `ClaimCeilingExceededError`/`SyntheticFixtureNotEvidenceError`/
+    `InvalidKillDecisionError` exception classes — this packet CONSUMES all
+    of these unchanged (calling `attach_ruling`/`apply_kill_condition`,
+    writing `ruled_by`/`decided_by` edges through them) and adds no new
+    method to `ClaimService`/`ProjectionService` itself beyond ordinary
+    calls to their already-existing (post-K1-T02) public methods
+  - >-
+    `packages/domain/mrr/domain/independence.py` (E3-T05) — the reviewer/
+    verification-independence validator. This packet neither modifies it
+    nor calls it for source-family counting (a structurally different
+    input shape, derived_decisions (e)); it may still be called, unmodified,
+    by future work wiring "N independent VERIFICATIONS" (not source
+    families) into `to_supported`, which remains out of this packet's scope
+  - >-
+    `services/node_runtime/mrr/services/node_runtime/executor.py` — the
+    `Executor` Protocol and `ReferenceTaskExecutor` — untouched; the new
+    executor is an independent, sibling implementation of the SAME Protocol
+  - >-
+    `adapters/llm/mrr/adapters/llm/structured_generation.py` and
+    `mrr.domain.model_adapter` (E4) — the model-assisted extraction slice
+    (derived_decisions (m)) is a NEW, separate call site consuming these
+    unchanged; no internal of either module changes
+  - >-
+    `services/control_plane/mrr/services/cli/orchestration.py` — the
+    EXISTING `run_local_evidence_loop`/E2E-001 composition is untouched; the
+    new composition lives in its own new sibling file
+    (`synthesis_orchestration.py`) precisely so this packet's diff cannot
+    regress E2E-001 by construction (confirmed by re-running
+    `tests/e2e/test_e2e_001_single_node_evidence_loop.py` unmodified, see
+    acceptance_tests)
+  - >-
+    `services/node_runtime/mrr/services/node_runtime/run_manifest.py` /
+    `evidence_crate.py` (`RunManifestRecorder`/`EvidenceCrateSealer`, E2-T05/
+    T06) — called exactly as `run_local_evidence_loop` already calls them,
+    with caller-supplied `artifact_refs`/`failures`/`known_unknowns`; no
+    internal of either sealer/recorder changes (MTH-020)
+  - >-
+    ANY Alembic migration or change to
+    `packages/persistence/mrr/persistence/tables.py` — this packet needs
+    NEITHER: `objects.kind` (`packages/persistence/mrr/persistence/
+    tables.py` line 51) is a plain, unconstrained `sa.Text()` column with no
+    CHECK-list of legal kinds (confirmed by direct reading — unlike
+    `edges.edge_type`, which does carry the `EDGE_VOCABULARY`-derived CHECK
+    constraint K1-T02's migration widens), so `EvidenceMatrix`/
+    `MethodRuling`/`ResearchDecision` rows need no schema change to exist in
+    the generic `objects` table; the four new edge types this packet's own
+    services write (`governed_by_protocol`, `ruled_by`, `decided_by` — NOT
+    `operationalizes`, which this packet never writes, see specification_gaps)
+    already exist in `EDGE_VOCABULARY`/the database CHECK constraint once
+    K1-T02's migration lands (a precondition, not this packet's own work —
+    see coordination_note and stop_conditions)
+  - >-
+    a NEW top-level `services/**` root, or any new import-linter contract
+    entry in `pyproject.toml` — the new executor lives inside the EXISTING
+    `services/node_runtime` root (derived_decisions (a)); both contracts
+    stay unmodified and KEPT
+  - HTTP/FastAPI endpoints
+  - >-
+    real ingestion of, or any test dependency on, the two full atlases
+    (87/214 sources) — task-packets/K1-T04.yaml's job; this packet's own
+    fixtures are small, synthetic/sample excerpts only
+  - >-
+    any new `baseObject.classification`/`SYNTHETIC_TEST_FIXTURE` field or
+    wiring — still blocked pending its own dedicated task-packet per K1-T02's
+    ADR-0010 split (derivation); this packet's `SourceRecord` fixtures carry
+    no classification marker of any kind, real or synthetic
+derived_decisions:
+  - >-
+    (a) EXECUTOR PLACEMENT AND THE "execute() STAYS PURE" BOUNDARY.
+    `SystematicEvidenceSynthesisExecutor` lives in
+    `services/node_runtime/mrr/services/node_runtime/synthesis_executor.py`
+    — a new sibling module to `executor.py`/`dispatch.py`, NOT a new
+    top-level package — because (i) it must satisfy the exact same
+    `Executor` Protocol declared in that module, which every other
+    executor-family concern (`ReferenceTaskExecutor`, the dispatch table)
+    already lives alongside; (ii) K0-T02's own PR #45 body already
+    establishes the "two `services/` roots, neither import-linter contract
+    draws a boundary between them" precedent for exactly this kind of
+    placement question; (iii) a new top-level package would need a new
+    import-linter contract entry for zero structural benefit, since nothing
+    this module does requires importing `mrr.persistence`/SQLAlchemy or any
+    `mrr.services.control_plane` service.
+
+    That last point is the packet's central, load-bearing design decision,
+    stated precisely: neither import-linter contract in `pyproject.toml`
+    (lines 135-172, read in full) actually LISTS `mrr.services.node_runtime`
+    in contract 1's framework-free `source_modules`, so nothing would
+    machine-STOP this module from importing SQLAlchemy directly — but doing
+    so would abandon the SAME discipline `ReferenceTaskExecutor`/`dispatch.py`
+    already establish by CONSTRUCTION (their own docstrings' repeated
+    "framework-free by construction", "no DB call inside it"), and would
+    break three concrete things: (1) MRR-FR-035 idempotency — the executor's
+    own in-memory memo (mirroring `ReferenceTaskExecutor._memo`) only
+    prevents re-running side effects WITHIN one process instance; if
+    `execute()` itself performed durable multi-object writes, a second call
+    with the SAME `(task_id, revision, execution_attempt)` triple after a
+    process restart would either double-write or need its OWN separate
+    durable idempotency mechanism duplicating what `RunManifestRecorder`
+    already provides at the RUN level; (2) testability — "v1 MUST be able to
+    run model-free... so the deterministic path is provable ALONE" (the
+    plan's own words) is most directly satisfied by a pure, `Mapping[str,
+    bytes] -> bytes` transform a unit test can exercise with ZERO Postgres
+    dependency, exactly like `default_reference_transform`'s own unit tests;
+    (3) MRR-FR-041's honesty boundary — `ReferenceTaskExecutor` is
+    explicitly "not a security sandbox"; layering ad hoc persistence inside
+    a SECOND `Executor` implementation would create two different, silently
+    diverging models of what "executing a task" is allowed to touch.
+
+    CONCRETE SHAPE: `execute()` performs, purely in memory, over
+    `inputs: Mapping[str, bytes]` (keyed by `ArtifactRef.artifact_id`,
+    exactly like `ReferenceTaskExecutor`): (1) parse the two declared input
+    artifacts (corpus snapshot, protocol-parameters sidecar — derived_
+    decisions (b)); (2) verify `MethodProtocol` lock/hash preconditions
+    (derived_decisions (g)); (3) apply the machine-checkable inclusion
+    filter; (4) assemble matrix rows; (5) count distinct independent source
+    families per candidate claim (derived_decisions (e)); (6) determine
+    eligibility/ceiling per candidate (derived_decisions (d)/(f)); (7)
+    determine the overall `ResearchDecision` (derived_decisions (h)); (8)
+    serialize ALL of the above into one canonical (sorted-key, UTF-8) JSON
+    blob as `ExecutionResult.output`. `ExecutionResult.output_hash` is
+    `mrr.crypto.hashing.content_hash(output)` — computed by `execute()`
+    exactly like `ReferenceTaskExecutor` already does, never by the caller.
+    A SECOND, NEW composition function,
+    `run_synthesis_evidence_loop` (`services/control_plane/mrr/services/cli/
+    synthesis_orchestration.py`, new file, mirroring `run_local_evidence_
+    loop`'s exact choreography), calls `execute()`, deserializes its JSON
+    output, and is the ONLY place that constructs/persists real
+    `EvidenceMatrix`/`MethodRuling`/`Claim`/`ResearchDecision` objects and
+    edges — exactly where every OTHER persisting step of the existing loop
+    already lives (`ResearchScoreService`, `CapabilityRegistry`,
+    `TaskBundleService`, `RunManifestRecorder`, `EvidenceCrateSealer` are
+    ALL called from `orchestration.py`, never from inside
+    `ReferenceTaskExecutor.execute()`). FLAGGED, not silently assumed:
+    `mrr.services.node_runtime` is not machine-added to import-linter
+    contract 1 by this packet (out of scope, no genuine need), so this
+    remains a DISCIPLINE, not (yet) an enforced boundary — the same open
+    question PR #45 already flagged (its own point 5) and left unresolved;
+    a future task MAY want to close this gap once two independently-authored
+    `Executor` implementations exist to prove the discipline is worth
+    enforcing.
+  - >-
+    (b) CORPUS SNAPSHOT AND PROTOCOL-PARAMETERS ARTIFACTS; HOW INPUTS REACH
+    THE EXECUTOR. Two content-hash-pinned JSON artifacts, both stored via
+    the UNCHANGED E1-T07 `mrr.domain.artifacts.ArtifactStore` (exactly like
+    `run_local_evidence_loop`'s own single reference-input artifact) and
+    declared as TWO entries in `TaskBundle.inputs: list[ArtifactRef]`:
+
+    (i) the CORPUS SNAPSHOT — a JSON array of small, human-curated (v1:
+    human-supplied, never model-supplied) source excerpts, each shaped
+    to become one `SourceRecord` (`packages/contracts/mrr/contracts/
+    source_record.py`, reused UNCHANGED, persisted via the EXISTING,
+    UNCHANGED `SourceRecordService.create()`, `services/control_plane/mrr/
+    services/evidence/service.py` lines 185-238) plus its own
+    `claim_relevant_finding`/`extraction` fields (human-supplied for v1,
+    model-assisted per derived_decisions (m) when that slice is exercised).
+    `SourceRecord.snapshot_artifact_hash: Sha256 | None`
+    (`source_record.py` line 88) is set to the CORPUS ARTIFACT's own
+    content hash — the field the K1-T01 contracts already provide for
+    exactly this "content-hash-pinned snapshot" linkage, reused rather than
+    reinvented.
+
+    (ii) the PROTOCOL-PARAMETERS SIDECAR — a small JSON object carrying the
+    MACHINE-CHECKABLE parameterization spec 08 section 5 requires
+    ("inclusion/exclusion criteria... per-status claim-eligibility rules
+    (minimum independent source families per status)... kill conditions")
+    but that `MethodProtocol`'s OWN K1-T01 schema cannot itself carry:
+    every one of `MethodProtocol.inclusion_criteria`/`exclusion_criteria`/
+    `sensitivity_variations`/`kill_conditions`/`planned_analyses`
+    (`method_protocol.py` lines 104-108) is `list[str]` — free HUMAN prose,
+    not a structured, parseable predicate or threshold table. Rather than
+    propose adding a structured field to `MethodProtocol` (forbidden —
+    one of the six K1-T01 contracts), this packet defines a SEPARATE,
+    versioned, content-hash-pinned sidecar artifact —
+    `{"protocol_id": "...", "protocol_lock_content_hash": "sha256:...",
+    "applies_to_analysis": "...", "inclusion_filter": {<field>: <predicate>,
+    ...}, "eligibility_rules": {"<claim outcome>":
+    {"min_independent_source_families": <int>}, ...}, "kill_conditions":
+    {"stop_insufficient_evidence": {"min_included_sources": <int>}}}` —
+    referenced by its own `ArtifactRef` in `TaskBundle.inputs`, the SAME
+    content-hash-pinning mechanism spec 08 section 5 already prescribes for
+    the corpus itself, generalized to one more artifact rather than a
+    parallel, ungoverned mechanism. HONESTLY DISCLOSED LIMIT (specification_
+    gaps): nothing machine-checks that this sidecar's `inclusion_filter`/
+    `eligibility_rules`/`kill_conditions` actually MATCH the free-text prose
+    a human reviewer read and locked in `MethodProtocol.inclusion_criteria`
+    etc. — that correspondence is the human reviewer's own responsibility at
+    protocol-lock time (MTH-007's review step), mirroring K1-T02's own
+    identical honesty about `MethodProfile.protocol_form` being unable to
+    machine-verify MTH-006's "is this genuinely a synthesis design" antecedent.
+
+    `TaskBundle.instructions: dict[str, Any]` (`task_bundle.py` line 103,
+    free-form, confirmed by direct reading) carries
+    `{"corpus_artifact_id": "<the corpus ArtifactRef.artifact_id>",
+    "protocol_parameters_artifact_id": "<the sidecar ArtifactRef.artifact_id>"}`
+    — telling `execute()` which key of its `inputs: Mapping[str, bytes]`
+    mapping is which, without positional guessing or a naming convention
+    over `artifact_id` strings (which carry no reserved shape anywhere else
+    in this codebase).
+  - >-
+    (c) DETERMINISTIC VS. MODEL-ASSISTED STEPS — MTH-016 DECLARATION. Reuses
+    `examples/method-profile.example.json`'s ALREADY-ACCEPTED seven-step
+    list VERBATIM (confirmed present on `main`, K0-T01, not redesigned
+    here): `snapshot_loading_and_hash_verification` (deterministic),
+    `inclusion_filtering` (deterministic),
+    `extraction_and_classification_proposal` (model_assisted),
+    `matrix_assembly` (deterministic), `independence_validation`
+    (deterministic — realized by the NEW `source_independence.py` module,
+    derived_decisions (e), not E3-T05), `eligibility_and_ceiling_rules`
+    (deterministic), `crate_sealing` (deterministic). ONE NUANCE flagged,
+    not invented by this packet but inherited from the already-accepted
+    example: "crate_sealing" as a named EXECUTOR step cannot literally mean
+    "the executor calls `EvidenceCrateSealer.seal`" — that class lives in
+    `services/node_runtime/mrr/services/node_runtime/evidence_crate.py` and
+    is called from ORCHESTRATION (E2-T06/T07 precedent, unchanged, MTH-020),
+    never from inside another `Executor`'s own `execute()`. This packet
+    reads "crate_sealing" as "the executor's OWN last deterministic step:
+    package its output into the exact serialized form the UNCHANGED
+    `EvidenceCrateSealer.seal()` call (invoked by
+    `run_synthesis_evidence_loop`, outside `execute()`) will consume" —
+    flagged in specification_gaps for reviewer confirmation, since a
+    literal reading of the example's own step name could otherwise be
+    misread as licensing the executor to call the sealer directly, which
+    this packet does NOT do and treats as forbidden (see forbidden_changes).
+
+    Model-assisted step wiring (derived_decisions (m)): the
+    `extraction_and_classification_proposal` step, WHEN exercised, calls
+    `adapters/llm/mrr/adapters/llm/structured_generation.generate_structured`
+    (E4-T02, unchanged) with a small caller-defined Pydantic target model
+    (`ExtractionProposal`, fields mirroring `MethodProtocol.extraction_fields`
+    as plain optional strings) against ONE `ModelAdapter` call per corpus
+    row; the resulting `StructuredGenerationResult.proposal` (when
+    `status == "proposal"`) becomes that row's `EvidenceMatrixRow.extraction`
+    dict, and the underlying `ModelInvocation` (E4-T01, unchanged) is
+    persisted via ITS OWN EXISTING, UNCHANGED recording path (out of this
+    packet's own new-file footprint — reused, not reimplemented). MTH-016's
+    "verification disposition (verified / downgraded-to-proposal /
+    rejected)" per model-assisted step has NO dedicated field anywhere on
+    `EvidenceMatrixRow`/`ModelInvocation` today (confirmed: `ModelInvocation`
+    carries no disposition field, and `VerificationResult.target_kind`
+    (`verification_result.py` line 99) is `Literal["claim","run","artifact"]`
+    — no `"model_invocation"` option, so a `VerificationResult` cannot even
+    directly target one) — this packet records the disposition as a plain
+    string value at a RESERVED key, `extraction["_verification_disposition"]`,
+    inside the SAME `dict[str, str]` the K1-T01 contract already provides,
+    rather than inventing a new schema field on a protected K1-T01 contract.
+    Flagged prominently in specification_gaps as a disclosed, narrow
+    workaround — not a clean contract fit — for reviewer scrutiny before
+    this slice is genuinely exercised (it remains entirely optional for v1's
+    own acceptance).
+  - >-
+    (d) CLAIM CANDIDATES -> STATUSES: THE FIVE SPEC-08 OUTCOMES MAPPED ONTO
+    THE EXISTING, UNCHANGED `ClaimStatus` ENUM. Spec 08 section 5 names five
+    outcomes; the existing `ClaimStatus` Literal (11 values, unchanged, not
+    this packet's to redesign) supplies an exact or workable match for four
+    of them and no field at all for the fifth — resolved as follows, machine-
+    checkably, from the eligibility-rules table in the pinned protocol-
+    parameters sidecar (derived_decisions (b)) and the distinct independent
+    source-family count (derived_decisions (e)) computed per claim
+    candidate:
+
+    - `supported_within_scope` -> `Claim.status = "supported"` (the EXISTING
+      value; already requires non-empty `evidence_relations` AND
+      `verification_ids` at the contract level, `claim.py` lines 94-105 —
+      satisfied per derived_decisions (l)). The "WITHIN SCOPE" qualifier
+      spec 08's name carries is NOT a separate status value; it is carried
+      on the attached `MethodRuling.scope_of_validity`/
+      `non_applicability_conditions` (MTH-017, already a K1-T01 field) —
+      "supported" plus a `ruled_by` edge to a ruling with an explicit scope
+      IS "supported within scope", read this way deliberately so no new
+      `Claim` field is needed.
+    - `partially_supported` -> `Claim.status = "contested"` (the EXISTING
+      value), used for a candidate whose evidence rows include BOTH
+      supporting and contradicting/qualifying findings above the
+      eligibility floor for `contested` but below the floor for `supported`.
+      HONESTLY DISCLOSED, NOT A CLEAN FIT (specification_gaps): "contested"
+      in this codebase's own existing vocabulary already denotes genuinely
+      divided evidence, which is a reasonable but not perfect semantic match
+      for "partially supported" (a claim that IS supported, just not
+      completely) — a reviewer may instead want a real, distinct
+      `partially_supported` `ClaimStatus` value, which would require
+      touching `claim.schema.json`/`claim.py` (forbidden here without
+      explicit sign-off; see stop_conditions).
+    - `contested` -> `Claim.status = "contested"`, verbatim, no mapping
+      needed.
+    - `unsupported` -> `Claim.status = "unsupported"`, verbatim, no mapping
+      needed.
+    - `insufficient_evidence` -> realized as the ABSENCE of a `Claim`
+      entirely, not as any `Claim.status` value: when the corpus, after
+      inclusion filtering, yields fewer than the protocol's declared
+      `min_included_sources` (derived_decisions (h)), NO `Claim` is proposed
+      for that `applies_to_analysis` at all — there is nothing yet to
+      assert. MRR-MTH-011's "MUST NOT be silently omitted from any claim
+      landscape" is satisfied by the pair (a possibly-zero-row, `frozen`
+      `EvidenceMatrix`, MTH-011's own cited example) plus a
+      `ResearchDecision(decision_type="stop_insufficient_evidence")` — both
+      real, addressable, persisted objects a projection can render as a
+      finding (a LATER, projection-layer concern, out of this packet's own
+      scope, exactly like K1-T02 left claim-ceiling projection rendering to
+      its own extension of `build_claim_table_row`). This mapping requires
+      ZERO change to `ClaimStatus`.
+
+    `Claim.claim_type` for every candidate this profile proposes is
+    `"observational"` or `"interpretive"` — the exact two values
+    `examples/method-profile.example.json`'s `claim_types` field already
+    declares (never `"causal"`, which would trigger K1-T02's
+    causal-specific ceiling check requiring `causal_local`/`causal_bounded`
+    — categorically impossible under this profile's `max_claim_ceiling ==
+    "associational_unadjusted"`, always strictly below both).
+  - >-
+    (e) SOURCE-FAMILY INDEPENDENCE COUNTING — A NEW MODULE, NOT E3-T05
+    REUSE. `packages/domain/mrr/domain/source_independence.py` (new): a
+    pure, deterministic, framework-free pair, mirroring E3-T05's OWN
+    "dedup-key-then-count" shape and its "additive, non-destructive, no
+    side effects" invariants precisely, but over `EvidenceMatrixRow`-shaped
+    data (`source_family_id: Urn | None`, `source_record_id: Urn`,
+    `verification_status`), which E3-T05's `IndependenceProfile`-typed
+    functions cannot accept. `family_key(row)` returns `row.source_family_id`
+    when non-null, else a singleton key derived from
+    `f"source:{row.source_record_id}"` — an unaffiliated source (no
+    detected `SourceFamily` membership) is presumptively its own
+    independent family, consistent with `SourceFamily`'s own "membership is
+    asserted, not assumed" additive-representation stance
+    (`source_family.py` docstring). `distinct_independent_source_family_count
+    (rows)` counts DISTINCT `family_key` values among rows whose
+    `verification_status == "verified"` ONLY — an `"unverifiable"` row
+    remains in the matrix (MRR-MTH-015: "never dropped") but does NOT count
+    toward any eligibility threshold, and a `"pending"` row counts toward
+    neither yet (flagged, specification_gaps, as this packet's own
+    narrowest-defensible reading — a reviewer may want `"pending"` rows to
+    count provisionally instead). This is a genuinely NEW module, not a
+    reuse of E3-T05's functions and not a modification of that file
+    (forbidden_changes) — the two "independence" concepts (reviewer
+    independence vs. source independence) are DIFFERENT axes this codebase
+    happens to name with the same English word; `SourceFamily`'s and
+    `SourceFamilyService`'s own existing docstrings, which both claim "the
+    independence calculation is E3-T05", are IMPRECISE on this point and
+    flagged as such in specification_gaps rather than silently perpetuated.
+  - >-
+    (f) DETERMINISTIC METHODRULING ISSUANCE; `ruled_by`/`governed_by_
+    protocol` EDGES. For each claim candidate that clears AT LEAST the
+    lowest eligibility floor (i.e., is not simply absent per derived_
+    decisions (d)'s `insufficient_evidence` case): `MethodRulingService.create`
+    persists a `MethodRuling` at `status="pending"` with `ruling_basis=
+    "deterministic_rule"`, `deterministic_rule_reference` naming the exact
+    rule this packet implements (a fixed string, e.g.
+    `"k1-t03.eligibility_and_ceiling_rules.v1"` — versioned so a future
+    rule revision is distinguishable in the historical record),
+    `ruled_ceiling` fixed to EXACTLY `"associational_unadjusted"` for every
+    candidate that clears the eligibility floor (spec 08 section 5's own
+    text: "Maximum ceiling: associational_unadjusted" — this profile's
+    single strongest licensable tier; NO finer graduation between
+    `mechanism_hypothesis`/`descriptive`/`associational_unadjusted` is
+    implemented, since spec 08 gives no textual basis for one and inventing
+    a graduated scale now, with no real claims yet to validate it against,
+    risks encoding made-up epistemology — flagged, specification_gaps,
+    exactly mirroring K1-T02's own identical restraint on claim_type
+    mapping), `scope_of_validity` copied from the governing `QuestionModel.
+    scope`, and `non_applicability_conditions` populated from the protocol-
+    parameters sidecar's own declared exclusion criteria (non-empty, per
+    MTH-017's own requirement above `"descriptive"`, which
+    `"associational_unadjusted"` always is). `MethodRulingService.issue`
+    then transitions `pending -> issued` (mirroring `MethodProfileService`'s
+    own create-then-accept two-step shape).
+
+    Once K1-T02 lands (coordination_note), `ClaimService.attach_ruling
+    (claim_id, method_ruling_id, ...)` — called EXACTLY as that method's own
+    signature requires, no wrapper — writes the `ruled_by` edge, re-running
+    K1-T02's own `ceiling_violation_reason` gate first (a structural,
+    belt-and-braces confirmation that this packet's own fixed-ceiling
+    choice above never exceeds the governing `MethodProfile.
+    max_claim_ceiling`, which it cannot, since both are the identical value
+    for this profile). `governed_by_protocol` edges (EvidenceMatrix -> the
+    locked `MethodProtocol`; Claim -> the same protocol; EvidenceCrate -> the
+    same protocol — spec 08 section 3's own three named sources for this
+    edge type) are written by `run_synthesis_evidence_loop` directly via the
+    generic `EdgeRepository`/a locally-defined `RecordEdgeWithEvent`
+    callable (mirroring `ClaimService._write_edge`'s shape, duplicated
+    locally rather than imported cross-module — the SAME "local copy, not a
+    shared import, across separate service modules" precedent
+    `SourceFamilyService`'s own docstring already establishes for
+    `RecordRevisionWithEvent`) — a cross-cutting, RUN-level concern rather
+    than any single object's own lifecycle transition, so no NEW service
+    method is the natural home for it.
+  - >-
+    (g) PROTOCOL_NOT_LOCKED / PROTOCOL_LOCK_VIOLATION — K1-T03 IS THE FIRST
+    REAL ENFORCEMENT SITE. K1-T02's own `derived_decisions`/`specification_
+    gaps` explicitly punt MTH-007/008 enforcement ("TaskBundle-negotiation-
+    time protocol-lock enforcement is out of ClaimService's own domain
+    entirely... re-pinned as DOCUMENTATION ONLY"). This packet is the FIRST
+    task that actually reads a `MethodProtocol` at all, so it is the
+    natural, first real site for MTH-007's "Executor tasks for confirmatory
+    branches MUST reference the lock hash and fail with PROTOCOL_NOT_LOCKED
+    otherwise". `execute()`'s own first substantive step (after parsing its
+    two input artifacts) resolves the referenced `MethodProtocol` (via the
+    generic `ObjectRepository`, from the protocol-parameters sidecar's own
+    `protocol_id`) and checks, in order: (1) `protocol.status == "locked"`
+    (NOT `"amended"` — an amended protocol has returned to `"reviewed"` per
+    `METHOD_PROTOCOL_LIFECYCLE`'s own re-review-cycle edges and must pass
+    back through `locked` again before further confirmatory work; NOT
+    `"executed"` either, reserved for a protocol a run has already fully
+    consumed — flagged, specification_gaps, since spec 08 does not itself
+    define what transitions a protocol TO `"executed"`, a K1-T04-or-later
+    concern) — else raise a NEW `ProtocolNotLockedError`
+    (`packages/domain/mrr/domain/exceptions.py`, `error_code =
+    "PROTOCOL_NOT_LOCKED"`, mirroring K1-T02's own `error_code: ClassVar[str]`
+    convention); (2) the protocol-parameters sidecar's own declared
+    `protocol_lock_content_hash` equals the resolved protocol's ACTUAL
+    `content_hash` (which, per `method_protocol.py`'s own docstring, IS the
+    lock hash the moment `status` first became `"locked"` — "Lock hash IS
+    baseObject.content_hash, not a new field") — else raise a NEW
+    `ProtocolLockViolationError` (`error_code = "PROTOCOL_LOCK_VIOLATION"`)
+    — a stale or tampered sidecar reference, caught BEFORE any further
+    deterministic step runs. Both checks raise from PURE, in-memory
+    comparison — `execute()` still performs no I/O of its own beyond the
+    `inputs` mapping it was already handed (the `MethodProtocol` body itself
+    arrives as a THIRD small input artifact, resolved by the caller exactly
+    like the corpus/protocol-parameters artifacts — added to
+    `TaskBundle.instructions` as `"method_protocol_artifact_id"`).
+  - >-
+    (h) KILL CONDITIONS -> stop_insufficient_evidence — A SUCCESSFUL
+    TERMINAL RESULT, NEVER A FAILURE. `execute()` NEVER returns a
+    non-`completed` `TerminalOutcome` because of insufficient evidence —
+    `insufficient_evidence`/`stop_insufficient_evidence` are DOMAIN outcomes
+    carried INSIDE a `completed` `ExecutionResult`'s own JSON `output`
+    (MRR-MTH-011: "successful terminal results... MUST NOT be silently
+    omitted", read together with MRR-FR-043's `TerminalOutcome` vocabulary,
+    which has no "insufficient evidence" value of its own — conflating the
+    two would misrepresent an honest, complete finding as an execution
+    failure). Concretely: after inclusion filtering, if the number of rows
+    reaching `verification_status == "verified"` for a given
+    `applies_to_analysis` is STRICTLY below the protocol-parameters
+    sidecar's own `kill_conditions.stop_insufficient_evidence.
+    min_included_sources` threshold, `execute()`'s JSON output records
+    `"decision": {"decision_type": "stop_insufficient_evidence",
+    "applies_to_analysis": "...", "rationale": "<n> included source(s),
+    below the declared minimum of <min_included_sources>", "claim_candidates":
+    []}` — no claim candidate, no `MethodRuling`, for that analysis.
+    `run_synthesis_evidence_loop` then persists ONLY a `ResearchDecision`
+    (`ResearchDecisionService.create`, `decision_type=
+    "stop_insufficient_evidence"`) plus the (possibly zero-row, `frozen`)
+    `EvidenceMatrix` — no `Claim`, no `MethodRuling`, no `decided_by`
+    kill-condition transition on any claim (there is no claim to kill; K1-T02's
+    `ClaimService.apply_kill_condition` is for withdrawing an EXISTING claim
+    via a `kill_branch` decision, a DIFFERENT scenario from "no claim was
+    ever eligible to be proposed" — flagged, specification_gaps, as the
+    precise boundary between the two: `apply_kill_condition` handles a
+    branch killed AFTER a claim exists; this packet's own
+    `stop_insufficient_evidence` path handles a branch that never produced
+    one). The Run Manifest/Evidence Crate seal EXACTLY as for any other
+    `completed` outcome (MTH-020 unchanged chain) — `run_state ==
+    "completed"` throughout, honestly recording that the RUN succeeded even
+    though its FINDING is "not enough evidence", per MTH-011's own text read
+    literally.
+  - >-
+    (i) SEALED CRATE CONTENTS. `EvidenceCrateSealer.seal()` itself is called
+    UNCHANGED (forbidden_changes) by `run_synthesis_evidence_loop`, exactly
+    as `run_local_evidence_loop` already calls it, but with THREE of its
+    caller-supplied lists populated for the first time with real content
+    (`evidence_crate.py` lines 62-73, confirmed by direct reading: `source_
+    records: list[Urn]`, `evidence_anchors: list[Urn]`,
+    `proposed_claims: list[Urn]` — E2-T06's own docstring already
+    anticipated this: "Empty is not a stub for the deterministic reference
+    run... it faithfully records that no claims/anchors exist YET for THIS
+    RUN", i.e. a DIFFERENT run's crate is expected to populate them, and
+    this is that run): `source_records` <- every `SourceRecord.id` this
+    run's corpus ingestion persisted; `evidence_anchors` <- every
+    `EvidenceAnchor.id` created per matrix row (via the EXISTING, UNCHANGED
+    `EvidenceAnchorService.create`, `evidence/service.py` lines 240-289);
+    `proposed_claims` <- every `Claim.id` this run proposed (regardless of
+    its final status — a `contested`/`unsupported` claim is still a
+    PROPOSED claim). `artifacts` carries the crate's own `ArtifactRef` list
+    exactly like the reference loop (the corpus/protocol-parameters/
+    protocol-body input artifacts plus, per E2-T06's own convention, the
+    executor's own raw JSON `output` stored and referenced). `failures`/
+    `known_unknowns` stay empty for a `completed` outcome including a
+    `stop_insufficient_evidence` decision (that decision is a FINDING, not a
+    failure — MTH-011, derived_decisions (h)). The `EvidenceMatrix`/
+    `MethodRuling`(s)/`ResearchDecision`'s own ids are NOT separate
+    `EvidenceCrate` fields (the schema has none for them) — they are
+    discoverable via the typed edge graph instead: the crate's own
+    `governed_by_protocol` edge names the locked `MethodProtocol`; from
+    there, `EvidenceMatrix.protocol_id`/`MethodRuling.protocol_id`/
+    `ResearchDecision.protocol_id` (all already-existing K1-T01 fields) let
+    a third party resolve every object this run produced by following
+    typed edges from the one sealed crate, per K1's own stated exit
+    criterion ("a third party can follow one sealed crate from question to
+    claim landscape entirely through recorded objects").
+  - >-
+    (j) NEW SERVICES MIRROR `SourceFamilyService` EXACTLY. Each of
+    `EvidenceMatrixService`/`MethodRulingService`/`ResearchDecisionService`
+    (b) has its OWN local `RecordRevisionWithEvent` type alias and its OWN
+    `bind_unit_of_work` (NOT a shared import across the three — the same
+    "local copy... across separate service modules" precedent
+    `source_family/service.py`'s own docstring already states verbatim for
+    this exact pattern), and persists via the SAME
+    `mrr.persistence.unit_of_work.record_object_revision_with_event`
+    primitive every other object-owning service in this codebase already
+    uses. No new SQLAlchemy table, no new migration (forbidden_changes) —
+    all three kinds are ordinary rows in the generic `objects` table.
+  - >-
+    (k) THE ONE-LINE `build_dispatch_table` DEDUP FIX (PR #45 review).
+    `dispatch.py`'s first pass (`build_dispatch_table`, lines 161-166)
+    currently reads
+    `for profile in accepted_profiles: for capability_name in
+    profile.executor_task_family: factory = executor_factories.get
+    (capability_name); if factory is not None: table[capability_name] =
+    factory()` — invoking `factory()` once per (profile, capability_name)
+    PAIR, not once per DISTINCT capability name. This packet changes this to
+    collect the SET of distinct capability names across ALL
+    `accepted_profiles` entries first (a plain `set[str]` comprehension over
+    the existing nested iteration, still filtered through
+    `executor_factories` exactly as before), then call `factory()` at most
+    ONCE per distinct name — preserving every existing observable behavior
+    (`build_dispatch_table`'s own docstring/invariants, K0-T02's acceptance
+    tests) for the case that made it unreachable before (a single profile,
+    or multiple profiles with disjoint capability names) while fixing the
+    now-reachable case this packet's own `systematic_evidence_synthesis`
+    profile could otherwise trigger (e.g. if a profile is re-derived to a
+    new semver revision that supersedes the old accepted id — per
+    `method_profile.py`'s own "a later semver revision... mints a NEW id"
+    design — and BOTH the old and new accepted-looking revisions are
+    momentarily passed to `build_dispatch_table` by a caller that has not
+    yet filtered strictly to "currently accepted", both would declare the
+    identical capability name `"mrr.method.systematic_evidence_synthesis/1"`).
+    This is the ONLY change this packet makes to `dispatch.py` — no other
+    line, and no change to `dispatch()` itself (already exactly-two-outcomes,
+    unaffected).
+  - >-
+    (l) SELF-VERIFICATION FOR `to_supported`, RESOLVED VIA THE LOOP'S
+    ALREADY-EXISTING ORIGIN/NODE SPLIT. `run_synthesis_evidence_loop` reuses
+    the SAME two distinct identities `run_local_evidence_loop` already
+    threads through the loop: an ORIGIN identity (`resolved_actor` —
+    the practice that proposed the Research Score/Task Bundle,
+    `Claim.proposer_id`) and a NODE identity (`resolved_node_id` — the
+    executing node, `run_executor_id` at `VerificationService.record` time).
+    For each candidate reaching `"supported"`, `run_synthesis_evidence_loop`
+    constructs ONE `VerificationResult` (`verification_type="source"`,
+    `evidence_inspected` <- the candidate's own included `EvidenceAnchor`
+    ids, `recommendation="pass"`, `reviewer_id = resolved_node_id`,
+    `independence_profile` naming the executor's own deterministic identity
+    — e.g. `model_family="none"`, `prompt_family="none"`,
+    `code_path="mrr.method.systematic_evidence_synthesis/1"` — and records
+    it via the EXISTING, UNCHANGED `VerificationService.record`, whose
+    self-verification gate (`reviewer_id == claim.proposer_id` /
+    `== run_executor_id`) passes structurally because `resolved_node_id !=
+    resolved_actor` by construction in this loop, exactly as it already does
+    for every OTHER object this loop signs with two distinct keys. HONESTLY
+    FLAGGED, NOT SILENTLY DECIDED (specification_gaps): is a machine-authored
+    `VerificationResult`, produced by the SAME deterministic run as the claim
+    it verifies (merely under the NODE's identity rather than the ORIGIN's),
+    a legitimate satisfaction of MRR-FR-070's self-verification prohibition
+    for a claim reaching `"supported"` — or does `supported_within_scope`
+    categorically require a LATER, human-attributed review before ANY claim
+    may reach it? This packet adopts the FORMER reading, since it is the
+    ONLY one that keeps "the deterministic path is provable ALONE" (the
+    plan's own words) achievable end to end without a human in the loop —
+    flagged prominently for reviewer confirmation before this path is relied
+    upon for a real run (K1-T04).
+  - >-
+    (m) MODEL-ASSISTED EXTRACTION IS PACKET-ISOLATED AND NEVER REQUIRED.
+    `execute()` accepts an OPTIONAL, injected extraction callable of the
+    shape `Callable[[CorpusEntry, list[str]], ExtractionOutcome] | None`
+    (mirroring `ReferenceTaskExecutor`'s own injectable `transform`/
+    `policy_gate`/`is_cancelled` pattern exactly) — when `None` (v1's own
+    default, and the ONLY configuration this packet's own acceptance tests
+    exercise for the full end-to-end loop), every row's `extraction` dict is
+    populated ENTIRELY from whatever the corpus snapshot artifact already
+    supplied (human-curated, per spec 08 section 5's `MethodProtocol.
+    extraction_fields`-shaped keys) — genuinely model-free, exactly like
+    `default_reference_transform` requires no model. When a caller injects
+    the model-assisted callable (a SEPARATE, dedicated set of unit tests,
+    NOT part of the model-free acceptance path), it wraps
+    `generate_structured` (E4-T02, unchanged) per corpus row and downgrades
+    to the row's own human-supplied fields (marked via the reserved
+    `extraction["_verification_disposition"] = "downgraded-to-proposal"`
+    key, derived_decisions (c)) on any non-`"proposal"` `StructuredGeneration
+    Result.status`. Because this callable is INJECTED, not hard-wired,
+    `execute()`'s own control flow, timeout bound, and idempotency memo are
+    completely unaffected by whether it is ever supplied — a call that
+    never receives one can never depend on model availability, satisfying
+    the plan's own "its failure cannot sink the epic" framing verbatim.
+  - >-
+    NATURAL SPLIT, FLAGGED PROMINENTLY BUT NOT TAKEN. This task genuinely
+    has three separable slices: (I) the deterministic executor core plus
+    its three new persistence services plus the new orchestration
+    composition (parts (a)-(b)-(c) above, plus (d)-(l)) — REQUIRED for v1's
+    own "runs model-free" acceptance; (II) the model-assisted extraction
+    callable (m) — separately testable, never required; (III) the one-line
+    dispatch dedup fix (k) — a small, independent, unrelated correction that
+    could equally well have been its own micro-task. The plan doc itself
+    (docs/design/2026-07-21-research-method-kernel-plan.md line 56-59)
+    explicitly requires the model-assisted slice to be "packet-isolated
+    (K1-T03)... with a required model-free path" — i.e., isolated WITHIN
+    this one task, not split OUT into a separate task-packet — so slice (II)
+    stays here by the plan's own explicit design, delivered as a genuinely
+    optional, independently-testable code path rather than a hard
+    dependency. Slice (III) is small enough (one collection change in one
+    existing function) that spinning it into its own packet would be
+    disproportionate paperwork for a one-line, already-reviewed fix; it
+    rides along with this packet since this is the first task that makes it
+    reachable. If a reviewer judges parts (a)-(l) still too large for one
+    PR/review cycle despite this, the cleanest further split would be:
+    K1-T03a (executor core + EvidenceMatrixService/MethodRulingService/
+    ResearchDecisionService + orchestration + source_independence.py + the
+    dispatch fix, i.e. everything the model-free path needs) and K1-T03b
+    (the injected model-assisted extraction callable alone, part (m)) — but
+    this packet is written as ONE, per instruction, with that split named
+    here for the record.
+invariants:
+  - >-
+    `SystematicEvidenceSynthesisExecutor.execute()` imports no SQLAlchemy
+    driver, no HTTP/FastAPI, no provider SDK, and performs no network I/O —
+    identical framework-freedom to `ReferenceTaskExecutor`, verified by the
+    same style of import-boundary test
+    (`tests/unit/architecture/test_node_runtime_executor_boundary.py`,
+    extended, not replaced)
+  - >-
+    `execute()` is idempotent per `(task_bundle.id, task_bundle.revision,
+    execution_attempt)` exactly like `ReferenceTaskExecutor` (MRR-FR-035): a
+    second call with the same triple returns the memoized `ExecutionResult`
+    without recomputing the deterministic pipeline or re-invoking any
+    injected extraction callable
+  - >-
+    every `ExecutionResult` this executor returns has `is_deterministic ==
+    True`, INCLUDING when its own JSON output records a
+    `stop_insufficient_evidence` decision — a "not enough evidence" finding
+    is still a fact about a fully deterministic computation, never
+    downgraded to `is_deterministic=False` merely because the finding is
+    negative
+  - >-
+    `execute()` never returns a non-`completed` `TerminalOutcome` because of
+    insufficient evidence, a killed branch, or any other DOMAIN-level
+    outcome — only a genuine policy denial, cancellation, timeout, or
+    unhandled exception produces `policy_denied`/`cancelled`/`timed_out`/
+    `failed` (MRR-MTH-011, derived_decisions (h))
+  - >-
+    a `Claim` never leaves this packet's own pipeline with `claim_type ==
+    "causal"` or with a `ruled_by` target whose `ruled_ceiling` is anything
+    other than `"associational_unadjusted"` (or, for a non-eligible
+    candidate, no ruling at all) — proven by a property test over many
+    synthetic corpus/eligibility-table combinations, mirroring K1-T02's own
+    `inspect.signature`-style structural proof discipline for MRR-MTH-005/006
+  - >-
+    `EvidenceMatrix.rows` includes every corpus entry the inclusion filter
+    did not exclude, INCLUDING `"unverifiable"` rows (MRR-MTH-015: "never
+    dropped") — an unverifiable row is present in the persisted matrix even
+    though it contributes zero to `distinct_independent_source_family_count`
+  - >-
+    `tests/e2e/test_e2e_001_single_node_evidence_loop.py` and
+    `tests/e2e/test_k0_t02_capability_dispatch.py` both pass UNMODIFIED
+    after this packet's `dispatch.py` dedup fix — a single-profile or
+    disjoint-capability dispatch table is byte-identical in every observable
+    respect to before the fix (derived_decisions (k))
+  - >-
+    no path anywhere in this packet's own new code re-implements
+    `mrr.domain.independence`'s reviewer-independence rule, and no path
+    calls `mrr.domain.source_independence`'s source-family rule where
+    reviewer independence was meant, or vice versa — the two modules are
+    never conflated by a shared name or shared import
+  - >-
+    `run_synthesis_evidence_loop` calls `RunManifestRecorder.record` and
+    `EvidenceCrateSealer.seal` with EXACTLY the same call shape
+    `run_local_evidence_loop` already uses (same parameter names, same
+    "seal for every terminal outcome" discipline) — no new parameter is
+    added to either recorder/sealer
+  - both import-linter contracts stay unmodified and KEPT
+  - no Alembic migration is added or modified by this packet
+acceptance_tests:
+  - >-
+    [model-free end-to-end, the packet's headline proof] a small synthetic
+    corpus (5-8 entries covering: 2 sources clearing the `"supported"`
+    eligibility floor with no contradiction; 2 sources for a candidate with
+    both supporting and contradicting findings above the `"contested"`
+    floor but below `"supported"`'s; 1 unverifiable source; 1 source
+    excluded by the inclusion filter) run through `execute()` with NO
+    injected extraction callable (`None`) produces a `completed`
+    `ExecutionResult` whose JSON output, deserialized, contains: one
+    candidate eligible for `"supported"` (ruled_ceiling
+    `associational_unadjusted`), one eligible for `"contested"`, the
+    excluded source absent from candidate evidence but present in the
+    matrix-row output, the unverifiable source present with a non-null
+    `unverifiable_reason` and excluded from every independence count
+  - >-
+    [same fixture, through the full orchestration] `run_synthesis_evidence_loop`
+    over the same fixture persists: a `frozen` `EvidenceMatrix` with every
+    row (including the unverifiable one); two `Claim`s (`"supported"` and
+    `"contested"`); two issued `MethodRuling`s (once K1-T02's `attach_ruling`
+    is available — see coordination_note for the two-phase acceptance this
+    implies); a sealed `EvidenceCrate` whose `proposed_claims`/
+    `evidence_anchors`/`source_records` are non-empty and resolve to exactly
+    the objects this run created; a `governed_by_protocol` edge from the
+    matrix, from each claim, and from the crate to the same locked
+    `MethodProtocol`
+  - >-
+    [insufficient evidence, MRR-MTH-011] a corpus where inclusion filtering
+    leaves fewer sources than `kill_conditions.stop_insufficient_evidence.
+    min_included_sources` produces a `completed` (never `failed`)
+    `ExecutionResult`; `run_synthesis_evidence_loop` persists a `frozen`
+    `EvidenceMatrix` (rows present, matching MRR-MTH-011's "zero-row is a
+    legitimate record" precedent when the count is literally zero) and a
+    `ResearchDecision(decision_type="stop_insufficient_evidence")`, and NO
+    `Claim`/`MethodRuling` for that analysis; the Run Manifest/Evidence
+    Crate seal exactly as for any other completed run
+  - >-
+    [MTH-007, first real enforcement] `execute()` against a referenced
+    `MethodProtocol` with `status != "locked"` raises `ProtocolNotLockedError`
+    (`error_code == "PROTOCOL_NOT_LOCKED"`) before any deterministic step
+    beyond artifact parsing runs; against a `locked` protocol whose
+    `content_hash` does not match the protocol-parameters sidecar's declared
+    `protocol_lock_content_hash`, raises `ProtocolLockViolationError`
+    (`error_code == "PROTOCOL_LOCK_VIOLATION"`) — both structurally,
+    in-memory, no partial output produced
+  - >-
+    [MRR-FR-035 idempotency] two `execute()` calls with the identical
+    `(task_bundle.id, task_bundle.revision, execution_attempt)` triple
+    return the byte-identical `ExecutionResult`, and an injected
+    call-counting extraction callable (when supplied) is invoked only on
+    the FIRST call — mirrors `ReferenceTaskExecutor`'s own existing
+    idempotency test shape exactly
+  - >-
+    [property, mirrors K1-T02's MRR-MTH-005 structural proof style] over
+    many random small synthetic corpora and eligibility-table thresholds,
+    every claim candidate `execute()` proposes has `claim_type` in
+    `{"observational","interpretive"}` and, when eligible, `ruled_ceiling ==
+    "associational_unadjusted"` exactly — never `"causal"`, never any
+    ceiling above `associational_unadjusted`
+  - >-
+    [source-family independence, new module] `distinct_independent_source_
+    family_count` over rows sharing one `source_family_id` counts them ONCE;
+    over rows with distinct or null `source_family_id` (each falling back to
+    its own `source_record_id`) counts them separately; an `"unverifiable"`
+    row is excluded from the count regardless of its `source_family_id`;
+    property test confirms the count is order-independent and never exceeds
+    the number of `"verified"` rows supplied — mirrors E3-T05's own
+    `distinct_independent_reviews` acceptance-test shape, over the new
+    module's own, different input type
+  - >-
+    [dispatch dedup, PR #45 follow-up] two `MethodProfile`s (or two accepted
+    revisions momentarily both resolved as "accepted") both declaring
+    capability `"mrr.method.systematic_evidence_synthesis/1"` in
+    `executor_task_family`, passed to `build_dispatch_table` alongside a
+    call-counting `ExecutorFactory` for that name, results in the factory
+    being invoked EXACTLY ONCE, not twice; the table still contains exactly
+    one entry for that capability name, and every EXISTING K0-T02 dispatch
+    test (`tests/unit/services/node_runtime/test_dispatch.py`,
+    `tests/e2e/test_k0_t02_capability_dispatch.py`) continues to pass
+    unmodified
+  - >-
+    [self-verification, part (l)] `run_synthesis_evidence_loop`'s
+    constructed `VerificationResult` for a `"supported"` candidate has
+    `reviewer_id != proposer_id` and `reviewer_id != run_executor_id` by
+    construction (origin vs. node identity split); `VerificationService.
+    record` accepts it without raising `SelfVerificationError`
+  - >-
+    [regression] `tests/e2e/test_e2e_001_single_node_evidence_loop.py` and
+    `tests/e2e/test_k0_t02_capability_dispatch.py` pass completely unmodified
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+specification_gaps:
+  - >-
+    The five spec-08 claim-status names do not all exist as `ClaimStatus`
+    values (derived_decisions (d)); this packet's mapping
+    (`supported_within_scope -> supported`, `partially_supported ->
+    contested`, `insufficient_evidence -> no Claim at all`) is a disclosed,
+    narrowest-defensible reading, not literal spec text. `partially_supported
+    -> contested` in particular conflates two genuinely different concepts
+    this codebase's OWN existing vocabulary distinguishes elsewhere (a claim
+    that IS supported but incompletely, vs. a claim under genuine dispute) —
+    flagged as this packet's single most consequential open judgment call,
+    alongside K1-T02's own analogous `withdrawn`-for-kill-condition
+    conflation.
+  - >-
+    `SourceFamily`'s and `SourceFamilyService`'s own existing docstrings
+    both assert "the independence calculation is E3-T05" — confirmed
+    imprecise by this packet's own direct reading of E3-T05 (scoped to
+    reviewer/verification independence, not source-family independence).
+    This packet does not correct those docstrings (outside its own
+    `allowed_paths`) — flagged here so a future housekeeping task can.
+  - >-
+    The protocol-parameters sidecar (derived_decisions (b)) is a NEW,
+    packet-invented artifact shape with no schema of its own anywhere in
+    this repository (not one of the seven JSON Schemas under `schemas/`) —
+    it is validated only by this packet's own Pydantic model inside
+    `synthesis_executor.py`, not by `scripts/check_contracts.py` or any
+    contract-fixture test. A reviewer may prefer promoting it to a real,
+    versioned schema; this packet does not, to avoid schema-proliferation
+    for a single first consumer with no second use case yet to generalize
+    against.
+  - >-
+    Nothing machine-checks that the protocol-parameters sidecar's
+    `inclusion_filter`/`eligibility_rules`/`kill_conditions` correspond to
+    the free-text prose a human reviewer read in `MethodProtocol.
+    inclusion_criteria`/`kill_conditions` etc. before locking it — that
+    correspondence is asserted to be the reviewer's own responsibility at
+    lock time, not verified by any code this packet adds.
+  - >-
+    MTH-016's "verification disposition" for a model-assisted step has no
+    dedicated contract field (`ModelInvocation` carries none;
+    `VerificationResult.target_kind` cannot even target a
+    `ModelInvocation`); this packet records it at a reserved
+    `extraction["_verification_disposition"]` key instead — a disclosed
+    workaround, not a clean fit, flagged for reviewer scrutiny before the
+    model-assisted slice (m) is genuinely relied upon.
+  - >-
+    Whether a machine-authored, node-identity `VerificationResult` (derived_
+    decisions (l)) is a legitimate, non-self verification for a claim
+    reaching `"supported"`, or whether that status categorically requires a
+    later, human-attributed review, is NOT settled by MRR-FR-070's text
+    either way — this packet adopts the reading that keeps the model-free
+    path completable end to end, flagged prominently for reviewer
+    confirmation before K1-T04 relies on it for the real atlases.
+  - >-
+    `"crate_sealing"` as a named step in the ALREADY-ACCEPTED K0-T01
+    `MethodProfile` example (`examples/method-profile.example.json`) reads,
+    taken literally, as if the EXECUTOR itself seals the crate — this
+    packet reads it instead as "package output into the sealer's expected
+    input shape", since the executor calling `EvidenceCrateSealer` directly
+    would violate this packet's own framework-free boundary (derived_
+    decisions (a)) and MTH-020's unchanged-machinery requirement. Flagged
+    for reviewer confirmation that this reading, not a literal one, is
+    correct; the already-accepted example is not redesigned either way by
+    this packet.
+  - >-
+    This packet does not build `QuestionModelService`/`ConceptCharterService`/
+    a WRITE-side `MethodProtocolService` (create/submit/lock/amend) — it
+    only reads already-accepted/locked instances via the generic
+    `ObjectRepository`. If task-packets/K1-T04.yaml (the first real run,
+    which must actually CREATE and LOCK a real `MethodProtocol` for the
+    model-collapse question) discovers it needs one of these services, that
+    is K1-T04's own scope to add, not retroactively this packet's.
+  - >-
+    This packet writes `governed_by_protocol`/`ruled_by`/`decided_by` edges
+    but never `operationalizes` (`ConceptCharter` entry -> `QuestionModel`
+    term) — that edge is written when a `ConceptCharter` is actually
+    authored against a `QuestionModel` (K1-T04's concern, since this packet
+    only reads already-accepted instances of both), not by this executor
+    task family.
+  - >-
+    `"pending"`-verification-status rows count toward neither the
+    `"verified"` nor the excluded-from-independence bucket in a clearly
+    stated way beyond "not yet counted" (derived_decisions (e)) — a
+    reviewer may prefer an explicit rule for a matrix frozen while rows
+    remain `"pending"` (arguably itself a form of insufficient evidence);
+    this packet does not resolve when the whole matrix must reach a
+    terminal per-row verification status before freezing, if ever.
+coordination_note: >-
+  K1-T02 (task-packets/K1-T02.yaml) is APPROVED but UNIMPLEMENTED at this
+  packet's own derivation time (see derivation for the exact confirmation:
+  `git log main..task/K1-T02-edges-ceilings-gates` empty, no open PR). This
+  packet's own `depends_on: [K1-T01, K1-T02]` names a REAL dependency, not a
+  formality: `ClaimService.attach_ruling`/`apply_kill_condition`, the four
+  new `EDGE_VOCABULARY` members (`operationalizes` unused here,
+  `governed_by_protocol`/`ruled_by`/`decided_by` used directly), and the new
+  exception classes K1-T02 introduces are all PROSPECTIVE from this packet's
+  own point of view. Implementation of THIS packet should not start writing
+  the `ClaimService.attach_ruling` call sites, or attempt any real
+  `governed_by_protocol`/`ruled_by` edge write against a live database, until
+  K1-T02 has actually merged (its own migration widening the `edges.edge_type`
+  CHECK constraint must land first, or every such write fails at the database
+  layer with an `IntegrityError`, not any typed domain error this packet
+  defines). The DETERMINISTIC EXECUTOR CORE itself (`execute()`'s own pure
+  transform, `source_independence.py`, the corpus/protocol-parameters
+  artifact handling, the PROTOCOL_NOT_LOCKED/PROTOCOL_LOCK_VIOLATION checks)
+  has NO dependency on K1-T02 at all and can be implemented, unit-tested, and
+  reviewed independently and in parallel — only the FULL orchestration
+  (`run_synthesis_evidence_loop`'s calls into `ClaimService.attach_ruling`
+  and the edge-writing helper) and this packet's own integration/e2e tier
+  acceptance tests are genuinely blocked on K1-T02 merging. If K1-T02's own
+  design changes materially before it merges (a different ceiling-gate
+  mapping, a different kill-condition event shape, a rejected `withdrawn`-reuse
+  judgment call — all flagged as open in K1-T02's own specification_gaps),
+  this packet's derived_decisions (f)/(h) citing K1-T02's exact call shapes
+  should be re-verified against K1-T02's THEN-merged form before
+  implementation of the blocked slice proceeds, not assumed frozen from this
+  derivation (mirroring K1-T02's own identical caution about K1-T01 in its
+  stop_conditions).
+
+  Separately: ADR-0010 reached ACCEPTED status (commit `cd389b4`, same day as
+  this derivation) but the classification field's actual schema introduction
+  is explicitly staged into its own, not-yet-derived task-packet — NOT this
+  one. This packet's corpus `SourceRecord` fixtures carry no classification
+  marker, real or synthetic, and this packet's own forbidden_changes bars
+  adding one unilaterally.
+required_output:
+  - implementation summary
+  - >-
+    changed files, split explicitly into: (I) the model-free-required slice
+    (executor core, three new services, orchestration composition,
+    `source_independence.py`, PROTOCOL_NOT_LOCKED/PROTOCOL_LOCK_VIOLATION,
+    the dispatch dedup fix); (II) the model-assisted extraction slice
+    (derived_decisions (m)) — reported separately so a reviewer can see
+    exactly which tests exercise which slice, mirroring K1-T02's own
+    "unconditional vs. blocked slice" reporting discipline
+  - >-
+    explicit confirmation of which parts of this packet's own tests could
+    run WITHOUT K1-T02 merged (the deterministic core, unit-tier) versus
+    which required it merged first (the full orchestration, integration/e2e
+    tier) — per the coordination_note
+  - >-
+    explicit confirmation that no Alembic migration was added, that
+    `packages/persistence/mrr/persistence/tables.py` needed no change, that
+    neither import-linter contract or its `source_modules` list changed, and
+    that `services/control_plane/mrr/services/cli/orchestration.py`/
+    `services/node_runtime/mrr/services/node_runtime/executor.py` were
+    touched in zero lines beyond the one named `dispatch.py` change
+  - tests added and exact command results (all commands in this packet, proving green)
+  - >-
+    security/privacy implications (no new network surface, no provider SDK
+    import in `synthesis_executor.py` itself — only in the separately-tested
+    model-assisted slice, already governed by E4's existing redaction
+    discipline; fail-closed direction of PROTOCOL_NOT_LOCKED/
+    PROTOCOL_LOCK_VIOLATION: an unlocked or hash-mismatched protocol always
+    blocks the run rather than proceeding on an assumption)
+  - >-
+    open specification questions exactly as listed under specification_gaps,
+    with PROMINENT emphasis on (i) the `partially_supported -> contested`
+    claim-status mapping, (ii) the self-verification reading for
+    `"supported"` claims, and (iii) the protocol-parameters sidecar being an
+    unschematized, packet-invented artifact shape — since all three have the
+    clearest downstream consequence for K1-T04's real run
+  - >-
+    the natural-split note (derived_decisions, final entry) restated plainly:
+    which further split a reviewer should take if this packet's own PR proves
+    too large for one review cycle
+stop_conditions:
+  - >-
+    K1-T02 merges with a MATERIALLY different `ClaimService.attach_ruling`/
+    `apply_kill_condition` signature, a different ceiling-gate mapping, or a
+    rejected `withdrawn`-reuse design than this packet's derived_decisions
+    (f)/(h) assume — stop the blocked (orchestration/integration) slice
+    specifically and re-verify against K1-T02's actual merged shape before
+    proceeding; the deterministic core (unaffected by K1-T02's own internals)
+    is not blocked by this.
+  - >-
+    a reviewer determines `partially_supported`/`insufficient_evidence`
+    genuinely require new `ClaimStatus` values rather than this packet's
+    disclosed mapping (derived_decisions (d)) — stop rather than touching
+    `schemas/claim.schema.json`/`claim.py` unilaterally; report the exact
+    case that forces this, mirroring K1-T02's own identical stop condition
+    for its own ceiling-gate mapping.
+  - >-
+    a reviewer determines a machine-authored, node-identity
+    `VerificationResult` is NOT an acceptable non-self verification for a
+    `"supported"` claim (derived_decisions (l)) — stop and report, since the
+    only alternative (a human review step) would make "the deterministic
+    path is provable alone" unachievable for `"supported"` outcomes
+    specifically within this packet's own scope; do not invent a second,
+    parallel self-verification bypass to route around the existing gate.
+  - >-
+    implementation discovers the protocol-parameters sidecar cannot express
+    a genuinely needed eligibility/kill-condition shape without also needing
+    a real `MethodProtocol` schema field — stop rather than touching a
+    protected K1-T01 contract; report the exact shape that forces this.
+  - >-
+    the Alembic head has moved past whatever K1-T02 chains to by the time
+    this packet's own (migration-free) implementation begins in a way that
+    suggests K1-T02's own migration never landed as this packet's
+    coordination_note assumed — re-verify K1-T02's actual merged state
+    before writing any edge-writing code, rather than assuming this
+    packet's own citations of K1-T02's shapes are still accurate.
+  - >-
+    implementation discovers `EvidenceMatrixService`/`MethodRulingService`/
+    `ResearchDecisionService` genuinely cannot be built as thin,
+    `SourceFamilyService`-shaped wrappers (e.g. a hidden lifecycle invariant
+    this derivation missed in `EVIDENCE_MATRIX_LIFECYCLE`/
+    `METHOD_RULING_LIFECYCLE`) — stop and report rather than inventing a
+    heavier service shape unilaterally.
