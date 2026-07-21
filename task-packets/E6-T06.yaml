@@ -1,6 +1,6 @@
 task_id: E6-T06
 title: Offline recipient delivery tracking — a durable, per-recipient pending-delivery record for a correction notification that could not be delivered online, with retry scheduling anchored to the notification's own expiry, explicit exhaustion, and composition with the existing E5-T06 OfflineBundle export as the retry's offline channel
-status: draft
+status: approved
 depends_on: [E6-T03]
 derivation: >
   Derived by a planning session (not yet reviewed) per

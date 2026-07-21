@@ -1,6 +1,6 @@
 task_id: E6-T05
 title: Public unresolved-correction projection — a classification-respecting, fail-closed-redacted public read-model over the already-approved CorrectionEvent/Claim state and CORRECTION_LIFECYCLE, reusing E3-T07's claim table and E1-T04's state machine verbatim, needing no TransferContract/Obligation/CorrectionNotification code to exist
-status: draft
+status: approved
 depends_on: []
 derivation: >
   Derived by a planning session (not yet reviewed) per
