@@ -1,0 +1,621 @@
+task_id: K1-T04c
+title: >-
+  CLI/composition passthrough for MRR-MTH-018 sensitivity-variation
+  parameters — add an additive, default-`None`
+  `sensitivity_variation_parameters` keyword to
+  `establish_and_run_synthesis` and a matching
+  `--sensitivity-variation-parameters-file` flag to `mrr synthesis run`,
+  so a real run can supply variation parameters through the standard
+  composition/CLI path instead of a test file re-implementing that path's
+  own choreography locally.
+status: approved
+epic: K1
+reviewer_resolution: >-
+  Approved 2026-07-21 by the main session as reviewing instance, under the
+  owner's documented same-day delegation. All primary choices CONFIRMED:
+  (1) the mandated id `K1-T04c` (reserved by K1-T04b's own depends_on);
+  (2) the additive keyword on `establish_and_run_synthesis` positioned
+  after `protocol_parameters`, with the unconditional
+  `protocol_id`/`protocol_lock_content_hash` overwrite from the
+  just-locked protocol — reviewer independently verified this mirrors the
+  function's OWN existing step-6 treatment of the base sidecar
+  (synthesis_setup.py docstring lines 39-40 and 402-405, fill-in at line
+  568): callers genuinely cannot pre-know the hash, so the overwrite is
+  what makes the passthrough usable, and pinning is established at
+  fill-in time exactly as run 1's own base parameters already do;
+  (3) the single-JSON-file CLI flag (`--sensitivity-variation-parameters-
+  file`, default None, no committed fixture default) over repeatable
+  flags; (4) the documented no-new-schema-flag conclusion — the durable
+  named schema for K1-T04b's archival run goes through the EXISTING
+  `--database-url` search_path mechanism; (5) new sibling test files
+  rather than edits to existing tests, with the two fail-closed
+  real-corpus tests staying byte-unmodified (absent variation input keeps
+  failing run 1's coverage check — correct and intended). Implementation
+  may start immediately; K1-T04b implements only after this packet
+  merges.
+depends_on: [K1-T04, K1-T03b]
+derivation: >-
+  Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5, on `main` at
+  commit `a2066a1` (confirmed: `git log --oneline -1` on a clean working
+  tree — `git status` reports "nothing to commit, working tree clean").
+
+  MANDATE, quoted verbatim from `task-packets/K1-T04b.yaml`'s own
+  `reviewer_resolution` (the REDIRECTED ruling, approved 2026-07-21):
+  "derived_decisions (f)/(g)'s workaround — a new e2e test locally
+  re-implementing `establish_and_run_synthesis`'s choreography because the
+  CLI cannot pass `sensitivity_variation_parameters` through — is REJECTED
+  as the execution mechanism. It would make run 2 a second-class citizen
+  relative to run 1 (not CLI-reproducible, no durable named schema, results
+  surviving only in test assertions and PR prose) and would reintroduce
+  exactly the local-copy pattern this same day's E9-T00b consolidation
+  retired. RULING: a new micro code packet, **K1-T04c** (to be derived
+  next), first adds the additive, default-None
+  `sensitivity_variation_parameters` passthrough to
+  `establish_and_run_synthesis` and the `mrr synthesis run` CLI (mirroring
+  `run_synthesis_evidence_loop`'s own new-keyword precedent from K1-T03b
+  derived_decisions (j) — byte-identical behavior for every existing
+  caller). K1-T04b's implementation WAITS for K1-T04c's merge (depends_on
+  updated accordingly)..." This packet answers that ruling directly and
+  ONLY that ruling — it does not touch run 2's own fixture content, its own
+  new e2e test, or the archival schema question beyond documenting what
+  already exists (below); those remain `task-packets/K1-T04b.yaml`'s own
+  scope, unaffected by this packet's own `allowed_paths`.
+
+  TASK-ID: already RESERVED, not chosen fresh here. The mandate's own text
+  names the id directly ("a new micro code packet, **K1-T04c**") and
+  `task-packets/K1-T04b.yaml`'s own `depends_on: [K1-T04, K1-T03b, K1-T04c]`
+  already cites it. Briefly justified against the alternatives for the
+  record anyway, mirroring the discipline `task-packets/K1-T03b.yaml`/
+  `task-packets/K1-T04b.yaml` both already applied to their own id choices:
+  - **A fresh epic-numbered slot** (`K1-T05`/`K2-T00`/`E9-T00c`-style) —
+    REJECTED, for the identical reasons those two precedent packets already
+    rejected them for themselves: epic K1 is closed at "4 tasks"
+    (`docs/design/2026-07-21-research-method-kernel-plan.md` line 35,
+    reaffirmed by `docs/design/2026-07-21-k2-gate-decision.md`); K2 is
+    deferred and categorically unrelated subject matter; E9's own seven
+    items are ALL PR-review-comment follow-ups on already-merged PRs, a
+    different provenance shape from a reviewer ruling embedded inside an
+    approved packet's own text.
+  - **`K1-T03c`** — REJECTED. This packet touches ZERO lines of
+    `synthesis_executor.py`/`synthesis_orchestration.py` (K1-T03/K1-T03b's
+    own protected files) — it only CALLS the already-merged, UNCHANGED
+    `run_synthesis_evidence_loop` exactly as K1-T03b already exposes it,
+    passing one more keyword through. The b/c-suffix convention this
+    repository already uses four times (`E1-T03b`, `E5-T00b`, `E5-T02b`,
+    `E5-T07b`, and now `K1-T03b`) anchors on CODE ownership — the files
+    this packet actually edits, `services/control_plane/mrr/services/cli/
+    synthesis_setup.py` and `services/control_plane/mrr/services/cli/
+    synthesis_main.py`, are named VERBATIM in `task-packets/K1-T04.yaml`'s
+    own `allowed_paths` (not K1-T03's).
+  - **`K1-T04c`** — CHOSEN (and mandated). Extends K1-T04's OWN two files
+    unambiguously. Worth stating plainly, since `task-packets/K1-T04b.yaml`
+    itself flagged its OWN id choice as resting on a "softer,
+    deliverable/directory-ownership" anchor (touching no production code
+    file K1-T04 or K1-T03 owns): THIS packet's anchor is the SHARPER,
+    unambiguous CODE-ownership kind `task-packets/K1-T03b.yaml`'s own
+    `derived_decisions (k)` used for itself — the two files in
+    `allowed_paths` below are literally the two files
+    `task-packets/K1-T04.yaml`'s own `allowed_paths` lists
+    (`services/control_plane/mrr/services/cli/synthesis_setup.py`,
+    `services/control_plane/mrr/services/cli/synthesis_main.py`).
+
+  CODE VERIFICATION (fresh, not merely trusted from `task-packets/
+  K1-T04b.yaml`'s own derivation, which already did this once): both files
+  read IN FULL again at this derivation.
+  `services/control_plane/mrr/services/cli/synthesis_setup.py`'s
+  `establish_and_run_synthesis` signature (lines 354-382) confirms NO
+  `sensitivity_variation_parameters` parameter anywhere, and its
+  `loop_kwargs` dict (lines 575-598) confirms that key is never constructed
+  or passed to `run_synthesis_evidence_loop` (line 600). `services/
+  control_plane/mrr/services/cli/synthesis_main.py`'s `_add_run_subparser`
+  (lines 90-193) confirms no `--sensitivity-variation-parameters-file` flag
+  and no code path in `run_command` (lines 211-335) that could populate
+  one. `services/control_plane/mrr/services/cli/synthesis_orchestration.py`
+  's `run_synthesis_evidence_loop` (K1-T03b, merged, UNCHANGED by this
+  packet) already accepts, at line 637,
+  `sensitivity_variation_parameters: Mapping[str, dict[str, Any]] | None =
+  None`, and its own module docstring (lines 137-162) documents the
+  contract this packet's passthrough must hand over EXACTLY: "each
+  variation's own parameters dict is stored via the SAME
+  `artifact_store.put(...)` pattern already used for the corpus/
+  protocol-parameters/method-protocol artifacts... and one new
+  `instructions["sensitivity_variation_artifact_ids"]` key is added." When
+  `None`/empty, confirmed by direct reading of the guard at line 875
+  (`if sensitivity_variation_parameters:`), the function mints ZERO
+  artifacts and adds ZERO `instructions` keys — `None` passed explicitly is
+  byte-for-byte indistinguishable from the parameter being omitted
+  entirely, since both fail this same truthiness check identically.
+
+  `SensitivityVariationParameters` (`services/node_runtime/mrr/services/
+  node_runtime/synthesis_executor.py` lines 356-386, re-read) confirms each
+  per-variation dict MUST itself carry `protocol_id`/
+  `protocol_lock_content_hash` (both `Field(min_length=1)`, reusing the
+  IDENTICAL `_check_protocol_lock` every base run already uses) — the EXACT
+  same two fields `establish_and_run_synthesis` already overwrites,
+  unconditionally, on the base `protocol_parameters` dict at its own step 6
+  (`final_protocol_parameters["protocol_id"] =
+  resolved_method_protocol_id`; `...["protocol_lock_content_hash"] =
+  locked_content_hash`, lines 571-573) — because NO caller can know the
+  protocol's real id/content_hash before this SAME function creates and
+  locks it. This is a genuine, load-bearing finding this derivation confirms
+  directly, not merely inherited from `task-packets/K1-T04b.yaml`'s own
+  derived_decisions (d), which already anticipated it for run 2's own
+  sidecar ("the placeholder strings mirror run 1's own base sidecar's
+  identical convention... overwritten at run time by the new e2e test's own
+  composition helper with the just-locked MethodProtocol's real id and
+  content_hash — the IDENTICAL values the same helper fills into the base
+  `protocol_parameters` dict it also passes to
+  `run_synthesis_evidence_loop`"). Without this SAME fill-in inside
+  `establish_and_run_synthesis` itself, the CLI passthrough this packet adds
+  would be unusable by exactly the caller it exists to unblock: a
+  CLI-supplied variation-parameters file necessarily carries placeholder
+  `protocol_id`/`protocol_lock_content_hash` strings (there is no way to
+  author real ones in advance), so the composition function must overwrite
+  them the SAME way it already overwrites the base sidecar's own
+  placeholders — see derived_decisions (b).
+
+  SCHEMA-NAMING VERIFICATION (Required Reading item 2's own instruction —
+  "verify what exists; if schema naming is already caller-controlled...
+  document that instead of inventing anything"): `tests/e2e/conftest.py`
+  (lines 62-96, re-read) confirms schema targeting for this whole codebase
+  is an ORDINARY PostgreSQL connection-string feature, not anything
+  MRR-specific — `_schema_scoped_url` appends
+  `options=%2Dc%20search_path%3D<schema>` (URL-encoded `-c
+  search_path=<schema>`) to a base `--database-url`-shaped string, and
+  `postgres_engine` runs one `CREATE SCHEMA`/`alembic upgrade head`/
+  `sa.create_engine(scoped_url)` sequence before yielding. `services/
+  control_plane/mrr/services/cli/synthesis_main.py`'s own `run_command`
+  (re-read) does nothing more than `sa.create_engine(args.database_url)` —
+  it never inspects, parses, or hardcodes a schema/search_path anywhere.
+  This means a durable, human-chosen schema for `task-packets/
+  K1-T04b.yaml`'s own archival run (e.g. `mrr_run2_corroboration_floor_v1`,
+  named in that packet's own specification_gaps) requires NO new code in
+  either file this packet touches — only three already-possible, purely
+  operational steps: (1) `CREATE SCHEMA mrr_run2_corroboration_floor_v1;`
+  once (by hand, or via `psql`); (2) one `alembic upgrade head` invocation
+  against a `--database-url` scoped to that schema (mirroring
+  `_run_alembic_upgrade_head`); (3) pass that SAME scoped URL as `mrr
+  synthesis run --database-url "<base>&options=-c%20search_path%3Dmrr_run2_
+  corroboration_floor_v1"`. Documented here per the Required Reading's own
+  instruction, not implemented as new code — there is nothing to add.
+objective: >-
+  Two additive, default-`None`/default-absent changes, strictly mirroring
+  `task-packets/K1-T03b.yaml` derived_decisions (j)'s own "one new,
+  additive, default-empty keyword parameter, ZERO behavior change for every
+  existing caller" discipline, applied one composition layer further out:
+
+  (a) `services/control_plane/mrr/services/cli/synthesis_setup.py`'s
+  `establish_and_run_synthesis` gains one new keyword-only parameter,
+  `sensitivity_variation_parameters: Mapping[str, dict[str, Any]] | None =
+  None`, inserted immediately after `protocol_parameters` in the signature
+  (mirroring `run_synthesis_evidence_loop`'s own parameter order exactly —
+  that function's `protocol_parameters` is immediately followed by its own
+  `sensitivity_variation_parameters` at line 637). When `None`/absent
+  (every existing caller, unmodified), `establish_and_run_synthesis` passes
+  `sensitivity_variation_parameters=None` into its `loop_kwargs` dict —
+  byte-for-byte equivalent to the key not existing there at all, since
+  `run_synthesis_evidence_loop`'s own default is also `None` and its own
+  truthiness guard (`if sensitivity_variation_parameters:`) treats an
+  explicit `None` and an omitted argument identically. When supplied (a
+  non-empty mapping), `establish_and_run_synthesis` builds a NEW mapping —
+  one shallow-copied dict per `variation_entry_id`, with `protocol_id`/
+  `protocol_lock_content_hash` OVERWRITTEN from the just-locked
+  `MethodProtocol`'s own real id/content_hash — mirroring, one-for-one, the
+  IDENTICAL treatment its own step 6 already gives the base
+  `protocol_parameters` dict (derived_decisions (b)) — before handing that
+  new mapping to `run_synthesis_evidence_loop` under the SAME parameter
+  name.
+
+  (b) `services/control_plane/mrr/services/cli/synthesis_main.py`'s `mrr
+  synthesis run` gains one new, optional flag,
+  `--sensitivity-variation-parameters-file` (type `Path`, default `None` —
+  deliberately NOT a committed `corpora/model-collapse/*.json` default,
+  unlike the five existing fixture flags: run 1 has no such fixture, and
+  this packet mints none — a bare `mrr synthesis run --database-url ...
+  --artifact-root ...` continues to reproduce run 1 with ZERO declared
+  variations passed, byte-identical to today). When given, the file is
+  parsed ONCE via the SAME `_load_json_file` helper the other five fixture
+  flags already use; its top-level content — a plain JSON object mapping
+  each declared `MethodProtocol.sensitivity_variations` entry_id to its own
+  `SensitivityVariationParameters`-shaped body dict, i.e. exactly the
+  `Mapping[str, dict[str, Any]]` shape (a) above expects — is passed
+  through UNCHANGED as the new `sensitivity_variation_parameters` keyword
+  argument to `establish_and_run_synthesis`. When omitted (the default),
+  `sensitivity_variation_parameters=None` is passed, matching that
+  function's own default exactly.
+
+  Both changes are strictly additive: every existing caller of either
+  function (`tests/e2e/test_k1_t04_first_real_run.py`'s two calls — one
+  direct, one via the CLI; `tests/integration/services/cli/
+  test_synthesis_setup.py`'s two calls; `tests/unit/services/cli/
+  test_synthesis_main.py`'s CLI-parsing tests) supplies neither the new
+  keyword nor the new flag, so every one of them resolves to the SAME
+  `None` default this packet introduces and is byte-for-byte unaffected —
+  see invariants and derived_decisions (e) for why this is true by
+  construction, not merely asserted.
+
+  Deliberately and explicitly OUT of scope, named, not designed here: (i)
+  any new fixture content under `corpora/model-collapse/` (that is
+  `task-packets/K1-T04b.yaml`'s own scope entirely); (ii) `task-packets/
+  K1-T04b.yaml`'s own new e2e test, which this packet's merge unblocks but
+  does not write; (iii) actually minting a durable, named Postgres schema
+  for that run (documented above as an already-possible, purely
+  operational sequence — nothing to build); (iv) any change to
+  `run_synthesis_evidence_loop`, `SystematicEvidenceSynthesisExecutor`, or
+  any K1-T01 contract/schema (forbidden_changes).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#4-normative-requirements
+  - task-packets/K1-T04b.yaml
+  - task-packets/K1-T03b.yaml
+  - task-packets/K1-T04.yaml
+  - services/control_plane/mrr/services/cli/synthesis_setup.py
+  - services/control_plane/mrr/services/cli/synthesis_main.py
+  - services/control_plane/mrr/services/cli/synthesis_orchestration.py
+  - services/node_runtime/mrr/services/node_runtime/synthesis_executor.py
+  - tests/e2e/conftest.py
+  - tests/e2e/test_k1_t04_first_real_run.py
+  - tests/integration/services/cli/test_synthesis_setup.py
+  - tests/integration/services/cli/test_synthesis_orchestration_sensitivity_variations.py
+  - tests/unit/services/cli/test_synthesis_main.py
+requirements:
+  - MRR-MTH-018
+  - MRR-FR-035
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - services/control_plane/mrr/services/cli/synthesis_setup.py
+  - services/control_plane/mrr/services/cli/synthesis_main.py
+  - tests/integration/services/cli/test_synthesis_setup_sensitivity_variation_passthrough.py
+  - tests/unit/services/cli/test_synthesis_main_sensitivity_variation_parameters_file.py
+  - tests/integration/services/cli/test_synthesis_main_sensitivity_variation_parameters_file.py
+forbidden_changes:
+  - >-
+    `services/control_plane/mrr/services/cli/synthesis_orchestration.py`
+    (`run_synthesis_evidence_loop`) — UNCHANGED; this packet only calls it,
+    exactly as `task-packets/K1-T03b.yaml` already exposes it, with one more
+    keyword argument threaded through
+  - >-
+    `services/node_runtime/mrr/services/node_runtime/synthesis_executor.py`
+    — UNCHANGED; `SensitivityVariationParameters`/`ProtocolParameters`/
+    `_check_sensitivity_variation_coverage` are consumed exactly as they
+    already exist
+  - >-
+    every K1-T01 contract kind's own schema/Pydantic model and
+    `packages/domain/mrr/domain/lifecycles.py` — untouched; this packet
+    adds no field, state, or edge anywhere
+  - >-
+    `services/control_plane/mrr/services/{method_profile,question_model,
+    concept_charter,method_protocol,evidence_matrix,method_ruling,
+    research_decision}/**` — every governance-object service is consumed
+    exactly as it already exists; no new method, no signature change
+  - >-
+    `services/control_plane/mrr/services/cli/main.py` — untouched; the
+    "synthesis" subparser registration `task-packets/K1-T04.yaml` already
+    added is unaffected, no new top-level flag is added there
+  - >-
+    `corpora/model-collapse/**` — untouched; this packet commits no new
+    fixture content anywhere
+  - >-
+    `tests/e2e/test_k1_t04_first_real_run.py`,
+    `tests/e2e/test_k1_t03b_sensitivity_variation_execution.py`,
+    `tests/e2e/test_k1_t03_synthesis_evidence_loop.py`,
+    `tests/integration/services/cli/test_synthesis_setup.py`,
+    `tests/integration/services/cli/
+    test_synthesis_orchestration_sensitivity_variations.py`,
+    `tests/unit/services/cli/test_synthesis_main.py` — ALL pass completely
+    UNMODIFIED; this packet's own new tests live in NEW sibling files only
+    (allowed_paths), never edits to these
+  - HTTP/FastAPI endpoints anywhere
+  - any Alembic migration or change to `packages/persistence/mrr/persistence/tables.py` — not needed
+  - both import-linter contracts in `pyproject.toml` — unmodified and KEPT
+  - >-
+    `docs/spec/08_RESEARCH_METHOD_KERNEL.md` — governance-owned, ACCEPTED
+    text, not amended by an implementation packet
+  - >-
+    `task-packets/K1-T04b.yaml` — the mandating packet itself is read-only
+    source-of-truth for this derivation; updating ITS OWN `depends_on`/
+    status once this packet merges is a separate governance act, not part
+    of this packet's own diff
+derived_decisions:
+  - >-
+    (a) TASK-ID — ALREADY RESERVED, JUSTIFIED AGAINST ALTERNATIVES FOR THE
+    RECORD ONLY. See derivation: `K1-T04c` is named directly by
+    `task-packets/K1-T04b.yaml`'s own `reviewer_resolution` and already
+    cited in that packet's own `depends_on`. `K1-T03c` was considered and
+    rejected (this packet touches zero lines of K1-T03/K1-T03b's own
+    protected executor/orchestration files); a fresh epic-numbered slot was
+    considered and rejected (K1 closed, K2 wrong epic, E9 wrong provenance
+    shape) — both for the same structural reasons the two precedent
+    packets already gave for themselves. Unlike `K1-T04b`'s own flagged
+    "softer" deliverable-ownership anchor, this packet's own anchor is the
+    sharper, unambiguous CODE-ownership kind: the two files in
+    `allowed_paths` are literally the two files `task-packets/K1-T04.yaml`'s
+    own `allowed_paths` names.
+  - >-
+    (b) THE PROTOCOL_ID/PROTOCOL_LOCK_CONTENT_HASH FILL-IN IS NOT OPTIONAL
+    POLISH — IT IS THE MECHANISM THAT MAKES THE PASSTHROUGH USABLE. Every
+    caller-supplied `SensitivityVariationParameters` body MUST carry
+    `protocol_id`/`protocol_lock_content_hash` (both `Field(min_length=1)`,
+    `synthesis_executor.py` lines 385-386-ish, re-verified), checked against
+    the resolved protocol via the SAME `_check_protocol_lock` a stale base
+    sidecar already fails against. No caller (CLI operator or test) can
+    know the real, minted `MethodProtocol` id or its real `content_hash`
+    BEFORE `establish_and_run_synthesis` itself creates, reviews, and locks
+    that exact object (steps 1-5 of its own six-step choreography) — so
+    every supplied variation-parameters file necessarily carries
+    placeholder strings for these two fields, exactly mirroring
+    `task-packets/K1-T04b.yaml`'s own base-sidecar placeholder convention
+    ("protocol_id": "placeholder-overwritten-at-run-time..."). This
+    packet's own implementation of (a) in `objective` therefore MUST
+    overwrite both fields unconditionally, for every supplied
+    `variation_entry_id`, at the SAME point in `establish_and_run_synthesis`
+    where the base `protocol_parameters` dict already receives the
+    identical treatment (its own existing lines ~571-573,
+    `final_protocol_parameters["protocol_id"] =
+    resolved_method_protocol_id` / `[...]["protocol_lock_content_hash"] =
+    locked_content_hash`) — a new, adjacent block performing the SAME two
+    assignments per variation dict, before the resulting mapping is handed
+    to `run_synthesis_evidence_loop`. Without this, the passthrough would
+    only work for a caller who already knew the protocol's real id/hash in
+    advance — which is never true, defeating the entire point of the
+    mandate.
+  - >-
+    (c) THE CLI OPTION DESIGN — ONE FILE HOLDING THE WHOLE MAPPING, NOT A
+    REPEATABLE FLAG. `sensitivity_variation_parameters` is already shaped
+    as `Mapping[str, dict[str, Any]]` one level up — a plain JSON object
+    (`{"entry-id-1": {...}, "entry-id-2": {...}}`) expresses this shape
+    directly and completely in ONE file, exactly like the existing
+    `--protocol-parameters-file`/`--corpus-file` flags already hold a
+    single JSON document each. REJECTED ALTERNATIVE, considered and
+    disclosed: a repeatable flag (argparse `action="append"`, e.g.
+    `--sensitivity-variation-file entry_id=path`, invoked once per
+    variation) — this would require inventing a new
+    key-equals-path-pairing convention this codebase has no precedent for
+    anywhere in `synthesis_main.py`'s existing five fixture flags, for zero
+    added expressiveness over a single JSON object, and would need its own
+    parsing/validation code this packet's own `allowed_paths` would then
+    have to justify separately. The single-file design needs no new
+    argparse machinery at all — `_load_json_file`, already used five times,
+    is reused verbatim a sixth time.
+  - >-
+    (d) THE NEW FLAG'S DEFAULT IS `None`, NOT A COMMITTED FIXTURE PATH —
+    UNLIKE THE OTHER FIVE. The five existing fixture flags
+    (`--question-model-file` etc.) all default to a real, committed file
+    under `corpora/model-collapse/`, because run 1's own fixture set
+    already exists there. No such fixture exists for
+    `sensitivity_variation_parameters` — run 1's own locked protocol
+    declares `sensitivity_variations: ["model-collapse-mechanism-v1"]` with
+    no authored sidecar (the still-open gap `task-packets/K1-T03b.yaml`'s
+    own amendment named), and inventing one here would be exactly the
+    "rushing a rival operationalization" `task-packets/K1-T03b.yaml`'s own
+    `reviewer_resolution` already rejected. Defaulting the new flag to
+    `None` means a bare `mrr synthesis run --database-url ... --artifact-
+    root ...` (no further flags) resolves `sensitivity_variation_parameters
+    = None`, reproducing run 1's own fixture set and its own still
+    fail-closed outcome EXACTLY as before this packet — proven by
+    `tests/e2e/test_k1_t04_first_real_run.py`'s own two tests passing
+    completely unmodified (forbidden_changes; invariants).
+  - >-
+    (e) WHY EVERY EXISTING CALLER IS BYTE-FOR-BYTE UNAFFECTED, BY
+    CONSTRUCTION, NOT MERELY BY INTENT. `establish_and_run_synthesis`'s new
+    parameter is keyword-only with a `None` default, so every EXISTING
+    caller (`tests/e2e/test_k1_t04_first_real_run.py`'s direct call at its
+    own call site, `tests/integration/services/cli/test_synthesis_setup.py`
+    's two calls) that does not name this new keyword resolves to `None`
+    automatically — Python's own keyword-only-argument default-binding
+    rule, not this packet's own runtime logic. `synthesis_main.py`'s new
+    flag defaults to `None` in the same way, and `run_command`'s existing
+    `kwargs` dict already includes every OTHER fixture key unconditionally
+    (see its own `question_model`/`concept_charter`/.../`protocol_parameters`
+    assignments) — this packet's own new
+    `kwargs["sensitivity_variation_parameters"] = ...` line is added the
+    SAME way, always present, with value `None` when the flag is omitted —
+    mirroring exactly how `loop_kwargs` in `synthesis_setup.py` already
+    always includes `sensitivity_variation_parameters` (currently always
+    `None`, since that key does not exist yet before this packet).
+  - >-
+    (f) NO NEW VALIDATION DUPLICATED AT THIS LAYER. This packet's own new
+    code in `synthesis_main.py`/`synthesis_setup.py` does not re-check that
+    a caller-supplied file's own top-level keys match the locked protocol's
+    own declared `sensitivity_variations` list — `_check_sensitivity_
+    variation_coverage` (K1-T03b, `synthesis_executor.py`, UNCHANGED)
+    already performs this check, fail-closed, symmetrically, inside
+    `execute()` itself. Duplicating it here would be redundant defensive
+    code, not a gap this packet needs to close — a mismatched file still
+    fails closed, via the SAME typed
+    `SensitivityVariationDeclarationMismatchError` every other caller
+    already gets, surfaced through `run_command`'s existing generic
+    `except (DomainError, CryptoError, ValueError)` clause (unchanged).
+  - >-
+    (g) SCHEMA NAMING FOR A DURABLE ARCHIVAL RUN — DOCUMENTED, NOT BUILT.
+    See derivation's own "SCHEMA-NAMING VERIFICATION" — `--database-url`
+    already accepts an arbitrary PostgreSQL connection string, and
+    PostgreSQL's own `options=-c search_path=<schema>` query parameter
+    (already used by `tests/e2e/conftest.py`'s `_schema_scoped_url` for
+    per-test throwaway schemas) is sufficient, unmodified, for a reviewer to
+    target a durable, human-chosen schema instead. This packet adds no
+    `--schema`/`--search-path` convenience flag — named as an open question
+    in specification_gaps, not designed here, since the existing mechanism
+    already satisfies `task-packets/K1-T04b.yaml`'s own stated need without
+    any code change.
+invariants:
+  - >-
+    `run_synthesis_evidence_loop`, `SystematicEvidenceSynthesisExecutor`,
+    every K1-T01 contract/schema, and `packages/domain/mrr/domain/
+    lifecycles.py` are touched in ZERO lines — proven by `git diff --stat`
+    against this packet's own branch
+  - >-
+    `tests/e2e/test_k1_t04_first_real_run.py`'s own two tests
+    (`test_headline_real_run_fails_closed_on_the_unexecuted_sensitivity_
+    declaration`, `test_cli_fails_closed_on_the_unexecuted_sensitivity_
+    declaration`) still report `run_state == "failed"` naming
+    `SensitivityVariationDeclarationMismatchError` — UNCHANGED behavior,
+    since neither test supplies the new keyword/flag and both therefore
+    still resolve `sensitivity_variation_parameters = None`, which still
+    fails run 1's own coverage check exactly as before this packet
+  - >-
+    `tests/integration/services/cli/test_synthesis_setup.py`'s own two
+    tests and `tests/unit/services/cli/test_synthesis_main.py`'s own tests
+    all pass unmodified, in the same test run as this packet's own new
+    tests
+  - >-
+    calling `establish_and_run_synthesis` with `sensitivity_variation_
+    parameters` supplied and non-empty overwrites `protocol_id`/
+    `protocol_lock_content_hash` on EVERY entry in that mapping, always,
+    with the just-locked `MethodProtocol`'s own real id/content_hash —
+    never left as a caller-supplied placeholder
+  - both import-linter contracts remain KEPT throughout
+  - no Alembic migration is added or modified by this packet
+acceptance_tests:
+  - >-
+    [integration, passthrough absent]
+    `test_synthesis_setup_sensitivity_variation_passthrough.py`: calling
+    `establish_and_run_synthesis` with `sensitivity_variation_parameters`
+    OMITTED and, separately, with it passed explicitly as `None`, against a
+    protocol fixture declaring `sensitivity_variations: []`, both complete
+    with `run_state == "completed"`; the resulting `TaskBundle.body
+    ["instructions"]` carries no `"sensitivity_variation_artifact_ids"` key
+    and the resulting `EvidenceMatrix.body` carries no
+    `"sensitivity_analysis_results"` key, in both invocations
+  - >-
+    [integration, passthrough supplied] same file: a protocol fixture
+    declaring `sensitivity_variations: ["variant-x"]`, called with
+    `sensitivity_variation_parameters={"variant-x": {...,
+    "protocol_id": "placeholder", "protocol_lock_content_hash":
+    "placeholder", ...}}` (deliberately wrong/placeholder values, mirroring
+    `task-packets/K1-T04b.yaml`'s own sidecar convention) completes with
+    `run_state == "completed"` — itself the proof that
+    `establish_and_run_synthesis` overwrote both placeholder fields with
+    the real, just-locked protocol id/content_hash before handing the
+    mapping to `run_synthesis_evidence_loop` (a wrong, un-overwritten value
+    would instead raise `ProtocolLockViolationError`/
+    `ProtocolNotLockedError`); `TaskBundle.body["instructions"]
+    ["sensitivity_variation_artifact_ids"]` contains `"variant-x"`; the
+    resulting `EvidenceMatrix.body["sensitivity_analysis_results"]`
+    contains an entry with `variation_entry_id == "variant-x"`
+  - >-
+    [unit, CLI option parsing]
+    `test_synthesis_main_sensitivity_variation_parameters_file.py`: `mrr
+    synthesis run --help` output lists
+    `--sensitivity-variation-parameters-file`; parsing the `run` subcommand
+    without that flag resolves `args.sensitivity_variation_parameters_file
+    is None`; passing the new flag alongside an unreachable `--database-url`
+    still exits non-zero with the SAME "cannot reach the PostgreSQL
+    database" stderr message `tests/unit/services/cli/test_synthesis_main.py`
+    's own existing DB-free test already asserts — proving the new flag
+    parses cleanly and does not shift MRR-NFR-012's own check ordering
+  - >-
+    [integration, CLI wiring, small synthetic fixtures — no real corpus]
+    `test_synthesis_main_sensitivity_variation_parameters_file.py`:
+    invoking `mrr synthesis run` (via `main`) with all six `--*-file` flags
+    pointed at small, synthetic, tmp-path-written fixtures (a method
+    protocol declaring `sensitivity_variations: ["variant-x"]` plus a
+    matching `--sensitivity-variation-parameters-file`), `--database-url`
+    (a real, throwaway test schema), and `--json`, exits `0`, prints
+    `"run_state": "completed"`, and the resulting, independently-resolved
+    `EvidenceMatrix.body["sensitivity_analysis_results"]` names
+    `"variant-x"`
+  - >-
+    [regression] `tests/e2e/test_k1_t04_first_real_run.py`,
+    `tests/integration/services/cli/test_synthesis_setup.py`,
+    `tests/integration/services/cli/
+    test_synthesis_orchestration_sensitivity_variations.py`, and
+    `tests/unit/services/cli/test_synthesis_main.py` all pass completely
+    unmodified in the same test run
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+  - make security-check
+specification_gaps:
+  - >-
+    whether `mrr synthesis run` should eventually gain a dedicated
+    `--schema`/`--search-path` convenience flag, rather than requiring a
+    caller to hand-encode PostgreSQL's own `options=-c search_path=...`
+    into `--database-url`, is left open — named but not designed here, per
+    derived_decisions (g); the existing mechanism already fully satisfies
+    `task-packets/K1-T04b.yaml`'s own stated durable-schema need with no
+    code change.
+  - >-
+    the CLI surfaces a malformed/mismatched
+    `--sensitivity-variation-parameters-file` only via whichever generic
+    typed error `SensitivityVariationParameters`'s own validation or
+    `_check_sensitivity_variation_coverage` raises (caught by
+    `run_command`'s existing generic `except (DomainError, CryptoError,
+    ValueError)` clause) — no fixture-specific error message is added,
+    mirroring how the five existing fixture flags are treated identically
+    today; a reviewer may prefer a more specific message in a future task.
+  - >-
+    actually authoring `task-packets/K1-T04b.yaml`'s own second real run
+    (its own new fixture content, its own new e2e test, and whether/how a
+    durable schema is minted for it) remains entirely that packet's own
+    scope, unblocked but not performed by this packet's own merge.
+required_output:
+  - implementation summary
+  - >-
+    the exact new keyword parameter added to `establish_and_run_synthesis`
+    (`sensitivity_variation_parameters: Mapping[str, dict[str, Any]] | None
+    = None`) and the exact new CLI flag added to `mrr synthesis run`
+    (`--sensitivity-variation-parameters-file`, type `Path`, default
+    `None`), with the exact protocol_id/protocol_lock_content_hash fill-in
+    logic quoted in full
+  - >-
+    files changed, split explicitly into: (I) the two composition/CLI
+    source files; (II) the three new test files — reported separately so a
+    reviewer can see the passthrough's own production code apart from its
+    test coverage
+  - >-
+    explicit confirmation, with a `git diff --stat` excerpt as evidence,
+    that `synthesis_orchestration.py`, `synthesis_executor.py`, every
+    K1-T01 contract/schema, `lifecycles.py`, and every existing test file
+    named in forbidden_changes were touched in ZERO lines
+  - tests added and exact command results for every command in `commands`
+  - >-
+    the documented answer to the schema-naming question (derived_decisions
+    (g)) — no new code, the existing `options=-c search_path=` mechanism on
+    `--database-url` already suffices
+  - >-
+    security/privacy implications: no new network surface; the new CLI flag
+    reads one more local JSON file exactly like the five existing fixture
+    flags already do (same trust boundary, same `OSError`-on-read
+    degradation path, MRR-NFR-012 preserved); fail-closed direction of
+    `SensitivityVariationDeclarationMismatchError`/
+    `ProtocolLockViolationError`/`ProtocolNotLockedError` unchanged
+  - flagged judgment calls: derived_decisions (b), (c), (d), (g) explicitly, for reviewer confirmation
+  - open specification questions exactly as listed under specification_gaps
+stop_conditions:
+  - >-
+    achieving this passthrough is found to require ANY change to
+    `run_synthesis_evidence_loop`, `synthesis_orchestration.py`, or
+    `synthesis_executor.py` itself (e.g. the `Mapping[str, dict[str, Any]]`
+    shape proves insufficient for some reason this derivation missed) —
+    STOP immediately, report the exact conflict, and do NOT implement that
+    change under this packet (mission mandate: a micro code packet never
+    becomes a protected-file change by scope creep) — this is literally the
+    trigger `task-packets/K1-T04b.yaml`'s own first stop_condition,
+    read in reverse, anticipated
+  - >-
+    the single-JSON-file-holds-the-whole-Mapping CLI design
+    (derived_decisions (c)) is found insufficient for some real caller need
+    this derivation did not anticipate — STOP, report the exact case, and
+    do not invent a different multi-flag/multi-file convention unilaterally
+  - >-
+    the unconditional protocol_id/protocol_lock_content_hash overwrite
+    (derived_decisions (b)) is found to conflict with a legitimate caller
+    need to pass through ALREADY-correct, deliberately different values
+    untouched — STOP and report; expected: none, since the base
+    `protocol_parameters` dict already relies on the identical unconditional
+    overwrite today
+  - >-
+    a reviewer determines a durable, named Postgres schema for
+    `task-packets/K1-T04b.yaml`'s own archival run in fact requires NEW CLI
+    code beyond `--database-url`'s existing, generic connection-string
+    acceptance — STOP, report the exact gap in derivation's own
+    "SCHEMA-NAMING VERIFICATION" reasoning, rather than adding an
+    unreviewed `--schema` flag silently
