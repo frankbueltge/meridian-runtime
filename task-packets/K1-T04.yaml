@@ -1,0 +1,1109 @@
+task_id: K1-T04
+title: >-
+  First real run — the model-collapse question. QuestionModel + ConceptCharter
+  (the load-bearing "instantiates the mechanism" vs. "references the theme"
+  distinction) + a locked systematic_evidence_synthesis MethodProtocol, run
+  over pinned, content-hash-verified COPIES of the two real atlases (theory
+  atlas, 87 provenance-verified sources; works atlas, 214 verified data/AI
+  artworks) through the unchanged K1-T03 executor/orchestration machinery ->
+  a real EvidenceMatrix, a ceiling-capped claim landscape with an honest
+  per-analysis status, and a sealed EvidenceCrate a third party can follow
+  end to end. Final task of epic K1. Output landing / site coupling is
+  explicitly OUT of scope (the project owner's own call, per the plan).
+status: approved
+depends_on: [K1-T03]
+derivation: >-
+  Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/design/2026-07-21-research-method-kernel-plan.md's K1 epic
+  ("K1-T04 — First real run: the model-collapse question", lines 60-69:
+  "QuestionModel + ConceptCharter ... + locked protocol + run over the
+  pinned atlas snapshots -> evidence matrix, ceiling-capped claim landscape
+  with honest statuses, and a sealed crate. This packet also defines where
+  the output lands for reuse (site coupling is Frank's call, out of scope
+  here). Acceptance: the produced claim landscape reproduces or improves on
+  the hand-done micro-inquiry's shape ... at least one claim MUST be capable
+  of ending contested or insufficient_evidence on the real material — a run
+  that can only produce supported claims fails the packet.") and
+  docs/spec/08_RESEARCH_METHOD_KERNEL.md section 5's own closing paragraph
+  ("First corpus and first question", lines 184-190: "the profile's first
+  real inputs are the two existing human-curated evidence ledgers — the
+  theory atlas (87 provenance-verified sources) and the works atlas (214
+  verified data/AI artworks) — and its first question is whether works
+  catalogued under AI-self-consumption actually instantiate the
+  model-collapse mechanism the technical literature describes, or merely
+  reference it. These corpora are external, human-curated ground truth by
+  construction, which is the model-collapse mitigation this architecture
+  depends on."). Fourth and final task of the K1 sub-epic; K1-T01
+  (governance contracts), K1-T02 (edges/ceilings/gates), and K1-T03
+  (systematic_evidence_synthesis v1 executor task family) are all MERGED on
+  `main` at this derivation's time (confirmed directly: `git log --oneline`
+  shows `accfef0` "K1-T03: systematic_evidence_synthesis executor —
+  deterministic corpus synthesis (#52)" as the current tip of the K1 line,
+  preceded by `9baf96a` K1-T02/#49 and `2ec8b25` K1-T01/#47; `git status`
+  reports a clean working tree on `main`) — unlike K1-T03's own derivation,
+  which had to account for an approved-but-unmerged K1-T02, this packet's
+  single dependency is fully satisfied on `main` already; see
+  coordination_note.
+
+  K1-T01's OWN already-accepted worked examples (`examples/question-model
+  .example.json`, `examples/concept-charter.example.json`, `examples/method
+  -protocol.example.json`, `examples/evidence-matrix.example.json`, `examples
+  /method-ruling.example.json`, `examples/research-decision.example.json` —
+  all read in full) are, confirmed by direct reading, ALREADY BUILT AROUND
+  THIS EXACT QUESTION: `question-model.example.json`'s own
+  `raw_question` is "Do works catalogued under AI-self-consumption actually
+  instantiate the model-collapse mechanism the technical literature
+  describes, or merely reference it?", its `load_bearing_terms` are
+  `["model-collapse mechanism", "instantiate", "reference"]`;
+  `concept-charter.example.json` already carries the two entries
+  `model-collapse-mechanism-v1`/`instantiate-vs-reference-v1` with the exact
+  instantiate/reference operationalization this packet's objective names;
+  `method-protocol.example.json`'s `planned_analyses` is
+  `["instantiation-vs-reference-classification"]` and its `kill_conditions`
+  is `["fewer than 5 included sources -> stop_insufficient_evidence"]`. This
+  packet therefore does not invent new example content from scratch — it
+  EXTENDS and grounds K1-T01's own already-accepted sketch with the real,
+  pinned atlas content and a second analysis (the theory-side sanity check,
+  derived_decisions (e)), and reconciles two numeric details the example
+  sketch left unexamined against the real corpus (its kill-condition
+  threshold of 5 vs. this packet's own threshold of 3, derived_decisions
+  (i); its single planned analysis vs. this packet's two, derived_decisions
+  (e)) — both are this packet's OWN proposal, not a redesign of the already-
+  accepted examples themselves (which this packet's forbidden_changes does
+  not touch).
+
+  K1-T03.yaml's own specification_gaps explicitly name three items as
+  "K1-T04's own scope to add, not retroactively this packet's": (1) "This
+  packet does not build QuestionModelService/ConceptCharterService/a
+  WRITE-side MethodProtocolService (create/submit/lock/amend) — it only
+  reads already-accepted/locked instances via the generic ObjectRepository.
+  If task-packets/K1-T04.yaml ... discovers it needs one of these services,
+  that is K1-T04's own scope to add"; (2) "This packet writes governed_by_
+  protocol/ruled_by/decided_by edges but never operationalizes
+  (ConceptCharter entry -> QuestionModel term) ... that edge is written when
+  a ConceptCharter is actually authored against a QuestionModel (K1-T04's
+  concern)". This packet accepts both as its own scope (derived_decisions
+  (f)/(g)). PR #52's own review comment (`gh pr view 52 --json comments`,
+  read in full) additionally flags a THIRD open item for this packet
+  specifically: "the capability-name synonym is single-sourced with no
+  silent-drift vector today — noted for K1-T04 planners that
+  MethodProfile.executor_task_family is not yet cross-checked against it."
+  This packet resolves that note explicitly: DEFERRED, with a narrow local
+  guard added instead of the general fix (derived_decisions (h)) — a
+  deliberate decision, not a silent omission.
+
+  `mrr.services.node_runtime.synthesis_executor` (K1-T03, read in full
+  again here) fixes this packet's own inbound data shapes exactly:
+  `CorpusEntry` (`model_config = ConfigDict(extra="forbid")` — no field
+  beyond its own declared set: `entry_id`, `applies_to_analysis`,
+  `claim_type` (`Literal["observational","interpretive"]`),
+  `evidence_relation` (`Literal["supports","contradicts","qualifies",
+  "contextualizes"]`), `verification_status`
+  (`Literal["verified","unverifiable","pending"]`), `unverifiable_reason`,
+  `claim_relevant_finding`, `extraction`, `source_family_id`, plus the
+  SourceRecord-shaped fields `identifiers` (`CorpusSourceIdentifiers`:
+  `doi`/`repository_id`/`archive_id`/`local_asset_id` — no raw `url` field
+  anywhere), `title`, `creators`, `publication_date`, `version`,
+  `retrieval_timestamp`, `retrieval_method`, `source_type`,
+  `primary_secondary_derived`, `derivation_evidence`, `accessibility`,
+  `licensing`) and `ProtocolParameters` (`protocol_id`,
+  `protocol_lock_content_hash`, `inclusion_filter: dict[str,
+  _InclusionFieldPredicate]`, `eligibility_rules: dict[str,
+  _EligibilityRule]` requiring exactly the two keys `"supported"`/
+  `"contested"`, `kill_conditions: _KillConditions` — ONE
+  `stop_insufficient_evidence.min_included_sources: int`, GLOBAL across
+  every `applies_to_analysis` group in one run, confirmed by direct reading
+  of `_classify_analysis`'s own single `min_included_sources` local
+  variable applied identically to whichever group is being classified —
+  `non_applicability_conditions: list[str]`, `Field(min_length=1)`).
+  Neither shape is this packet's to modify (forbidden_changes); this packet
+  designs its own real corpus and protocol-parameters content to fit them
+  exactly, and discloses the one place where that is a genuine constraint
+  rather than a free choice (derived_decisions (i)).
+
+  `services/control_plane/mrr/services/method_profile/service.py`
+  (K0-T01, read in full) and `services/control_plane/mrr/services/
+  evidence_matrix/service.py` (K1-T03, read in full) are the direct
+  structural templates for this packet's three new write-side services
+  (derived_decisions (f)): `MethodProfileService`'s own `propose`/`accept`/
+  `supersede` shape and event names (`method_profile.proposed`/`.accepted`/
+  `.superseded`) for `QuestionModelService`/`ConceptCharterService` (whose
+  lifecycles — `QUESTION_MODEL_LIFECYCLE`/`CONCEPT_CHARTER_LIFECYCLE`,
+  `packages/domain/mrr/domain/lifecycles.py` lines 655-689, confirmed by
+  direct reading — are the IDENTICAL two-edge `draft -> accepted ->
+  superseded` shape as `METHOD_PROFILE_LIFECYCLE`); `EvidenceMatrixService`'s
+  own "only implement the transitions this run's own caller actually needs,
+  leave the rest for a future task" restraint for the new
+  `MethodProtocolService` (`METHOD_PROTOCOL_LIFECYCLE`, five edges,
+  `packages/domain/mrr/domain/lifecycles.py` lines 739-742 area, confirmed:
+  `draft -> reviewed -> locked -> amended | executed`, `amended ->
+  reviewed`) — this packet implements only `create`/`submit_for_review`/
+  `lock` (the three transitions this run's own single, first-time
+  confirmatory pass needs), leaving `amend`/`execute` undrawn-by-this-
+  service for a future task, exactly mirroring `EvidenceMatrixService`'s own
+  disclosed "`superseded` not needed by this run's own caller" restraint.
+
+  `services/control_plane/mrr/services/cli/main.py` (E2-T07, read in full)
+  is the direct template for this packet's own new CLI subcommand: its
+  MRR-NFR-012 "explicit degradation, never a fabricated substitute"
+  discipline (DB-reachability and artifact-root-writability checks before
+  any service call; `code_revision` injected via `--code-revision`/
+  `MRR_CODE_COMMIT`, never derived by shelling out to `git`) and its
+  argparse subparser shape (`build_parser`/`_run_command`/`main`) are
+  reused verbatim in spirit for the new `synthesis run` subcommand
+  (derived_decisions (l)).
+
+  The two real corpora were verified to exist and their content read in
+  full at derivation time: `/Users/frankbultge/Documents/GitHub/irrtum-als
+  -methode/atlas/atlas.json` (87 entries, confirmed by direct count;
+  fields `id`/`author`/`work`/`year`/`type`/`url`/`tags`/`summary`/
+  `relevance`/`added_by`/`status`/`session_read`, confirmed by direct
+  reading of the first entry and a full field-name scan) and
+  `/Users/frankbultge/Documents/GitHub/frankbueltge.de/src/data/atlas/
+  werke.json` (214 entries, confirmed by direct count; fields `title`/
+  `artist`/`year`/`venue_prize`/`clusters`/`axis_pole`/`form`/
+  `medium_class`/`lab_renderable`/`decisive_move`/`source_url`/
+  `verify_status`). `sha256sum` recomputed FRESH at derivation time against
+  both files, matching the two previously-recorded hashes EXACTLY:
+  theory atlas `f712ea4e9c6b9137fa180ad91e73a86d8d09862792f33174c77acd76a891
+  e610`; works atlas `9d14e877efb245cc04b8451734b26285a274dda0418f5131db257
+  d2e4312d373` — both recorded again in derived_decisions (a) as the pinned
+  values this packet's own corpus snapshot copies are hash-bound to.
+
+  Neither atlas carries a literal "model-collapse"/"AI-self-consumption"
+  TAG value anywhere (confirmed: the theory atlas's full 87-entry tag
+  vocabulary — `epistemologie`, `ästhetik`, `artistic-research`,
+  `maschine/ki`, `computation`, `philosophie`, `fehler`,
+  `practice-as-research`, `kybernetik`, `beobachter`, `nicht-wissen`,
+  `clinamen/aleatorik`, `constraint/oulipo`, `diffraktion`, `rhizom`,
+  `selbstreferenz` — has no such tag; the works atlas has no `tags` field
+  at all). The task's own framing ("clusters/tags match AI-self-consumption
+  themes") is satisfied precisely by `werke.json`'s numeric `clusters`
+  field, cross-referenced against `/Users/frankbultge/Documents/GitHub/
+  frankbueltge.de/src/data/field/clusters.json` (read in full): cluster 7 is
+  named, verbatim, `"AI self-consumption"`, status `"emerging"`, blurb
+  "Turning AI's own logic against itself: benchmarks eaten by the models
+  they measure, fairness criteria that are mathematically impossible to
+  satisfy at once." Exactly 15 of the 214 works-atlas entries carry `7` in
+  their own `clusters` array (confirmed by direct count and full listing,
+  derived_decisions (d)). The theory atlas has no equivalent numeric
+  cluster field at all, so its own candidate set is found instead by a
+  disclosed keyword match over free text (derived_decisions (d)) — three
+  entries, confirmed by direct reading of their `tags`/`summary`/`work`
+  fields: `shumailov-curse-of-recursion` (Shumailov, Shumaylov, Zhao, Gal,
+  Papernot & Anderson, "The Curse of Recursion: Training on Generated Data
+  Makes Models Forget", 2023, peer-reviewed as Nature 631 (2024), also
+  arXiv), `alemohammad-self-consuming-generative-models-go-mad`
+  (Alemohammad, Casco-Rodriguez, Luzi, Humayun, Babaei, LeJeune, Siahkoohi &
+  Baraniuk, "Self-Consuming Generative Models Go MAD", 2023, arXiv), and
+  `gerstgrasser-is-model-collapse-inevitable` (Gerstgrasser, Schaeffer et
+  al., "Is Model Collapse Inevitable? Breaking the Curse of Recursion by
+  Accumulating Real and Synthetic Data", 2024, also COLM 2024, arXiv) —
+  three fully distinct author teams and three distinct venues, so three
+  independent source families by construction.
+
+  The task's own two named reference cases were confirmed present, verbatim,
+  in the pinned works-atlas snapshot: `Hammond, Felicity | "V3: Model
+  Collapse" | 2025 | clusters [4, 7] | verify_status "verified" |
+  decisive_move: "Third chapter of a four-part project in which each
+  exhibition's own photographs and collages are fed back as training data
+  for the next - literalizes AI model collapse as a visible, physically-
+  installed material process..."` — a description that, read against the
+  ConceptCharter's own `instantiate-vs-reference-v1` criterion (own-output
+  fed back as training data across successive generations), plainly
+  describes a genuine multi-generation recursive-training loop; and
+  `Kurant, Agnieszka | "Errorism" | 2024 | clusters [4, 7] | verify_status
+  "verified" | decisive_move: "Kurant feeds her own writings into GPT-2 and
+  GPT-3 and renders the output as a holographic animation, literally
+  closing the loop of a model trained on and regurgitating one author's own
+  words..."` — which trains a model on the ARTIST'S OWN (human-authored)
+  prior writing, not on a PRIOR GENERATION OF THE MODEL'S OWN output; the
+  atlas's own description does not establish a model-generation-to-model-
+  generation loop, only an author-to-model-to-output loop — a genuinely
+  different mechanism from the technical literature's own recursive-
+  training definition, which is why the task's own framing marks this case
+  "(assess)" rather than pre-deciding it. This packet does NOT itself
+  decide whether Kurant's case ends up `supports`/`contradicts`/`qualifies`
+  — that is exactly the extraction judgment call derived_decisions (j)
+  leaves to implementation time, on the record, unhardcoded.
+
+  Exactly one of the 15 works-atlas cluster-7 candidates carries
+  `verify_status: "toVerify"` rather than `"verified"` (confirmed by direct
+  reading: UBERMORGEN, Leonardo Impett & Joasia Krysa, "The Next Biennial
+  Should Be Curated by a Machine") — a naturally-occurring, non-injected
+  case for the `verification_status: "pending"`/`"unverifiable"` machinery
+  MRR-MTH-015 requires this packet's corpus to actually exercise
+  (derived_decisions (c)).
+
+  No persisted "hand-done micro-inquiry" document exists anywhere in either
+  this repository or the two atlas repositories (confirmed by
+  `grep -ril` across all three trees for "micro-inquiry"/"Hammond"/
+  "Kurant"/"Errorism"): the only textual trace is one paragraph in
+  `docs/design/2026-07-21-research-method-kernel-handoff.md` section 8
+  (lines 308-314, read in full): "in the originating conversation a
+  micro-inquiry was done by hand — cross-verifying whether art case studies
+  of 'AI model collapse' (Hammond V3: Model Collapse, Kurant Errorism)
+  actually instantiate the mechanism the model-collapse papers describe —
+  producing a claim table with evidence + independence check + honest
+  status (SUPPORTED / PARTIAL-thematic / CONTESTED-by-own-record). That
+  output IS what a systematic_evidence_synthesis profile should produce.
+  Reconstruct it if useful; it's the concrete target shape." This is a
+  genuine, disclosed limit on what "reproduces or improves on the hand-done
+  shape" can mean as an acceptance test: there is no surviving artifact to
+  diff against, only this one-paragraph description of its STRUCTURAL
+  shape — see derived_decisions (k) for how this packet turns that shape
+  description into a machine-checkable test without inventing or
+  hardcoding the specific claim values the lost original may have reached.
+
+  License compatibility of committing atlas COPIES into this repository
+  (task's own question (1)) was checked by direct reading of all three
+  repositories' own `LICENSE.md` files: `meridian-runtime/LICENSE.md`,
+  `irrtum-als-methode/LICENSE.md`, and `frankbueltge.de/CLAUDE.md`'s own
+  "License (all lab repos, 2026-07-12): noncommercial" note (cross-checked
+  against `frankbueltge.de`'s own license framing) all carry the IDENTICAL
+  license pair — code under PolyForm Noncommercial License 1.0.0, "Works,
+  texts, images and data" under CC BY-NC-SA 4.0 — with the IDENTICAL
+  Required Notice, "Copyright Frank Bültge (https://frankbueltge.de)", in
+  both `meridian-runtime` and `irrtum-als-methode`'s own `LICENSE.md` files
+  verbatim. Same rights holder, same license family, share-alike trivially
+  satisfied by construction — see derived_decisions (a).
+objective: >-
+  Deliver the first real `systematic_evidence_synthesis` v1 research output,
+  in four parts:
+
+  (a) Pinned, hash-verified COPIES of the two complete real atlases,
+  committed under a new `corpora/model-collapse/` directory, plus this
+  packet's own drafted PROPOSAL content for the QuestionModel, ConceptCharter,
+  MethodProtocol, and protocol-parameters sidecar — every governance-object
+  proposal explicitly marked as a proposal, reviewable by the project owner
+  before any publication, per the task's own instruction.
+
+  (b) Three new, minimal, additive-only write-side services —
+  `QuestionModelService`, `ConceptCharterService` (create/accept, mirroring
+  `MethodProfileService` exactly), and a `MethodProtocolService` scoped to
+  `create`/`submit_for_review`/`lock` only (mirroring `EvidenceMatrixService`'s
+  own "implement only what this run's own caller needs" restraint) — so this
+  first real run drives its own prerequisite objects through their REAL,
+  event-emitting lifecycles rather than bypassing them with a raw,
+  test-only `_seed_generic`-style insert.
+
+  (c) A new composition function, `establish_and_run_synthesis`
+  (`services/control_plane/mrr/services/cli/synthesis_setup.py`, new file —
+  NOT a modification of `synthesis_orchestration.py`, mirroring that
+  module's own "new sibling file, not a modification" discipline), which
+  proposes+accepts a fresh `MethodProfile` (or reuses a caller-supplied
+  accepted one), proposes+accepts the `QuestionModel` and `ConceptCharter`,
+  writes the `operationalizes` edge between them, creates+reviews+locks the
+  `MethodProtocol`, and then calls the EXISTING, UNCHANGED
+  `run_synthesis_evidence_loop` (K1-T03) with the real corpus derived from
+  the pinned atlas snapshots and the protocol-parameters sidecar.
+
+  (d) A new CLI subcommand, `mrr synthesis run`, so the project owner can
+  reproduce the real run from the committed fixtures with one command,
+  mirroring `mrr run`'s own MRR-NFR-012 "explicit degradation, never a
+  fabricated substitute" discipline.
+
+  Deliberately and explicitly deferred, with reasons given: (i) the general
+  fix for the capability-name pattern conflict PR #52's review flagged
+  (derived_decisions (h)); (ii) per-analysis kill-condition/eligibility
+  thresholds, which the existing, protected `ProtocolParameters` sidecar
+  shape cannot express (derived_decisions (i)); (iii) `amend`/`execute`
+  transitions on the new `MethodProtocolService`; (iv) the model-assisted
+  extraction path (K1-T03's own separately-tested, optional slice is reused
+  UNCHANGED, never exercised by this run's own acceptance path,
+  derived_decisions (j)); (v) any output landing, projection, or site
+  coupling for the resulting claim landscape (the plan's own words: "Frank's
+  call", explicitly out of scope here).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#4-normative-requirements
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#5-profile-systematic_evidence_synthesis-v1-the-first-profile
+  - docs/design/2026-07-21-research-method-kernel-plan.md
+  - docs/design/2026-07-21-research-method-kernel-handoff.md
+  - task-packets/K1-T01.yaml
+  - task-packets/K1-T02.yaml
+  - task-packets/K1-T03.yaml
+  - task-packets/K0-T01.yaml
+  - task-packets/E2-T07.yaml
+  - examples/method-profile.example.json
+  - examples/question-model.example.json
+  - examples/concept-charter.example.json
+  - examples/method-protocol.example.json
+  - examples/evidence-matrix.example.json
+  - examples/method-ruling.example.json
+  - examples/research-decision.example.json
+  - packages/contracts/mrr/contracts/question_model.py
+  - packages/contracts/mrr/contracts/concept_charter.py
+  - packages/contracts/mrr/contracts/method_protocol.py
+  - packages/contracts/mrr/contracts/method_profile.py
+  - packages/contracts/mrr/contracts/common.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/repositories.py
+  - packages/domain/mrr/domain/exceptions.py
+  - services/control_plane/mrr/services/method_profile/service.py
+  - services/control_plane/mrr/services/evidence_matrix/service.py
+  - services/control_plane/mrr/services/cli/main.py
+  - services/control_plane/mrr/services/cli/synthesis_orchestration.py
+  - services/node_runtime/mrr/services/node_runtime/synthesis_executor.py
+  - tests/e2e/test_k1_t03_synthesis_evidence_loop.py
+  - /Users/frankbultge/Documents/GitHub/irrtum-als-methode/atlas/atlas.json
+  - /Users/frankbultge/Documents/GitHub/irrtum-als-methode/LICENSE.md
+  - /Users/frankbultge/Documents/GitHub/frankbueltge.de/src/data/atlas/werke.json
+  - /Users/frankbultge/Documents/GitHub/frankbueltge.de/src/data/field/clusters.json
+requirements:
+  - MRR-MTH-001
+  - MRR-MTH-002
+  - MRR-MTH-003
+  - MRR-MTH-004
+  - MRR-MTH-006
+  - MRR-MTH-007
+  - MRR-MTH-010
+  - MRR-MTH-011
+  - MRR-MTH-013
+  - MRR-MTH-015
+  - MRR-MTH-016
+  - MRR-MTH-017
+  - MRR-MTH-018
+  - MRR-MTH-019
+  - MRR-MTH-020
+  - MRR-FR-035
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - corpora/model-collapse/**
+  - services/control_plane/mrr/services/question_model/**
+  - services/control_plane/mrr/services/concept_charter/**
+  - services/control_plane/mrr/services/method_protocol/**
+  - services/control_plane/mrr/services/cli/synthesis_setup.py
+  - services/control_plane/mrr/services/cli/synthesis_main.py
+  - >-
+    services/control_plane/mrr/services/cli/main.py — ONE additive change
+    only: register a new "synthesis" subparser group (`mrr synthesis run`)
+    that delegates to `synthesis_main.py`; no other line in this file
+    changes, and the existing `run` subcommand/`_run_command` are untouched
+  - >-
+    packages/domain/mrr/domain/exceptions.py — additive only:
+    `QuestionModelNotFoundError`, `ConceptCharterNotFoundError`,
+    `MethodProtocolNotFoundError` (mirroring `EvidenceMatrixNotFoundError`/
+    `MethodRulingNotFoundError` exactly, one `<id>` field each)
+  - tests/unit/**
+  - tests/integration/**
+  - tests/e2e/**
+  - tests/property/**
+forbidden_changes:
+  - >-
+    the six K1-T01 contract kinds' own schemas/Pydantic models
+    (`schemas/{question-model,concept-charter,method-protocol,
+    evidence-matrix,method-ruling,research-decision}.schema.json`,
+    `packages/contracts/mrr/contracts/{question_model,concept_charter,
+    method_protocol,evidence_matrix,method_ruling,research_decision}.py`)
+    and their `packages/domain/mrr/domain/lifecycles.py` `StateMachine`
+    constants — this packet only drives already-drawn transitions on
+    already-defined shapes; no field, state, or edge is added to any of them
+  - >-
+    `services/node_runtime/mrr/services/node_runtime/synthesis_executor.py`
+    — including `ProtocolParameters`/`_KillConditions`/`_EligibilityRule`'s
+    single-global-threshold-per-run shape (derivation, derived_decisions
+    (i)) — and `dispatch.py`/`executor.py` (K0-T02/E2-T04): all UNCHANGED,
+    consumed exactly as K1-T03 already exposes them
+  - >-
+    `services/control_plane/mrr/services/cli/synthesis_orchestration.py`
+    (`run_synthesis_evidence_loop`) and `orchestration.py`
+    (`run_local_evidence_loop`) — both UNCHANGED; this packet's new
+    `synthesis_setup.py` calls the former exactly as K1-T03 already exposes
+    it, in its own new, additional composition step
+  - >-
+    `services/control_plane/mrr/services/{evidence_matrix,method_ruling,
+    research_decision}/**` (K1-T03's own three new services) — consumed
+    unchanged, no new method added to any of them
+  - >-
+    `packages/contracts/mrr/contracts/node_manifest.py` and
+    `packages/contracts/mrr/contracts/method_profile.py` — the capability-
+    name pattern conflict PR #52's review flagged is NOT fixed here (see
+    derived_decisions (h): deferred, with a local guard added instead, not
+    a silent omission)
+  - >-
+    ANY Alembic migration or change to
+    `packages/persistence/mrr/persistence/tables.py` — not needed: the
+    `operationalizes` edge type already exists in `EDGE_VOCABULARY`/the
+    database CHECK constraint since K1-T02's migration
+    (`aa2adabee4de_widen_edge_type_vocabulary_for_method_kernel_edges.py`),
+    and `objects.kind` remains a plain, unconstrained `sa.Text()` column
+    (K1-T03's own confirmed reading, unchanged), so no new object kind here
+    needs a schema change either
+  - HTTP/FastAPI endpoints
+  - >-
+    the atlases' HOME repositories — `/Users/frankbultge/Documents/GitHub/
+    irrtum-als-methode/` and `/Users/frankbultge/Documents/GitHub/
+    frankbueltge.de/` — are READ-ONLY sources for this packet; this packet
+    never writes to either tree, only reads and copies (derived_decisions
+    (a))
+  - >-
+    any output-landing, projection, HTML, or site-coupling code for the
+    resulting claim landscape — explicitly out of this packet's scope (the
+    plan's own words: "site coupling is Frank's call")
+  - >-
+    `amend`/`execute` transitions on the new `MethodProtocolService` — only
+    `create`/`submit_for_review`/`lock` are implemented (derived_decisions
+    (f)); a future task's job if this run is ever amended
+derived_decisions:
+  - >-
+    (a) CORPUS SNAPSHOT LOCATION, CONTENT, AND LICENSE. `corpora/model-
+    collapse/` (new, sibling to `examples/`/`schemas/`/`migrations/`) holds
+    FULL, VERBATIM copies of both complete atlas files — not a hand-picked
+    subset — because the actual candidate-selection filtering
+    (derived_decisions (d)) must itself be reproducible and auditable
+    against a stable, complete, pinned corpus, not against a slice someone
+    already narrowed by hand (which would risk quietly discarding contrary
+    evidence before the protocol ever gets a chance to consider it):
+    `corpora/model-collapse/theory-atlas.snapshot.json` (verbatim copy of
+    `irrtum-als-methode/atlas/atlas.json`, 87 entries, pinned to
+    `sha256:f712ea4e9c6b9137fa180ad91e73a86d8d09862792f33174c77acd76a891e610`)
+    and `corpora/model-collapse/works-atlas.snapshot.json` (verbatim copy of
+    `frankbueltge.de/src/data/atlas/werke.json`, 214 entries, pinned to
+    `sha256:9d14e877efb245cc04b8451734b26285a274dda0418f5131db257d2e4312d373`)
+    — both hashes recomputed fresh at this derivation and confirmed
+    IDENTICAL to the values recorded before this packet was derived.
+    `corpora/model-collapse/snapshot-manifest.json` records
+    `{"theory_atlas": {"source_path": "<home-repo path>", "sha256": "...",
+    "entry_count": 87, "pinned_at": "<date>"}, "works_atlas": {...
+    "entry_count": 214 ...}}` — a plain, machine-checkable drift detector
+    (recompute the two committed copies' own sha256 at any time and compare
+    to this manifest; see acceptance_tests) that says nothing about whether
+    the HOME repos have since changed (pinning explicitly means "frozen at
+    this hash", not "live-synced" — re-verifying against the CURRENT home-
+    repo state is a separate, manual act, not this packet's own concern).
+    LICENSE: `meridian-runtime/LICENSE.md` and `irrtum-als-methode/
+    LICENSE.md` are, confirmed by direct reading, IDENTICAL — PolyForm
+    Noncommercial License 1.0.0 for code, CC BY-NC-SA 4.0 for "works, texts,
+    images and data", "Required Notice: Copyright Frank Bültge
+    (https://frankbueltge.de)" verbatim in both; `frankbueltge.de`'s own
+    `CLAUDE.md` states the identical "License (all lab repos, 2026-07-12):
+    noncommercial" position for that repo's data. Same rights holder, same
+    license family, share-alike trivially satisfied — committing hash-
+    pinned COPIES into a third repo under the SAME license, by the SAME
+    rights holder, is license-compatible without any additional grant. This
+    is noted explicitly rather than assumed silently, per the task's own
+    question.
+  - >-
+    (b) ATLAS-FIELD -> `CorpusEntry`-FIELD MAPPING CONVENTION (disclosed,
+    not schema-enforced beyond `CorpusEntry`'s own field types, per
+    `extra="forbid"`): `identifiers.repository_id` <- the atlas's own
+    `url`/`source_url` field for both atlas types (the closest existing
+    `CorpusSourceIdentifiers` field to "a resolvable locator", since neither
+    `CorpusEntry` nor `SourceRecord` carries a literal `url` field at all —
+    confirmed by direct reading); `identifiers.local_asset_id` <- the
+    atlas's own internal `id` (theory atlas) or a title-slug (works atlas,
+    which has no dedicated `id` field) for cross-referencing back to the
+    pinned snapshot file + entry; `primary_secondary_derived` <- `"primary"`
+    for theory-atlas rows (each entry IS itself the primary technical
+    source — a peer-reviewed paper or preprint) and `"secondary"` for
+    works-atlas rows (the atlas's own `decisive_move` is the CURATOR's
+    secondary account of the primary artwork, not the artwork's own primary
+    documentation — a deliberately conservative reading, not assumed
+    "primary" merely because the atlas itself is described as "verified");
+    `source_type` <- a small, fixed vocabulary (`"peer-reviewed-preprint"`
+    for the two arXiv-plus-formal-venue theory entries,
+    `"conference-preprint"` acceptable for the COLM-plus-arXiv entry,
+    `"curated-artwork-record"` for every works-atlas row); `retrieval_
+    method` <- `"direct read of the pinned, hash-verified snapshot copy at
+    corpora/model-collapse/{theory,works}-atlas.snapshot.json"`;
+    `retrieval_timestamp` <- the implementation date. An optional, non-
+    mandated helper script (e.g. `corpora/model-collapse/build_corpus.py`)
+    MAY encode this mapping mechanically at implementation time; this
+    packet does not require one to exist.
+  - >-
+    (c) `verification_status` MAPPING — ATLAS-LEVEL PROVENANCE CLAIM VS.
+    PER-ENTRY VERIFY MARKER, KEPT DISTINCT. Theory-atlas rows map to
+    `verification_status = "verified"` UNIFORMLY: spec 08 section 5's own
+    framing of the whole corpus ("87 provenance-verified sources") is a
+    claim about the ATLAS'S OWN curation bar, independent of that atlas's
+    internal, per-entry `status` field (`seed`/`read`/`worked`, which
+    tracks how deeply a human curator has ENGAGED with a source, not
+    whether the source itself is real and independently resolvable).
+    REJECTED ALTERNATIVE, disclosed: mapping `status` directly onto
+    `verification_status` (`worked`/`read` -> verified, `seed` -> pending)
+    was considered and rejected, because two of the three model-collapse
+    papers (`shumailov-curse-of-recursion`, `alemohammad-self-consuming-
+    generative-models-go-mad`) are atlas-status `"seed"` despite being real,
+    peer-reviewed, independently resolvable arXiv/Nature papers — conflating
+    curation depth with source verifiability would misrepresent two
+    genuinely solid sources as merely "pending". Works-atlas rows map from
+    that atlas's OWN explicit, per-entry `verify_status` field instead
+    (`"verified"` -> `verified`; `"toVerify"` -> `pending`), because THIS
+    field, unlike the theory atlas's `status`, is explicitly a verification
+    marker on that specific entry, not a curation-progress marker. As of
+    the pinned hash, exactly one of the 15 works-atlas cluster-7 candidates
+    carries `verify_status: "toVerify"` (UBERMORGEN, "The Next Biennial
+    Should Be Curated by a Machine") — a genuine, naturally-occurring
+    `pending` row, satisfying MRR-MTH-015's "unverifiable/pending rows are
+    marked, never dropped" without any artificial injection.
+  - >-
+    (d) CANDIDATE-CORPUS COMPOSITION — DETERMINISTIC, COMPUTED AGAINST THE
+    PINNED HASH, NOT THE RESEARCH FINDING. Works-atlas candidates: every
+    entry whose own `clusters` array contains `7` (`"AI self-consumption"`
+    per `src/data/field/clusters.json`) — exactly 15 entries as of the
+    pinned hash: Libby Heaney "Ent- (non-earthly delights)"; Wilding AI
+    (research-creation collective) "Wilding AI Lab"; the Chronus Art Center
+    group exhibition "AI Delivered: The Abject"; Éric Baudelaire "En
+    attendant le récit / Tales of Narrativelessness"; Agnieszka Kurant
+    "Errorism"; Madeep Raikhy "Hallucinations of an Artifact"; UBERMORGEN,
+    Leonardo Impett & Joasia Krysa "The Next Biennial Should Be Curated by
+    a Machine" (`verify_status: "toVerify"`); Maria Mavropoulou "The
+    Sleight of the Machine"; Felicity Hammond "V3: Model Collapse"; Kidus
+    Hailesilassie "6,500 Alphabets Make a Map"; Michael Salu & James
+    Ginzburg (eds.) "Cybernetics, or Ghosts?"; Patricia Domínguez "Matrix
+    Vegetal"; Sahej Rahal "Mythmachine"; Fabien Giraud "The Feral: Epoch 1";
+    Ian Cheng "Thousand Lives (BOB lineage)". Theory-atlas candidates: no
+    numeric cluster field exists on that atlas, so its candidates are found
+    instead by a disclosed, fixed, case-insensitive keyword match over each
+    entry's own `tags` + `summary` + `work` fields (keyword set: "model
+    collapse", "model-collapse", "self-consuming", "self-consumption",
+    "autophagy", "MAD", "curse of recursion") over the FULL 87-entry atlas
+    — exactly 3 entries as of the pinned hash: `shumailov-curse-of-
+    recursion`, `alemohammad-self-consuming-generative-models-go-mad`,
+    `gerstgrasser-is-model-collapse-inevitable` (three distinct author
+    teams, three distinct venues — three independent source families by
+    construction, satisfying MRR-MTH-015's "copied or derivative sources
+    MUST NOT count as independent evidence" trivially). Both counts (15,
+    3) — and the exact membership lists above — are DETERMINISTIC facts
+    about the pinned hash, fixed by the protocol BEFORE any classification
+    happens (MRR-MTH-007's own "lock before confirmatory work" discipline,
+    applied here to corpus membership specifically) — genuinely different
+    from, and not to be confused with, the per-entry `evidence_relation`
+    classification (derived_decisions (j)), which is the actual research
+    judgment this packet does NOT make.
+  - >-
+    (e) TWO `applies_to_analysis` GROUPS, NOT ONE. Extending K1-T01's own
+    already-accepted `method-protocol.example.json` sketch (a single
+    `"instantiation-vs-reference-classification"` analysis) with a SECOND,
+    new analysis this packet adds: `"model-collapse-mechanism-theory-
+    confirmation"` (`claim_type: "observational"` — the three theory-atlas
+    papers, each `evidence_relation: "supports"`, corroborating the
+    mechanism's own existence; a "positive control" showing the pipeline
+    can and does produce a genuine `supported`-track finding, not only
+    negative results) alongside `"instantiation-vs-reference-classification"`
+    (`claim_type: "interpretive"` — reused verbatim from the already-
+    accepted example — the 15 works-atlas candidates, each entry's
+    `evidence_relation` set at implementation time per the ConceptCharter's
+    own decision procedure below: `"supports"` if the work's OWN documented
+    production process feeds model-generated output back into training
+    across at least two generations [instantiates]; `"contradicts"` if the
+    work only depicts, critiques, or thematizes the phenomenon, or trains
+    on HUMAN-authored material without a demonstrable model-generation-to-
+    model-generation loop [references only]; `"qualifies"` for a genuinely
+    mixed or under-disclosed case [assessed case by case, excluded from the
+    supporting/contradicting count per `_classify_analysis`'s own existing
+    behavior]). `ConceptCharterEntry` `instantiate-vs-reference-v1`'s
+    `definition` is extended (this packet's own proposal, not a redesign of
+    the already-accepted example's wording) with this exact two-step test,
+    a decision procedure a human reviewer can apply directly against each
+    work's `decisive_move` + `source_url`: Step 1 — does the work's own
+    documented production process feed model-GENERATED output back in as
+    training input for a SUBSEQUENT generation of the same (or a
+    continuous) generative pipeline, across at least two generations? If
+    yes -> instantiates. Step 2 — if the work only depicts/critiques/
+    thematizes the phenomenon, or trains on human-authored material (even
+    the artist's own prior writing) without a demonstrable model-
+    generation-to-model-generation loop -> references only. Ambiguous or
+    incompletely disclosed cases -> `"qualifies"`, assessed individually,
+    never force-fit into either bucket. Applied (by this packet's own
+    derivation, NOT prescribed as the run's own hardcoded result — see
+    derived_decisions (j)) to the task's two named reference cases:
+    Hammond's own documented process ("each exhibition's own photographs
+    and collages are fed back as training data for the next") plainly
+    clears Step 1; Kurant's own documented process (the artist's OWN prior
+    writing, not the model's own prior output, becomes the training
+    material) does not clearly clear Step 1 as written — genuinely
+    ambiguous, hence "(assess)" in the task's own framing, resolved only at
+    implementation time.
+  - >-
+    (f) REAL GOVERNANCE-OBJECT LIFECYCLE WIRING — THREE NEW THIN SERVICES.
+    `QuestionModelService` and `ConceptCharterService`
+    (`services/control_plane/mrr/services/{question_model,concept_charter}/
+    service.py`, new) each mirror `MethodProfileService`'s EXACT shape —
+    one `bind_unit_of_work`, one local `RecordRevisionWithEvent`-typed
+    callable (a local copy, not a shared import, per that module's own
+    established precedent), `propose` (draft, revision 1, event
+    `question_model.proposed`/`concept_charter.proposed`) + `accept`
+    (draft -> accepted, event `.accepted`) — their lifecycles
+    (`QUESTION_MODEL_LIFECYCLE`/`CONCEPT_CHARTER_LIFECYCLE`) are the
+    IDENTICAL two-edge shape as `METHOD_PROFILE_LIFECYCLE`, so no new
+    transition logic is invented, only the same shape re-instantiated
+    for two more kinds. `MethodProtocolService`
+    (`services/control_plane/mrr/services/method_protocol/service.py`, new)
+    is scoped to exactly THREE transitions this run's own single,
+    first-time confirmatory pass needs: `create` (draft, revision 1, event
+    `method_protocol.created`), `submit_for_review` (draft -> reviewed,
+    event `method_protocol.reviewed`), and `lock` (reviewed -> locked,
+    setting `locked_at`/`locked_by` per `MethodProtocol`'s own MRR-MTH-007
+    co-occurrence validator, event `method_protocol.locked`) — mirroring
+    `EvidenceMatrixService`'s own disclosed "only `create`/`activate`/
+    `freeze` implemented; `superseded` left for a future task that actually
+    needs it" restraint, applied here to `amend`/`execute` instead
+    (forbidden_changes). A new composition function,
+    `establish_and_run_synthesis`
+    (`services/control_plane/mrr/services/cli/synthesis_setup.py`, new
+    file — mirroring `synthesis_orchestration.py`'s own "new sibling file,
+    not a modification" discipline, so this packet's diff cannot regress
+    K1-T03's own composition by construction), calls, in order: (1)
+    `MethodProfileService.propose`+`.accept` for a fresh `MethodProfile`
+    (or accepts a caller-supplied already-accepted `method_profile_id`,
+    mirroring `run_synthesis_evidence_loop`'s own "caller-supplied executor
+    override" flexibility precedent) — reusing `MethodProfileService`
+    entirely unchanged; (2) `QuestionModelService.propose`+`.accept` from
+    this packet's own drafted content; (3) `ConceptCharterService.propose`
+    +`.accept` from this packet's own drafted content, followed by ONE
+    `operationalizes` edge write (derived_decisions (g)); (4)
+    `MethodProtocolService.create`+`.submit_for_review`+`.lock` from this
+    packet's own drafted content, referencing the profile id from step (1);
+    (5) `run_synthesis_evidence_loop` (K1-T03, UNCHANGED) with the
+    resulting `question_model_id`/`method_protocol_id`, the real
+    `corpus_entries` derived from the pinned atlas snapshots
+    (derived_decisions (b)/(d)), and the `protocol_parameters` sidecar
+    (derived_decisions (i)).
+  - >-
+    (g) THE `operationalizes` EDGE — OBJECT-LEVEL, NOT ENTRY-LEVEL; A
+    DISCLOSED, NOT A CLEAN, FIT. `establish_and_run_synthesis` writes
+    exactly ONE `operationalizes` edge (`ConceptCharter.id -> QuestionModel
+    .id`) via a new local helper, `_write_operationalizes_edge` — a local
+    copy of `synthesis_orchestration._write_governed_by_protocol_edge`'s
+    own shape (same "local copy across separate modules" precedent that
+    module's own docstring already establishes), differing only in
+    `edge_type`/event name (`concept_charter.operationalizes_recorded`).
+    HONESTLY DISCLOSED, NOT A CLEAN FIT: spec 08 section 3 names this edge
+    "ConceptCharter entry -> QuestionModel term" — finer-grained than a
+    whole-object edge — but `TypedEdge`/`EDGE_VOCABULARY`'s actual
+    mechanism (confirmed by direct reading of
+    `packages/domain/mrr/domain/repositories.py`) connects only whole
+    first-class object ids; there is no sub-object/list-entry addressing
+    anywhere in this codebase's edge layer. This packet therefore writes
+    the coarsest available reading (whole `ConceptCharter` -> whole
+    `QuestionModel`), and relies on an ORDINARY, non-schema-enforced
+    convention instead — every `ConceptCharterEntry.term` string SHOULD
+    equal one of `QuestionModel.load_bearing_terms`' own strings — checked
+    by a plain unit test (acceptance_tests), not a database constraint.
+    Flagged for reviewer confirmation, exactly mirroring how K1-T03 flagged
+    its own "crate_sealing" step-name reading as a disclosed, not obviously
+    correct, interpretation.
+  - >-
+    (h) THE CAPABILITY-NAME SYNONYM CROSS-CHECK (PR #52 REVIEW) — DEFERRED,
+    WITH A NARROW LOCAL GUARD INSTEAD OF THE GENERAL FIX. PR #52's review
+    comment names this open item for "K1-T04 planners" specifically:
+    "MethodProfile.executor_task_family is not yet cross-checked against
+    [`_NODE_CAPABILITY_NAME`]." This packet's own decision: DEFER the
+    general fix. Fixing it properly means either relaxing `NodeManifest.
+    CapabilityDefinition.name`'s pattern (`^[a-z0-9-]+(\.[a-z0-9-]+)+$`,
+    which the real, already-accepted `CAPABILITY_NAME =
+    "mrr.method.systematic_evidence_synthesis/1"` cannot satisfy) or
+    introducing a formal synonym registry — both changes to protected,
+    foundational E2-T02/K0-T01 contracts well outside this packet's own
+    `allowed_paths`, and disproportionate to "run one real research
+    question." Instead, `establish_and_run_synthesis` adds ONE plain,
+    cheap, LOCAL runtime assertion: immediately after accepting the fresh
+    (or caller-supplied) `MethodProfile`, assert `CAPABILITY_NAME in
+    accepted_profile.executor_task_family`, raising loudly and explicitly
+    before any further step runs if it does not — catching an accidental
+    drift between the semantic capability name and the profile's own
+    declaration WITHIN this composition's own control, without touching
+    `NodeManifest` or inventing a registry. This is explicitly NOT the
+    general fix PR #52's review named; that remains open, left for a
+    future, dedicated task (named again here, per that review's own
+    wording, so it is not lost).
+  - >-
+    (i) A SINGLE, SHARED KILL-CONDITION / ELIGIBILITY THRESHOLD TABLE
+    ACROSS BOTH ANALYSES — A GENUINE, DISCLOSED LIMITATION, NOT A FREE
+    CHOICE. `ProtocolParameters.kill_conditions`/`eligibility_rules`
+    (K1-T03's own protected shape) apply ONE shared threshold table to
+    EVERY `applies_to_analysis` group in a single run — confirmed by direct
+    reading of `_classify_analysis`'s own single `min_included_sources`
+    local variable, applied identically regardless of which group is being
+    classified. This packet's two analyses have very different natural
+    scale (3 theory sources vs. 15 works candidates), so ONE shared
+    threshold cannot independently tune "how much theory evidence is
+    enough" against "how much art-historical evidence is enough" — a real
+    limitation, not an oversight; extending the sidecar to a `dict[str,
+    _KillConditionInsufficientEvidence]` keyed by `applies_to_analysis`
+    would fix this cleanly but requires touching the protected
+    `synthesis_executor.py` (forbidden_changes) and is left as a disclosed
+    follow-up need, not implemented here. This packet's own PROPOSED
+    numbers, chosen so the SMALLER (theory) corpus is the binding
+    constraint while the larger works corpus clears the same floor
+    trivially: `kill_conditions.stop_insufficient_evidence.
+    min_included_sources = 3` (the theory analysis must include all three
+    papers, verified, to clear this floor at all — a genuinely tight,
+    honest constraint: if even one theory paper's inclusion were later
+    disputed, that analysis alone would flip to `insufficient_evidence`);
+    `eligibility_rules.supported.min_independent_source_families = 2`;
+    `eligibility_rules.contested.min_independent_source_families = 1` —
+    for BOTH analyses, since the shape provides no per-analysis
+    granularity.
+  - >-
+    (j) EXTRACTION STAYS MODEL-FREE (RECOMMENDED, PER THE PLAN'S OWN
+    WORDS AND K1-T03'S OWN REQUIRED MODEL-FREE PATH) — AND THE ACTUAL
+    CLASSIFICATION IS NOT THIS PACKET'S TO DECIDE. `establish_and_run_
+    synthesis` calls `run_synthesis_evidence_loop` with NO injected
+    `executor`/`extraction_callable` override — `SystematicEvidenceSynthesis
+    Executor`'s own default (`extraction_callable=None`) is used, exactly
+    like K1-T03's own headline acceptance path, keeping this first real
+    crate fully deterministic and verifiable end to end with zero model
+    dependency anywhere in the run. The actual per-candidate classification
+    (`evidence_relation`, `claim_relevant_finding`, and the
+    `verification_status` mapping from derived_decisions (c)) is authored
+    directly into `corpora/model-collapse/corpus-entries.json` BY THE
+    IMPLEMENTER, at implementation time, following the ConceptCharter's own
+    stated decision procedure (derived_decisions (e)) — this packet drafts
+    the PROCEDURE and the deterministic CANDIDATE LIST (derived_decisions
+    (d)), not the classification of each candidate. The actual per-analysis
+    outcome (supported / contested / unsupported / insufficient_evidence)
+    is therefore genuinely unknown until that step happens for real, and
+    MUST NOT be hardcoded into any test as an expected value — see
+    derived_decisions (k) and stop_conditions. Model-assisted extraction
+    (K1-T03's own separately-tested, optional `build_model_assisted_
+    extraction_callable`) is reused entirely UNCHANGED and never exercised
+    by this packet's own acceptance path; a hypothetical "K1-T04b" exploring
+    it is explicitly not scheduled by this packet.
+  - >-
+    (k) "REPRODUCES OR IMPROVES ON THE HAND-DONE SHAPE" MADE MACHINE-
+    CHECKABLE WITHOUT HARDCODING THE ANSWER. Since no persisted hand-done-
+    micro-inquiry artifact survives anywhere (derivation), the acceptance
+    test checks STRUCTURAL properties the one surviving paragraph
+    describes ("a claim table with evidence + independence check + honest
+    status per claim"), never specific claim values: (1) the run persists
+    >= 2 distinct `applies_to_analysis` outcomes (a landscape, not one
+    monolithic claim — reproducing the hand-done inquiry's own plural
+    "claim table" shape); (2) the frozen `EvidenceMatrix` contains >= 1 row
+    whose `verification_status != "verified"` (true by construction given
+    UBERMORGEN's `toVerify` status — a data-provenance fact, not a
+    finding); (3) every persisted `Claim` carries a `ruled_by` edge to a
+    `MethodRuling` whose `scope_of_validity`/`non_applicability_conditions`
+    are non-empty (MRR-MTH-017); (4) the run's own SET of outcomes is NOT
+    uniformly positive — i.e., at least one analysis ends `contested`,
+    `unsupported`, or as a `ResearchDecision(decision_type=
+    "stop_insufficient_evidence")` — asserted as a property over WHICHEVER
+    outcomes the real classification actually produces, never as "claim X
+    has status Y" (this is the plan's own mandatory acceptance criterion,
+    made testable without prescribing which analysis it is); (5) the
+    sealed `EvidenceCrate` is independently traceable via
+    `governed_by_protocol`/`ruled_by`/`operationalizes` edges back through
+    the `MethodProtocol` to the `QuestionModel`/`ConceptCharter` (K1's own
+    stated exit criterion, directly testable). HONEST LIMIT, stated
+    plainly: this test CANNOT verify in advance that the real corpus
+    content genuinely produces a mixed (not uniformly supported) outcome —
+    that depends on the actual classification work at implementation time.
+    Derived_decisions (e)'s own reading of the atlas's `decisive_move`
+    texts (only Hammond's clears the instantiate test cleanly; Kurant's is
+    a genuine, unresolved "assess"; the remaining ~13 candidates read as
+    thematic-only per a first pass) gives strong prior reason to expect
+    property (4) holds honestly, not merely by construction — but if the
+    real, honest classification disagrees, the plan's own words are
+    explicit that this is a packet FAILURE requiring redesign
+    (stop_conditions), never a result to paper over by loosening what
+    "supported" means or by discarding contrary evidence.
+  - >-
+    (l) THE CLI ENTRY — `mrr synthesis run`. `services/control_plane/mrr/
+    services/cli/main.py`'s own `build_parser` gains ONE additive change:
+    a new `subparsers.add_parser("synthesis")` whose OWN nested
+    subparsers currently declare exactly one subcommand, `"run"` —
+    `mrr synthesis run` — delegating entirely to a new sibling module,
+    `services/control_plane/mrr/services/cli/synthesis_main.py` (mirroring
+    `main.py`'s own `build_parser`/`_run_command`/`main` shape, kept in its
+    own file so `main.py`'s own diff stays a one-line, additive
+    registration, exactly like K1-T03 kept `orchestration.py` untouched by
+    adding a sibling file). Flags mirror `mrr run`'s own naming exactly
+    where the concept is the same (`--database-url`, `--artifact-root`,
+    `--origin-key-file`, `--node-key-file`, `--code-revision`, `--json`,
+    the same MRR-NFR-012 "check DB reachability and artifact-root
+    writability before any service call, refuse to fabricate a substitute
+    result" discipline) plus five NEW, this-run-specific flags:
+    `--question-model-file`, `--concept-charter-file`, `--method-protocol-
+    file` (the three governance-object proposal JSONs), `--corpus-file`,
+    `--protocol-parameters-file` (the corpus + sidecar JSONs) — all
+    defaulting to the committed `corpora/model-collapse/*.json` paths, so
+    `mrr synthesis run --database-url ... --artifact-root ...` alone
+    reproduces the committed real run with no further arguments, per the
+    task's own "so the owner can reproduce the run" requirement. Prints
+    (or, with `--json`, serializes) the resulting `evidence_crate_id`,
+    `run_manifest_id`, `question_model_id`, `concept_charter_id`,
+    `method_protocol_id`, `evidence_matrix_id`, `claim_ids`,
+    `method_ruling_ids`, `research_decision_ids`, and `run_state` — every
+    id a reviewer needs to independently resolve and verify the crate
+    end to end, mirroring `SynthesisEvidenceLoopResult`'s own "every id a
+    caller needs" precedent, extended with this packet's own four new
+    governance-object ids.
+invariants:
+  - >-
+    `services/control_plane/mrr/services/cli/synthesis_orchestration.py`,
+    `services/node_runtime/mrr/services/node_runtime/synthesis_executor.py`,
+    `dispatch.py`, `executor.py`, and `orchestration.py` are touched in ZERO
+    lines by this packet — proven by `git diff --stat` against this
+    packet's own branch and by `tests/e2e/test_e2e_001_single_node_evidence
+    _loop.py`, `tests/e2e/test_k0_t02_capability_dispatch.py`, and
+    `tests/e2e/test_k1_t03_synthesis_evidence_loop.py` all passing
+    completely unmodified in the same test run
+  - >-
+    `QuestionModelService`/`ConceptCharterService`/`MethodProtocolService`
+    each emit a domain event on every transition they implement (MRR-
+    MTH-019's own precedent, extended here as an additive choice beyond
+    what MTH-019 literally names — see specification_gaps)
+  - >-
+    the two committed atlas snapshot copies' own recomputed `sha256`
+    exactly equal the values recorded in `snapshot-manifest.json` (a plain,
+    deterministic drift check, re-run on every CI pass)
+  - >-
+    `corpora/model-collapse/corpus-entries.json`'s own entries validate
+    against `CorpusEntry` (`extra="forbid"`) with ZERO validation errors —
+    proven by a unit test that parses the committed fixture directly, no
+    database or executor involved
+  - >-
+    every `ConceptCharterEntry.term` in the committed `concept-charter
+    .proposal.json` equals one of `QuestionModel.load_bearing_terms`'s own
+    strings in the committed `question-model.proposal.json` (derived_
+    decisions (g)'s own convention, checked by a plain unit test, not a
+    database constraint)
+  - >-
+    `establish_and_run_synthesis`'s own capability-name guard
+    (derived_decisions (h)) raises before any governance object beyond the
+    `MethodProfile` is created, if the accepted profile's own
+    `executor_task_family` does not contain `CAPABILITY_NAME`
+  - >-
+    no path in this packet's own new code re-implements or bypasses
+    `ClaimService.attach_ruling`/`apply_kill_condition`, `EvidenceMatrixService`
+    /`MethodRulingService`/`ResearchDecisionService`, or
+    `run_synthesis_evidence_loop`'s own choreography — every governance
+    object this run's OWN new services do not own is created and driven
+    exclusively through the machinery K1-T01/K1-T02/K1-T03 already provide
+  - both import-linter contracts stay unmodified and KEPT
+  - no Alembic migration is added or modified by this packet
+acceptance_tests:
+  - >-
+    [snapshot integrity] recomputing `sha256` over the two committed atlas
+    snapshot copies at `corpora/model-collapse/{theory,works}-atlas
+    .snapshot.json` equals `snapshot-manifest.json`'s own recorded values,
+    which equal this packet's own pinned values (derived_decisions (a))
+  - >-
+    [fixture validity, DB-free] `corpora/model-collapse/corpus-entries
+    .json`, parsed directly, validates against `CorpusEntry` for every
+    entry with zero errors; `corpora/model-collapse/protocol-parameters
+    .sidecar.json` validates against `ProtocolParameters` with zero errors
+    and its `eligibility_rules` carries exactly the `"supported"`/
+    `"contested"` keys `_classify_analysis` requires
+  - >-
+    [candidate-set determinism] re-deriving the works-atlas candidate set
+    (cluster membership includes `7`) and the theory-atlas candidate set
+    (the disclosed keyword match) directly from the two committed snapshot
+    copies reproduces exactly the 15 + 3 candidates named in derived_
+    decisions (d), with no manual override
+  - >-
+    [operationalizes-term convention] every `ConceptCharterEntry.term` in
+    the committed proposal equals one of `QuestionModel.load_bearing_terms`
+  - >-
+    [capability-name guard] `establish_and_run_synthesis`, given a
+    deliberately mismatched `MethodProfile` fixture whose
+    `executor_task_family` does NOT contain `CAPABILITY_NAME`, raises
+    before creating any `QuestionModel`/`ConceptCharter`/`MethodProtocol`
+    (derived_decisions (h))
+  - >-
+    [governance-object lifecycle, integration tier] `establish_and_run_
+    synthesis`, run against a real test database, persists an `accepted`
+    `QuestionModel`, an `accepted` `ConceptCharter` with a real
+    `operationalizes` edge to the `QuestionModel`, and a `locked`
+    `MethodProtocol` (`locked_at`/`locked_by` both set) referencing a real,
+    `accepted` `MethodProfile` — each transition's own domain event present
+    in the event log
+  - >-
+    [headline real run, e2e tier, gated behind `MRR_TEST_DATABASE_URL` like
+    every other Postgres-backed test in this repo] `establish_and_run_
+    synthesis`, given the REAL committed corpus and protocol-parameters
+    fixtures, completes with `run_state == "completed"`; persists a frozen
+    `EvidenceMatrix` with >= 1 row whose `verification_status != "verified"`;
+    persists >= 2 distinct `applies_to_analysis` outcomes; the run's own
+    SET of outcomes is NOT uniformly `"supported"`/positive-only (derived_
+    decisions (k), property 4) — every claim/decision this run produces
+    carries a `ruled_by` `MethodRuling` (for a minted claim) or a
+    `ResearchDecision` (for `stop_insufficient_evidence`), never silently
+    omitted (MRR-MTH-011); the sealed `EvidenceCrate` is independently
+    traceable via `governed_by_protocol`/`ruled_by`/`operationalizes` edges
+    back to the `MethodProtocol`/`QuestionModel`/`ConceptCharter`
+  - >-
+    [CLI reproduction] `mrr synthesis run --database-url ... --artifact-
+    root ...` (no further flags — the five new fixture flags default to
+    the committed `corpora/model-collapse/*.json` paths), invoked against
+    a fresh test database and a tmp artifact root, exits `0` and prints an
+    `evidence_crate_id` resolvable via the same test database
+  - >-
+    [regression] `tests/e2e/test_e2e_001_single_node_evidence_loop.py`,
+    `tests/e2e/test_k0_t02_capability_dispatch.py`, and
+    `tests/e2e/test_k1_t03_synthesis_evidence_loop.py` all pass completely
+    unmodified
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+  - make security-check
+specification_gaps:
+  - >-
+    The `operationalizes` edge is object-level (`ConceptCharter ->
+    QuestionModel`), not the entry-to-term granularity spec 08 section 3's
+    prose literally names — `TypedEdge` has no sub-object addressing
+    mechanism today; the finer correspondence is carried only by an
+    ordinary, non-schema-enforced naming convention (derived_decisions (g)).
+  - >-
+    The capability-name pattern conflict PR #52's review flagged
+    (`NodeManifest.CapabilityDefinition.name`'s pattern vs. the real,
+    already-accepted `CAPABILITY_NAME`) is NOT fixed by this packet — only
+    guarded locally (derived_decisions (h)). The general fix remains open,
+    left for a future, dedicated task.
+  - >-
+    `ProtocolParameters.kill_conditions`/`eligibility_rules` apply ONE
+    shared threshold table across every `applies_to_analysis` group in a
+    run — a genuine limitation for two analyses of very different natural
+    scale (3 theory sources vs. 15 works candidates), worked around here by
+    a single, carefully chosen shared number rather than a shape change to
+    the protected `synthesis_executor.py` (derived_decisions (i)).
+  - >-
+    No JSON Schema exists for the protocol-parameters sidecar (inherited,
+    unresolved, from K1-T03's own identical specification_gaps item) —
+    still validated only by `ProtocolParameters`'s own Pydantic model, not
+    by `scripts/check_contracts.py` or a contract-fixture test.
+  - >-
+    Whether the theory atlas's own per-entry `status` (`seed`/`read`/
+    `worked`) should EVER gate `verification_status`, rather than treating
+    the whole atlas as uniformly provenance-verified, is a live, disclosed
+    judgment call (derived_decisions (c)); a reviewer may prefer the
+    rejected, stricter alternative.
+  - >-
+    This packet cannot prove IN ADVANCE that the real, honest classification
+    of the 15 works-atlas candidates will produce a genuinely mixed (not
+    uniformly supported) outcome — it can only argue, from a first direct
+    reading of each work's `decisive_move` text, why this is likely
+    (derived_decisions (e)/(k)). If the real classification disagrees, the
+    plan's own acceptance criterion is NOT met and this packet's own
+    corpus/charter design needs revision — a stop_condition (below), not a
+    result to silently work around. FLAGGED PROMINENTLY (required_output):
+    this is this packet's single most consequential open judgment call.
+  - >-
+    Output landing, projection, or any site coupling for the resulting
+    claim landscape is explicitly OUT of this packet's scope (the plan's
+    own words: "Frank's call") — no projection/HTML/site code is touched,
+    and this packet makes no recommendation about WHERE or WHETHER the
+    resulting claim landscape should ever be published.
+  - >-
+    `amend`/`execute` transitions on the new `MethodProtocolService` are
+    not implemented (only `create`/`submit_for_review`/`lock`) — a future
+    task's job if this specific `MethodProtocol` is ever amended after this
+    run.
+  - >-
+    Whether `QuestionModel`/`ConceptCharter` acceptance genuinely NEEDS its
+    own domain event is not literally required by MRR-MTH-019 (which names
+    only "Profile activation, protocol lock, ruling issuance, kill
+    triggers, and research decisions" explicitly) — this packet emits one
+    for both anyway, for consistency with every other Layer-1 kind's own
+    existing precedent (`MethodProfile.accept` already does), an additive
+    choice beyond the letter of MTH-019, not itself mandated.
+  - >-
+    The atlas-field -> `CorpusEntry`-field mapping (derived_decisions (b))
+    is this packet's own disclosed convention, not itself independently
+    schema-enforced beyond `CorpusEntry`'s own field types — a reviewer may
+    prefer a different mapping (e.g. a dedicated `url` field added to
+    `CorpusSourceIdentifiers`, which would touch the protected
+    `synthesis_executor.py` and is therefore out of this packet's own
+    scope).
+coordination_note: >-
+  Unlike K1-T03's own derivation (which had to account for an approved-but-
+  unmerged K1-T02), this packet's single dependency, K1-T03, is ALREADY
+  MERGED on `main` at this packet's own derivation time (commit `accfef0`,
+  PR #52, confirmed directly) — there is no analogous blocked-vs-unblocked
+  slice split for this packet to plan around; every piece of machinery this
+  packet consumes (`run_synthesis_evidence_loop`, `SystematicEvidenceSynthesis
+  Executor`, `EvidenceMatrixService`/`MethodRulingService`/
+  `ResearchDecisionService`, the four K1-T02 edge types, `ClaimService.
+  attach_ruling`/`apply_kill_condition`) is real and present today, not
+  prospective. The only genuine open coordination question this packet
+  carries forward is the capability-name synonym gap PR #52's review named
+  for "K1-T04 planners" specifically (derived_decisions (h)) — resolved
+  here by deferral-plus-local-guard, not left silently unaddressed.
+required_output:
+  - implementation summary
+  - >-
+    changed files, split explicitly into: (I) the corpus/fixture content
+    (`corpora/model-collapse/**`); (II) the three new write-side services
+    plus the new orchestration/CLI composition (`services/control_plane/
+    mrr/services/{question_model,concept_charter,method_protocol}/**`,
+    `services/control_plane/mrr/services/cli/{synthesis_setup,
+    synthesis_main}.py`, the one-line additive `main.py` change) — reported
+    separately so a reviewer can see the governance-object machinery apart
+    from the actual research content
+  - >-
+    explicit confirmation that `synthesis_orchestration.py`,
+    `synthesis_executor.py`, `dispatch.py`, `executor.py`, and
+    `orchestration.py` were touched in zero lines, and that no Alembic
+    migration was added
+  - tests added and exact command results (all commands in this packet, proving green)
+  - >-
+    security/privacy implications: no new network surface; the two pinned
+    atlas copies are already-public, already-licensed (derived_decisions
+    (a)), non-personal, non-restricted data — no new PII or redaction
+    concern; fail-closed direction of the capability-name guard
+    (derived_decisions (h)) and of MRR-NFR-012's own DB-reachability/
+    artifact-root checks (derived_decisions (l))
+  - >-
+    which analysis (if any) ended `contested`, `unsupported`, or
+    `insufficient_evidence`, reported HONESTLY and in full, per MRR-MTH-011
+    ("MUST NOT be silently omitted from any claim landscape") — never
+    smoothed over or reported only in aggregate
+  - >-
+    open specification questions exactly as listed under specification_gaps,
+    with PROMINENT emphasis on the item flagged there as this packet's
+    single most consequential open judgment call (whether the real
+    classification actually produces a mixed, not uniformly-supported,
+    outcome) — since the plan's own acceptance criterion turns on it
+    directly
+stop_conditions:
+  - >-
+    the real, honest classification of the pinned corpus produces
+    uniformly `"supported"` outcomes across every analysis — per the
+    plan's own words ("a run that can only produce supported claims fails
+    the packet"), STOP, report the exact classification in full, and
+    revise the ConceptCharter's own operationalization or the inclusion
+    criteria rather than silently loosening what "supported" means or
+    discarding contrary evidence to force a `contested` reading
+  - >-
+    both analyses independently trigger `stop_insufficient_evidence` (i.e.
+    the run produces NO claim at all, only two `ResearchDecision`s) — this
+    is a SUCCESS per MRR-MTH-011, not by itself a stop condition, but
+    report explicitly whether this still satisfies "at least one claim
+    MUST be capable of ending contested or insufficient_evidence" (it does,
+    per spec 08's own text — `insufficient_evidence` is named explicitly —
+    but flag for reviewer confirmation given it would mean the run's own
+    claim landscape contains zero `Claim` objects, only decisions)
+  - >-
+    a reviewer determines the `operationalizes` edge's object-level
+    granularity (derived_decisions (g)) is unacceptable and a finer,
+    entry-to-term edge mechanism is genuinely required — stop rather than
+    inventing new edge-addressing machinery unilaterally; report the exact
+    case that forces this
+  - >-
+    a reviewer determines the capability-name synonym gap (derived_
+    decisions (h)) must be FULLY fixed, not merely guarded, before this run
+    is trustworthy — stop the CLI/orchestration slice specifically and
+    re-scope; the corpus/governance-object content work is unaffected by
+    this and may proceed independently
+  - >-
+    at implementation time, the pinned atlas snapshot's recomputed `sha256`
+    no longer matches the hash recorded in this packet (i.e., either home
+    repo changed between this derivation and implementation) — stop,
+    re-derive the candidate lists (derived_decisions (d)) against the NEW
+    hash, and report the diff in full rather than silently running against
+    stale-but-mismatched content
+  - >-
+    implementation discovers `QuestionModelService`/`ConceptCharterService`/
+    `MethodProtocolService` genuinely cannot be built as thin,
+    `MethodProfileService`/`EvidenceMatrixService`-shaped wrappers (e.g. a
+    hidden lifecycle invariant this derivation missed) — stop and report
+    rather than inventing a heavier service shape unilaterally
