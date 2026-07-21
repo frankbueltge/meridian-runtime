@@ -1,0 +1,1045 @@
+task_id: K1-T04b
+title: >-
+  Second real run — the model-collapse question under a corroboration-floor
+  sensitivity variation. The first real-corpus exercise of the MRR-MTH-018
+  execution capability PR #57 (K1-T03b) merged: a new, honestly-named
+  ConceptCharterEntry (`corroboration-floor-v1`) raises the eligibility floor
+  a supporting/contradicting side needs to count as adequately corroborated
+  — `eligibility_rules.contested.min_independent_source_families`, run 1's
+  own value 1, raised to 2 (matching the floor `eligibility_rules.supported`
+  already uses) — over the SAME pinned atlas corpus and the SAME base
+  protocol-parameters run 1 already used, changing nothing about what
+  "instantiate" or "reference" or "model-collapse mechanism" MEAN. This is
+  explicitly NOT a second, rival operationalization of the mechanism (no
+  `model-collapse-mechanism-v2`); it is a threshold variation over
+  already-accepted eligibility machinery, reported honestly whichever way it
+  comes out. Run 1's own sealed schema (`mrr_k1t04_real_run_v2`) and its own
+  eight committed files under `corpora/model-collapse/` are untouched; this
+  is a genuinely second, additional real run, in its own fresh Postgres
+  schema, under its own new proposal files
+  (`corpora/model-collapse/run2-corroboration-floor/`). The channel-
+  governance / S42-seeded candidate operationalization
+  (`irrtum-als-methode/REQUESTS.md`, commit `1e1ef1f`, offer (2)) is
+  explicitly excluded from this run's own scope — it stays contingent on
+  Ulysses' own response to that same-day encounter offer, on Ulysses' own
+  schedule, not this run's.
+status: approved
+epic: K1
+depends_on: [K1-T04, K1-T03b, K1-T04c]
+reviewer_resolution: >-
+  Approved 2026-07-21 by the main session as reviewing instance, under the
+  owner's documented same-day delegation, WITH ONE REDIRECTION. CONFIRMED
+  as derived: the task id `K1-T04b` and its deliverable-ownership anchor
+  (a); the run2 sibling subdirectory with by-reference reuse of run 1's
+  unchanged files (b); the `corroboration-floor-v1` charter entry text and
+  its explicit not-a-rival-operationalization framing (c) — exactly the
+  owner's decision; the floor delta contested 1 -> 2 with supported held
+  at 2, sourced from run 1's real sidecar (d); the one-field
+  method-protocol delta (e); the fresh MethodProfile object (k); the
+  channel-governance exclusion with commit-1e1ef1f provenance and the
+  honestly-stated divergence from that offer's own preview language; and
+  the ergebnisoffen discipline (expected flip reported as expectation,
+  never required).
+
+  REDIRECTED, via the packet's own first stop_condition read in reverse:
+  derived_decisions (f)/(g)'s workaround — a new e2e test locally
+  re-implementing `establish_and_run_synthesis`'s choreography because
+  the CLI cannot pass `sensitivity_variation_parameters` through — is
+  REJECTED as the execution mechanism. It would make run 2 a second-class
+  citizen relative to run 1 (not CLI-reproducible, no durable named
+  schema, results surviving only in test assertions and PR prose) and
+  would reintroduce exactly the local-copy pattern this same day's
+  E9-T00b consolidation retired. RULING: a new micro code packet,
+  **K1-T04c** (to be derived next), first adds the additive, default-None
+  `sensitivity_variation_parameters` passthrough to
+  `establish_and_run_synthesis` and the `mrr synthesis run` CLI
+  (mirroring `run_synthesis_evidence_loop`'s own new-keyword precedent
+  from K1-T03b derived_decisions (j) — byte-identical behavior for every
+  existing caller). K1-T04b's implementation WAITS for K1-T04c's merge
+  (depends_on updated accordingly); its e2e test then goes through the
+  same CLI/composition path as run 1's own test pattern, and the actual
+  archival run executes via the CLI into a DURABLE, NAMED schema
+  following run 1's own convention (per (j)'s durable option — e.g.
+  `mrr_run2_corroboration_floor_v1`), so run 2 is inspectable across
+  sessions exactly like `mrr_k1t04_real_run_v2`. ADDITIONALLY REQUIRED:
+  the K1-T04b PR body MUST quote the complete, actual sensitivity result
+  table (base outcome vs. variation outcome per analysis, with the family
+  counts) — the research result must be durably recorded in the Git
+  trail, not only in a local database.
+derivation: >-
+  Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5, at `main`
+  commit `81cfbd0` (confirmed: `git log --oneline -1` on a clean working
+  tree), directly succeeding two already-merged packets this one only
+  CONSUMES, never modifies: `task-packets/K1-T04.yaml` (`9afcbd5`-line
+  history, the first real run — the two pinned atlases, the real corpus,
+  `corpora/model-collapse/`, `establish_and_run_synthesis`,
+  `mrr synthesis run`) and `task-packets/K1-T03b.yaml` (PR #57, commit
+  `b3ca172`, confirmed present in `git log --oneline -5`: "K1-T03b: execute
+  MRR-MTH-018 sensitivity variations (#57)") — the capability that actually
+  RUNS a declared `MethodProtocol.sensitivity_variations` entry and reports
+  its result on `EvidenceMatrix.sensitivity_analysis_results`, merged but,
+  per that same packet's own reviewer_resolution amendment, never yet
+  exercised on the real corpus (the real, sealed run's own single
+  declaration, `["model-collapse-mechanism-v1"]`, names the QUESTION'S OWN
+  core-term entry, not a second, alternate classification to compare
+  against — K1-T03b's own derivation (4), confirmed again here by direct
+  `psql` inspection is NOT repeated in this derivation, since K1-T03b's own
+  already-committed prose already establishes it and this packet does not
+  touch that schema at all, per forbidden_changes below).
+
+  Mandate provenance, two independent, partially-overlapping sources, read
+  in full, reconciled honestly rather than silently merged:
+
+  (1) `docs/design/2026-07-21-session-handoff-tagessession.md` section 4,
+  "Nächste Arbeit," item 1 (lines 87-92): "Echte Alternativ-
+  Operationalisierung der Model-Collapse-Frage autorieren (zweiter
+  ConceptCharterEntry + Variations-Parameter) — Forschungs-Inhalt, nicht
+  Engineering; Owner-/Praxis-Beteiligung sinnvoll. Entsperrt die sinnvolle
+  Sensitivitäts-Analyse auf dem echten Korpus UND stellt die
+  Vorwärts-Reproduktion des Real-Laufs wieder her (aktuell bewusst
+  fail-closed, siehe #57)." This packet answers the FIRST half of that
+  sentence (author a second `ConceptCharterEntry` + variation parameters,
+  unlock a real, meaningful sensitivity analysis on the real corpus) but
+  explicitly does NOT deliver the second half (it does not restore forward
+  reproduction of run 1's OWN existing, still-uncovered declaration,
+  `["model-collapse-mechanism-v1"]`) — see derived_decisions (h) and
+  specification_gaps for why these two things are not the same act, and why
+  conflating them would mean either forcing a rival mechanism
+  operationalization under time pressure or silently front-running the
+  still-open external encounter offer in (2) below. Both are refused here.
+
+  (2) `/Users/frankbultge/Documents/GitHub/irrtum-als-methode/REQUESTS.md`,
+  commit `1e1ef1f` ("requests: team note 2026-07-21 — retroactive disclosure
+  + encounter offer: the atlas and S42 in a model-collapse corpus (MRR)"),
+  read in full, external, read-only, cited but never written to by this
+  packet. Section 2 previews run 2 in different words than this packet uses:
+  "MRR is about to run this question a second time, with a genuinely
+  different second operationalization of 'model-collapse mechanism' (a real
+  `-v2` charter entry, not a relabeled copy of the first)." Offer (2) of that
+  same note names ONE candidate for that "-v2" slot directly: "Your S42
+  finding as a candidate seed for the second operationalization... built
+  directly from your Session 42 finding — that whether re-injecting real
+  observation actually repairs a reproducing system 'depends on the
+  governance of the corrective channel' (your words, S42), not on
+  channel-openness being a mechanical property of the training loop." That
+  note's own standing terms bind how MRR may treat offer (2): "Silence never
+  blocks... silence through your own next working session on this reads as
+  your decision, whatever it turns out to be — not a failure to answer, and
+  not grounds for MRR to proceed as if you had accepted." Status at this
+  derivation: **open**, no response recorded. The owner's OWN, later,
+  explicit decision for THIS packet (communicated directly for this
+  derivation, dated 2026-07-21, after the REQUESTS.md note above) diverges
+  from that note's own preview language on purpose: it does NOT direct this
+  run at a "-v2 [mechanism] charter entry" at all — it directs it at a
+  corroboration-FLOOR threshold variation instead, expressly not named as a
+  rival mechanism definition, precisely BECAUSE that choice requires no
+  external party's decision, unlike offer (2)'s own candidate. This
+  divergence between the REQUESTS.md note's own preview and this packet's
+  actual content is stated plainly here, not smoothed over: the note's
+  preview was written before the owner's own final call for this specific
+  packet, and the two are reconciled by this derivation, not silently
+  merged as if they always agreed.
+
+  Task-id and epic placement, reasoned from precedent exactly as
+  `task-packets/K1-T03b.yaml`'s own derivation reasoned about itself
+  ("the repository has no standing convention that names this exact case").
+  Four candidates considered:
+
+  - **`K1-T05`** — REJECTED, for the identical reason `task-packets/
+    K1-T03b.yaml` already rejected it for itself: epic K1 is titled, in
+    `docs/design/2026-07-21-research-method-kernel-plan.md` line 35, a
+    closed "4 tasks," reaffirmed closed by
+    `docs/design/2026-07-21-k2-gate-decision.md`'s own evidence table. A
+    fifth NUMBERED K1 task would reopen an epic both governing documents
+    treat as closed.
+  - **`K1-T03c`** — REJECTED. This packet touches ZERO lines of
+    `synthesis_executor.py`/`synthesis_orchestration.py` — the files
+    `K1-T03`/`K1-T03b`'s own b-suffix is anchored to (`task-packets/
+    K1-T03b.yaml`'s own words: "code ownership... is the right anchor for
+    the b-suffix, not provenance-of-discovery"). This packet only CONSUMES
+    the capability those files already expose (`run_synthesis_evidence_loop`
+    's own `sensitivity_variation_parameters` keyword, unchanged), exactly
+    as K1-T04 itself consumed K1-T03's executor without becoming
+    "K1-T03c" — the same anchor, applied symmetrically, rejects a
+    K1-T03-line id here too.
+  - **`K2-T00`**-style — REJECTED. K2 (causal contracts) is explicitly
+    deferred (`docs/design/2026-07-21-k2-gate-decision.md`) and categorically
+    unrelated subject matter — the same objection `task-packets/
+    K1-T03b.yaml` already raised against this candidate for itself.
+  - **`E9-T00c`**-style — REJECTED. E9's own seven items are ALL
+    PR-review-comment-driven follow-ups on ALREADY-MERGED pull requests
+    (`task-packets/E9-T00.yaml`'s own derivation); this packet's own mandate
+    traces to a session-handoff "next work" bullet and an owner's direct,
+    same-day decision, not a PR review comment — a different provenance
+    shape. E9 is also epic-scoped to hardening/production operation, a poor
+    semantic fit for "run a research question a second time."
+  - **`K1-T04b`** — CHOSEN. This packet extends K1-T04's OWN deliverable,
+    not K1-T03's: the `corpora/model-collapse/` directory K1-T04 itself
+    created (this packet adds a new, sibling subdirectory inside it,
+    touching none of K1-T04's own eight committed files), and the "real
+    run, e2e tier" test-file pattern K1-T04 itself established
+    (`tests/e2e/test_k1_t04_first_real_run.py`, mirrored — not modified —
+    by this packet's own new sibling test file). Mirrors the b-suffix
+    convention's own established reading (`task-packets/E1-T03b.yaml`'s
+    words, reused again by `K1-T03b`: "a small, later, independently-
+    reviewable addition to that SAME task's own deliverable, never claiming
+    a fresh epic-numbered slot") — applied here to K1-T04's deliverable (a
+    real run over the pinned atlases) rather than K1-T03's (the executor).
+    Flagged honestly, per that same established convention: a reviewer may
+    weigh this differently, since — unlike `K1-T03b`'s own code-ownership
+    anchor, which was unambiguous (the files it touched WERE K1-T03's own)
+    — this packet touches no PRODUCTION code file either K1-T03 or K1-T04
+    owns, only new fixture/test content; the anchor here is deliverable/
+    directory ownership, a slightly softer reading (specification_gaps).
+
+  Code-level verification of a genuine gap this derivation had to resolve,
+  not merely assumed (Required Reading item 2's own instruction: "check if
+  any code hardcodes paths; synthesis_setup.py/establish_and_run_synthesis
+  and the CLI take paths/args, verify"): `services/control_plane/mrr/
+  services/cli/synthesis_setup.py` (`establish_and_run_synthesis`) and
+  `services/control_plane/mrr/services/cli/synthesis_main.py`
+  (`mrr synthesis run`), both read in full, confirm the FIVE fixture-file
+  flags/parameters (`question_model`/`concept_charter`/`method_protocol`/
+  `corpus_entries`/`protocol_parameters`, `--question-model-file` etc.) are
+  genuinely NOT hardcoded — plain `Path` arguments/dict parameters,
+  defaulting to the committed `corpora/model-collapse/*.json` paths but
+  freely overridable — so a fresh set of governance-object proposal files
+  for run 2 poses no code obstacle at all. BUT `establish_and_run_synthesis`
+  's own signature (read in full, lines 354-382) has NO
+  `sensitivity_variation_parameters` parameter anywhere, and its own single,
+  fixed call to `run_synthesis_evidence_loop` (line 600,
+  `loop_kwargs` built at lines 575-598) never includes that key either —
+  confirmed by direct reading, not by absence-of-a-grep-hit alone. Its own
+  companion CLI, `synthesis_main.py`, has no
+  `--sensitivity-variation-parameters-file` flag and no code path that could
+  populate one even if it existed. `run_synthesis_evidence_loop` ITSELF
+  (`synthesis_orchestration.py` line 637) already accepts and threads
+  `sensitivity_variation_parameters: Mapping[str, dict[str, Any]] | None =
+  None` end to end (K1-T03b, merged, unchanged) — the gap is confined
+  entirely to the THIN convenience wrapper `establish_and_run_synthesis`
+  built for K1-T04's own first run, before K1-T03b's capability existed, and
+  its CLI. This is a genuine, load-bearing finding, not a hypothetical: it
+  means `mrr synthesis run` CANNOT reproduce run 2 today, and extending
+  `establish_and_run_synthesis`/`synthesis_main.py` to add the missing
+  passthrough would be an orchestration/composition-layer CODE change —
+  exactly what this run packet's own mandate forbids (forbidden_changes;
+  any such need is a stop_condition, not scope creep). See derived_decisions
+  (f)/(g) for how this packet's own new e2e test achieves the run anyway,
+  entirely through already-existing, unchanged services and functions, and
+  specification_gaps for the future task this gap itself names.
+
+  Numeric trace of the base run's own real classification outcome, verified
+  directly against the committed `corpora/model-collapse/corpus-entries
+  .json` (parsed fresh at this derivation, not assumed from
+  `task-packets/K1-T04.yaml`'s own prose alone): 18 total rows — 3 rows
+  under `applies_to_analysis: "model-collapse-mechanism-theory-
+  confirmation"`, all `evidence_relation: "supports"`, all
+  `verification_status: "verified"`; 15 rows under
+  `"instantiation-vs-reference-classification"` — exactly 1
+  `"supports"` (`works-hammond-v3-model-collapse`, verified) and 14
+  `"contradicts"` (13 verified, 1 `"pending"` —
+  `works-ubermorgen-next-biennial-machine`). Every one of these 18 rows
+  carries `source_family_id: null` (confirmed by direct field scan), so
+  `mrr.domain.source_independence.family_key` (read in full) falls every
+  row back to its own `source_record_id`-derived singleton — each VERIFIED
+  row is its own independent family; the one `pending` row contributes to
+  NEITHER side's family count at all (`distinct_independent_source_family_
+  count`'s own "only verified rows count" rule, unchanged, not touched by
+  this packet). `corpora/model-collapse/protocol-parameters.sidecar.json`
+  (run 1's own base sidecar, read fresh, sha256 recorded below) sets
+  `eligibility_rules.supported.min_independent_source_families = 2`,
+  `eligibility_rules.contested.min_independent_source_families = 1`,
+  `kill_conditions.stop_insufficient_evidence.min_included_sources = 3`.
+  Tracing `_classify_analysis` (`synthesis_executor.py` lines 685-766, read
+  in full) by hand against these numbers: theory-confirmation —
+  `supporting_family_count = 3`, `contradicting_family_count = 0`;
+  `3 >= supported_threshold(2)` and `0 < contested_threshold(1)` both hold
+  -> **`supported`** (matches `task-packets/K1-T04.yaml`'s own reported
+  outcome, "Theorie-Positivkontrolle `supported`-track," session-handoff
+  section 1). Instantiation-vs-reference — `supporting_family_count = 1`
+  (Hammond alone), `contradicting_family_count = 13` (14 contradicting rows
+  minus the one `pending` row, which never counts);
+  `1 >= supported_threshold(2)`? No. `1 >= contested_threshold(1)` AND
+  `13 >= contested_threshold(1)`? Both yes -> **`contested`** (matches
+  `task-packets/K1-T04.yaml`'s own reported outcome, "Werk-Analyse endet
+  `contested`"). This packet's own raised-floor sidecar
+  (derived_decisions (c)) sets `eligibility_rules.contested.
+  min_independent_source_families = 2` (RAISED from 1), holding
+  `eligibility_rules.supported` at 2 (UNCHANGED) and every other field
+  (`inclusion_filter`, `kill_conditions`) byte-identical to the base
+  sidecar — isolating exactly ONE variable. Re-tracing
+  `_classify_analysis` under this ONE change: theory-confirmation is
+  UNAFFECTED (`0 < contested_threshold` holds for ANY positive threshold,
+  since `contradicting_family_count = 0` regardless) -> still `supported`.
+  Instantiation-vs-reference: `1 >= supported_threshold(2)`? No.
+  `1 >= contested_threshold_new(2)`? No (fails on the FIRST operand of the
+  `and`, short-circuiting before `contradicting_family_count` is even
+  examined) -> falls to the `else` branch, **`unsupported`**. This is this
+  packet's own PRIOR EXPECTATION, derived by hand-tracing the unchanged,
+  already-merged algorithm against real numbers — it is NOT hardcoded as a
+  required test outcome anywhere in this packet (see stop_conditions/
+  required_output: the actual run must report whatever the code, run for
+  real, actually produces).
+
+  sha256 of all eight files under `corpora/model-collapse/` (run 1's own,
+  recomputed fresh at this derivation, `shasum -a 256`, confirmed identical
+  to what `task-packets/K1-T04.yaml`/`corpora/model-collapse/snapshot-
+  manifest.json` already record for the two atlas snapshots): `concept-
+  charter.proposal.json` `4c9294d1cde66a2f433259f052e5113268b8d5cc2a9a7c51
+  ce76219b8deafc43`; `corpus-entries.json`
+  `4e6f81b49737128173716f610c5dec6f4572753d1aa1c7118ad9177af7eb3aea`;
+  `method-protocol.proposal.json`
+  `83dee8d6efed5bbf25ba9fffc245faf632f9285319c3b21be6a77b2c4bad18e9`;
+  `protocol-parameters.sidecar.json`
+  `7ccf6a62bc97e35c642c73fa3721ef1c6c46b88a3b74aa6c42584539064c6d97`;
+  `question-model.proposal.json`
+  `5aab4d8d7142cb8640836debac82bb13f432d6c5e13fa40ed91b9a762bffb21d`;
+  `snapshot-manifest.json`
+  `e53d3caa0bab256e955855f9c168efb3d291daa84957396541e985f2916dea59`;
+  `theory-atlas.snapshot.json`
+  `f712ea4e9c6b9137fa180ad91e73a86d8d09862792f33174c77acd76a891e610`;
+  `works-atlas.snapshot.json`
+  `9d14e877efb245cc04b8451734b26285a274dda0418f5131db257d2e4312d373` —
+  these eight values are this packet's own recorded BASELINE
+  (invariants below): none of them may change as a result of this packet.
+objective: >-
+  Deliver the SECOND real `systematic_evidence_synthesis` v1 research output
+  for the model-collapse question, exercising the merged MRR-MTH-018
+  sensitivity-variation capability (K1-T03b/PR #57) on the real corpus for
+  the first time, in two parts:
+
+  (a) New governance-object proposal content, committed under a new
+  sibling directory `corpora/model-collapse/run2-corroboration-floor/` —
+  never inside or overwriting run 1's own eight files, never a "run2"
+  edit-in-place — containing this packet's own drafted `QuestionModel`
+  proposal (run 1's own content plus one added `load_bearing_terms` entry),
+  `ConceptCharter` proposal (run 1's own two entries, byte-identical, plus
+  one new, honestly-worded `corroboration-floor-v1` entry), `MethodProtocol`
+  proposal (run 1's own content with exactly one field changed,
+  `sensitivity_variations: ["corroboration-floor-v1"]`), and a NEW
+  `SensitivityVariationParameters` sidecar for that one declared entry
+  (raising `eligibility_rules.contested.min_independent_source_families`
+  from 1 to 2, everything else byte-identical to the base sidecar). Run 1's
+  own `corpus-entries.json` and `protocol-parameters.sidecar.json` are
+  REUSED unchanged, by direct path reference — never copied, never
+  re-extracted (no new extraction of corpus entries; this run classifies
+  nothing new, it only re-runs the four already-deterministic
+  classification stages under one raised number).
+
+  (b) One new e2e test,
+  `tests/e2e/test_k1_t04b_corroboration_floor_second_real_run.py`, driving
+  this second real run end to end against its own fresh Postgres schema —
+  proposing+accepting a fresh `MethodProfile`/`QuestionModel`/
+  `ConceptCharter` (writing the `operationalizes` edge), creating+
+  reviewing+locking a fresh `MethodProtocol`, then calling
+  `run_synthesis_evidence_loop` (K1-T03/K1-T03b, UNCHANGED) DIRECTLY with
+  `sensitivity_variation_parameters={"corroboration-floor-v1": ...}` — since
+  `establish_and_run_synthesis` (K1-T04's own composition function) has no
+  passthrough for that parameter and is NOT modified here (derivation,
+  derived_decisions (f)/(g)). Every governance-object step is a thin,
+  already-existing, unchanged service call
+  (`MethodProfileService`/`QuestionModelService`/`ConceptCharterService`/
+  `MethodProtocolService`), composed locally inside the new test file — a
+  local copy of `establish_and_run_synthesis`'s own six-step choreography,
+  mirroring this codebase's own established "local copy across separate
+  modules" convention (`_write_operationalizes_edge`/`_finalize_content_
+  hash`'s own precedent), never an import of its private helpers, never a
+  edit to that file.
+
+  Honest reporting is this packet's own explicit requirement, not merely a
+  courtesy: whatever the real, re-run classification actually yields under
+  the raised floor — the flip to `unsupported` this derivation's own hand
+  trace expects, or something else — MUST be reported in full
+  (required_output), never hardcoded as a required test assertion
+  (MRR-MTH-011).
+
+  Explicitly and deliberately OUT of this packet's own scope, named, not
+  designed: (i) the channel-governance / S42-seeded operationalization
+  (irrtum-als-methode REQUESTS.md, commit `1e1ef1f`, offer (2)) — stays
+  contingent on Ulysses' own, still-pending response; (ii) any code change
+  to `establish_and_run_synthesis`/`synthesis_main.py` to add a
+  `sensitivity_variation_parameters` passthrough (a future task, named in
+  specification_gaps); (iii) restoring forward reproduction of run 1's OWN
+  existing declaration (`["model-collapse-mechanism-v1"]`, still uncovered
+  by any sidecar) — a DIFFERENT act from authoring this packet's own,
+  independently-named variation, not conflated with it; (iv) any output
+  landing, projection, or site coupling (unchanged from K1-T04's own,
+  still-open "Frank's call").
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#4-normative-requirements
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#5-profile-systematic_evidence_synthesis-v1-the-first-profile
+  - docs/design/2026-07-21-session-handoff-tagessession.md
+  - docs/design/2026-07-21-session-handoff-first-real-run.md
+  - docs/design/2026-07-21-k2-gate-decision.md
+  - task-packets/K1-T04.yaml
+  - task-packets/K1-T03b.yaml
+  - corpora/model-collapse/question-model.proposal.json
+  - corpora/model-collapse/concept-charter.proposal.json
+  - corpora/model-collapse/method-protocol.proposal.json
+  - corpora/model-collapse/protocol-parameters.sidecar.json
+  - corpora/model-collapse/corpus-entries.json
+  - corpora/model-collapse/snapshot-manifest.json
+  - packages/contracts/mrr/contracts/question_model.py
+  - packages/contracts/mrr/contracts/concept_charter.py
+  - packages/contracts/mrr/contracts/method_protocol.py
+  - packages/contracts/mrr/contracts/evidence_matrix.py
+  - services/node_runtime/mrr/services/node_runtime/synthesis_executor.py
+  - services/control_plane/mrr/services/cli/synthesis_orchestration.py
+  - services/control_plane/mrr/services/cli/synthesis_setup.py
+  - services/control_plane/mrr/services/cli/synthesis_main.py
+  - services/control_plane/mrr/services/method_profile/service.py
+  - services/control_plane/mrr/services/question_model/service.py
+  - services/control_plane/mrr/services/concept_charter/service.py
+  - services/control_plane/mrr/services/method_protocol/service.py
+  - packages/domain/mrr/domain/source_independence.py
+  - tests/e2e/test_k1_t04_first_real_run.py
+  - tests/e2e/test_k1_t03b_sensitivity_variation_execution.py
+  - tests/e2e/conftest.py
+  - >-
+    /Users/frankbultge/Documents/GitHub/irrtum-als-methode/REQUESTS.md
+    (external, read-only, cited for provenance only — never written to by
+    this packet, per irrtum-als-methode's own repository boundary)
+requirements:
+  - MRR-MTH-001
+  - MRR-MTH-007
+  - MRR-MTH-010
+  - MRR-MTH-011
+  - MRR-MTH-013
+  - MRR-MTH-015
+  - MRR-MTH-017
+  - MRR-MTH-018
+  - MRR-MTH-019
+  - MRR-MTH-020
+  - MRR-FR-035
+  - MRR-NFR-012
+allowed_paths:
+  - corpora/model-collapse/run2-corroboration-floor/**
+  - tests/e2e/test_k1_t04b_corroboration_floor_second_real_run.py
+forbidden_changes:
+  - >-
+    run 1's own eight committed files under `corpora/model-collapse/`
+    (`concept-charter.proposal.json`, `corpus-entries.json`,
+    `method-protocol.proposal.json`, `protocol-parameters.sidecar.json`,
+    `question-model.proposal.json`, `snapshot-manifest.json`,
+    `theory-atlas.snapshot.json`, `works-atlas.snapshot.json`) — read-only
+    reference for this packet (its own new e2e test loads
+    `corpus-entries.json`/`protocol-parameters.sidecar.json` directly from
+    this SAME path, never a copy); their sha256 (recorded in this
+    derivation) MUST be identical before and after this packet
+  - >-
+    the sealed schema `mrr_k1t04_real_run_v2` in the local test Postgres —
+    read-only, and only for provenance already established by
+    `task-packets/K1-T03b.yaml`'s own derivation; this packet's own new test
+    connects to a FRESH schema (its own throwaway per-invocation schema, per
+    `tests/e2e/conftest.py`'s established convention, or a durable
+    reviewer-chosen name — either satisfies "fresh," derived_decisions (j))
+    and never touches, re-runs against, or reads from `mrr_k1t04_real_run_v2`
+  - >-
+    ALL executor/orchestration/composition/CLI code — `services/node_runtime/
+    mrr/services/node_runtime/synthesis_executor.py`, `services/
+    control_plane/mrr/services/cli/synthesis_orchestration.py`, `services/
+    control_plane/mrr/services/cli/synthesis_setup.py`, `services/
+    control_plane/mrr/services/cli/synthesis_main.py`, `services/
+    control_plane/mrr/services/cli/main.py`, `dispatch.py`/`executor.py` —
+    and every K1-T01 contract/schema and `packages/domain/mrr/domain/
+    lifecycles.py` state machine. This is a RUN packet, not a code packet
+    (mission mandate): if implementation genuinely discovers a need to
+    change ANY of these, that is a stop_condition (below), never scope
+    creep to be absorbed silently
+  - >-
+    `services/control_plane/mrr/services/{method_profile,question_model,
+    concept_charter,method_protocol,evidence_matrix,method_ruling,
+    research_decision}/**` — every governance-object service is CONSUMED
+    exactly as it already exists; no new method, no signature change
+  - >-
+    `tests/e2e/test_k1_t04_first_real_run.py`,
+    `tests/e2e/test_k1_t03b_sensitivity_variation_execution.py`,
+    `tests/e2e/test_k1_t03_synthesis_evidence_loop.py`,
+    `tests/e2e/conftest.py` — all pass completely UNMODIFIED; in particular
+    `test_k1_t04_first_real_run.py`'s own two fail-closed tests (asserting
+    `run_state == "failed"` against run 1's own still-uncovered
+    `["model-collapse-mechanism-v1"]` declaration) are untouched and
+    continue reporting `"failed"` exactly as before this packet — see
+    derivation/specification_gaps for why that is NOT this packet's own
+    concern to fix
+  - >-
+    the channel-governance / S42-seeded second-operationalization candidate
+    (irrtum-als-methode/REQUESTS.md, commit `1e1ef1f`, offer (2): "Your S42
+    finding as a candidate seed for the second operationalization") — NOT
+    authored, implemented, or stubbed anywhere by this packet; it remains
+    contingent on Ulysses' own response to the 2026-07-21 encounter offer,
+    on Ulysses' own schedule ("silence through your own next working
+    session... reads as your decision, whatever it turns out to be"), never
+    assumed accepted or declined by this packet or forced by a deadline
+  - >-
+    the atlases' HOME repositories (`irrtum-als-methode/`,
+    `frankbueltge.de/`) — read-only, never written to (unchanged from
+    `task-packets/K1-T04.yaml`'s own identical stance); this packet reads
+    neither directly, only the already-pinned copies already committed at
+    `corpora/model-collapse/{theory,works}-atlas.snapshot.json`
+  - HTTP/FastAPI endpoints anywhere
+  - >-
+    any Alembic migration or change to `packages/persistence/mrr/
+    persistence/tables.py` — not needed; this packet mints ordinary
+    governance objects and one ordinary synthesis run through entirely
+    existing, unmodified machinery
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md — governance-owned, ACCEPTED text
+  - both import-linter contracts in `pyproject.toml` — unmodified and KEPT
+derived_decisions:
+  - >-
+    (a) TASK-ID AND EPIC PLACEMENT — SEE DERIVATION. `K1-T04b`, chosen over
+    `K1-T05` (epic closed at 4 tasks), `K1-T03c` (this packet touches zero
+    lines of K1-T03/K1-T03b's own protected executor/orchestration files),
+    `K2-T00`-style (wrong epic, unrelated subject matter), and `E9-T00c`-
+    style (wrong provenance shape — a session-handoff bullet and an owner
+    decision, not a PR-review-comment follow-up on an already-merged PR).
+    Flagged for reviewer confirmation as a genuinely softer anchor than
+    `K1-T03b`'s own precedent (that packet's b-suffix followed CODE
+    ownership unambiguously; this one follows DELIVERABLE/directory
+    ownership, since no production code file is touched at all) —
+    specification_gaps.
+  - >-
+    (b) CORPUS COEXISTENCE — A NEW SIBLING SUBDIRECTORY, NOT FLAT FILES IN
+    THE SAME DIRECTORY, NOT A COPY OF THE REUSED FILES. Verified directly
+    (derivation): neither `synthesis_setup.py` nor `synthesis_main.py`
+    hardcodes any fixture path — all five are `Path`/dict arguments with
+    defaults, so flat, differently-named files alongside run 1's own eight
+    would have worked from a PURE path-collision standpoint. REJECTED
+    anyway, in favor of a new subdirectory,
+    `corpora/model-collapse/run2-corroboration-floor/`, for three combined
+    reasons: (i) since `establish_and_run_synthesis`/`mrr synthesis run`
+    cannot drive this run at all regardless of file layout (derivation —
+    the missing `sensitivity_variation_parameters` passthrough), the
+    path-argument flexibility that would have justified flat files is moot
+    here; (ii) a dedicated subdirectory lets a reviewer `ls corpora/
+    model-collapse/` and see, at a glance, run 1's own eight files
+    completely untouched plus exactly one new, clearly-labeled bundle,
+    rather than counting filenames to confirm nothing was overwritten;
+    (iii) it mirrors this packet's own honest framing (a SEPARATE,
+    ADDITIONAL run, not an edit or a v2 of run 1's own fixture set).
+    WITHIN that subdirectory: `question-model.proposal.json`,
+    `concept-charter.proposal.json`, `method-protocol.proposal.json` (all
+    three NEW — see (c)/(d) for exactly what changes and what is reused
+    verbatim from run 1's own content), and
+    `sensitivity-variation-parameters.corroboration-floor-v1.sidecar.json`
+    (NEW). `corpus-entries.json` and `protocol-parameters.sidecar.json` are
+    DELIBERATELY ABSENT from this new subdirectory — the new e2e test loads
+    them directly from `corpora/model-collapse/corpus-entries.json` /
+    `corpora/model-collapse/protocol-parameters.sidecar.json` (run 1's own
+    path, unchanged), never a duplicate copy, for two reasons: (i) Required
+    Reading point 5's own instruction ("no new extraction of corpus
+    entries... the deterministic pipeline re-runs from the same pinned
+    snapshots") is honored more directly by literally reusing the same file
+    than by copying it (a copy risks silent drift if run 1's file were ever
+    — hypothetically, since forbidden_changes prevents it — edited without
+    updating the copy); (ii) MTH-018's own text, "results under each
+    variation MUST be reported," presupposes the SAME evidence base across
+    base and variation — reusing the identical file by path is the most
+    direct way to make that presupposition mechanically true rather than
+    merely asserted.
+  - >-
+    (c) THE `corroboration-floor-v1` CONCEPTCHARTERENTRY — EXACT TEXT, AND
+    WHY IT NEEDS A NEW LOAD-BEARING TERM TOO. `task-packets/K1-T04.yaml`'s
+    own invariant list established a disclosed, non-schema-enforced
+    convention this packet honors rather than breaks: "every
+    `ConceptCharterEntry.term` ... equals one of `QuestionModel.
+    load_bearing_terms`'s own strings." Run 1's own `QuestionModel.
+    load_bearing_terms` is exactly `["model-collapse mechanism",
+    "instantiate", "reference"]` — none of which honestly names what
+    `corroboration-floor-v1` operationalizes (a threshold on evidentiary
+    corroboration, not the mechanism, not instantiate-vs-reference). Rather
+    than let the entry's own `term` field silently violate that established
+    convention, run 2's own `question-model.proposal.json` is run 1's own
+    content with exactly ONE addition: `load_bearing_terms` gains a fourth
+    string, `"independent corroboration"` — everything else
+    (`raw_question`, `claim_type_sought`, `scope`) is byte-identical to run
+    1's own file. The new charter entry, in full:
+    `entry_id: "corroboration-floor-v1"`, `term: "independent
+    corroboration"`, `definition:` "This entry names a SENSITIVITY
+    VARIATION on the eligibility threshold this profile's own
+    `eligibility_rules` already uses — specifically, how many distinct,
+    independent source families must corroborate an analysis's supporting
+    or contradicting side before that side counts as adequately
+    corroborated. The BASE run's own protocol-parameters sidecar sets
+    `contested.min_independent_source_families = 1` (an analysis may be
+    called 'contested' if even a single independent family supports it, so
+    long as at least one independent family also contradicts it) alongside
+    `supported.min_independent_source_families = 2` (an analysis may only
+    be called 'supported' with at least two independent corroborating
+    families) — an asymmetry between the two labels' own evidentiary bar.
+    `corroboration-floor-v1` RAISES the 'contested' floor to match the
+    'supported' floor exactly — `min_independent_source_families = 2` for
+    BOTH outcome labels — asking whether this profile's own classifications
+    still hold when a single independent supporting family is no longer
+    sufficient to call an analysis 'contested' either, requiring the SAME
+    minimum corroboration strength regardless of which side of a finding is
+    being assessed. This is explicitly a THRESHOLD VARIATION over the
+    existing `eligibility_rules` mechanism (MRR-MTH-018) — it changes how
+    much independent corroboration is required before a classification is
+    reported, not what 'instantiate' or 'reference' or 'model-collapse
+    mechanism' MEANS. It is NOT a second, rival operationalization of the
+    mechanism-vs-reference distinction (contrast entry
+    `instantiate-vs-reference-v1`, whose own definition this entry leaves
+    entirely untouched) and MUST NOT be read as one." `scope_note:`
+    "Applied here (task-packets/K1-T04b.yaml) as this run's own sole
+    declared `MethodProtocol.sensitivity_variations` entry, executed via the
+    `SensitivityVariationParameters` sidecar `corpora/model-collapse/
+    run2-corroboration-floor/sensitivity-variation-parameters.
+    corroboration-floor-v1.sidecar.json` over the SAME corpus and base
+    protocol-parameters run 1's own base classification already used
+    (`corpora/model-collapse/corpus-entries.json`, `corpora/model-collapse/
+    protocol-parameters.sidecar.json`, both reused unchanged by direct path
+    reference, never copied or re-extracted, per derived_decisions (b))."
+    Run 2's own `concept-charter.proposal.json` carries THREE entries: run
+    1's own two (`model-collapse-mechanism-v1`, `instantiate-vs-
+    reference-v1`), copied byte-identical, PLUS this new one — never fewer,
+    since the QuestionModel's own other two load-bearing terms still need
+    their own operationalizations for the base (non-variation)
+    classification this run also performs.
+  - >-
+    (d) THE CONCRETE FLOOR DELTA, JUSTIFIED AGAINST RUN 1'S OWN REAL
+    NUMBERS. Run 1 value (source: `corpora/model-collapse/protocol-
+    parameters.sidecar.json`, read fresh, sha256 recorded in derivation):
+    `eligibility_rules.contested.min_independent_source_families = 1`. Run
+    2's own new sidecar sets this to `2` — chosen specifically to equal the
+    ALREADY-ESTABLISHED `eligibility_rules.supported.
+    min_independent_source_families` value (also `2`, held UNCHANGED in run
+    2's own sidecar) — not an arbitrary escalation, but "hold 'contested' to
+    the same evidentiary bar 'supported' already has to clear." Every OTHER
+    field in the new sidecar is byte-identical to the base sidecar,
+    deliberately, to isolate exactly one variable
+    (`inclusion_filter: {}`, matching the base's own effectively-empty
+    filter beyond `primary_secondary_derived`; actually reused verbatim —
+    `{"primary_secondary_derived": {"allowed_values": ["primary",
+    "secondary"]}}` — since `SensitivityVariationParameters.
+    inclusion_filter` defaults to `{}` only when omitted, and this packet
+    chooses to hold inclusion IDENTICAL to the base rather than accidentally
+    relaxing it; `kill_conditions.stop_insufficient_evidence.
+    min_included_sources = 3`, byte-identical to base; `source_family_
+    overrides = {}`, empty — this variation touches NO source's own family
+    membership, consistent with point 1 of this packet's own mandate: "it
+    varies a threshold, not a rival definition"). The full new sidecar:
+    `{"protocol_id": "placeholder-overwritten-at-run-time-by-the-new-e2e-
+    test", "protocol_lock_content_hash":
+    "placeholder-overwritten-at-run-time-by-the-new-e2e-test",
+    "variation_entry_id": "corroboration-floor-v1", "inclusion_filter":
+    {"primary_secondary_derived": {"allowed_values": ["primary",
+    "secondary"]}}, "eligibility_rules": {"supported":
+    {"min_independent_source_families": 2}, "contested":
+    {"min_independent_source_families": 2}}, "kill_conditions":
+    {"stop_insufficient_evidence": {"min_included_sources": 3}},
+    "source_family_overrides": {}}` — the placeholder strings mirror run
+    1's own base sidecar's identical convention (`protocol-parameters
+    .sidecar.json`'s own `protocol_id`/`protocol_lock_content_hash`
+    placeholders), overwritten at run time by the new e2e test's own
+    composition helper with the just-locked `MethodProtocol`'s real id and
+    content_hash — the IDENTICAL values the same helper fills into the base
+    `protocol_parameters` dict it also passes to `run_synthesis_evidence
+    _loop` (derivation's own hand-traced numeric consequence: theory-
+    confirmation stays `supported`, unaffected; instantiation-vs-reference
+    is expected to flip from `contested` to `unsupported` — reported, never
+    required, per stop_conditions/required_output).
+  - >-
+    (e) THE `method-protocol.proposal.json` DELTA — EXACTLY ONE FIELD
+    CHANGED. Run 2's own proposal is run 1's own content
+    (`extraction_fields`, `inclusion_criteria`, `exclusion_criteria`,
+    `planned_analyses`, `kill_conditions`, all copied byte-identical) with
+    exactly one field changed: `sensitivity_variations:
+    ["corroboration-floor-v1"]` (run 1's own value,
+    `["model-collapse-mechanism-v1"]`, replaced — this is a DIFFERENT
+    `MethodProtocol` object, freshly created/reviewed/locked in run 2's own
+    schema, not an amendment of run 1's own locked protocol, which this
+    packet never touches, reads, or resolves at all). `profile_id` is
+    filled in at composition time exactly as `establish_and_run_synthesis`
+    already does for run 1 (the new e2e test's own local
+    `_build_method_protocol`-equivalent helper, mirroring that function's
+    own shape, never importing it).
+  - >-
+    (f) THE CLI/COMPOSITION-LAYER GAP — WHY THIS RUN IS NOT CLI-
+    REPRODUCIBLE TODAY, AND WHY THAT IS NOT FIXED HERE. Direct code
+    verification (derivation): `establish_and_run_synthesis`'s own
+    signature and its single, fixed `run_synthesis_evidence_loop` call
+    (`synthesis_setup.py` lines 354-382, 575-600) carry NO
+    `sensitivity_variation_parameters` parameter or passthrough anywhere;
+    `synthesis_main.py` carries no matching CLI flag. This is a genuine gap
+    in K1-T04's OWN convenience wrapper (built before K1-T03b's capability
+    existed), not a gap in the underlying, already-merged, unchanged
+    `run_synthesis_evidence_loop` itself (which has fully supported
+    `sensitivity_variation_parameters` since PR #57). Fixing the wrapper/CLI
+    is an orchestration-layer CODE change — forbidden to this run packet by
+    its own mandate. This packet therefore does NOT attempt CLI
+    reproducibility for run 2 at all (`mrr synthesis run` remains exactly as
+    it is, untouched, and continues to reproduce only run 1's own,
+    still-fail-closed fixture set) — named honestly as a specification_gap,
+    with the obvious future task (extend `establish_and_run_synthesis`/
+    `synthesis_main.py` with the missing passthrough) named but not
+    designed or stubbed here.
+  - >-
+    (g) THE NEW E2E TEST'S OWN COMPOSITION DESIGN — A LOCAL COPY OF
+    `establish_and_run_synthesis`'S OWN CHOREOGRAPHY, NEVER AN IMPORT OF ITS
+    PRIVATE HELPERS, NEVER AN EDIT TO IT. Since `run_synthesis_evidence_loop`
+    itself requires an ALREADY-PERSISTED, accepted `question_model_id` and
+    an ALREADY-PERSISTED, LOCKED `method_protocol_id` (its own docstring,
+    read in full), and the one function that already drives those objects
+    through their real lifecycles (`establish_and_run_synthesis`) cannot
+    pass `sensitivity_variation_parameters` through, this packet's own new
+    test file implements a LOCAL, standalone composition helper (module-
+    private, not exported, named e.g. `_establish_and_run_second_synthesis`)
+    that mirrors `establish_and_run_synthesis`'s own six-step choreography
+    exactly, using ONLY already-existing, unchanged public classes/functions
+    (`MethodProfileService`, `QuestionModelService`, `ConceptCharterService`,
+    `MethodProtocolService`, each with their own already-exported
+    `bind_unit_of_work`; `PostgresObjectRepository`/`PostgresEventLog`;
+    `EDGE_VOCABULARY`/`TypedEdge`/`edges_table`/`DomainEvent`/`new_urn`/
+    `compute_content_hash`/`canonicalize`) — then, as its own final step,
+    calls `run_synthesis_evidence_loop` (K1-T03/K1-T03b, imported and used
+    completely UNCHANGED) DIRECTLY with
+    `sensitivity_variation_parameters={"corroboration-floor-v1": <the
+    sidecar dict, protocol_id/protocol_lock_content_hash filled in from the
+    just-locked protocol's own real id/content_hash, exactly mirroring how
+    the SAME helper fills in the base `protocol_parameters` dict>}`. This
+    duplicates roughly five short steps of choreography
+    (`MethodProfileService.propose`+`.accept`,
+    `QuestionModelService.propose`+`.accept`,
+    `ConceptCharterService.propose`+`.accept`+one `operationalizes` edge
+    write, `MethodProtocolService.create`+`.submit_for_review`+`.lock`) —
+    deliberately, mirroring this codebase's OWN established "local copy
+    across separate modules" convention (`synthesis_setup.py`'s own
+    `_write_operationalizes_edge`/`_finalize_content_hash`, each already a
+    local copy of a sibling module's own equivalent, per that file's own
+    docstring precedent) rather than importing `synthesis_setup.py`'s own
+    private, underscore-prefixed helpers from a test file (which would
+    couple test-tier code to another module's private implementation
+    details) or modifying `synthesis_setup.py` itself (forbidden). The
+    duplication is small, mechanical, and entirely within the new test
+    file's own `allowed_paths` entry — no other file changes as a result.
+  - >-
+    (h) WHAT THIS PACKET DELIBERATELY DOES NOT DO — RESTORING FORWARD
+    REPRODUCTION OF RUN 1'S OWN DECLARATION IS A DIFFERENT ACT, NOT
+    ATTEMPTED HERE. `docs/design/2026-07-21-session-handoff-tagessession
+    .md`'s own "next work" item 1 names TWO things in one sentence
+    ("author a real alternative operationalization" AND "restores forward
+    reproduction of the real run, currently fail-closed"). This packet
+    delivers ONLY the first: it authors `corroboration-floor-v1` as a
+    genuinely new, honestly-scoped, second real run, under its OWN new
+    proposal files declaring `sensitivity_variations:
+    ["corroboration-floor-v1"]`. It does NOT author a sidecar for
+    `"model-collapse-mechanism-v1"` — the entry_id run 1's OWN locked,
+    sealed `MethodProtocol` actually declares — so
+    `tests/e2e/test_k1_t04_first_real_run.py`'s own two fail-closed tests
+    continue to report `run_state == "failed"` exactly as before this
+    packet, completely unaffected (forbidden_changes; invariants). Doing
+    BOTH things in one packet would have required either (i) treating
+    `model-collapse-mechanism-v1` itself as if it names a second,
+    comparable classification (it does not — K1-T03b's own derivation (4)
+    already established this is the question's own CORE TERM entry, not an
+    alternate one to compare against) and inventing a rival mechanism
+    definition under time pressure just to give it SOME sidecar content
+    (exactly the "fabricated demonstration of coverage" K1-T03b's own
+    derived_decisions (l) already warned against), or (ii) reaching for the
+    channel-governance/S42 candidate before Ulysses has answered — both
+    refused. This divergence from the session-handoff's own preview
+    sentence is stated here plainly, not silently narrowed without comment.
+  - >-
+    (i) SCOPE — FIXTURES-AND-REAL-CORPUS-COMPOSITION ONLY, NO EXECUTOR/
+    ORCHESTRATION CODE, NO NEW EXTRACTION. Mirrors `task-packets/
+    K1-T03b.yaml`'s own "no re-run of the real K1-T04 corpus" scope
+    discipline, inverted: THIS packet DOES run against the real corpus
+    (that is its entire point — the first real-corpus exercise of the
+    sensitivity-variation capability) but changes NO executor/orchestration
+    code to do so (K1-T03b already built everything this packet needs) and
+    performs NO new extraction (`corpus_entries` are reused byte-identical
+    from run 1's own file; `run_synthesis_evidence_loop`'s own default,
+    `executor=None`, resolves the SAME `SystematicEvidenceSynthesisExecutor`
+    with `extraction_callable=None` — extraction stays entirely model-free,
+    exactly like both run 1 and every K1-T03/K1-T03b acceptance path).
+  - >-
+    (j) FRESH SCHEMA — EITHER THE STANDARD THROWAWAY PER-INVOCATION
+    CONVENTION OR A DURABLE, NAMED ONE SATISFIES "FRESH." Every existing
+    e2e test in this repository, INCLUDING `test_k1_t04_first_real_run.py`
+    (K1-T04's own "headline real run, e2e tier" acceptance test), uses a
+    fresh, randomly-named, per-invocation Postgres schema that is DROPPED
+    at test teardown (`tests/e2e/conftest.py`'s own `postgres_engine`
+    fixture) — the manually-created, deliberately-KEPT
+    `mrr_k1t04_real_run_v2` schema mentioned throughout the 2026-07-21
+    session-handoff docs was a SEPARATE, one-off, manual exploration
+    outside the automated suite (used for human review before merging), not
+    itself an acceptance-test requirement. This packet's own new e2e test
+    follows the SAME established throwaway-per-invocation convention as
+    every sibling e2e test (`postgres_engine`/`postgres_url`-style fixture,
+    a fresh, uniquely-named schema created and dropped per test run) — this
+    trivially satisfies "fresh" (a schema `mrr_k1t04_real_run_v2` has never
+    used) without inventing new test infrastructure. A durable, NAMED
+    schema for later human inspection (mirroring that one-off ceremony) is
+    an OPTIONAL, separate, manual step a reviewer may still want — named in
+    specification_gaps, not mandated by this packet's own acceptance tests.
+  - >-
+    (k) FRESH `MethodProfile` — REUSING RUN 1'S OWN `DEFAULT_METHOD_PROFILE
+    _BODY` CONTENT, MINTING A NEW OBJECT. Since run 2 lives in its own
+    fresh schema, no `MethodProfile` object exists there yet to reuse by id
+    — the new test's own local composition helper proposes+accepts a fresh
+    one, using the IDENTICAL body content `synthesis_setup.
+    DEFAULT_METHOD_PROFILE_BODY` already declares (same capability name,
+    same `executor_steps`, same `max_claim_ceiling`) — not a redesign, a
+    faithful local copy of already-accepted content, exactly mirroring how
+    `establish_and_run_synthesis` itself falls back to this same constant
+    when no `method_profile_id` is supplied.
+invariants:
+  - >-
+    the eight files under `corpora/model-collapse/` (excluding the new
+    `run2-corroboration-floor/` subdirectory) are BYTE-IDENTICAL before and
+    after this packet — their recomputed sha256 values equal exactly the
+    eight values recorded in this derivation
+  - >-
+    `mrr_k1t04_real_run_v2`'s own object/edge/domain-event counts and
+    content digest (recorded in `docs/design/2026-07-21-session-handoff-
+    tagessession.md`: objects=64, edges=7, domain_events=73) are unchanged
+    after this packet's own full test suite runs
+  - >-
+    `synthesis_executor.py`, `synthesis_orchestration.py`,
+    `synthesis_setup.py`, `synthesis_main.py`, `main.py`, every K1-T01
+    contract/schema, and `packages/domain/mrr/domain/lifecycles.py` are
+    touched in ZERO lines — proven by `git diff --stat` against this
+    packet's own branch
+  - >-
+    `tests/e2e/test_k1_t04_first_real_run.py`'s own two fail-closed tests
+    still report `run_state == "failed"` (against run 1's own,
+    still-uncovered `["model-collapse-mechanism-v1"]` declaration) —
+    UNCHANGED behavior, proving this packet did not accidentally "fix" run
+    1's own declaration as a side effect
+  - >-
+    every existing unit/property/contract/integration/e2e test passes
+    unmodified; both import-linter contracts stay KEPT
+  - >-
+    two invocations of the new e2e test's own call to
+    `run_synthesis_evidence_loop`, against the SAME already-locked
+    `method_protocol_id`/`question_model_id` and byte-identical
+    `corpus_entries`/`protocol_parameters`/`sensitivity_variation_parameters`
+    content, produce byte-identical `SynthesisEvidenceLoopResult.output_hash`
+  - >-
+    the set of `Claim`/`MethodRuling`/`ResearchDecision` ids this run mints
+    is identical whether or not `sensitivity_variation_parameters` is
+    supplied to the SAME otherwise-identical call — no claim/ruling/decision
+    is ever influenced by a variation's own outcome (K1-T03b's own inherited
+    invariant, re-verified here against real, not synthetic, data)
+  - >-
+    every `ConceptCharterEntry.term` in run 2's own new
+    `concept-charter.proposal.json` equals one of run 2's own new
+    `question-model.proposal.json`'s `load_bearing_terms` strings (the same
+    disclosed, non-schema-enforced K1-T04 convention, checked by a plain
+    assertion in the new test, not a database constraint)
+acceptance_tests:
+  - >-
+    [proposal fixture validity, DB-free] the four new files under
+    `corpora/model-collapse/run2-corroboration-floor/` parse and validate,
+    body-only, against `QuestionModel`/`ConceptCharter`/`MethodProtocol`
+    (once minted with the audit/id fields the new test's own composition
+    helper adds) and against
+    `mrr.services.node_runtime.synthesis_executor.
+    SensitivityVariationParameters` respectively, with zero validation
+    errors
+  - >-
+    [run1 untouched] recomputed sha256 of all eight files directly under
+    `corpora/model-collapse/` (not the new subdirectory) equals the eight
+    values this packet's own derivation recorded, both before and after
+    implementation
+  - >-
+    [second real run completes] the new e2e test establishes a fresh
+    `MethodProfile`/`QuestionModel`/`ConceptCharter` (with a real
+    `operationalizes` edge)/locked `MethodProtocol` in its own fresh schema,
+    then calls `run_synthesis_evidence_loop` with `corpus_entries`/
+    `protocol_parameters` reused byte-identical from
+    `corpora/model-collapse/{corpus-entries.json,protocol-parameters
+    .sidecar.json}` plus
+    `sensitivity_variation_parameters={"corroboration-floor-v1": ...}`, and
+    completes with `run_state == "completed"` (in contrast to run 1's own
+    fixture set, whose declaration remains uncovered and still fails
+    closed, unaffected by this packet)
+  - >-
+    [honest reporting, outcome not hardcoded] the resulting `EvidenceMatrix`
+    's own `sensitivity_analysis_results` contains exactly one entry per
+    `applies_to_analysis` group present in the base run
+    (`model-collapse-mechanism-theory-confirmation`,
+    `instantiation-vs-reference-classification` — two entries), each
+    carrying `variation_entry_id == "corroboration-floor-v1"` and a real,
+    well-formed `outcome`/`matches_base_outcome`/`decision_rationale` — the
+    test asserts these fields EXIST and are internally consistent (e.g.
+    `decision_rationale` non-null iff `outcome == "insufficient_evidence"`),
+    and separately, in its own docstring/log output, REPORTS the actual
+    `outcome` and `matches_base_outcome` values observed for each analysis —
+    it does NOT assert a specific outcome string as a REQUIRED pass/fail
+    condition for either analysis (mirrors `task-packets/K1-T04.yaml`'s own
+    "property 4" honesty discipline, applied here to a sensitivity result
+    rather than a base claim)
+  - >-
+    [determinism] two calls to `run_synthesis_evidence_loop`, reusing the
+    SAME already-locked `method_protocol_id`/`question_model_id` and
+    byte-identical `corpus_entries`/`protocol_parameters`/
+    `sensitivity_variation_parameters` dicts, produce byte-identical
+    `output_hash`
+  - >-
+    [claim/ruling isolation] the SAME governance objects, run once with
+    `sensitivity_variation_parameters={"corroboration-floor-v1": ...}` and
+    once with it omitted entirely (`None`), mint the IDENTICAL set of
+    `Claim`/`MethodRuling`/`ResearchDecision` ids — the variation's own
+    outcome influences nothing beyond `EvidenceMatrix.sensitivity_analysis_
+    results` itself
+  - >-
+    [operationalizes-term convention] every `ConceptCharterEntry.term` in
+    the new `concept-charter.proposal.json` equals one of the new
+    `question-model.proposal.json`'s `load_bearing_terms` strings
+  - >-
+    [regression] `tests/e2e/test_k1_t04_first_real_run.py`,
+    `tests/e2e/test_k1_t03b_sensitivity_variation_execution.py`, and
+    `tests/e2e/test_k1_t03_synthesis_evidence_loop.py` all pass completely
+    unmodified in the same test run
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+  - make security-check
+specification_gaps:
+  - >-
+    CLI reproduction of this second run is NOT available today
+    (derived_decisions (f)) — `mrr synthesis run` still only reproduces run
+    1's own (still fail-closed) fixture set. A future task could extend
+    `establish_and_run_synthesis`/`synthesis_main.py` with a
+    `sensitivity_variation_parameters`/`--sensitivity-variation-parameters-
+    file` passthrough, named here but not designed, scoped, or stubbed.
+  - >-
+    whether a durable, NAMED Postgres schema (mirroring the manual
+    `mrr_k1t04_real_run_v2` ceremony) should be produced for this run, for
+    lasting human inspection beyond this packet's own throwaway-per-test-
+    invocation proof, is left to the project owner as an optional, separate,
+    manual step (derived_decisions (j)) — not mandated by this packet's own
+    acceptance tests.
+  - >-
+    the `K1-T04b` task-id choice (derived_decisions (a)) rests on
+    DELIVERABLE/directory ownership rather than the unambiguous CODE
+    ownership `K1-T03b`'s own b-suffix could claim for itself, since this
+    packet touches no production code file at all — flagged for explicit
+    reviewer confirmation, not treated as beyond question.
+  - >-
+    offers (1) ("negotiated use of your atlas, this time") and (3) ("your
+    own read on the 15 works... does Hammond's V1-V4 project... hold up
+    under your own reading?") from the SAME irrtum-als-methode REQUESTS.md
+    commit (`1e1ef1f`) are BOTH still open, status "open," no response
+    recorded at this derivation. This packet's own judgment call — that
+    reusing run 1's ALREADY-PINNED, already-committed corpus/atlas snapshot
+    verbatim, by direct path reference, without any new read of either home
+    repository, does not itself constitute the kind of NEW atlas-access
+    event offer (1) is asking permission for — is flagged here for reviewer
+    confirmation, not silently assumed. Offer (3) (a possible correction to
+    the Hammond classification specifically) is untouched by this packet
+    entirely: `evidence_relation` for every corpus row, Hammond's included,
+    is reused byte-identical from run 1's own `corpus-entries.json`, never
+    re-examined or re-classified here.
+  - >-
+    the raised floor's exact new value (`contested` floor 1 -> 2, matching
+    the pre-existing `supported` floor) is this packet's own chosen,
+    justified-but-not-unique delta (derived_decisions (d)) — a reviewer may
+    prefer a different, more or less conservative number; the mechanism
+    (a `SensitivityVariationParameters` sidecar) supports any value equally.
+  - >-
+    whether the real, honest re-classification under the raised floor
+    actually produces the flip this derivation's own hand trace expects
+    (instantiation-vs-reference: `contested` -> `unsupported`; theory-
+    confirmation: `supported`, unaffected) cannot be known with certainty
+    until the run happens for real against the actual, current code — report
+    whichever outcome is real, per MRR-MTH-011 and required_output, never
+    force or paper over a disagreement with this derivation's own
+    expectation.
+  - >-
+    this packet does NOT restore forward reproduction of run 1's OWN
+    existing declaration (`sensitivity_variations:
+    ["model-collapse-mechanism-v1"]`, still uncovered by any sidecar) —
+    an intentional divergence from `docs/design/2026-07-21-session-handoff-
+    tagessession.md`'s own "next work" preview sentence, which named both
+    acts together as if they were one (derived_decisions (h)). Authoring a
+    sidecar for THAT specific entry_id (which would require either treating
+    it as if it named a real, comparable alternate classification, or
+    replacing it with a genuine `model-collapse-mechanism-v2`-style rival
+    definition) remains a separate, open, future decision.
+required_output:
+  - implementation summary
+  - >-
+    files changed, split explicitly into: (I) the new proposal/sidecar
+    fixtures under `corpora/model-collapse/run2-corroboration-floor/**`;
+    (II) the one new e2e test file — reported separately so a reviewer can
+    see the research content apart from the test harness
+  - >-
+    explicit confirmation, with a `git diff --stat` excerpt as evidence,
+    that `synthesis_executor.py`, `synthesis_orchestration.py`,
+    `synthesis_setup.py`, `synthesis_main.py`, `main.py`, every K1-T01
+    contract/schema, and `lifecycles.py` were touched in ZERO lines, and
+    that the eight files directly under `corpora/model-collapse/` are
+    byte-identical (sha256 match) before and after
+  - tests added and exact command results for every command in `commands`
+  - >-
+    the EXACT, REAL classification outcome this run actually produced under
+    the raised floor for BOTH `applies_to_analysis` groups — whichever way
+    it goes — reported in full and prominently, per MRR-MTH-011 ("MUST NOT
+    be silently omitted from any claim landscape"); if it diverges from
+    this derivation's own hand-traced expectation (instantiation-vs-
+    reference flipping to `unsupported`), that divergence itself is
+    reported explicitly, not smoothed over
+  - >-
+    security/privacy implications: no new network surface; all data reused
+    (theory/works atlas content, corpus entries) is already-public,
+    already-licensed, non-personal data under the identical license
+    established by `task-packets/K1-T04.yaml`'s own derived_decisions (a);
+    fail-closed direction of every reused check
+    (`ProtocolNotLockedError`/`ProtocolLockViolationError`/
+    `SensitivityVariationDeclarationMismatchError`) preserved unchanged
+  - open specification questions exactly as listed under specification_gaps
+stop_conditions:
+  - >-
+    achieving this run is found to require ANY change to
+    `synthesis_executor.py`, `synthesis_orchestration.py`,
+    `synthesis_setup.py`, `synthesis_main.py`, `main.py`, any K1-T01
+    contract/schema, or `packages/domain/mrr/domain/lifecycles.py` — STOP
+    immediately, report the exact change that would be required and why the
+    local-composition-helper design (derived_decisions (g)) could not avoid
+    it, and do NOT implement that change under this run packet (mission
+    mandate: a run packet never becomes a code packet by scope creep)
+  - >-
+    the raised floor cannot be expressed within `SensitivityVariationParameters`
+    's existing shape as this packet describes it (e.g. a reviewer or the
+    implementer discovers the shared, single-threshold-table limitation
+    already disclosed by both `task-packets/K1-T04.yaml` derived_decisions
+    (i) and `task-packets/K1-T03b.yaml` derived_decisions (i) makes the
+    intended isolation of "vary only `contested`, hold everything else
+    fixed" impossible in some way this derivation missed) — STOP, report
+    the exact limitation, do not extend the protected sidecar shape
+    unilaterally
+  - >-
+    a reviewer determines `corroboration-floor-v1`'s own charter definition
+    text (derived_decisions (c)) in fact characterizes a rival mechanism
+    operationalization rather than a pure threshold variation, contrary to
+    this packet's own explicit framing — STOP and revise the definition text
+    (or escalate to the owner) before implementation proceeds; do not paper
+    over the distinction the owner's own decision draws
+  - >-
+    implementation discovers the channel-governance/S42-seeded candidate is
+    in fact a hard prerequisite for a MEANINGFUL sensitivity comparison on
+    this question (i.e., the corroboration-floor variation turns out not to
+    be a genuine, defensible sensitivity axis after all) — STOP; this run
+    explicitly excludes that candidate pending Ulysses' own response, and
+    does not substitute a rushed version of it
+  - >-
+    making this run succeed is found to require ANY change to run 1's own
+    eight committed files, or any write (of any kind, including a
+    read-modify-write that merely re-applies the same content) to the sealed
+    schema `mrr_k1t04_real_run_v2` — STOP; this would violate the
+    no-backfill/no-mutation mandate this whole packet exists to honor
+  - >-
+    the new e2e test's own fresh schema is found to collide with, or in any
+    way be indistinguishable from, `mrr_k1t04_real_run_v2` — STOP and choose
+    a schema name/creation strategy that cannot collide, rather than
+    proceeding on an ambiguous namespace
