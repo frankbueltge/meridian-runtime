@@ -1472,3 +1472,39 @@ class InvalidKillDecisionError(DomainError):
             f"decision_type={actual_decision_type!r} — requires a ResearchDecision with "
             "decision_type == 'kill_branch'"
         )
+
+
+class GatedEdgeTypeError(DomainError):
+    """Raised by ``mrr.services.claim.service.ClaimService.add_evidence_edge``/
+    ``link_related_claim`` (task-packets/K1-T02.yaml, review follow-up) when
+    the caller-supplied ``edge_type`` is one of
+    ``mrr.services.claim.service.GATED_EDGE_TYPES`` (``ruled_by``/
+    ``decided_by``) — edge types that may ONLY be written by their own
+    dedicated gated method (``attach_ruling``/``apply_kill_condition``
+    respectively), never through a generic, arbitrary-edge-type entry point.
+
+    ``ruled_by`` and ``decided_by`` are ordinary ``EDGE_VOCABULARY`` members
+    like any other (K1-T02 added them there), so without this check
+    ``add_evidence_edge``/``link_related_claim`` would silently accept
+    either one directly — bypassing ``attach_ruling``'s ceiling gate
+    (MRR-MTH-004/005/006) or ``apply_kill_condition``'s kill-decision
+    licensing check (MRR-MTH-010) entirely, and recording the wrong event
+    provenance (``claim.evidence_edge_added``/``claim.related_claim_linked``
+    instead of ``claim.ruling_attached``/``claim.kill_decision_recorded``).
+    For ``decided_by`` in particular there is no downstream safety net: a
+    ``decided_by`` edge could then exist with the claim never actually
+    transitioned to ``withdrawn``, undermining MRR-MTH-010's "a triggered
+    kill condition MUST deterministically transition the affected branch."
+
+    Checked BEFORE either generic method resolves ``claim_id`` or writes
+    anything — a caught instance always means nothing was persisted. Carries
+    ``edge_type`` (the offending value).
+    """
+
+    def __init__(self, edge_type: str) -> None:
+        self.edge_type = edge_type
+        super().__init__(
+            f"edge type {edge_type!r} is gated — it may only be written by its own "
+            "dedicated method (attach_ruling for 'ruled_by', apply_kill_condition for "
+            "'decided_by'), never through a generic edge-writing entry point"
+        )

@@ -179,6 +179,31 @@ since no persistence primitive in this module's ``allowed_paths`` composes
 an object-revision write AND an edge write atomically together, only each
 with its OWN event (mirrors this module's own "object fields and graph edges
 are two independent writes with one required consistency point" precedent).
+
+--- K1-T02 review follow-up: gating the generic edge writers ----------------
+
+``ruled_by``/``decided_by`` are ordinary ``EDGE_VOCABULARY`` members like
+any other — nothing about the vocabulary itself distinguishes them from
+``supports``/``qualifies``/etc. Without a further restriction, the generic,
+arbitrary-``edge_type`` entry points (``add_evidence_edge``/
+``link_related_claim``) would silently accept either one directly, letting
+a caller write a ``ruled_by`` edge that never passed ``attach_ruling``'s
+ceiling gate, or a ``decided_by`` edge with no corresponding
+``apply_kill_condition`` call (and thus no real ``withdrawn`` transition at
+all) — undermining MRR-MTH-004/005/006 and MRR-MTH-010 respectively, and
+recording misleading event provenance (``claim.evidence_edge_added``/
+``claim.related_claim_linked`` instead of ``claim.ruling_attached``/
+``claim.kill_decision_recorded``) either way.
+
+``GATED_EDGE_TYPES`` (``{"ruled_by", "decided_by"}``) and the
+``_reject_gated_edge_type`` helper close this gap: both generic writers
+raise ``GatedEdgeTypeError`` BEFORE resolving ``claim_id`` or writing
+anything, whenever ``edge_type`` is gated. ``_write_edge`` itself is
+deliberately NOT restricted — ``attach_ruling``/``apply_kill_condition``
+call it directly (after their own dedicated gate has already passed) and
+must remain able to write these two edge types; the restriction sits only
+at the two generic, caller-facing entry points, not at the shared internal
+helper both the generic writers and the gated methods route through.
 """
 
 from __future__ import annotations
@@ -194,6 +219,7 @@ from mrr.domain.claim_ceiling import ceiling_violation_reason
 from mrr.domain.exceptions import (
     ClaimCeilingExceededError,
     ClaimNotFoundError,
+    GatedEdgeTypeError,
     InvalidTransitionError,
     MissingSupportEdgeError,
     ObjectNotFoundError,
@@ -236,6 +262,34 @@ _RULED_BY_EDGE_TYPE = "ruled_by"
 #: The one typed-edge kind `apply_kill_condition` ever writes (K1-T02,
 #: MRR-MTH-010).
 _DECIDED_BY_EDGE_TYPE = "decided_by"
+
+#: Edge types that may ONLY be written by their own dedicated gated method —
+#: never through a generic, arbitrary-``edge_type`` entry point
+#: (``add_evidence_edge``/``link_related_claim``). ``ruled_by`` is written
+#: exclusively by ``attach_ruling`` (which enforces the K1-T02 ceiling gate,
+#: MRR-MTH-004/005/006, BEFORE writing); ``decided_by`` is written
+#: exclusively by ``apply_kill_condition`` (which enforces the kill-decision
+#: licensing check, MRR-MTH-010, BEFORE writing, and pairs the edge with a
+#: real ``withdrawn`` transition). Both are ordinary ``EDGE_VOCABULARY``
+#: members like any other (K1-T02 added them there), so without this
+#: restriction the two generic writers would silently accept either one
+#: directly — bypassing both gates entirely and recording the wrong event
+#: provenance. See ``GatedEdgeTypeError`` and ``_reject_gated_edge_type``.
+#: The gated methods themselves call the internal ``_write_edge`` helper
+#: directly and are therefore unaffected by this restriction — only the two
+#: generic, caller-facing entry points are restricted.
+GATED_EDGE_TYPES: frozenset[str] = frozenset({_RULED_BY_EDGE_TYPE, _DECIDED_BY_EDGE_TYPE})
+
+
+def _reject_gated_edge_type(edge_type: str) -> None:
+    """Raise ``GatedEdgeTypeError`` iff ``edge_type`` is one of
+    ``GATED_EDGE_TYPES`` — shared by both generic edge-writing entry points
+    (``ClaimService.add_evidence_edge``/``link_related_claim``). Checked
+    before either method resolves ``claim_id`` or writes anything.
+    """
+    if edge_type in GATED_EDGE_TYPES:
+        raise GatedEdgeTypeError(edge_type)
+
 
 #: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
 #: takes once its ``engine``/``object_repository``/``event_log`` arguments are
@@ -602,13 +656,21 @@ class ClaimService:
         ``contextualizes``/``derived_from``/``uses_source``/...),
         atomically with a ``claim.evidence_edge_added`` event.
 
+        ``edge_type`` MUST NOT be one of ``GATED_EDGE_TYPES``
+        (``ruled_by``/``decided_by``, K1-T02) — those are written
+        exclusively by ``attach_ruling``/``apply_kill_condition``.
+
         Raises:
+            GatedEdgeTypeError: ``edge_type`` is one of ``GATED_EDGE_TYPES``
+                — checked FIRST, before ``claim_id`` is even resolved, so
+                nothing is persisted.
             UnknownEdgeTypeError: ``edge_type`` is not in
                 ``mrr.domain.repositories.EDGE_VOCABULARY`` (E1-T05's own
                 fail-closed check, reused as-is) — checked before
                 ``claim_id`` is even resolved, so nothing is persisted.
             ClaimNotFoundError: ``claim_id`` resolves to no stored object.
         """
+        _reject_gated_edge_type(edge_type)
         return self._write_edge(
             claim_id,
             target_id,
@@ -684,7 +746,17 @@ class ClaimService:
         them into one object. Neither claim's own object revision is
         touched — the two remain fully separate, independently addressable
         objects; only a new edge (plus its event) is written.
+
+        ``edge_type`` MUST NOT be one of ``GATED_EDGE_TYPES``
+        (``ruled_by``/``decided_by``, K1-T02) — those are written
+        exclusively by ``attach_ruling``/``apply_kill_condition``.
+
+        Raises:
+            GatedEdgeTypeError: ``edge_type`` is one of ``GATED_EDGE_TYPES``
+                — checked FIRST, before ``claim_id`` is even resolved, so
+                nothing is persisted.
         """
+        _reject_gated_edge_type(edge_type)
         return self._write_edge(
             claim_id,
             other_claim_id,
@@ -710,8 +782,11 @@ class ClaimService:
         correlation_id: Urn,
     ) -> TypedEdge:
         """The "at submission" ceiling gate (MRR-MTH-004) and the ONLY place
-        a ``ruled_by`` edge is ever written. See the module docstring's
-        "K1-T02: the claim-ceiling gate" section for the full rationale.
+        a ``ruled_by`` edge is ever written — the generic
+        ``add_evidence_edge``/``link_related_claim`` entry points reject
+        ``ruled_by`` with ``GatedEdgeTypeError`` (``GATED_EDGE_TYPES``). See
+        the module docstring's "K1-T02: the claim-ceiling gate" section for
+        the full rationale.
 
         Raises:
             ClaimCeilingExceededError: the resolved ``MethodRuling`` ->
@@ -776,6 +851,13 @@ class ClaimService:
         evidence to decide WHETHER a condition is currently satisfied
         (task-packets/K1-T03.yaml's/K1-T04.yaml's job); it acts on a
         caller-supplied, already-decided ``research_decision_id``.
+
+        This is also the ONLY place a ``decided_by`` edge is ever written —
+        the generic ``add_evidence_edge``/``link_related_claim`` entry
+        points reject ``decided_by`` with ``GatedEdgeTypeError``
+        (``GATED_EDGE_TYPES``), so a ``decided_by`` edge can never exist
+        without this method's own kill-decision licensing check and real
+        ``withdrawn`` transition having both already run.
 
         Raises:
             InvalidKillDecisionError: the object resolved for

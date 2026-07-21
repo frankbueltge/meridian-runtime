@@ -47,6 +47,7 @@ from mrr.contracts import Claim
 from mrr.domain.exceptions import (
     ClaimCeilingExceededError,
     ClaimNotFoundError,
+    GatedEdgeTypeError,
     InvalidKillDecisionError,
     InvalidTransitionError,
     MissingSupportEdgeError,
@@ -59,6 +60,7 @@ from mrr.domain.repositories import EDGE_VOCABULARY, StoredObject, TypedEdge
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from mrr.services.claim.service import (
+    GATED_EDGE_TYPES,
     ClaimService,
     RecordEdgeWithEvent,
     RecordRevisionWithEvent,
@@ -773,6 +775,53 @@ def test_add_evidence_edge_on_missing_claim_raises_claim_not_found_error() -> No
     assert excinfo.value.claim_id == missing_claim_id
 
 
+@pytest.mark.parametrize("gated_edge_type", sorted(GATED_EDGE_TYPES))
+def test_add_evidence_edge_rejects_gated_edge_types_and_persists_nothing(
+    gated_edge_type: str,
+) -> None:
+    """K1-T02 review follow-up: `ruled_by`/`decided_by` are ordinary
+    EDGE_VOCABULARY members now, so without this gate this generic writer
+    would silently accept either one directly, bypassing attach_ruling's
+    ceiling check / apply_kill_condition's kill-decision licensing check
+    entirely.
+    """
+    service, object_repository, event_log, edge_repository = _service()
+    claim = _claim(status="under_review")
+    _seed(object_repository, claim)
+
+    with pytest.raises(GatedEdgeTypeError) as excinfo:
+        service.add_evidence_edge(
+            claim.id,
+            new_urn("some-target"),
+            gated_edge_type,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+    assert excinfo.value.edge_type == gated_edge_type
+    assert edge_repository.edges_from(claim.id) == []
+    assert event_log.read_all() == []
+
+
+def test_add_evidence_edge_rejects_gated_edge_type_before_claim_existence() -> None:
+    """Mirrors test_add_evidence_edge_invalid_type_checked_before_claim_existence:
+    the gated-edge-type check happens even for a claim_id that does not
+    exist — it is checked before claim_id is ever resolved.
+    """
+    service, _, _, _ = _service()
+    missing_claim_id = new_urn("claim")
+
+    with pytest.raises(GatedEdgeTypeError):
+        service.add_evidence_edge(
+            missing_claim_id,
+            new_urn("method-ruling"),
+            "ruled_by",
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+
+
 def test_add_counterevidence_edge_uses_contradicts_type() -> None:
     service, object_repository, _, edge_repository = _service()
     claim = _claim(status="under_review")
@@ -848,6 +897,35 @@ def test_link_related_claim_keeps_two_claims_separate_objects() -> None:
     events = event_log.read_all()
     assert len(events) == 1
     assert events[0].event.event_type == "claim.related_claim_linked"
+
+
+@pytest.mark.parametrize("gated_edge_type", sorted(GATED_EDGE_TYPES))
+def test_link_related_claim_rejects_gated_edge_types_and_persists_nothing(
+    gated_edge_type: str,
+) -> None:
+    """K1-T02 review follow-up: see
+    test_add_evidence_edge_rejects_gated_edge_types_and_persists_nothing's
+    identical rationale — link_related_claim is the OTHER generic,
+    arbitrary-edge_type entry point this gate closes.
+    """
+    service, object_repository, event_log, edge_repository = _service()
+    claim_a = _claim(status="under_review")
+    claim_b = _claim(status="under_review")
+    _seed(object_repository, claim_a)
+    _seed(object_repository, claim_b)
+
+    with pytest.raises(GatedEdgeTypeError) as excinfo:
+        service.link_related_claim(
+            claim_a.id,
+            claim_b.id,
+            gated_edge_type,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+    assert excinfo.value.edge_type == gated_edge_type
+    assert edge_repository.edges_from(claim_a.id) == []
+    assert event_log.read_all() == []
 
 
 # ---------------------------------------------------------------------------
@@ -1160,3 +1238,48 @@ def test_apply_kill_condition_against_an_already_terminal_claim_raises_invalid_t
         )
     assert [rev.revision for rev in object_repository.list_revisions(claim.id)] == [1]
     assert event_log.read_all() == []
+
+
+# ---------------------------------------------------------------------------
+# K1-T02 review follow-up: gating GATED_EDGE_TYPES on the two generic
+# writers must NOT affect the dedicated gated methods themselves — both
+# call the internal, unrestricted `_write_edge` helper directly.
+# ---------------------------------------------------------------------------
+
+
+def test_gated_methods_still_write_their_own_edge_types_unaffected_by_the_generic_edge_gate() -> (
+    None
+):
+    """Explicit regression check (not merely "unchanged by omission"):
+    attach_ruling still writes a real `ruled_by` edge and apply_kill_condition
+    still writes a real `decided_by` edge — the GATED_EDGE_TYPES restriction
+    added to add_evidence_edge/link_related_claim does not reach the
+    internal _write_edge helper those two gated methods call directly.
+    """
+    service, object_repository, _, edge_repository = _service()
+    claim = _claim(status="under_review", claim_type="causal")
+    _seed(object_repository, claim)
+    ruling_id = _seed_ruling_under_profile(
+        object_repository, ruled_ceiling="causal_bounded", profile_max_ceiling="causal_bounded"
+    )
+
+    ruled_by_edge = service.attach_ruling(
+        claim.id,
+        ruling_id,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+    )
+    assert ruled_by_edge.edge_type == "ruled_by"
+    assert edge_repository.edges_from(claim.id, "ruled_by") == [ruled_by_edge]
+
+    decision_id = _seed_research_decision(object_repository, decision_type="kill_branch")
+    _, decided_by_edge = service.apply_kill_condition(
+        claim.id,
+        decision_id,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+    )
+    assert decided_by_edge.edge_type == "decided_by"
+    assert edge_repository.edges_from(claim.id, "decided_by") == [decided_by_edge]
