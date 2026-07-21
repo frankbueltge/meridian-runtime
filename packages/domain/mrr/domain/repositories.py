@@ -27,10 +27,21 @@ from typing import Any, Protocol, runtime_checkable
 
 #: The exact edge vocabulary from docs/spec/02_DOMAIN_MODEL.md section 3
 #: ("The claim/evidence graph MUST use typed edges. Minimum vocabulary:"),
-#: transcribed verbatim. Nineteen types — nothing added, nothing dropped.
-#: Both this constant and the database CHECK constraint in
+#: transcribed verbatim, EXTENDED by the four docs/spec/08_RESEARCH_METHOD_
+#: KERNEL.md section 3 method-kernel edges (task-packets/K1-T02.yaml, the
+#: repository's FIRST edge-vocabulary migration —
+#: migrations/versions/aa2adabee4de_widen_edge_type_vocabulary_for_method_kernel_edges.py):
+#: ``operationalizes`` (ConceptCharter entry -> QuestionModel term),
+#: ``governed_by_protocol`` (EvidenceMatrix/Claim/EvidenceCrate -> locked
+#: MethodProtocol), ``ruled_by`` (Claim -> MethodRuling), ``decided_by`` (a
+#: killed/stopped branch's objects -> ResearchDecision). Twenty-three types
+#: total — nothing else added, nothing dropped, nothing renamed. Both this
+#: constant and the database CHECK constraint in
 #: packages/persistence/mrr/persistence/tables.py enforce it (fail closed
-#: in code and in the database).
+#: in code and in the database); the latter is computed LIVE from this
+#: constant (see that module's own docstring), so this one Python-level
+#: change is what widens the in-Python table metadata too — only the
+#: hand-written, intentionally-frozen migration snapshot needed a new file.
 EDGE_VOCABULARY: frozenset[str] = frozenset(
     {
         "supports",
@@ -52,6 +63,10 @@ EDGE_VOCABULARY: frozenset[str] = frozenset(
         "member_of_source_family",
         "subject_to_obligation",
         "projected_into",
+        "operationalizes",
+        "governed_by_protocol",
+        "ruled_by",
+        "decided_by",
     }
 )
 

@@ -252,3 +252,56 @@ def test_row_is_not_flagged_by_a_partially_resolved_correction() -> None:
     row = build_claim_table_row(claim, [correction])
 
     assert row.flagged is False
+
+
+# ---------------------------------------------------------------------------
+# K1-T02: build_claim_table_row's ceiling-gate projection extension
+# (MRR-MTH-004's "at ... projection rendering" half).
+# ---------------------------------------------------------------------------
+
+
+def test_ceiling_omitted_is_byte_identical_to_pre_k1_t02_behavior() -> None:
+    """The legacy call shape (both new keyword parameters omitted) reports
+    ceiling_checked=False, ceiling_violation=None — every pre-K1-T02 call
+    site and test continues to pass unchanged.
+    """
+    claim = _claim_body()
+
+    row = build_claim_table_row(claim, [])
+
+    assert row.ceiling_checked is False
+    assert row.ceiling_violation is None
+
+
+def test_ceiling_checked_true_and_no_violation_for_a_licensing_pair() -> None:
+    claim = _claim_body(claim_type="observational")
+
+    row = build_claim_table_row(
+        claim, [], ruled_ceiling="descriptive", profile_max_ceiling="associational_unadjusted"
+    )
+
+    assert row.ceiling_checked is True
+    assert row.ceiling_violation is None
+
+
+def test_ceiling_checked_true_and_violation_reason_for_a_violating_pair() -> None:
+    claim = _claim_body(claim_type="observational")
+
+    row = build_claim_table_row(
+        claim, [], ruled_ceiling="causal_bounded", profile_max_ceiling="associational_unadjusted"
+    )
+
+    assert row.ceiling_checked is True
+    assert row.ceiling_violation is not None
+    assert "causal_bounded" in row.ceiling_violation
+
+
+def test_ceiling_check_reuses_the_same_gate_for_a_causal_claim() -> None:
+    claim = _claim_body(claim_type="causal")
+
+    row = build_claim_table_row(
+        claim, [], ruled_ceiling="associational_adjusted", profile_max_ceiling="causal_bounded"
+    )
+
+    assert row.ceiling_checked is True
+    assert row.ceiling_violation is not None

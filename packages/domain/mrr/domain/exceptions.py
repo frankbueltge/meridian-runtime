@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 
 
 class DomainError(Exception):
@@ -1380,4 +1381,94 @@ class UnknownCapabilityError(DomainError):
             f"no Executor registered for capability {capability_name!r} — "
             "unrouted capability, failing closed (never falling back to a "
             "default Executor)"
+        )
+
+
+class ClaimCeilingExceededError(DomainError):
+    """Raised by ``mrr.services.claim.service.ClaimService.attach_ruling``
+    (task-packets/K1-T02.yaml, MRR-MTH-004/005/006) and by the ceiling
+    re-check ``ClaimService._transition`` performs whenever a claim carrying
+    one or more ``ruled_by`` edges moves into a language-asserting status
+    (``supported``/``contested``/``contradicted``/``unsupported``), when
+    ``mrr.domain.claim_ceiling.ceiling_violation_reason`` reports a non-``None``
+    verdict for the resolved ``MethodRuling`` -> ``MethodProtocol`` ->
+    ``MethodProfile`` chain — either the universal "ruling exceeds its own
+    profile's declared max_claim_ceiling" check (MRR-MTH-003/006) or the
+    causal-specific "claim_type == 'causal' requires ruled_ceiling in
+    {causal_local, causal_bounded}" check (MRR-MTH-004).
+
+    Carries ``error_code`` (spec 08 section 3's canonical
+    ``"CLAIM_CEILING_EXCEEDED"`` string — "the acceptance features MUST use
+    exactly these" codes), ``claim_id``, and ``reason`` (the exact string
+    ``ceiling_violation_reason`` returned, never re-derived or paraphrased
+    here). Always raised BEFORE anything is persisted — a caught instance
+    always means the claim's stored state (and any ``ruled_by`` edge under
+    consideration) is byte-identical to before the call.
+    """
+
+    error_code: ClassVar[str] = "CLAIM_CEILING_EXCEEDED"
+
+    def __init__(self, *, claim_id: str, reason: str) -> None:
+        self.claim_id = claim_id
+        self.reason = reason
+        super().__init__(f"Claim {claim_id!r} ceiling exceeded: {reason}")
+
+
+class SyntheticFixtureNotEvidenceError(DomainError):
+    """Raised by ``mrr.domain.synthetic_fixture.assert_not_synthetic_fixture_evidence``
+    (task-packets/K1-T02.yaml, MRR-MTH-012) when the supplied
+    ``source_classification`` is ``"SYNTHETIC_TEST_FIXTURE"`` — ADR-0010's
+    proposed (not yet schema-adopted; see that module's own docstring)
+    ``baseObject.classification`` value marking a fixture-derived object that
+    must never be treated as empirical evidence.
+
+    Carries ``error_code`` (spec 08 section 3's canonical
+    ``"SYNTHETIC_FIXTURE_NOT_EVIDENCE"`` string) and ``source_classification``
+    (the exact offending value, always ``"SYNTHETIC_TEST_FIXTURE"`` when this
+    is raised — carried anyway, rather than hardcoded into the message alone,
+    matching this module's existing "carry the field, don't just narrate it"
+    convention).
+    """
+
+    error_code: ClassVar[str] = "SYNTHETIC_FIXTURE_NOT_EVIDENCE"
+
+    def __init__(self, *, source_classification: str | None) -> None:
+        self.source_classification = source_classification
+        super().__init__(
+            f"source classification {source_classification!r} marks a synthetic test "
+            "fixture; it cannot enter an empirical evidence path (MRR-MTH-012)"
+        )
+
+
+class InvalidKillDecisionError(DomainError):
+    """Raised by ``mrr.domain.kill_condition.assert_licenses_kill`` (task-packets/
+    K1-T02.yaml, MRR-MTH-010) when the object resolved for a
+    ``ClaimService.apply_kill_condition`` call's ``research_decision_id`` is
+    not a ``ResearchDecision`` with ``decision_type == "kill_branch"`` — either
+    the wrong object kind entirely, or a ``ResearchDecision`` whose
+    ``decision_type`` is one of the other six values (``continue``,
+    ``revise``, ``narrow_scope``, ``replicate``, ``escalate_human_review``,
+    ``stop_insufficient_evidence``).
+
+    Unlike ``ClaimCeilingExceededError``/``SyntheticFixtureNotEvidenceError``,
+    this is NOT one of spec 08 section 3's six canonical error codes — it is
+    this packet's own narrower "is this really a licensing kill_branch
+    decision" precondition check, so it carries no ``error_code`` class
+    attribute. Carries ``research_decision_id``, ``actual_kind`` (the resolved
+    object's own ``kind``), and ``actual_decision_type`` (``None`` if the
+    resolved object carries no such field at all, e.g. it is not a
+    ``ResearchDecision``). Checked FIRST inside ``apply_kill_condition``,
+    before any write — a caught instance always means nothing was persisted.
+    """
+
+    def __init__(
+        self, research_decision_id: str, *, actual_kind: str, actual_decision_type: str | None
+    ) -> None:
+        self.research_decision_id = research_decision_id
+        self.actual_kind = actual_kind
+        self.actual_decision_type = actual_decision_type
+        super().__init__(
+            f"{research_decision_id!r} does not license a kill: kind={actual_kind!r}, "
+            f"decision_type={actual_decision_type!r} — requires a ResearchDecision with "
+            "decision_type == 'kill_branch'"
         )

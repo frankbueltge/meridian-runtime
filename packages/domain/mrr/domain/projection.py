@@ -89,6 +89,38 @@ which claims separately get transitioned to ``review_required`` by the
 correction-impact service, and a claim can be a correction's own directly
 corrected subject without a status change having been separately triggered.
 
+--- MRR-MTH-004: the ceiling-gate projection extension (task-packets/K1-T02.yaml) ---
+
+``build_claim_table_row`` gains two NEW, fully OPTIONAL keyword parameters,
+``ruled_ceiling``/``profile_max_ceiling`` (both default ``None``), and
+``ClaimTableRow`` gains two new fields, ``ceiling_checked``/
+``ceiling_violation``, additively — every EXISTING call site (both
+parameters omitted) is byte-identical to its pre-K1-T02 behavior:
+``ceiling_checked=False``, ``ceiling_violation=None``. This is the "at ...
+projection rendering" half of MRR-MTH-004's "the claim service MUST reject
+claim language above the ruled ceiling ... at submission and at projection
+rendering" — re-deriving the SAME verdict
+``mrr.domain.claim_ceiling.ceiling_violation_reason`` computes at
+``ClaimService.attach_ruling``/``_transition`` time, rather than trusting the
+claim's own stored status, consistent with this module's own "narrative
+reports are projections, never authoritative" discipline (AGENTS.md): a claim
+marked ``supported`` under a ruling that was LATER superseded to a stricter
+ceiling surfaces ``ceiling_violation`` at render time even though its own
+stored object was valid when it was written.
+
+``ceiling_checked``/``ceiling_violation`` deliberately do NOT distinguish
+"checked, no violation" from "not checked at all" via a single field — both
+read ``ceiling_violation=None``, disambiguated only by the separate
+``ceiling_checked`` boolean (flagged for reviewer scrutiny in
+task-packets/K1-T02.yaml specification_gaps; a single three-value
+``Literal["not_checked", "licensed", "violated"]`` field is a defensible
+alternative a reviewer may prefer instead). The I/O-performing half that
+resolves a claim's own ``ruled_by`` edge(s) and the
+``MethodRuling``->``MethodProtocol``->``MethodProfile`` chain behind them is
+``mrr.services.projection.service.ProjectionService.build_claim_table``,
+which calls this function once per claim exactly as it always has, now
+optionally supplying the two new keyword arguments.
+
 --- Determinism ------------------------------------------------------------
 
 ``unresolved_critical_correction_ids_for_claim``/``build_claim_table_row``
@@ -103,6 +135,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
+
+from mrr.domain.claim_ceiling import ceiling_violation_reason
 
 #: See the module docstring's "MRR-FR-095: precisely what counts as
 #: 'resolved'" section for the full derivation. Exactly the two
@@ -144,6 +178,8 @@ class ClaimTableRow:
     verification_ids: tuple[str, ...]
     unresolved_correction_ids: tuple[str, ...]
     flagged: bool
+    ceiling_checked: bool
+    ceiling_violation: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,7 +266,11 @@ def unresolved_critical_correction_ids_for_claim(
 
 
 def build_claim_table_row(
-    claim_body: Mapping[str, Any], corrections: Iterable[Mapping[str, Any]]
+    claim_body: Mapping[str, Any],
+    corrections: Iterable[Mapping[str, Any]],
+    *,
+    ruled_ceiling: str | None = None,
+    profile_max_ceiling: str | None = None,
 ) -> ClaimTableRow:
     """Shape one ``ClaimTableRow`` from an already-read ``Claim`` latest-
     revision body and an already-read iterable of ``CorrectionEvent`` bodies.
@@ -239,20 +279,54 @@ def build_claim_table_row(
         claim_body: a ``Claim``'s latest-revision body (e.g.
             ``StoredObject.body``) — must carry ``id``, ``assertion``,
             ``status``, ``evidence_relations``, ``verification_ids``, per
-            schemas/claim.schema.json.
+            schemas/claim.schema.json. ``claim_type`` is additionally read
+            when both ``ruled_ceiling``/``profile_max_ceiling`` are supplied
+            (see below).
         corrections: every candidate correction body to check ``claim_body``
             against (see ``unresolved_critical_correction_ids_for_claim``).
             Consumed once; a single-use iterator is safe if ``corrections``
             is only ever checked against one claim, but this function itself
             makes no assumption either way (it iterates ``corrections``
             exactly once).
+        ruled_ceiling: the already-resolved ``MethodRuling.ruled_ceiling``
+            governing this claim (task-packets/K1-T02.yaml, MRR-MTH-004's
+            "at ... projection rendering" half), or ``None`` if the caller
+            has not resolved a ``ruled_by`` chain for this claim (e.g. no
+            ``ruled_by`` edge exists at all — see the module docstring's
+            "ceiling-gate projection extension" section). Both this and
+            ``profile_max_ceiling`` must be supplied together for the gate
+            to be checked at all.
+        profile_max_ceiling: the already-resolved governing
+            ``MethodProfile.max_claim_ceiling``, or ``None`` — see
+            ``ruled_ceiling`` above.
 
     Returns:
         a ``ClaimTableRow`` whose ``flagged`` is ``True`` iff
         ``unresolved_correction_ids`` is non-empty — never true "out of
-        nowhere" with no id to point to.
+        nowhere" with no id to point to. ``ceiling_checked`` is ``True`` iff
+        BOTH ``ruled_ceiling``/``profile_max_ceiling`` were supplied
+        (non-``None``); when ``True``, ``ceiling_violation`` is whatever
+        ``mrr.domain.claim_ceiling.ceiling_violation_reason`` reports for
+        this claim's own ``claim_type`` against the supplied pair — the
+        SAME gate ``ClaimService.attach_ruling``/``_transition`` enforce,
+        never re-implemented here. When either parameter is omitted (the
+        legacy call shape, and every pre-K1-T02 call site), the result is
+        byte-identical to pre-K1-T02 behavior: ``ceiling_checked=False``,
+        ``ceiling_violation=None``.
     """
     unresolved_ids = unresolved_critical_correction_ids_for_claim(claim_body["id"], corrections)
+
+    ceiling_checked = ruled_ceiling is not None and profile_max_ceiling is not None
+    ceiling_violation: str | None = None
+    if ceiling_checked:
+        assert ruled_ceiling is not None
+        assert profile_max_ceiling is not None
+        ceiling_violation = ceiling_violation_reason(
+            claim_type=claim_body["claim_type"],
+            ruled_ceiling=ruled_ceiling,
+            profile_max_ceiling=profile_max_ceiling,
+        )
+
     return ClaimTableRow(
         claim_id=claim_body["id"],
         assertion=claim_body["assertion"],
@@ -261,4 +335,6 @@ def build_claim_table_row(
         verification_ids=tuple(claim_body.get("verification_ids", [])),
         unresolved_correction_ids=unresolved_ids,
         flagged=bool(unresolved_ids),
+        ceiling_checked=ceiling_checked,
+        ceiling_violation=ceiling_violation,
     )
