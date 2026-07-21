@@ -189,10 +189,10 @@ is a legitimate, explicit empty result, never a crash and never silently
 dropped). Since task-packets/E9-T00.yaml item 1, this method ALSO appends
 exactly one ``correction.notification_received`` event (section 5.2's own
 enumerated name, DECLARED by commit 736b376 and implemented here) on every
-call that reaches this point — the durable trace of "received and no-op'd"
-an empty impact set previously left none of, per the existing
-``claim.status_changed``-shaped events ``ClaimService.require_review``
-already emits remaining the only trace for a NON-empty impact set. See
+call that reaches this point. Before this item, an empty impact set left
+no durable trace of "received and no-op'd" at all; a NON-empty impact set's
+only trace was the existing ``claim.status_changed``-shaped events
+``ClaimService.require_review`` already emits. See
 ``receive_correction_notification``'s own docstring for the exact payload
 shape and keying (``object_id=notification.notification_id``,
 ``object_revision=1`` — this method still never creates, stores, or

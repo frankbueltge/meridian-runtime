@@ -642,6 +642,11 @@ def test_outbound_then_inbound_correction_notification_flow(postgres_engine: Eng
     received_event = received_events[0]
     assert received_event.object_id == notification_id
     assert received_event.object_revision == 1
+    # _last_event_id_for(notification_id) — the notification's own id is a
+    # fresh object_id no prior event in this receiver's event log was ever
+    # keyed on, so this is a root event (causation_id is None), not merely
+    # an unchecked field.
+    assert received_event.causation_id is None
     assert received_event.actor == actor
     assert received_event.policy_version == _POLICY_VERSION
     assert received_event.correlation_id == correlation_id
