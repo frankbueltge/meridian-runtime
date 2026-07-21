@@ -319,8 +319,18 @@ def build_claim_table_row(
     ceiling_checked = ruled_ceiling is not None and profile_max_ceiling is not None
     ceiling_violation: str | None = None
     if ceiling_checked:
-        assert ruled_ceiling is not None
-        assert profile_max_ceiling is not None
+        if ruled_ceiling is None or profile_max_ceiling is None:
+            # Unreachable: ceiling_checked is True only when both
+            # ruled_ceiling and profile_max_ceiling are non-None (see the
+            # boolean expression immediately above) — this internal
+            # invariant has been violated. A plain `if ... raise` (not a
+            # bare `assert`) so mypy still narrows both to `str` below, and
+            # so this guard survives Python's `-O`/optimized bytecode mode
+            # (bare `assert` statements are stripped there).
+            raise RuntimeError(
+                "unreachable: ceiling_checked implies ruled_ceiling and "
+                "profile_max_ceiling are both non-None"
+            )
         ceiling_violation = ceiling_violation_reason(
             claim_type=claim_body["claim_type"],
             ruled_ceiling=ruled_ceiling,
