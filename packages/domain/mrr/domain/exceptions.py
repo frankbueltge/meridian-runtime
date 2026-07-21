@@ -1189,3 +1189,38 @@ class MethodProfileNotFoundError(DomainError):
     def __init__(self, profile_id: str) -> None:
         self.profile_id = profile_id
         super().__init__(f"no MethodProfile found for id {profile_id!r}")
+
+
+class UnknownCapabilityError(DomainError):
+    """Raised by ``mrr.services.node_runtime.dispatch.dispatch`` (task-packets/
+    K0-T02.yaml) when a ``TaskBundle``'s ``capability.name`` matches no entry
+    in the caller-supplied ``CapabilityDispatchTable`` — whether because no
+    accepted ``MethodProfile`` declares it at all, or a ``MethodProfile``
+    declares it in its ``executor_task_family`` but no caller-supplied
+    ``Executor`` factory was ever registered for it
+    (``mrr.services.node_runtime.dispatch.build_dispatch_table``'s own
+    "declared but unwired capability is simply absent from the table" policy,
+    task-packets/K0-T02.yaml derived_decisions (e)) — this single error type
+    covers both cases, "whatever the reason a capability cannot be routed
+    right now".
+
+    Fails closed: there is no third outcome and no default/fallback
+    ``Executor`` (in particular, never ``ReferenceTaskExecutor``) is ever
+    returned for an unrecognized name. This RAISES and propagates to the
+    caller unmodified, mirroring ``CapabilityNotDeclaredError``'s/
+    ``ScoreNotApprovedError``'s identical existing precedent: both are
+    pre-execution ADMISSION gates that raise BEFORE any run ever starts, and
+    neither produces a terminal execution record either — it is never
+    converted into an ``ExecutionResult(outcome="policy_denied", ...)``
+    sealed through ``RunManifest``/``EvidenceCrate``, since a ``TaskBundle``
+    naming an unroutable capability never reaches the executor at all, so
+    there is no "run" for those to seal. Carries ``capability_name``.
+    """
+
+    def __init__(self, capability_name: str) -> None:
+        self.capability_name = capability_name
+        super().__init__(
+            f"no Executor registered for capability {capability_name!r} — "
+            "unrouted capability, failing closed (never falling back to a "
+            "default Executor)"
+        )
