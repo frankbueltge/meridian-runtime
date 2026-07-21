@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "entry_id": "model-collapse-mechanism-v1",
+      "term": "model-collapse mechanism",
+      "definition": "The technical-literature process by which a generative model trained iteratively on its own (or its predecessors') outputs suffers a measurable degeneration of its output distribution — narrowed tail coverage, amplified mode bias — across successive training generations.",
+      "scope_note": "Local operationalization for this profile only; not a claim about every use of the phrase in the wider literature. Applied here (task-packets/K1-T04.yaml) to the three theory-atlas papers matching a fixed, disclosed keyword search (\"model collapse\", \"model-collapse\", \"self-consuming\", \"self-consumption\", \"autophagy\", \"MAD\", \"curse of recursion\") over tags/summary/work: shumailov-curse-of-recursion, alemohammad-self-consuming-generative-models-go-mad, gerstgrasser-is-model-collapse-inevitable."
+    },
+    {
+      "entry_id": "instantiate-vs-reference-v1",
+      "term": "instantiate",
+      "definition": "A work 'instantiates' the mechanism when its own production pipeline demonstrably trains on model-generated outputs across at least two generations; a work merely 'references' the mechanism when it only discusses, depicts, or alludes to it without demonstrable recursive training. Decision procedure, applied directly against each work's own `decisive_move` + `source_url` field in the pinned works-atlas snapshot: Step 1 -- does the work's own documented production process feed model-GENERATED output back in as training input for a SUBSEQUENT generation of the same (or a continuous) generative pipeline, across at least two generations? If yes -> instantiates. Step 2 -- if the work only depicts, critiques, or thematizes the phenomenon, or trains on human-authored material (even the artist's own prior writing) without a demonstrable model-generation-to-model-generation loop -> references only. Ambiguous or incompletely disclosed cases -> qualifies, assessed individually, never force-fit into either bucket.",
+      "scope_note": "Applied here (task-packets/K1-T04.yaml) to the 15 works-atlas entries whose own `clusters` array contains 7 (\"AI self-consumption\"); each classification's basis is recorded in corpora/model-collapse/corpus-entries.json's own `extraction.classification_basis` field, quoting the exact `decisive_move` text it rests on."
+    }
+  ]
+}

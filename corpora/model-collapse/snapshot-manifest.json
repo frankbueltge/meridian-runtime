@@ -1,0 +1,17 @@
+{
+  "_purpose": "Machine-checkable drift detector (task-packets/K1-T04.yaml derived_decisions (a)): recompute the two committed snapshot copies' own sha256 at any time and compare to the values recorded here. Pinning means \"frozen at this hash\", not \"live-synced\" — re-verifying against the CURRENT home-repo state is a separate, manual act.",
+  "theory_atlas": {
+    "source_path": "/Users/frankbultge/Documents/GitHub/irrtum-als-methode/atlas/atlas.json",
+    "snapshot_path": "corpora/model-collapse/theory-atlas.snapshot.json",
+    "sha256": "f712ea4e9c6b9137fa180ad91e73a86d8d09862792f33174c77acd76a891e610",
+    "entry_count": 87,
+    "pinned_at": "2026-07-21"
+  },
+  "works_atlas": {
+    "source_path": "/Users/frankbultge/Documents/GitHub/frankbueltge.de/src/data/atlas/werke.json",
+    "snapshot_path": "corpora/model-collapse/works-atlas.snapshot.json",
+    "sha256": "9d14e877efb245cc04b8451734b26285a274dda0418f5131db257d2e4312d373",
+    "entry_count": 214,
+    "pinned_at": "2026-07-21"
+  }
+}
