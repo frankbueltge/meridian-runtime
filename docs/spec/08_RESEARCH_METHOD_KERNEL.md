@@ -1,9 +1,10 @@
 # 08 — Research Method Kernel
 
-**Status: PROPOSED.** This document is a draft specification awaiting the project owner's
-approval. Nothing in it is implemented; no task packet may cite it as source of truth
-until its status is `accepted`. It supersedes the external v0.2.0 package's docs 08–19 as
-the normative statement of the method layer for THIS repository (mapping in §9).
+**Status: ACCEPTED (2026-07-21).** Approved by the project owner via explicit in-session
+delegation ("entscheide du das alles … volle Autonomie") after review of the decision
+record (`docs/design/2026-07-21-research-method-kernel-rework.md`). Task packets may cite
+this document as source of truth. It supersedes the external v0.2.0 package's docs 08–19
+as the normative statement of the method layer for THIS repository (mapping in §9).
 
 ## 1. Position in the architecture
 

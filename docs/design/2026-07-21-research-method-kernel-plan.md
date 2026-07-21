@@ -1,9 +1,9 @@
 # Research Method Kernel — Implementation Plan (light-first)
 
 **Date:** 2026-07-21
-**Status:** proposal — no K-task may start before Frank approves
-`docs/spec/08_RESEARCH_METHOD_KERNEL.md` and this plan. Task packets are then derived
-one at a time in the established `task-packets/` idiom (`docs/spec/07_AGENT_TASK_TEMPLATE.md`).
+**Status:** approved (2026-07-21, owner delegation in session) together with
+`docs/spec/08_RESEARCH_METHOD_KERNEL.md`. Task packets are derived one at a time in the
+established `task-packets/` idiom (`docs/spec/07_AGENT_TASK_TEMPLATE.md`).
 **Sequencing context:** recommended order across epics is
 E5 close-out → E6 → **K0–K1** → decide K2 → E7/E8 → E9
 (reasoning in `2026-07-21-research-method-kernel-rework.md` §6).

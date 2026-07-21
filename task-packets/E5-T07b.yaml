@@ -1,6 +1,6 @@
 task_id: E5-T07b
 title: Durable key-revocation record and the trust_revoked_after_creation annotation for already-accepted objects
-status: draft
+status: approved
 derivation: >
   Derived by the planning session per docs/spec/07_AGENT_TASK_TEMPLATE.md
   section 5, from exactly what task-packets/E5-T07.yaml's own scope_note
