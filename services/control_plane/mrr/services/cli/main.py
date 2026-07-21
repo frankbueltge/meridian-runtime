@@ -48,7 +48,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
 from mrr.crypto.exceptions import CryptoError
 from mrr.domain.exceptions import DomainError
-from mrr.services.cli import synthesis_main
+from mrr.services.cli import synthesis_main, verification_main
 from mrr.services.cli.orchestration import DEFAULT_INPUT_BYTES, run_local_evidence_loop
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -184,6 +184,12 @@ def build_parser() -> argparse.ArgumentParser:
     # and the "run" subcommand/_run_command above are untouched.
     synthesis_main.register_synthesis_subcommand(subparsers)
 
+    # Task-packets/K1-T05.yaml's one additive registration: a new
+    # "verification" subparser group ("mrr verification record") delegating
+    # entirely to mrr.services.cli.verification_main — mirrors the synthesis
+    # registration immediately above; no other line in this file changes.
+    verification_main.register_verification_subcommand(subparsers)
+
     return parser
 
 
@@ -297,6 +303,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_command(args)
     if args.command == "synthesis":
         return synthesis_main.run_command(args)
+    if args.command == "verification":
+        return verification_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
