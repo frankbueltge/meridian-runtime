@@ -12,6 +12,15 @@ own pure-domain dependency, which carries the full MRR-FR-095 "resolved"
 derivation and the return-shape dataclasses — read that module's docstring
 first).
 
+Two further, additive methods — ``build_public_correction_view`` and
+``build_public_claim_table`` (task-packets/E6-T05.yaml, MRR-FR-095's own
+"Public projections MUST display unresolved critical corrections" and
+MRR-NFR-006) — reuse ``_read_correction_bodies`` and ``build_claim_table``
+respectively rather than reading the graph a second, parallel way, and
+reshape each result through ``mrr.domain.public_correction_view``'s pure,
+fail-closed redaction functions. Read that module's docstring for the full
+classification-attestation design.
+
 --- This service writes NOTHING ----------------------------------------------
 
 Every method here only calls ``ObjectRepository.get_latest``,
@@ -135,15 +144,23 @@ task-packets/K1-T02.yaml's own identical multi-ruling disclosure.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Protocol
 
 from mrr.contracts import Urn
+from mrr.domain.artifacts import Classification
 from mrr.domain.exceptions import ClaimNotFoundError, ObjectNotFoundError
 from mrr.domain.projection import (
     ClaimTableRow,
     ProvenanceEdge,
     ProvenanceMap,
     build_claim_table_row,
+)
+from mrr.domain.public_correction_view import (
+    PublicClaimRow,
+    PublicCorrectionRow,
+    build_public_claim_row,
+    build_public_correction_row,
 )
 from mrr.domain.repositories import EdgeRepository, ObjectRepository, StoredObject
 from mrr.provenance.log import AppendedEvent
@@ -264,6 +281,65 @@ class ProjectionService:
 
         edges = self._trace_provenance(claim_id)
         return ProvenanceMap(claim_id=claim_id, edges=tuple(edges))
+
+    # ------------------------------------------------------------------
+    # The public unresolved-correction projection (task-packets/E6-T05.yaml,
+    # MRR-FR-095/MRR-NFR-006). See mrr.domain.public_correction_view's
+    # module docstring for the full fail-closed redaction rationale.
+    # ------------------------------------------------------------------
+
+    def build_public_correction_view(
+        self, classification_by_object_id: Mapping[str, Classification]
+    ) -> list[PublicCorrectionRow]:
+        """One ``PublicCorrectionRow`` per correction ever recorded (reusing
+        ``_read_correction_bodies``, the same read ``build_claim_table``
+        itself uses — no second, parallel discovery path), filtered to
+        exactly the ones ``mrr.domain.projection.
+        is_unresolved_critical_correction`` reports unresolved — i.e.
+        exactly what MRR-FR-095 mandates a public projection MUST display.
+        Free text (``reason``/``requested_action``) is withheld per-row per
+        ``classification_by_object_id``'s fail-closed attestation rule; the
+        structural fact of an unresolved critical correction (id, severity,
+        status, correction_type, every named object id) is never omitted by
+        this filtering or by redaction — see
+        ``mrr.domain.public_correction_view``'s module docstring.
+
+        Sorted by ``correction_id`` (``_read_correction_bodies`` already
+        reads in sorted order), for a deterministic, order-independent
+        result.
+
+        Never writes anything. Calling this twice against an unchanged graph
+        and an unchanged ``classification_by_object_id`` returns an equal
+        list both times.
+        """
+        corrections = self._read_correction_bodies()
+        rows = (
+            build_public_correction_row(
+                body, classification_by_object_id=classification_by_object_id
+            )
+            for body in corrections
+        )
+        return [row for row in rows if row.unresolved]
+
+    def build_public_claim_table(
+        self, classification_by_object_id: Mapping[str, Classification]
+    ) -> list[PublicClaimRow]:
+        """One ``PublicClaimRow`` per claim ``build_claim_table`` itself
+        returns (the SAME population, in the SAME order — this method never
+        queries the object repository or the event log a second, parallel
+        way; it calls the existing public ``build_claim_table`` and redacts
+        each resulting row), with ``assertion`` withheld per-row per
+        ``classification_by_object_id``'s fail-closed attestation rule — see
+        ``mrr.domain.public_correction_view``'s module docstring.
+
+        Never writes anything. Calling this twice against an unchanged graph
+        and an unchanged ``classification_by_object_id`` returns an equal
+        list both times.
+        """
+        return [
+            build_public_claim_row(row, classification_by_object_id=classification_by_object_id)
+            for row in self.build_claim_table()
+        ]
 
     # ------------------------------------------------------------------
     # Internal helpers.
