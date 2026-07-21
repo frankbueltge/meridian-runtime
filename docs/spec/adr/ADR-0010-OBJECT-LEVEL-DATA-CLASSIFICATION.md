@@ -1,7 +1,11 @@
 # ADR-0010 — Object-level data classification for non-TaskBundle objects
 
-**Status:** PROPOSED (2026-07-21)
-**Deciders:** project owner (pending)
+**Status:** ACCEPTED (2026-07-21)
+**Deciders:** project owner via explicit in-session delegation ("volle Autonomie");
+accepted when K1-T02's derivation confirmed the synthetic-fixture gate (MRR-MTH-012)
+genuinely requires the baseObject classification slot, joining the two earlier
+independent findings. Additive and fail-closed: nothing weakens while objects do
+not yet carry the field. Staged adoption per below; step 1 is its own task packet.
 **Technical story:** two independent findings converged on the same gap on the same day.
 
 ## Context

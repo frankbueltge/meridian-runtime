@@ -1,0 +1,1160 @@
+task_id: K1-T02
+title: >-
+  Edges, ceilings, and gates — EDGE_VOCABULARY + CHECK-constraint migration
+  for `operationalizes`/`governed_by_protocol`/`ruled_by`/`decided_by`;
+  claim-service enforcement of MRR-MTH-004/005/006 (`CLAIM_CEILING_EXCEEDED`);
+  kill-condition transition plumbing (MRR-MTH-010, `KILL_CONDITION_TRIGGERED`)
+  on Claim via the existing `withdrawn` state; the MRR-MTH-012 synthetic-
+  fixture gate (`SYNTHETIC_FIXTURE_NOT_EVIDENCE`) shipped as a pure,
+  ADR-0010-independent decision function, with its WIRING to any real stored
+  object explicitly BLOCKED pending ADR-0010's acceptance; the four v0.2.0
+  Gherkin acceptance behaviors re-pinned with spec 08 section 3's canonical
+  error codes as plain pytest integration/unit tests (no BDD harness exists
+  in this repository).
+status: approved
+depends_on: [K1-T01]
+derivation: >-
+  Derived by a planning session (not yet reviewed) per
+  docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/design/2026-07-21-research-method-kernel-plan.md's K1 epic definition
+  (`K1-T02 — Edges, ceilings, and gates. EDGE_VOCABULARY + CHECK-constraint
+  migration for operationalizes, governed_by_protocol, ruled_by, decided_by;
+  claim-service enforcement of MTH-004/005/006 (CLAIM_CEILING_EXCEEDED);
+  synthetic-fixture classification and the fail-closed gate (MTH-012,
+  SYNTHETIC_FIXTURE_NOT_EVIDENCE); kill-condition transition plumbing
+  (MTH-010) on MethodProtocol/branches. Acceptance: the four v0.2.0 Gherkin
+  behaviors, re-pinned with the canonical error codes from spec 08 section
+  3.`, lines 43-49) and docs/spec/08_RESEARCH_METHOD_KERNEL.md (status
+  ACCEPTED 2026-07-21) section 3 ("Edges" and "Error codes" subsections,
+  lines 61-72) and section 4's MRR-MTH-004/005/006/010/012 (lines 91-97,
+  106-109, 113-116). Second task of the K1 sub-epic; the immediately
+  preceding task, task-packets/K1-T01.yaml, was governance-approved
+  2026-07-21 (commit `1d453bf`). Its PR (#47, branch
+  `task/K1-T01-kernel-contracts`) was confirmed OPEN
+  (`"mergedAt":null,"state":"OPEN"`) when this derivation began, and all six
+  K1-T01 contract shapes cited below were FIRST read directly off that open
+  branch via `git show origin/task/K1-T01-kernel-contracts:<path>`, exactly
+  as this task's own instruction anticipated might be necessary. PR #47 THEN
+  MERGED MID-DERIVATION (commit `2ec8b25`, followed by a small governance
+  follow-up commit `79dc70d`, "Post-Review-Resolutionen ergaenzt") — caught
+  and re-verified before this packet was finalized: `main` HEAD is now
+  `79dc70d`, and `git diff origin/task/K1-T01-kernel-contracts main --
+  schemas/ examples/ packages/contracts/ packages/domain/mrr/domain/lifecycles.py`
+  is EMPTY (byte-identical) — every citation below to `MethodRuling`/
+  `MethodProtocol`/`ResearchDecision`/`QuestionModel`/`ConceptCharter`/
+  `EvidenceMatrix` field names and the amended `METHOD_PROTOCOL_LIFECYCLE`
+  five-edge shape is confirmed accurate against the now-merged `main`, not
+  merely against the since-superseded open branch. The one substantive
+  addition in commit `79dc70d` (a "Post-implementation resolutions" note
+  appended to `task-packets/K1-T01.yaml`'s own `reviewer_resolution` field):
+  `ResearchDecision.rationale` (a required, non-empty field this packet's
+  own citations already reflect, since they were read off the
+  already-implemented branch content, not the pre-implementation packet
+  text) is confirmed KEPT, uniformly required, no per-`decision_type`
+  special-casing — consistent with, and requiring no change to, this
+  packet's own design. K1-T01 is therefore now a satisfied, MERGED
+  dependency, not merely an approved-but-pending one, by the time this
+  packet is handed off.
+
+  Alembic head at derivation time (2026-07-21): `b64f87a758f3` ("key
+  revocations table", task-packets/E5-T07b.yaml, PR #42, merged), chained
+  `b9e7d0e3aff6` (initial objects/edges tables) -> `b438bc0f8c0c` (domain
+  events/outbox) -> `983751ff8bb6` (processed ids) -> `b64f87a758f3` (key
+  revocations) -- confirmed by direct inspection of every file under
+  `migrations/versions/*.py`'s own `revision`/`down_revision` fields (no
+  `alembic heads` command available in this read-only derivation; the chain
+  was reconstructed by hand from the four files' own declared fields, which
+  form a single unbranched line with `b64f87a758f3` the only revision with no
+  child). This task's own migration's `down_revision` MUST be
+  `"b64f87a758f3"`. Confirmed no other in-flight branch adds a competing
+  migration before this one lands: task-packets/K1-T01.yaml's own
+  `forbidden_changes` explicitly bars any `packages/persistence/**` or
+  `migrations/**` touch (verified: PR #47's diff against `main` touches only
+  `examples/`, `packages/contracts/mrr/contracts/`,
+  `packages/domain/mrr/domain/lifecycles.py`, and `schemas/` — zero files
+  under `migrations/`); task-packets/E6-T04.yaml (status `approved`,
+  design-approved per commit `7b071da`, but UNIMPLEMENTED — its own local
+  branch `task/E6-T04-correction-response` has not diverged from `main` at
+  all, confirmed by `git log task/E6-T04-correction-response -5` returning
+  the identical commit list as `main`, and no PR exists for it yet, confirmed
+  by `gh pr list --search "E6-T04"` returning no match) declares
+  `allowed_paths` that name neither `packages/persistence/**` nor
+  `migrations/**` either. `b64f87a758f3` is therefore the correct,
+  currently-uncontested chain target.
+
+  `EDGE_VOCABULARY` ground truth at derivation time:
+  `packages/domain/mrr/domain/repositories.py` (lines 27-51) declares
+  exactly nineteen types today, verbatim matching docs/spec/02_DOMAIN_MODEL.md
+  section 3's "minimum vocabulary" list (lines 419-443) — confirmed identical
+  by direct comparison, and confirmed the migration
+  (`migrations/versions/b9e7d0e3aff6_initial_schema_objects_and_edges_tables.py`,
+  lines 39-56, its own `_EDGE_TYPE_LIST` literal) carries the SAME nineteen,
+  meaning the database CHECK constraint (`ck_edges_edge_type_vocabulary`) has
+  never drifted from the code-level constant since inception — this task is
+  the FIRST to ever add a member to `EDGE_VOCABULARY`, hence the first to
+  ever require an edge-vocabulary migration in this repository's history (no
+  precedent migration of this exact shape exists to copy verbatim; the
+  precedent used instead is the INITIAL migration's own CHECK-constraint
+  authoring style, adapted from CREATE to ALTER).
+  `packages/persistence/mrr/persistence/tables.py` (lines 22-39) needs NO
+  code change at all: its `_EDGE_TYPE_LIST`/`_EDGE_TYPE_CHECK_CLAUSE` are
+  computed live from the imported `EDGE_VOCABULARY` constant (its own
+  docstring, lines 30-37: "built from the single source of truth ... so this
+  table definition can never silently drift"), so adding four members to
+  `EDGE_VOCABULARY` automatically and correctly updates this file's own
+  in-Python table metadata with zero source edits — only the hand-written,
+  intentionally-frozen migration snapshot needs a new file (that same
+  docstring's own stated reason migrations don't import application code:
+  "migrations must be self-contained, reviewable snapshots that don't import
+  application code that could change after this migration is committed").
+  Confirmed by direct inspection that `tests/integration/conftest.py` (lines
+  33-102) runs real `alembic upgrade head` (via the Alembic Python API,
+  `command.upgrade`) against a freshly created, uniquely named PostgreSQL
+  schema for every integration-tier test session — meaning
+  `tests/integration/persistence/test_postgres_repositories.py`'s EXISTING
+  `test_every_vocabulary_edge_type_round_trips` (already parametrized over
+  `sorted(EDGE_VOCABULARY)`, lines 233-246) will automatically exercise all
+  four new edge types against the REAL migrated schema with zero new test
+  code, the moment both the code-level constant and the migration are added
+  together — and will FAIL if either one is added without the other (a
+  built-in cross-check, not merely a convenience).
+
+  The K1-T01 contract shapes this task reads from (all confirmed present on
+  branch `task/K1-T01-kernel-contracts`, via direct `git show`):
+  `packages/contracts/mrr/contracts/method_ruling.py` (`MethodRuling.
+  ruled_ceiling: ClaimCeiling`, `protocol_id: Urn`, `applies_to_analysis:
+  str`); `packages/contracts/mrr/contracts/method_protocol.py`
+  (`MethodProtocol.profile_id: Urn`, `kill_conditions: list[str]` non-empty,
+  and the AS-AMENDED `METHOD_PROTOCOL_LIFECYCLE` — `draft -> reviewed ->
+  locked -> amended | executed`, `amended -> reviewed`, per commit `1d453bf`
+  "Spec-08-Amendment MethodProtocol-Re-Review-Zyklus" — confirmed this
+  amendment already landed in the SAME governance commit that approved
+  K1-T01, not a separate pending step); `packages/contracts/mrr/contracts/
+  research_decision.py` (`ResearchDecision.decision_type` — the exact
+  seven-value vocabulary including `"kill_branch"`; `protocol_id: Urn`;
+  `applies_to_analysis: str`; `RESEARCH_DECISION_LIFECYCLE` — one state
+  (`"issued"`), zero legal transitions, confirmed genuinely append-only).
+  `packages/contracts/mrr/contracts/method_profile.py` (K0-T01, MERGED,
+  `main`) confirmed already carries `MethodProfile.max_claim_ceiling:
+  ClaimCeiling` and the exported `ClaimCeiling`/`CLAIM_CEILING_ORDER`
+  seven-value ordered tuple (lines 100-113) this task imports and reuses
+  verbatim, never redeclaring the ordering — mirroring K1-T01's own identical
+  reuse discipline for `MethodRuling.ruled_ceiling`.
+
+  `packages/contracts/mrr/contracts/claim.py` (`main`, unchanged, E1-T03)
+  confirmed to carry `claim_type: ClaimType` (`observational`, `causal`,
+  `statistical`, `methodological`, `interpretive`, `normative`,
+  `speculative` — a DIFFERENT, orthogonal vocabulary from `ClaimCeiling`; the
+  two share a cardinality of seven by coincidence, not by design) and NO
+  ceiling-shaped field of its own, and NO `profile_id`/`protocol_id`
+  cross-reference field of any kind — confirmed by reading the full file.
+  This is the load-bearing fact behind this packet's central design decision
+  (derived_decisions): since Claim carries no ceiling and this task's own
+  `forbidden_changes` bars touching `claim.schema.json`/`claim.py` unless the
+  ceiling gate genuinely requires it, "claim language" is operationalized
+  edge+policy (spec 08 section 3's own prescribed mechanism), not as a new
+  Claim field — see derived_decisions for the exact narrower mapping used
+  and its honestly-disclosed limits.
+
+  `services/control_plane/mrr/services/claim/service.py` (`main`, E3-T02,
+  unchanged) is this task's direct structural template — read in full.
+  `ClaimService.to_supported`'s own "re-run the exact gate against the
+  revision body about to be persisted, first-cheaper-check-before-the-
+  contract-validator" pattern, and `_write_edge`'s "checked in code in
+  addition to the identical check inside `bind_edge_unit_of_work`'s closure
+  — belt and braces" precedent, are the two patterns this task's own new
+  `attach_ruling`/`apply_kill_condition` methods and the `_transition`
+  ceiling re-check mirror exactly (see derived_decisions). `ClaimService`
+  already holds `self._object_repository: ObjectRepository` (fully generic —
+  works for ANY object kind, not claim-specific: `MethodRuling`,
+  `MethodProtocol`, and `MethodProfile` are all rows in the SAME generic
+  `objects` table, per docs/spec/02_DOMAIN_MODEL.md section 1) and
+  `self._edge_repository: EdgeRepository` already — NO new constructor
+  dependency is required for any of this task's additions.
+
+  `services/control_plane/mrr/services/projection/service.py` and
+  `packages/domain/mrr/domain/projection.py` (`main`, E3-T07, unchanged)
+  confirmed: `ProjectionService` already holds `self._edge_repository` and
+  `self._object_repository`, and `build_claim_table` already calls the pure
+  `mrr.domain.projection.build_claim_table_row` once per claim — the exact,
+  already-existing extension point for MRR-MTH-004's "at ... projection
+  rendering" half (see derived_decisions for the additive-only extension
+  design).
+
+  The four external Gherkin acceptance features were read in full from
+  `frankbueltge.de/docs/meridian-research-runtime-spec-v0.2.0/acceptance/
+  *.feature` (four files: `method-causal-claim-gate.feature`,
+  `method-kill-condition-propagation.feature`,
+  `method-preanalysis-lock.feature`,
+  `method-synthetic-fixture-isolation.feature`) — confirmed each carries
+  drifted error codes/object names exactly as
+  docs/design/2026-07-21-research-method-kernel-rework.md section 3 point 4
+  already catalogued (`METHOD_CLAIM_CEILING_EXCEEDED`,
+  `PREANALYSIS_PLAN_NOT_LOCKED`, `SYNTHETIC_EVIDENCE_FORBIDDEN` — none of
+  which appear in spec 08 section 3's canonical six-code list) plus external,
+  not-adopted-here object names (`IdentificationAudit`, `ResearchDesign`,
+  `PreAnalysisPlan`, `DataAssetProfile`, `empirical_claims_permitted`,
+  release-gate label `G-M09`) — none of which exist anywhere in this
+  repository's own contracts. This repository has no `.feature` file, no
+  `pytest-bdd`/`behave` dependency, and no `acceptance/` test directory
+  anywhere (confirmed by direct search: zero hits for any of the three); the
+  existing acceptance-behavior precedent is plain pytest under `tests/e2e/`
+  named `test_e2e_00N_<description>.py` per docs/spec/05_EVALUATION_AND_ACCEPTANCE.md's
+  own E2E-001..E2E-005 catalog (section anchors confirmed, lines 278-322) —
+  but E2E-001 through E2E-005 are ALL ALREADY ASSIGNED to other, unrelated
+  scenarios (single-node evidence loop, federated refusal, correction
+  propagation, field-research shadow mode, Classic/MRR dual run), so this
+  task's four re-pinned behaviors are NOT given an "E2E-00N" slot (that
+  would misrepresent them as part of the original numbered catalog); they
+  are plain, descriptively-named integration/unit tests instead, each
+  docstring-linking back to its originating external `.feature` scenario by
+  name for traceability. See required_output for the explicit statement of
+  this choice.
+objective: >-
+  Deliver five things, precisely scoped: (a) extend `EDGE_VOCABULARY` by the
+  four spec-08-section-3 edge types (`operationalizes`,
+  `governed_by_protocol`, `ruled_by`, `decided_by`) plus ONE hand-written
+  Alembic migration widening the `edges.edge_type` CHECK constraint from
+  nineteen to twenty-three values — the FIRST such migration this repository
+  has ever needed; (b) a new, pure, framework-free domain function
+  (`mrr.domain.claim_ceiling.ceiling_violation_reason`) implementing
+  MRR-MTH-004/005/006's ceiling gate over the narrow, honestly-disclosed
+  mapping this packet derives (claim_type "causal" requires a `ruled_by`
+  MethodRuling whose ceiling is `causal_local`/`causal_bounded`; EVERY ruling
+  regardless of claim_type must never license a ceiling above its governing
+  MethodProfile's own declared `max_claim_ceiling`), wired into
+  `ClaimService` at THREE checkpoints — a new `attach_ruling` method (the
+  "at submission" gate, MTH-004), a new conditional inside the existing
+  `_transition` helper that re-verifies the gate whenever an already-ruled
+  claim moves into a language-asserting status (defense in depth, mirroring
+  `_write_edge`'s own "belt and braces" precedent), and an additive
+  extension of the existing `mrr.domain.projection.build_claim_table_row`
+  plus `ProjectionService.build_claim_table` (the "at ... projection
+  rendering" gate, MTH-004's second half) — MRR-MTH-005 satisfied
+  STRUCTURALLY (the gate function accepts no confidence/significance/
+  fluency-shaped parameter at all, proven by a signature-introspection test,
+  not merely asserted in prose); (c) a new, pure domain function
+  (`mrr.domain.synthetic_fixture.assert_not_synthetic_fixture_evidence`)
+  implementing MRR-MTH-012's decision rule over a plain `classification: str
+  | None` parameter — buildable and fully unit-testable TODAY with no
+  dependency on ADR-0010 — but its WIRING to any REAL stored object's
+  classification is explicitly BLOCKED and NOT delivered by this packet,
+  because `schemas/common.schema.json#/$defs/baseObject`/`BaseObject` carry
+  no `classification` field today (confirmed by direct reading) and ADR-0010
+  — the proposal that would add exactly that field — is still status
+  PROPOSED, not accepted by the project owner (confirmed: no later commit
+  changes its status) — see the dedicated "ADR-0010 dependency" section
+  below and stop_conditions; (d) kill-condition transition PLUMBING
+  (MRR-MTH-010) as a new `ClaimService.apply_kill_condition` method reusing
+  the EXISTING, already-drawn `CLAIM_LIFECYCLE` "any nonterminal status ->
+  withdrawn" edge (no new Claim status is invented; killed branches "remain
+  addressable" is therefore true by construction, inherited unchanged from
+  the existing append-only `ObjectRepository`) with a distinctly-typed
+  domain event and a new `decided_by` edge to the licensing
+  `ResearchDecision(decision_type="kill_branch")` — NOT any evaluation logic
+  that decides WHETHER a `MethodProtocol`'s free-text `kill_conditions`
+  entry is currently satisfied (that requires real `EvidenceMatrix` data and
+  is explicitly task-packets/K1-T03.yaml's/K1-T04.yaml's job); (e) the four
+  v0.2.0 Gherkin acceptance behaviors re-pinned as plain pytest tests (no
+  BDD harness exists here) using spec 08 section 3's six canonical error
+  codes — three of the four map cleanly onto this packet's own MTH-004/
+  005/006/010/012 scope and are delivered as real, running tests; the
+  fourth (protocol lock, MTH-007/008, canonical codes `PROTOCOL_NOT_LOCKED`/
+  `PROTOCOL_LOCK_VIOLATION`) is explicitly OUTSIDE this packet's requirement
+  list and is re-pinned as DOCUMENTATION ONLY (a code-correction reference
+  for whichever future task implements TaskBundle-negotiation-time protocol-
+  lock enforcement), not as a test file — see derived_decisions for the full
+  four-way mapping table and required_output for how this is reported.
+
+  Deliberately and explicitly deferred, with reasons stated in
+  derived_decisions rather than left silent: NO new `MethodProtocolService`,
+  `MethodRulingService`, or `ResearchDecisionService` of any kind is
+  introduced by this packet (the task framing's own "method-protocol service
+  bits if needed (or defer service to K1-T03 — decide and state)" is
+  resolved here as DEFER, IN FULL) — every `MethodRuling`/`MethodProtocol`/
+  `MethodProfile`/`ResearchDecision` object this packet's own tests need is
+  constructed directly and inserted via the generic, already-existing
+  `ObjectRepository.insert_revision`, bypassing any service, exactly
+  mirroring how this codebase's own tests already seed cross-referenced
+  prerequisite objects directly wherever the object under test is not the
+  System Under Test. This keeps this packet's own `services/**` footprint to
+  exactly two files, both already-existing services being extended
+  (`claim`, `projection`), zero new service directories.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#3-method-governance-objects-layer-1
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#4-normative-requirements
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#5-profile-systematic_evidence_synthesis-v1-the-first-profile
+  - docs/design/2026-07-21-research-method-kernel-plan.md
+  - docs/design/2026-07-21-research-method-kernel-rework.md
+  - docs/spec/adr/ADR-0010-OBJECT-LEVEL-DATA-CLASSIFICATION.md
+  - docs/spec/02_DOMAIN_MODEL.md#1-identity-revision-and-hashing
+  - docs/spec/02_DOMAIN_MODEL.md#3-edge-vocabulary
+  - docs/spec/02_DOMAIN_MODEL.md#4-data-classification
+  - docs/spec/02_DOMAIN_MODEL.md#211-claim
+  - docs/spec/01_SYSTEM_SPEC.md#76-claim-and-evidence-graph
+  - docs/spec/01_SYSTEM_SPEC.md#79-projection-service
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/05_EVALUATION_AND_ACCEPTANCE.md
+  - schemas/common.schema.json
+  - schemas/claim.schema.json
+  - packages/contracts/mrr/contracts/common.py
+  - packages/contracts/mrr/contracts/claim.py
+  - packages/contracts/mrr/contracts/method_profile.py
+  - packages/domain/mrr/domain/repositories.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/domain/mrr/domain/projection.py
+  - packages/domain/mrr/domain/independence.py
+  - packages/persistence/mrr/persistence/tables.py
+  - migrations/versions/b9e7d0e3aff6_initial_schema_objects_and_edges_tables.py
+  - migrations/versions/b64f87a758f3_key_revocations_table.py
+  - services/control_plane/mrr/services/claim/service.py
+  - services/control_plane/mrr/services/projection/service.py
+  - services/control_plane/mrr/services/method_profile/service.py
+  - task-packets/K1-T01.yaml
+  - task-packets/K0-T01.yaml
+  - task-packets/K0-T02.yaml
+  - task-packets/E3-T02.yaml
+  - task-packets/E3-T07.yaml
+  - task-packets/E6-T04.yaml
+  - tests/integration/conftest.py
+  - tests/integration/persistence/test_postgres_repositories.py
+  - tests/unit/services/claim/test_service.py
+  - pyproject.toml
+  - >-
+    frankbueltge.de/docs/meridian-research-runtime-spec-v0.2.0/acceptance/method-causal-claim-gate.feature
+    (behavior shape only — error codes and object names are DRIFTED/external;
+    NOT normative, superseded per spec 08's own header)
+  - >-
+    frankbueltge.de/docs/meridian-research-runtime-spec-v0.2.0/acceptance/method-kill-condition-propagation.feature
+    (behavior shape only — same caveat)
+  - >-
+    frankbueltge.de/docs/meridian-research-runtime-spec-v0.2.0/acceptance/method-preanalysis-lock.feature
+    (behavior shape only — same caveat; NOT implemented by this packet, see objective)
+  - >-
+    frankbueltge.de/docs/meridian-research-runtime-spec-v0.2.0/acceptance/method-synthetic-fixture-isolation.feature
+    (behavior shape only — same caveat)
+requirements:
+  - MRR-MTH-004
+  - MRR-MTH-005
+  - MRR-MTH-006
+  - MRR-MTH-010
+  - MRR-MTH-012
+  - MRR-NFR-001
+  - MRR-NFR-002
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - packages/domain/mrr/domain/repositories.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/domain/mrr/domain/claim_ceiling.py
+  - packages/domain/mrr/domain/synthetic_fixture.py
+  - packages/domain/mrr/domain/kill_condition.py
+  - packages/domain/mrr/domain/projection.py
+  - services/control_plane/mrr/services/claim/service.py
+  - services/control_plane/mrr/services/projection/service.py
+  - migrations/versions/**
+  - tests/unit/domain/**
+  - tests/unit/services/claim/**
+  - tests/unit/services/projection/**
+  - tests/integration/persistence/test_postgres_repositories.py
+  - tests/integration/services/claim/**
+  - tests/integration/services/projection/**
+  - tests/property/**
+  - >-
+    schemas/common.schema.json and packages/contracts/mrr/contracts/common.py
+    — CONDITIONAL, gated on ADR-0010 reaching ACCEPTED status before this
+    packet's implementation begins; if ADR-0010 is still PROPOSED, these two
+    paths are OUT OF SCOPE for this packet and MUST NOT be touched (see the
+    dedicated "ADR-0010 dependency" section and stop_conditions)
+forbidden_changes:
+  - >-
+    `services/node_runtime/**`, the `Executor` protocol, and any capability
+    dispatch machinery (task-packets/K0-T02.yaml, merged) — untouched,
+    unrelated to this packet's scope
+  - >-
+    `services/control_plane/mrr/services/method_profile/**`
+    (task-packets/K0-T01.yaml, merged) — this packet only READS
+    `MethodProfile` bodies via the generic `ObjectRepository`, never through
+    that service, and adds no method to it
+  - >-
+    any new `MethodProtocolService`, `MethodRulingService`, or
+    `ResearchDecisionService` of any kind, and any new `services/**`
+    directory beyond the two already-existing services this packet extends
+    (`claim`, `projection`) — deliberately and explicitly deferred to
+    task-packets/K1-T03.yaml; see objective/derived_decisions for why this
+    packet's own tests do not need one (prerequisite `MethodRuling`/
+    `MethodProtocol`/`MethodProfile`/`ResearchDecision` objects are
+    constructed directly and inserted via the generic `ObjectRepository`,
+    bypassing any service)
+  - >-
+    the six K1-T01 contract kinds' own schemas/Pydantic models
+    (`schemas/question-model.schema.json`, `concept-charter`,
+    `method-protocol`, `evidence-matrix`, `method-ruling`,
+    `research-decision`, and their `packages/contracts/mrr/contracts/*.py`
+    mirrors) and their six `packages/domain/mrr/domain/lifecycles.py`
+    `StateMachine` constants (`QUESTION_MODEL_LIFECYCLE`,
+    `CONCEPT_CHARTER_LIFECYCLE`, `METHOD_PROTOCOL_LIFECYCLE`,
+    `EVIDENCE_MATRIX_LIFECYCLE`, `METHOD_RULING_LIFECYCLE`,
+    `RESEARCH_DECISION_LIFECYCLE`) — this packet only READS already-defined
+    bodies of these kinds (via the generic `ObjectRepository`) and adds no
+    field, no state, and no transition to any of them; schema changes there
+    need their own task
+  - >-
+    `schemas/claim.schema.json` and `packages/contracts/mrr/contracts/claim.py`
+    — FORBIDDEN unless the ceiling gate genuinely requires a new Claim field;
+    this packet's design (derived_decisions) is edge+policy per spec 08
+    section 3 and requires none. If implementation discovers a case this
+    design genuinely cannot express without a Claim-level field, STOP
+    (stop_conditions) and report the exact gap rather than touching this file
+  - >-
+    `schemas/common.schema.json` and `packages/contracts/mrr/contracts/common.py`
+    UNLESS ADR-0010 has reached ACCEPTED status (an explicit project-owner
+    decision, per this repository's own established governance-commit
+    discipline — never a task packet's own unilateral call) before this
+    packet's implementation begins. See the dedicated "ADR-0010 dependency"
+    section and stop_conditions
+  - >-
+    kill-condition EVALUATION logic — parsing or interpreting a
+    `MethodProtocol.kill_conditions` free-text entry against real
+    `EvidenceMatrix` data to DECIDE whether a specific condition is currently
+    satisfied. This packet implements only the transition PLUMBING given an
+    externally-decided trigger (a caller-supplied `ResearchDecision(decision_type="kill_branch")`
+    id); the decision itself is task-packets/K1-T03.yaml's/K1-T04.yaml's job,
+    once real evidence exists to evaluate against
+  - >-
+    any `DataAssetProfile`-style object, `empirical_claims_permitted` field,
+    or other external v0.2.0-package concept not adopted by spec 08 — the
+    ONLY adopted mechanism for MRR-MTH-012 is ADR-0010's proposed
+    `baseObject.classification == "SYNTHETIC_TEST_FIXTURE"` value; do not
+    invent a parallel marker mechanism (ADR-0010 itself already evaluated and
+    rejected `labels.classification` as unsuitable for policy-grade use — see
+    the ADR-0010 dependency section for why that reasoning is followed here
+    even though the ADR is not yet accepted)
+  - >-
+    a literal `"E2E-00N"` test name/slot for any of this packet's re-pinned
+    behaviors — E2E-001 through E2E-005 are already assigned to unrelated
+    scenarios in docs/spec/05_EVALUATION_AND_ACCEPTANCE.md; inventing a sixth
+    numbered slot without a specification amendment would misrepresent these
+    tests as part of that pre-existing, closed catalog
+  - HTTP/FastAPI endpoints
+  - both import-linter contracts in `pyproject.toml` (must remain unmodified and KEPT)
+  - any change to `packages/persistence/mrr/persistence/tables.py` (confirmed unnecessary — see derivation)
+derived_decisions:
+  - >-
+    ADR-0010 dependency — the crisp answer this packet's own instructions
+    demanded. MRR-MTH-012's fail-closed synthetic-fixture gate, AS SPECIFIED
+    (a "machine-checkable marker that test fixtures can never become
+    empirical evidence" that "propagates to derivatives"), genuinely
+    requires a real, stored, propagating classification field on first-class
+    objects — exactly what ADR-0010 proposes adding to
+    `baseObject`/`BaseObject`. Confirmed by direct reading:
+    `schemas/common.schema.json#/$defs/baseObject` (lines 18-33) and
+    `packages/contracts/mrr/contracts/common.py`'s `BaseObject` (lines
+    135-155) carry NO `classification` field today — `classification` exists
+    ONLY on `$defs/artifactRef`/`ArtifactRef` (schema lines 46-58, contracts
+    lines 90-99), which is a REFERENCE-shaped nested value (an artifact
+    pointer), not a property of the `SourceRecord`/`EvidenceAnchor`/`Claim`/
+    `EvidenceMatrixRow` objects MRR-MTH-012 actually needs classified. Every
+    narrower alternative was considered and rejected, for the SAME reasons
+    ADR-0010 itself already gives (its own "Alternatives considered"
+    section): (1) a brand-new, K1-T02-local marker field on ONLY the method-
+    kernel objects would fork classification into two parallel, drifting
+    mechanisms — exactly what ADR-0010's own Consequences section warns
+    against ("keeping one vocabulary prevents two parallel marker mechanisms
+    from drifting"); (2) `labels.classification` (already available on every
+    `BaseObject` TODAY, no schema change needed) was considered and REJECTED
+    for the identical reason ADR-0010 itself rejects it: "labels are
+    unsigned-adjacent, weakly typed, and deliberately non-semantic; policy
+    MUST NOT hang on them" — building this packet's OWN real gate on a
+    foundation ADR-0010's own governance record already found unsound would
+    be worse than deferring, even though ADR-0010 itself is not yet accepted;
+    (3) a side-table keyed by object id was considered and rejected as
+    inventing exactly the kind of ad hoc, non-canonical classification store
+    ADR-0010 exists to prevent, and as scope no task packet should take on
+    unilaterally for a single narrow consumer.
+
+    CONCLUSION: this packet is SPLIT into an unblocked part and a blocked
+    part, delivered honestly as such rather than either (a) silently
+    building on `labels` against the ADR's own already-documented reasoning,
+    or (b) unilaterally implementing ADR-0010's schema change itself (a task
+    packet accepting a PROPOSED, owner-pending ADR on its own authority would
+    violate this repository's own established discipline — every other
+    K-epic task so far was implemented only AFTER a separate, explicit
+    "Governance: ... approved" commit, never by the same commit/PR that
+    proposed the design). UNBLOCKED (delivered by this packet, no ADR-0010
+    dependency): (a) edges+migration, (b) the ceiling gate (MTH-004/005/006),
+    (d) kill-condition plumbing (MTH-010), and the pure decision FUNCTION for
+    (c) `mrr.domain.synthetic_fixture.assert_not_synthetic_fixture_evidence`
+    (it takes a plain `classification: str | None` parameter — no schema
+    dependency to CALL it with a literal string in a unit test). BLOCKED
+    (NOT delivered by this packet): wiring that function against any REAL
+    stored object's classification anywhere (there is no real classification
+    to read yet), and therefore the `SYNTHETIC_FIXTURE_NOT_EVIDENCE`
+    acceptance behavior is pinned at the UNIT tier only, using synthetic
+    string literals, explicitly NOT as an integration test against a real
+    `SourceRecord`/`EvidenceMatrixRow`/`Claim`. RECOMMENDATION delivered
+    alongside this packet (required_output): the project owner should decide
+    ADR-0010 (accept, reject, or amend) before or in parallel with this
+    packet's implementation; once ACCEPTED, a small follow-up slice (either
+    a K1-T02 continuation or a new micro-task) wires the already-built,
+    already-tested pure function against real `SourceRecord.classification`/
+    `EvidenceMatrixRow`-resolved-source classification and real
+    `Claim.evidence_relations` targets — no new design work required at that
+    point, only wiring.
+  - >-
+    The claim-ceiling gate's exact, narrowly-scoped mapping (MRR-MTH-004/
+    005/006), and its honestly-disclosed limits. `Claim.claim_type`
+    (`observational`/`causal`/`statistical`/`methodological`/
+    `interpretive`/`normative`/`speculative`, docs/spec/02_DOMAIN_MODEL.md
+    section 2.11) and `ClaimCeiling`
+    (`insufficient_evidence`/`mechanism_hypothesis`/`descriptive`/
+    `associational_unadjusted`/`associational_adjusted`/`causal_local`/
+    `causal_bounded`, spec 08 section 4) are two DIFFERENT, orthogonal
+    vocabularies — the former names the KIND of claim, the latter the
+    STRENGTH of language a ruling licenses. Spec 08 section 4's own text
+    ("the claim service MUST reject claim language above the ruled ceiling")
+    presumes some way to read a claim's own "language" against the ceiling
+    ladder, but neither spec 08 nor the existing `Claim` contract defines
+    that mapping. This packet implements EXACTLY TWO checks, both fully
+    machine-checkable with data already on hand, and declares the rest
+    explicitly unmapped rather than inventing a full 7x7 correspondence with
+    no real use case to validate it against:
+
+    (1) UNIVERSAL (every claim_type): the attached `MethodRuling.ruled_ceiling`
+    MUST NOT exceed its governing `MethodProtocol.profile_id`-resolved
+    `MethodProfile.max_claim_ceiling`, per `CLAIM_CEILING_ORDER`'s declared
+    order. This is, precisely read, MRR-MTH-003's own text ("no claim
+    produced under a profile may exceed [the profile's declared maximum
+    ceiling]") — MTH-003 is NOT itself in this packet's assigned requirement
+    list, but this same mechanism is exactly what makes MRR-MTH-006 true FOR
+    THE FIRST REAL PROFILE: spec 08 section 5 commits
+    `systematic_evidence_synthesis`'s `max_claim_ceiling` to
+    `associational_unadjusted` in the spec text itself, so THIS check,
+    applied to a correctly-declared instance of that profile, structurally
+    enforces MTH-006's "its maximum ceiling is associational_unadjusted" for
+    every claim ruled under it. What this check does NOT do (flagged,
+    specification_gaps): verify that a profile claiming to be "a synthesis
+    or descriptive design" (MTH-006's own antecedent) actually IS one —
+    `MethodProfile.protocol_form` is free text (K0-T01), not a closed,
+    machine-checkable design-kind taxonomy, so a HYPOTHETICAL future profile
+    that mis-declares its own `max_claim_ceiling` too high for its true
+    design kind would pass this check regardless — this packet enforces "no
+    ruling exceeds its OWN profile's declared max," not "this profile's
+    declared max is itself correct for its design kind" (the latter would
+    need a design-kind taxonomy that does not exist anywhere in this
+    codebase).
+
+    (2) CAUSAL-SPECIFIC (only claim_type == "causal"): the attached
+    `MethodRuling.ruled_ceiling` MUST be one of `{"causal_local",
+    "causal_bounded"}` — the only two ceiling tiers whose NAME denotes causal
+    language, per `CLAIM_CEILING_ORDER`'s own ordering (both above
+    `associational_adjusted`). Every OTHER claim_type value
+    (`observational`/`statistical`/`methodological`/`interpretive`/
+    `normative`/`speculative`) is subject to check (1) ONLY — no
+    claim-type-specific floor/ceiling correspondence is implemented for any
+    of the other six values, since spec 08 gives no textual basis for one
+    and inventing a full mapping now, with no real profile driving the need,
+    risks encoding made-up epistemology the spec never asked for. Flagged
+    prominently (specification_gaps) as this packet's own narrowest-
+    defensible reading, for reviewer confirmation before K1-T03 builds
+    against it.
+
+    MRR-MTH-005 ("statistical significance, model confidence, or output
+    fluency MUST NOT raise a ceiling") is satisfied STRUCTURALLY, not by
+    policy prose: `mrr.domain.claim_ceiling.ceiling_violation_reason`'s own
+    signature is `(*, claim_type: str, ruled_ceiling: str,
+    profile_max_ceiling: str) -> str | None` — no parameter exists anywhere
+    for a p-value, a confidence score, or a fluency/quality metric, so
+    nothing could enter this decision even if a caller wanted it to. Proven,
+    not merely asserted, by `inspect.signature` introspection in a unit test
+    (acceptance_tests).
+  - >-
+    Three enforcement checkpoints for MRR-MTH-004's "at submission and at
+    projection rendering", deliberately layered (mirroring
+    `ClaimService._write_edge`'s own already-documented "belt and braces"
+    precedent — checked once in code, once again by the database, neither
+    trusted alone):
+
+    (i) `ClaimService.attach_ruling(claim_id, method_ruling_id, *, actor,
+    policy_version, correlation_id) -> TypedEdge` — the "at submission" gate
+    and the ONLY place a `ruled_by` edge is ever written. Resolves
+    `method_ruling_id` via `self._object_repository.get_latest` (the
+    already-existing, fully generic dependency — works for ANY object kind),
+    then `ruling.body["protocol_id"]` -> `MethodProtocol`, then
+    `protocol.body["profile_id"]` -> `MethodProfile`, reading
+    `max_claim_ceiling` from its CURRENT latest revision regardless of that
+    profile's own lifecycle status (flagged, specification_gaps: this does
+    NOT require the profile to be `status == "accepted"` — checking that
+    would need either a new dependency on `MethodProfileService` or a raw
+    event-log scan neither MTH-004/005/006's literal text nor this task's
+    scope clearly demands; deferred). Calls
+    `mrr.domain.claim_ceiling.ceiling_violation_reason` against the resolved
+    claim's own `claim_type`; on a non-`None` result, raises
+    `ClaimCeilingExceededError` BEFORE writing anything (mirrors
+    `to_supported`'s "checked first, nothing persisted on failure"
+    discipline) — no edge, no event. On success, writes the `ruled_by` edge
+    via the existing `_write_edge` helper (event_type
+    `"claim.ruling_attached"`), reusing its already-atomic
+    edge-plus-event composition unchanged.
+
+    (ii) A new conditional inside the EXISTING `_transition` helper (not a
+    new method): when `to_status` is one of `{"supported", "contested",
+    "contradicted", "unsupported"}` (the four CLAIM_LIFECYCLE targets that
+    assert some claim language — `unresolved`/`review_required`/`withdrawn`/
+    `superseded` do not, per their own existing names), look up
+    `self._edge_repository.edges_from(claim_id, "ruled_by")`. If EMPTY (no
+    ruling ever attached — a legacy or non-profile claim), skip entirely:
+    ZERO behavior change for every claim created before this packet and for
+    the existing `to_supported`/`to_contested` etc. unit/integration tests
+    that seed no `ruled_by` edge — this is a deliberate, disclosed choice
+    NOT to retroactively enforce MTH-004's blanket "every claim produced
+    under a profile MUST carry a ruled_by edge" MUST-clause (see
+    specification_gaps: `Claim` carries no field distinguishing "produced
+    under a profile" from "not," so this packet cannot structurally tell
+    the two apart — enforcing the MUST-clause universally would either
+    break every pre-existing claim or require guessing; deferred to
+    task-packets/K1-T03.yaml, the first real profile-claim producer, which
+    DOES know at construction time that it is producing a profile claim).
+    If ONE OR MORE `ruled_by` edges exist, re-resolve EACH target
+    `MethodRuling`/`MethodProtocol`/`MethodProfile` chain and re-run the
+    SAME gate; if ANY of them reports a violation, raise
+    `ClaimCeilingExceededError` and persist nothing (fail-closed direction:
+    a claim with multiple, possibly-conflicting rulings attached — never
+    itself deduplicated or prevented by this packet, flagged,
+    specification_gaps — is rejected if ANY attached ruling would license a
+    violation, not accepted if ANY ONE happens to pass).
+
+    (iii) `packages/domain/mrr/domain/projection.py`'s existing
+    `build_claim_table_row` gains two NEW, fully OPTIONAL keyword parameters
+    (`ruled_ceiling: str | None = None`, `profile_max_ceiling: str | None =
+    None`, both defaulting to `None` — zero change to any EXISTING call
+    site's behavior) and `ClaimTableRow` (a frozen dataclass, additive) gains
+    two new fields: `ceiling_checked: bool` (`True` iff both new parameters
+    were supplied) and `ceiling_violation: str | None` (the SAME
+    `ceiling_violation_reason` string when checked-and-violating, `None`
+    otherwise — including when NOT checked at all; the two "no violation"
+    and "not checked" cases are DELIBERATELY not distinguished by a third
+    field, flagged as a disclosed limitation mirroring
+    `EvidenceMatrixRow.verification_status`'s own three-state "pending"
+    precedent, though here realized as two booleans-worth of information
+    rather than a three-value enum — a reviewer may prefer a single
+    `Literal["not_checked", "licensed", "violated"]` field instead;
+    flagged for reviewer scrutiny). `ProjectionService.build_claim_table`
+    (the I/O-performing half) is extended to look up each claim's own
+    `ruled_by` edge(s) via its ALREADY-HELD `self._edge_repository`, resolve
+    the SAME `MethodRuling` -> `MethodProtocol` -> `MethodProfile` chain via
+    its ALREADY-HELD `self._object_repository` (no new constructor
+    dependency), and pass the resolved values into `build_claim_table_row`
+    — reusing `mrr.domain.claim_ceiling.ceiling_violation_reason` directly
+    (never re-implementing the gate logic a second time). This re-derives
+    the SAME verdict at render time rather than trusting the claim's own
+    stored status, consistent with `mrr.domain.projection`'s own established
+    "narrative reports are projections, never authoritative" discipline
+    (AGENTS.md) — a claim marked `supported` under a ruling that was LATER
+    superseded to a stricter ceiling surfaces `ceiling_violation` at render
+    time even though its own stored object was valid when it was written.
+  - >-
+    Kill-condition transition plumbing (MRR-MTH-010) reuses the EXISTING
+    `withdrawn` `CLAIM_LIFECYCLE` state rather than inventing a new one — a
+    considered, disclosed judgment call, not a spec-drawn certainty.
+    `CLAIM_LIFECYCLE`'s already-declared "any nonterminal status ->
+    withdrawn" edge set (`packages/domain/mrr/domain/lifecycles.py`,
+    confirmed by direct reading) is REUSED, not duplicated, for exactly the
+    reason MTH-010's own text gives: "killed branches remain addressable and
+    inspectable" is EXACTLY `withdraw()`'s own already-documented behavior
+    ("a withdrawn claim remains addressable — docs/spec/01_SYSTEM_SPEC.md
+    section 6.3"). A NEW public method, `ClaimService.apply_kill_condition
+    (claim_id, research_decision_id, *, actor, policy_version,
+    correlation_id) -> tuple[StoredObject, TypedEdge]`, does two SEQUENTIAL,
+    each independently atomic writes (mirroring the module's own established
+    "object fields and graph edges are two independent writes with one
+    required consistency point, not a single auto-derived projection of
+    each other" precedent — see the module docstring's "Field-vs-edge
+    consistency" section — NOT wrapped in one combined multi-table
+    transaction, since no persistence primitive in this codebase's
+    `allowed_paths` composes an object-revision write AND an edge write
+    atomically together, only each with its OWN event):
+
+    (1) resolves `research_decision_id` via `self._object_repository.get_latest`
+    and calls a new pure function, `mrr.domain.kill_condition.
+    assert_licenses_kill(decision_kind=..., decision_type=...)`, raising a
+    new `InvalidKillDecisionError` (carrying `research_decision_id`,
+    `actual_kind`, `actual_decision_type`) if the resolved object is not a
+    `ResearchDecision` with `decision_type == "kill_branch"` — checked FIRST,
+    nothing persisted on failure;
+
+    (2) transitions the claim via the EXISTING `_transition` helper to
+    `"withdrawn"`, but with `event_type="claim.kill_condition_triggered"`
+    (a NEW, distinctly-named event type — NOT the existing plain
+    `"claim.withdrawn"` a voluntary researcher withdrawal produces via the
+    existing `withdraw()` method, kept as a separate call) whose `payload`
+    carries `{"code": "KILL_CONDITION_TRIGGERED", "research_decision_id":
+    ..., "from_status": ..., "to_status": "withdrawn"}` — this is how the
+    packet makes spec 08's literal, canonical, SCREAMING_SNAKE_CASE string
+    `KILL_CONDITION_TRIGGERED` a real, greppable, directly-assertable fact
+    on the persisted event, WITHOUT breaking this codebase's own uniform
+    `"<noun>.<past_tense_verb>"` lowercase-dotted `event_type` naming
+    convention (every existing `DomainEvent.event_type` in this codebase
+    follows it; breaking it for one new event type would surprise any
+    generic event-type-pattern-matching code) — a considered, disclosed
+    judgment call (specification_gaps), not the only shape a reviewer might
+    prefer;
+
+    (3) writes a NEW `decided_by` edge, `claim_id -> research_decision_id`,
+    via the EXISTING `_write_edge` helper (event_type
+    `"claim.kill_decision_recorded"`), reusing its already-atomic
+    edge-plus-event composition unchanged.
+
+    `apply_kill_condition` is deliberately scoped to CLAIMS ONLY — it does
+    NOT write a `decided_by` edge from the `MethodProtocol`/branch itself,
+    any `EvidenceMatrix`, or any other non-Claim object kind possibly
+    associated with the killed branch, because no service in this packet's
+    scope (or anywhere on `main`) owns persistence for those OTHER object
+    kinds yet — flagged (specification_gaps) as deferred to whichever future
+    service (likely task-packets/K1-T03.yaml) manages `MethodProtocol`/
+    `EvidenceMatrix` persistence and can extend `decided_by` edge-writing to
+    those kinds symmetrically. `MethodProtocol` itself gains NO new
+    lifecycle state or transition for "killed" — deliberately: a single
+    protocol may have MULTIPLE `planned_analyses` ("branches"), and killing
+    ONE via a `kill_branch` decision must not imply the WHOLE protocol is
+    dead; `METHOD_PROTOCOL_LIFECYCLE` (K1-T01) is untouched (also
+    `forbidden_changes`).
+  - >-
+    The four v0.2.0 Gherkin behaviors, re-pinned: exact mapping table.
+    (1) `method-causal-claim-gate.feature` — drifted
+    `METHOD_CLAIM_CEILING_EXCEEDED` -> canonical `CLAIM_CEILING_EXCEEDED`;
+    external `IdentificationAudit`/`ResearchDesign` (not adopted anywhere in
+    this repository) -> this repository's `MethodRuling`/`MethodProtocol`
+    (K1-T01); re-pinned as REAL, running integration tests exercising
+    `attach_ruling`/the `_transition` re-check/the projection extension
+    (acceptance_tests). (2) `method-kill-condition-propagation.feature` —
+    the original carries NO drifted error CODE (it names free-text state
+    prose, "design status becomes rejected", and a non-adopted Claim status
+    `"method_invalidated"`) but IS re-pinned onto the canonical EVENT marker
+    `KILL_CONDITION_TRIGGERED` (spec 08 section 3) via the distinctly-typed
+    event this packet's `apply_kill_condition` emits; `"method_invalidated"`
+    is DELIBERATELY reinterpreted as the existing `withdrawn` state plus a
+    `decided_by` edge plus the distinct event type (see the kill-condition
+    derived_decision above) — a genuine reinterpretation, not merely a
+    drift-correction, flagged prominently; re-pinned as a REAL, running
+    integration test covering the CLAIM-scoped slice of the original
+    scenario only (the correction/transfer-notification steps in the
+    original scenario's third example are ALREADY covered by the existing,
+    unrelated E6 correction/transfer machinery — cited, not reimplemented,
+    here). (3) `method-preanalysis-lock.feature` — drifted
+    `PREANALYSIS_PLAN_NOT_LOCKED` -> canonical `PROTOCOL_NOT_LOCKED`
+    (and, for its third scenario, an implied `PROTOCOL_LOCK_VIOLATION`);
+    external `PreAnalysisPlan` -> this repository's `MethodProtocol`
+    (K1-T01, MTH-007/008) — NOT implemented by this packet (MTH-007/008 are
+    not in this packet's requirement list; TaskBundle-negotiation-time
+    protocol-lock enforcement is out of `ClaimService`'s own domain
+    entirely). Re-pinned as DOCUMENTATION ONLY — this paragraph IS the
+    re-pin, a code-correction reference for whichever future task
+    implements it — no test file is created for it (creating an empty or
+    stub test file for unimplemented behavior would misrepresent coverage).
+    (4) `method-synthetic-fixture-isolation.feature` — drifted
+    `SYNTHETIC_EVIDENCE_FORBIDDEN` -> canonical `SYNTHETIC_FIXTURE_NOT_EVIDENCE`;
+    external `DataAssetProfile`/`empirical_claims_permitted` (not adopted) ->
+    ADR-0010's proposed `baseObject.classification ==
+    "SYNTHETIC_TEST_FIXTURE"` (PROPOSED, not accepted); re-pinned as a REAL
+    but UNIT-TIER-ONLY test (see the ADR-0010 dependency derived_decision
+    above) using synthetic string literals, explicitly NOT wired to any real
+    object.
+invariants:
+  - >-
+    `EDGE_VOCABULARY` (`packages/domain/mrr/domain/repositories.py`) carries
+    exactly twenty-three members after this task: the nineteen existing ones
+    unchanged, plus `operationalizes`, `governed_by_protocol`, `ruled_by`,
+    `decided_by` — nothing else added, nothing removed, nothing renamed
+  - >-
+    the new migration's `down_revision` is exactly `"b64f87a758f3"`
+    (confirmed current Alembic head at derivation time); its `upgrade()`
+    drops and recreates `ck_edges_edge_type_vocabulary` widened to the full
+    twenty-three-value list (alphabetically sorted, matching
+    `packages/persistence/mrr/persistence/tables.py`'s own
+    `sorted(EDGE_VOCABULARY)` convention); its `downgrade()` drops and
+    recreates the constraint back to the ORIGINAL nineteen-value list
+    verbatim (copied from `b9e7d0e3aff6`'s own literal, not re-derived) —
+    genuinely reversible, not merely additive; the migration's own docstring
+    states explicitly that `downgrade()` will fail (as Postgres itself
+    would) if any live `edges` row already uses one of the four new types,
+    exactly the same honestly-disclosed risk every CHECK-constraint
+    narrowing carries, disclosed rather than silently assumed away
+  - >-
+    `packages/persistence/mrr/persistence/tables.py` requires ZERO source
+    changes (confirmed: its CHECK clause is computed live from the imported
+    `EDGE_VOCABULARY` constant) — this task's own `forbidden_changes`
+    explicitly bars touching it, and a diff touching it is a signal
+    something else has gone wrong
+  - >-
+    `mrr.domain.claim_ceiling.ceiling_violation_reason`'s signature is
+    exactly `(*, claim_type: str, ruled_ceiling: str, profile_max_ceiling:
+    str) -> str | None` — keyword-only, three parameters, no `**kwargs`, no
+    confidence/significance/fluency-shaped parameter of any kind (MRR-MTH-005
+    structural proof); it performs no I/O and imports no persistence,
+    provider, or framework module (MRR-NFR-010)
+  - >-
+    `ClaimCeilingExceededError`, `SyntheticFixtureNotEvidenceError`, and
+    `InvalidKillDecisionError` (new, `packages/domain/mrr/domain/exceptions.py`)
+    each subclass `DomainError` and each carries a class-level `error_code:
+    ClassVar[str]` set to its own spec-08-section-3 canonical string
+    (`"CLAIM_CEILING_EXCEEDED"`, `"SYNTHETIC_FIXTURE_NOT_EVIDENCE"`; the
+    third has no canonical code of its own — it is this packet's own
+    narrower "is this really a kill_branch decision" precondition check, not
+    itself one of the six spec-08 codes, and carries no `error_code`
+    attribute for that reason) — this is a NEW convention on top of every
+    prior exception in this module (none of which carry an `error_code`
+    class attribute, since none were previously bound to an externally
+    canonical string catalog); flagged in specification_gaps as a
+    deliberate, disclosed departure from the file's own prior precedent,
+    justified by spec 08 section 3's own text ("the acceptance features MUST
+    use exactly these" codes)
+  - >-
+    `attach_ruling`/the `_transition` ceiling re-check/`apply_kill_condition`
+    each raise their respective typed error and persist NOTHING (no object
+    revision, no edge, no event) before the first successful write in their
+    own sequence — a caught instance always means the claim's stored state
+    is byte-identical to before the call
+  - >-
+    every claim created before this task, and every existing
+    `to_supported`/`to_contested`/`to_contradicted`/`to_unsupported`/
+    `withdraw`/`supersede`/`require_review`/`submit_for_review` call that
+    attaches no `ruled_by` edge, behaves IDENTICALLY after this task as
+    before it — the new `_transition` conditional is a strict no-op whenever
+    `edges_from(claim_id, "ruled_by")` returns empty
+  - >-
+    `build_claim_table_row` called with its two new parameters omitted (or
+    both `None`) returns a `ClaimTableRow` with `ceiling_checked=False,
+    ceiling_violation=None` and is otherwise byte-identical to its
+    pre-existing behavior — every existing call site and every existing
+    `tests/unit/domain/test_projection.py` test continues to pass unchanged
+  - >-
+    a killed claim (post-`apply_kill_condition`) is fully resolvable via
+    `ObjectRepository.get_latest`/`get_revision`/`list_revisions` exactly
+    like any other claim — "killed branches remain addressable and
+    inspectable" (MRR-MTH-010) holds by construction, inherited unchanged
+    from the existing append-only repository, not re-implemented
+  - >-
+    no Alembic migration, `EDGE_VOCABULARY` member, or code path this task
+    adds depends on ADR-0010 being accepted, EXCEPT the real-object wiring of
+    the synthetic-fixture gate, which this task explicitly does NOT deliver
+  - both import-linter contracts stay KEPT; every new/modified domain module imports no provider SDK, no web/workflow framework, and opens no network
+acceptance_tests:
+  - >-
+    [re-pins method-causal-claim-gate.feature, MRR-MTH-004/006] a Claim with
+    `claim_type="causal"` + `attach_ruling` against a `MethodRuling(
+    ruled_ceiling="associational_adjusted")` (below the causal-licensing
+    tier) under any governing profile -> `ClaimCeilingExceededError`
+    (`error_code == "CLAIM_CEILING_EXCEEDED"`); no `ruled_by` edge, no event,
+    persisted
+  - >-
+    a Claim with `claim_type="causal"` + `attach_ruling` against a
+    `MethodRuling(ruled_ceiling="causal_bounded")` under a governing
+    `MethodProfile(max_claim_ceiling="causal_bounded")` -> succeeds; a
+    `ruled_by` edge is written with event `"claim.ruling_attached"`
+  - >-
+    [re-pins MRR-MTH-006 for the first real profile] a Claim with
+    `claim_type="observational"` + `attach_ruling` against a `MethodRuling(
+    ruled_ceiling="causal_bounded")` under a governing `MethodProfile(
+    max_claim_ceiling="associational_unadjusted")` -> `ClaimCeilingExceededError`
+    (ruling exceeds its own profile's declared max — the "synthesis/
+    descriptive design" check, extensionally, for a correctly-declared
+    `systematic_evidence_synthesis`-shaped profile); the identical claim
+    against a `MethodRuling(ruled_ceiling="descriptive")` under the SAME
+    profile -> succeeds
+  - >-
+    [MRR-MTH-005 structural proof] `inspect.signature(mrr.domain.claim_ceiling.ceiling_violation_reason)`
+    has exactly the three documented keyword-only parameters and no others;
+    a property test constructing many random `(claim_type, ruled_ceiling,
+    profile_max_ceiling)` triples confirms the verdict depends ONLY on those
+    three values, in every combination
+  - >-
+    [defense-in-depth re-check] a Claim with an already-attached `ruled_by`
+    edge whose target `MethodRuling` is later re-seeded (test-only,
+    simulating drift) to violate the profile-max check -> a subsequent
+    `to_supported`/`to_contested` call raises `ClaimCeilingExceededError` and
+    persists nothing; the IDENTICAL call against a claim with NO `ruled_by`
+    edge at all transitions exactly as every existing E3-T02 test already
+    proves (explicit regression check, not merely "unchanged by omission")
+  - >-
+    [re-pins the projection half of method-causal-claim-gate.feature: "a
+    report projection uses causal language ... fails closed"]
+    `build_claim_table_row` supplied a violating `(ruled_ceiling,
+    profile_max_ceiling)` pair returns `ceiling_checked=True,
+    ceiling_violation=<non-null reason string>`; supplied a licensing pair
+    returns `ceiling_checked=True, ceiling_violation=None`; supplied neither
+    parameter (legacy call shape) returns `ceiling_checked=False,
+    ceiling_violation=None`, byte-identical to pre-task behavior
+  - >-
+    [re-pins method-kill-condition-propagation.feature, MRR-MTH-010] a Claim
+    in `"under_review"` + a directly-seeded `ResearchDecision(
+    decision_type="kill_branch")` + `apply_kill_condition` -> the claim's
+    new revision has `status="withdrawn"`; its event has `event_type=
+    "claim.kill_condition_triggered"` and `payload["code"] ==
+    "KILL_CONDITION_TRIGGERED"`; a `decided_by` edge `claim_id ->
+    research_decision_id` is written with its own event
+    `"claim.kill_decision_recorded"`; the claim remains fully resolvable via
+    `get_latest`/`get_revision`/`list_revisions` afterward
+  - >-
+    `apply_kill_condition` against a referenced object that is not a
+    `ResearchDecision`, or a `ResearchDecision` whose `decision_type !=
+    "kill_branch"` -> `InvalidKillDecisionError`, nothing persisted
+  - >-
+    `apply_kill_condition` against a claim already in a terminal status
+    (`withdrawn`/`superseded`) -> the EXISTING `InvalidTransitionError` (the
+    already-drawn `CLAIM_LIFECYCLE` terminal-state guard, reused unchanged,
+    not reinvented), nothing persisted
+  - >-
+    [re-pins method-synthetic-fixture-isolation.feature, MRR-MTH-012, UNIT
+    TIER ONLY per the ADR-0010 dependency] `mrr.domain.synthetic_fixture.
+    assert_not_synthetic_fixture_evidence(source_classification=
+    "SYNTHETIC_TEST_FIXTURE")` raises `SyntheticFixtureNotEvidenceError`
+    (`error_code == "SYNTHETIC_FIXTURE_NOT_EVIDENCE"`); every other input,
+    including `None` and every one of the five EXISTING `Classification`
+    values (`PUBLIC`/`INTERNAL`/`RESTRICTED`/`SENSITIVE`/
+    `PARTICIPANT_IDENTIFIABLE`), passes; explicitly NOT tested against any
+    real stored object anywhere (no integration test) — see
+    derived_decisions
+  - >-
+    [migration/EDGE_VOCABULARY, integration tier] the EXISTING, unmodified
+    `tests/integration/persistence/test_postgres_repositories.py::test_every_vocabulary_edge_type_round_trips`
+    (already parametrized over `sorted(EDGE_VOCABULARY)`) passes for all
+    twenty-three edge types, including the four new ones, against a real
+    `alembic upgrade head`-migrated schema, with ZERO new test code required
+    for this specific check; the EXISTING
+    `test_invented_edge_type_rejected_by_database_check_constraint` continues
+    to pass unchanged (a truly bogus type is still rejected); ONE new test
+    confirms the migration's `downgrade()` reverts the CHECK constraint to
+    reject one of the four new types (e.g. `edge_type="ruled_by"`) with
+    `IntegrityError` after downgrading — proving genuine reversibility
+  - >-
+    [documentation-only re-pin, method-preanalysis-lock.feature] no test
+    file exists for this behavior in this packet — its own
+    derived_decisions paragraph IS the re-pin; confirmed absent from
+    `required_output`'s test-evidence list for exactly that reason
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+specification_gaps:
+  - >-
+    ADR-0010 is PROPOSED, not ACCEPTED, at derivation time (confirmed: no
+    commit after `1bdf394` changes its status) — this packet's MRR-MTH-012
+    slice is therefore genuinely incomplete by design (pure function only,
+    no real-object wiring), not merely deferred out of laziness. See the
+    dedicated derived_decisions entry for the full reasoning and the
+    recommendation delivered alongside this packet.
+  - >-
+    The claim-ceiling gate's mapping (claim_type "causal" <-> {causal_local,
+    causal_bounded}; every other claim_type checked ONLY against the
+    universal profile-max cap) is this packet's own narrowest-defensible
+    reading of MTH-004's "claim language above the ruled ceiling", not
+    literal spec text — spec 08 nowhere spells out a claim_type-to-ceiling
+    correspondence. A reviewer may want a fuller mapping for the other six
+    claim_type values once real claims exist to validate one against
+    (K1-T03/K1-T04).
+  - >-
+    MTH-006's own antecedent ("a synthesis or descriptive design") has no
+    machine-checkable representation anywhere in this codebase —
+    `MethodProfile.protocol_form` is free text. This packet's universal
+    profile-max check enforces "no ruling exceeds ITS OWN profile's declared
+    max," which is EXTENSIONALLY equivalent to MTH-006 for a correctly
+    self-declared `systematic_evidence_synthesis` profile, but does not
+    itself verify a profile's design-kind classification is correct.
+  - >-
+    `attach_ruling` does not require the resolved `MethodProfile.status ==
+    "accepted"` (nor the resolved `MethodProtocol.status == "locked"`,
+    MTH-007, explicitly out of this packet's scope) — it reads whatever the
+    CURRENT latest revision of each declares, regardless of lifecycle state.
+    Flagged for reviewer confirmation; tightening this would need either a
+    new cross-service dependency or an event-log scan.
+  - >-
+    MRR-MTH-004's blanket "every claim produced under a profile MUST carry a
+    ruled_by edge" is NOT structurally/retroactively enforced by this
+    packet — `Claim` carries no field distinguishing a profile-produced
+    claim from a legacy/non-profile one, so a claim with NO `ruled_by` edge
+    at all is never rejected by this packet's own checks (only a claim that
+    HAS one, but whose ruling violates the ceiling, is rejected). Deferred
+    to task-packets/K1-T03.yaml, the first real profile-claim producer,
+    which knows at construction time whether a claim is profile-produced.
+  - >-
+    A claim may accumulate MULTIPLE `ruled_by` edges over time — this packet
+    neither prevents nor deduplicates this. The `_transition` re-check
+    treats "any attached ruling reports a violation" as fail-closed
+    rejection, which is conservative but not itself validated against a
+    "which ruling is authoritative when more than one is attached" policy —
+    no such policy exists anywhere in spec 08. Flagged for reviewer scrutiny.
+  - >-
+    `ClaimTableRow`'s new `ceiling_checked`/`ceiling_violation` pair does not
+    distinguish "checked, no violation" from "not checked at all" via a
+    single field — both read `ceiling_violation=None`, disambiguated only by
+    the SEPARATE `ceiling_checked` boolean. A reviewer may prefer a single
+    three-value `Literal["not_checked", "licensed", "violated"]` field
+    instead; flagged, not resolved unilaterally.
+  - >-
+    Reusing the EXISTING `withdrawn` `CLAIM_LIFECYCLE` state for
+    kill-condition termination (rather than a new, dedicated status, e.g.
+    `"killed"`) conflates two domain concepts — voluntary researcher
+    withdrawal and involuntary kill-condition termination — under one
+    `Claim.status` value, distinguished only by which `event_type`/edge
+    accompanies the SAME transition. A reviewer may instead want a distinct
+    `ClaimStatus` value, which would require touching
+    `schemas/claim.schema.json`/`claim.py` (this packet's own
+    `forbidden_changes`, unless genuinely required) — flagged as the single
+    most consequential open judgment call in this packet's own design,
+    alongside the ADR-0010 split.
+  - >-
+    `apply_kill_condition` writes a `decided_by` edge from the CLAIM only,
+    never from the killed `MethodProtocol`/branch itself or any associated
+    `EvidenceMatrix` — no service in this packet's scope owns persistence
+    for those other object kinds. Deferred to task-packets/K1-T03.yaml.
+  - >-
+    `KILL_CONDITION_TRIGGERED`'s canonical string is carried in the
+    persisted event's `payload["code"]`, not as the literal `event_type`
+    string itself (which stays lowercase-dotted,
+    `"claim.kill_condition_triggered"`, per this codebase's own uniform
+    naming convention). A reviewer may prefer the literal canonical string
+    AS the `event_type` instead, breaking the established convention for
+    this one case; flagged, not resolved unilaterally.
+  - >-
+    The new `error_code: ClassVar[str]` attribute on
+    `ClaimCeilingExceededError`/`SyntheticFixtureNotEvidenceError` is a NEW
+    convention with no precedent among this file's ~40 existing exception
+    classes (none carry one). This departure is deliberately narrow (only
+    the two exceptions bound to spec-08-canonical strings carry it) rather
+    than retrofitted onto every existing exception; flagged for reviewer
+    confirmation that this is the right place to introduce the convention.
+  - >-
+    This packet's own `services/**` footprint (two files: `claim`,
+    `projection`, both extensions of already-existing services) assumes
+    task-packets/K1-T03.yaml will be the FIRST task to introduce
+    `MethodProtocolService`/`MethodRulingService`/`ResearchDecisionService`.
+    If K1-T03 is derived with a different scope than currently sketched in
+    docs/design/2026-07-21-research-method-kernel-plan.md, this assumption
+    should be re-checked, not silently carried forward.
+coordination_note: >-
+  task-packets/E6-T04.yaml (status `approved`, design-approved via commit
+  `7b071da`) went from UNIMPLEMENTED to an OPEN PR (#48,
+  `task/E6-T04-correction-response`, opened 2026-07-21T03:23 — DURING this
+  same derivation session, confirmed live by `gh pr view 48`) while this
+  packet was being written; re-checked before finalizing. Its actual diff
+  (`gh pr view 48 --json files`) touches
+  `packages/domain/mrr/domain/exceptions.py`, adding exactly ONE new class
+  (`CorrectionResponseAlreadyRecordedError`, confirmed by direct diff — no
+  name collision with anything this packet adds), plus
+  `packages/contracts/mrr/contracts/__init__.py`,
+  `correction_response.py`/`.schema.json`/`.example.json`, `scripts/
+  check_contracts.py`, and `services/control_plane/mrr/services/correction/
+  service.py` — NONE of which this packet touches. This packet ALSO appends
+  new classes to `exceptions.py`
+  (`ClaimCeilingExceededError`, `SyntheticFixtureNotEvidenceError`,
+  `InvalidKillDecisionError`). Both PRs only ADD new classes at the end of
+  an already-append-only-in-practice file and neither modifies any EXISTING
+  class the other touches — confirmed by direct diff inspection of both, not
+  merely by reading the two packets' stated scopes — so simultaneous or
+  out-of-order landing is, at worst, an ordinary textual merge conflict
+  (matching task-packets/K1-T01.yaml's own identical precedent for
+  `ENTITY_MODELS`/`lifecycles.py`), never a semantic one. Neither task
+  depends on the other's exception classes existing. E6-T04 touches no
+  `EDGE_VOCABULARY`, no migration, no `claim`/`projection` service, and no
+  contract this packet reads — there is no other overlap between the two
+  packets' own scopes. If PR #48 merges before this packet's own
+  implementation starts, `packages/domain/mrr/domain/exceptions.py`'s exact
+  line numbers will shift but no rebase conflict beyond a trivial context
+  shift is expected.
+required_output:
+  - implementation summary
+  - >-
+    changed files, split explicitly into: (a) the unconditional slice
+    (edges/migration, ceiling gate, kill-condition plumbing, three of the
+    four re-pinned behaviors); (b) the ADR-0010-blocked slice (the pure
+    `assert_not_synthetic_fixture_evidence` function and its unit-tier-only
+    test) — reported separately so a reviewer can see exactly where the
+    boundary falls
+  - >-
+    explicit confirmation of which alembic revision id was actually minted
+    (this packet's own text shows an illustrative placeholder only, since
+    generating a real one requires running `alembic revision`, which this
+    read-only derivation task did not do) and that its `down_revision` is
+    `"b64f87a758f3"`
+  - >-
+    explicit confirmation that no `services/node_runtime/**`,
+    `services/control_plane/mrr/services/method_profile/**`, six-K1-T01-kind
+    schema/contract/lifecycle file, `schemas/claim.schema.json`/`claim.py`,
+    or either import-linter contract was touched, and that
+    `packages/persistence/mrr/persistence/tables.py` needed no source change
+  - >-
+    explicit confirmation of the ADR-0010 dependency split and a
+    recommendation on next steps (accept/reject/amend ADR-0010; if accepted,
+    scope a small follow-up wiring slice) — matching the recommendation
+    delivered alongside this packet at derivation time
+  - tests added and exact command results (format, lint, typecheck, test, test-contract, test-integration) proving green
+  - >-
+    security/privacy implications (no signature or cross-practice transport
+    introduced; no provider SDK; no network; append-only revisions and
+    edges throughout; the fail-closed direction of every new gate — absent
+    or ambiguous data never passes — is the load-bearing safety property,
+    per MRR-NFR-012)
+  - >-
+    open specification questions exactly as listed under
+    specification_gaps, with PROMINENT emphasis on (i) the ADR-0010 split
+    and (ii) reusing `withdrawn` for kill-condition termination, since both
+    have the clearest downstream consequence for K1-T03/K1-T04
+  - >-
+    explicit statement that the fourth original Gherkin behavior
+    (protocol lock, MTH-007/008) was re-pinned as documentation only, with
+    no test file, and why
+stop_conditions:
+  - >-
+    ADR-0010 is still PROPOSED (not ACCEPTED) when implementation of the
+    MRR-MTH-012 slice is attempted beyond the pure decision function — stop
+    that slice specifically and report, rather than wiring against `labels`
+    (already evaluated and rejected, derived_decisions) or inventing a
+    parallel marker field. Everything else in this packet (edges/migration,
+    ceiling gate, kill-condition plumbing, the three unblocked re-pinned
+    behaviors) is NOT blocked by this and should proceed regardless.
+  - >-
+    a reviewer determines the ceiling gate genuinely cannot be expressed
+    without a new field on `Claim` itself — stop rather than touching
+    `schemas/claim.schema.json`/`claim.py`, which is outside this packet's
+    `allowed_paths`; report the exact case that forces this.
+  - >-
+    a reviewer determines kill-condition termination MUST be a distinct
+    `ClaimStatus` value rather than a reuse of `withdrawn` — stop rather
+    than inventing a new status unilaterally; this would also require
+    touching `claim.schema.json`, outside `allowed_paths`.
+  - >-
+    implementation discovers that `MethodProfile`/`MethodProtocol`/
+    `MethodRuling`/`ResearchDecision` objects genuinely cannot be
+    constructed and inserted directly via the generic `ObjectRepository` for
+    this packet's own test fixtures (e.g. a hidden service-level invariant
+    this derivation missed) — stop and report rather than introducing one of
+    the deferred services unilaterally.
+  - >-
+    the Alembic head has moved past `b64f87a758f3` by the time
+    implementation begins (i.e. some other migration merged first) — stop
+    and re-chain `down_revision` to the new actual head rather than silently
+    forcing a two-head fork; this was not expected to happen given
+    task-packets/K1-T01.yaml's and task-packets/E6-T04.yaml's own confirmed
+    scopes, but must be re-verified at implementation time, not assumed
+    frozen from this derivation.
+  - >-
+    RESOLVED before hand-off, kept here as a residual caution only:
+    task-packets/K1-T01.yaml's PR #47 was OPEN when this derivation began and
+    MERGED mid-derivation (commit `2ec8b25`, `main` now at `79dc70d`) — this
+    was re-verified before finalizing (`git diff
+    origin/task/K1-T01-kernel-contracts main -- schemas/ examples/
+    packages/contracts/ packages/domain/mrr/domain/lifecycles.py` is empty,
+    byte-identical), so every citation in this packet already reflects the
+    merged, not the pre-merge, shapes. If implementation starts significantly
+    later than this derivation, re-run that same comparison against
+    `main`'s THEN-current HEAD before trusting this packet's field-name
+    citations — a further amendment to any K1-T01 contract between this
+    packet's finalization and implementation start is not itself expected
+    but was not re-checked past `79dc70d`.
