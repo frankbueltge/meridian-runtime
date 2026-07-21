@@ -1,7 +1,7 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Twenty-eight hand-written Pydantic v2 models mirror the twenty-eight entity
+Twenty-nine hand-written Pydantic v2 models mirror the twenty-nine entity
 schemas in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``,
 ``Claim``, ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest``
 (E2-T05), ``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
@@ -10,10 +10,10 @@ schemas in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``,
 ``SkepticalChallenge`` (E4-T04), ``Practice`` (E5-T01),
 ``NodeMessageEnvelope`` (E5-T03), ``OfflineBundle`` (E5-T06),
 ``TransferContract`` (E6-T01), ``Obligation`` (E6-T02),
-``CorrectionNotification`` (E6-T03), ``MethodProfile`` (task-packets/
-K0-T01.yaml — the Research Method Kernel's first task, numbered as a K
-epic rather than an E epic; NOT ``ModelProfile``, see
-``mrr.contracts.method_profile``'s module docstring), and
+``MethodProfile`` (task-packets/K0-T01.yaml — the Research Method Kernel's
+first task, numbered as a K epic rather than an E epic; NOT
+``ModelProfile``, see ``mrr.contracts.method_profile``'s module docstring),
+``CorrectionNotification`` (E6-T03), ``CorrectionResponse`` (E6-T04), and
 ``QuestionModel``/``ConceptCharter``/``MethodProtocol``/``EvidenceMatrix``/
 ``MethodRuling``/``ResearchDecision`` (task-packets/K1-T01.yaml — kernel
 governance contracts; NOT ``MethodProfile``, a distinct entity from
@@ -56,6 +56,11 @@ from mrr.contracts.correction_event import (
     CorrectionType,
 )
 from mrr.contracts.correction_notification import CorrectionNotification
+from mrr.contracts.correction_response import (
+    CorrectionResponse,
+    CorrectionResponseAdaptation,
+    CorrectionResponseDecision,
+)
 from mrr.contracts.evidence_anchor import (
     AnchorKind,
     AnchorValidationStatus,
@@ -195,6 +200,9 @@ __all__ = [
     "ConceptCharterStatus",
     "CorrectionEvent",
     "CorrectionNotification",
+    "CorrectionResponse",
+    "CorrectionResponseAdaptation",
+    "CorrectionResponseDecision",
     "CorrectionSeverity",
     "CorrectionStatus",
     "CorrectionType",

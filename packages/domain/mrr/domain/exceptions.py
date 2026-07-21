@@ -1301,6 +1301,36 @@ class CorrectionNotificationAlreadyProcessedError(DomainError):
         )
 
 
+class CorrectionResponseAlreadyRecordedError(DomainError):
+    """Raised by ``mrr.services.correction.service.CorrectionImpactService.
+    record_response`` (task-packets/E6-T04.yaml) when the caller-supplied
+    ``already_responded`` predicate reports ``True`` for the addressed
+    ``correction_notification_id`` — a second local disposition
+    (accept/adapt/reject/defer) for a notification this practice has already
+    recorded a ``CorrectionResponse`` for (task-packets/E6-T04.yaml
+    invariant: "exactly one CorrectionResponse is ever recorded per
+    correction_notification_id").
+
+    Mirrors ``CorrectionNotificationAlreadyProcessedError``'s/
+    ``EnvelopeAlreadyProcessedError``'s/``BundleAlreadyProcessedError``'s
+    identical caller-supplied-predicate stance (task-packets/E6-T04.yaml
+    derived_decisions (f)): no durable processed-notification-id store is
+    built here — the caller supplies the predicate, exactly like E6-T03's
+    own ``already_processed_notification``. Checked BEFORE anything is
+    persisted: a caught instance always means nothing new was written — no
+    ``CorrectionResponse`` revision, no ``corrects`` edge, and no
+    ``correction.response_recorded`` event. Carries
+    ``correction_notification_id``.
+    """
+
+    def __init__(self, correction_notification_id: str) -> None:
+        self.correction_notification_id = correction_notification_id
+        super().__init__(
+            "a CorrectionResponse has already been recorded for "
+            f"correction_notification_id {correction_notification_id!r} — nothing persisted"
+        )
+
+
 class MethodProfileNotFoundError(DomainError):
     """Raised by ``mrr.services.method_profile.service.MethodProfileService``
     (task-packets/K0-T01.yaml) when a referenced ``MethodProfile`` id
