@@ -32,6 +32,16 @@ Acceptance-test mapping (task-packets/K1-T03.yaml):
   through this loop, exercising ``ProjectionService.build_claim_table``, the
   render-time ceiling checkpoint) ->
   ``test_projection_service_build_claim_table_resolves_the_ceiling_chain_for_both_claims``.
+- task-packets/E9-T00.yaml item 7 ("the sealed crate's source_records/
+  evidence_anchors/proposed_claims now non-empty and matching the run's own
+  persisted SourceRecord/EvidenceAnchor/Claim ids") -> assertions added
+  in-place to
+  ``test_headline_corpus_persists_frozen_matrix_claims_rulings_and_governed_by_protocol_edges``
+  (this is the same fixture the K1-T03 acceptance test above already
+  exercises; no new test function needed). ``tests/e2e/
+  test_e2e_001_single_node_evidence_loop.py`` (E2E-001, ``run_local_
+  evidence_loop``, a DIFFERENT, forbidden-to-touch call site) passes
+  UNMODIFIED, still producing empty arrays.
 """
 
 from __future__ import annotations
@@ -322,6 +332,24 @@ def test_headline_corpus_persists_frozen_matrix_claims_rulings_and_governed_by_p
     crate = object_repository.get_latest(result.evidence_crate_id)
     assert crate.body["sealed"] is True
     assert crate.body["run_state"] == "completed"
+
+    # task-packets/E9-T00.yaml item 7: the sealed crate's own
+    # source_records/evidence_anchors/proposed_claims are now non-empty and
+    # match the run's own persisted SourceRecord/EvidenceAnchor/Claim ids —
+    # independently derived from the frozen matrix's own rows (each row
+    # already carries its own source_record_id/evidence_anchor_id), not
+    # from any new field this task adds to the result.
+    # ADR-0004 exclude_none=True: a row with no evidence_anchor_id omits the
+    # key entirely rather than persisting it as JSON null.
+    expected_source_record_ids = {row["source_record_id"] for row in matrix.body["rows"]}
+    expected_evidence_anchor_ids = {
+        row["evidence_anchor_id"]
+        for row in matrix.body["rows"]
+        if row.get("evidence_anchor_id") is not None
+    }
+    assert set(crate.body["source_records"]) == expected_source_record_ids
+    assert set(crate.body["evidence_anchors"]) == expected_evidence_anchor_ids
+    assert crate.body["proposed_claims"] == list(result.claim_ids)
 
     # No ResearchDecision for this fixture (no analysis was insufficient).
     assert result.research_decision_ids == ()

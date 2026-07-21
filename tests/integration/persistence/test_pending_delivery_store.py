@@ -42,6 +42,10 @@ Acceptance-test mapping:
   ``test_mark_exhausted_missing_record_raises_pending_delivery_not_found``,
   ``test_mark_exhausted_requires_a_non_empty_reason``,
   ``test_mark_exhausted_resolves_an_open_record_explicitly``.
+- constructor guard, ``max_attempts < 1`` (task-packets/E9-T00.yaml item 5,
+  PR #51 review L1) -> ``test_constructor_rejects_max_attempts_of_zero``,
+  ``test_constructor_rejects_negative_max_attempts``,
+  ``test_constructor_accepts_max_attempts_of_one``.
 """
 
 from __future__ import annotations
@@ -75,6 +79,28 @@ def _store(engine: Engine, *, max_attempts: int = 3) -> PostgresDeliveryPendingS
 def test_alembic_upgrade_head_creates_pending_deliveries_table(postgres_engine: Engine) -> None:
     inspector = inspect(postgres_engine)
     assert "pending_deliveries" in set(inspector.get_table_names())
+
+
+# ---------------------------------------------------------------------------
+# constructor guard (task-packets/E9-T00.yaml item 5, PR #51 review L1):
+# max_attempts must be >= 1.
+# ---------------------------------------------------------------------------
+
+
+def test_constructor_rejects_max_attempts_of_zero(postgres_engine: Engine) -> None:
+    with pytest.raises(ValueError, match="max_attempts must be >= 1"):
+        PostgresDeliveryPendingStore(postgres_engine, max_attempts=0, backoff=_linear_backoff)
+
+
+def test_constructor_rejects_negative_max_attempts(postgres_engine: Engine) -> None:
+    with pytest.raises(ValueError, match="max_attempts must be >= 1"):
+        PostgresDeliveryPendingStore(postgres_engine, max_attempts=-1, backoff=_linear_backoff)
+
+
+def test_constructor_accepts_max_attempts_of_one(postgres_engine: Engine) -> None:
+    store = PostgresDeliveryPendingStore(postgres_engine, max_attempts=1, backoff=_linear_backoff)
+
+    assert store is not None
 
 
 # ---------------------------------------------------------------------------

@@ -1441,7 +1441,12 @@ def test_correction_lifecycle_forbids_open_to_awaiting_responses_skipping_hops()
 
 
 def test_receive_inbound_happy_path_marks_local_claims_review_required() -> None:
-    service, _, object_repository, edge_repository, _ = _services()
+    """Also the item 1 "happy path, non-empty impact" acceptance test:
+    exactly one correction.notification_received event is appended, its
+    payload's locally_impacted_object_ids matches the computed set, IN
+    ADDITION to the existing claim.review_required event.
+    """
+    service, _, object_repository, edge_repository, event_log = _services_with_notification()
     practice, private_key, key_id = _notifying_practice_fixture()
     this_node_id = new_urn("node")
     ring = practice_key_ring(practice)
@@ -1470,6 +1475,7 @@ def test_receive_inbound_happy_path_marks_local_claims_review_required() -> None
         recipient_node_id=this_node_id,
     )
 
+    correlation_id = _correlation_id()
     impact = service.receive_correction_notification(
         envelope,
         this_node_id=this_node_id,
@@ -1479,7 +1485,7 @@ def test_receive_inbound_happy_path_marks_local_claims_review_required() -> None
         already_processed_notification=_never_processed,
         actor=_ACTOR,
         policy_version=_POLICY_VERSION,
-        correlation_id=_correlation_id(),
+        correlation_id=correlation_id,
         at=_NOTIFICATION_SENT_AT,
     )
 
@@ -1488,9 +1494,42 @@ def test_receive_inbound_happy_path_marks_local_claims_review_required() -> None
     assert object_repository.get_latest(local_dependent.id).body["status"] == "review_required"
     assert object_repository.get_latest(local_unrelated.id).body["status"] == "under_review"
 
+    received_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.event_type == "correction.notification_received"
+    ]
+    assert len(received_events) == 1
+    received_event = received_events[0]
+    assert received_event.object_id == notification.notification_id
+    assert received_event.object_revision == 1
+    assert received_event.actor == _ACTOR
+    assert received_event.policy_version == _POLICY_VERSION
+    assert received_event.correlation_id == correlation_id
+    assert received_event.occurred_at.tzinfo is not None
+    assert received_event.payload == {
+        "correction_id": notification.correction_id,
+        "correction_revision": notification.correction_revision,
+        "notifying_practice_id": notification.notifying_practice_id,
+        "recipient_practice_id": notification.recipient_practice_id,
+        "notified_object_ids_count": 1,
+        "locally_impacted_object_ids": [local_dependent.id],
+    }
+
+    claim_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.object_id == local_dependent.id
+    ]
+    assert any(event.event_type == "claim.review_required" for event in claim_events)
+
 
 def test_receive_adversarial_tampered_notification_is_rejected() -> None:
-    service, _, object_repository, edge_repository, _ = _services()
+    """Also item 1's adversarial acceptance test: a tampered notification
+    signature raises BEFORE the new correction.notification_received event
+    is ever considered — no such event is appended.
+    """
+    service, _, object_repository, edge_repository, event_log = _services_with_notification()
     practice, private_key, key_id = _notifying_practice_fixture()
     this_node_id = new_urn("node")
     ring = practice_key_ring(practice)
@@ -1534,10 +1573,18 @@ def test_receive_adversarial_tampered_notification_is_rejected() -> None:
         )
 
     assert object_repository.get_latest(local_dependent.id).body["status"] == "under_review"
+    assert not any(
+        appended.event.event_type == "correction.notification_received"
+        for appended in event_log.read_all()
+    )
 
 
 def test_receive_adversarial_replayed_notification_is_rejected() -> None:
-    service, _, object_repository, edge_repository, _ = _services()
+    """Also item 1's adversarial acceptance test: a replayed notification_id
+    raises before the new event is ever considered — no such event is
+    appended.
+    """
+    service, _, object_repository, edge_repository, event_log = _services_with_notification()
     practice, private_key, key_id = _notifying_practice_fixture()
     this_node_id = new_urn("node")
     ring = practice_key_ring(practice)
@@ -1583,6 +1630,10 @@ def test_receive_adversarial_replayed_notification_is_rejected() -> None:
         )
     assert excinfo.value.notification_id == notification.notification_id
     assert object_repository.get_latest(local_dependent.id).body["status"] == "under_review"
+    assert not any(
+        appended.event.event_type == "correction.notification_received"
+        for appended in event_log.read_all()
+    )
 
 
 def test_receive_adversarial_envelope_level_replay_is_rejected_before_notification_checks() -> None:
@@ -1593,9 +1644,11 @@ def test_receive_adversarial_envelope_level_replay_is_rejected_before_notificati
     would any other payload kind, and does so BEFORE the notification-level
     ``already_processed_notification`` predicate is ever consulted — a
     replayed envelope never reaches the notification's own signature/
-    window/replay checks at all, so no local impact recomputation runs.
+    window/replay checks at all, so no local impact recomputation runs. Also
+    item 1's adversarial acceptance test: no correction.notification_received
+    event is appended either.
     """
-    service, _, object_repository, edge_repository, _ = _services()
+    service, _, object_repository, edge_repository, event_log = _services_with_notification()
     practice, private_key, key_id = _notifying_practice_fixture()
     this_node_id = new_urn("node")
     ring = practice_key_ring(practice)
@@ -1649,6 +1702,10 @@ def test_receive_adversarial_envelope_level_replay_is_rejected_before_notificati
     # No impact recomputation side effect: the locally-dependent claim's
     # status is exactly what it was before this call.
     assert object_repository.get_latest(local_dependent.id).body["status"] == "under_review"
+    assert not any(
+        appended.event.event_type == "correction.notification_received"
+        for appended in event_log.read_all()
+    )
 
 
 def test_receive_adversarial_notification_outside_its_own_validity_window_is_rejected() -> None:
@@ -1656,9 +1713,11 @@ def test_receive_adversarial_notification_outside_its_own_validity_window_is_rej
     independent validity check from the wrapping envelope's own (task-
     packets/E6-T03.yaml derived_decisions (b)) — evaluating at an instant
     at/after the notification's own ``expires_at`` (but still within the
-    envelope's own, separately-set, later window) must fail closed.
+    envelope's own, separately-set, later window) must fail closed. Also
+    item 1's adversarial acceptance test: no correction.notification_received
+    event is appended either.
     """
-    service, _, object_repository, edge_repository, _ = _services()
+    service, _, object_repository, edge_repository, event_log = _services_with_notification()
     practice, private_key, key_id = _notifying_practice_fixture()
     this_node_id = new_urn("node")
     ring = practice_key_ring(practice)
@@ -1704,15 +1763,22 @@ def test_receive_adversarial_notification_outside_its_own_validity_window_is_rej
         )
     assert excinfo.value.notification_id == notification.notification_id
     assert object_repository.get_latest(local_dependent.id).body["status"] == "under_review"
+    assert not any(
+        appended.event.event_type == "correction.notification_received"
+        for appended in event_log.read_all()
+    )
 
 
 def test_receive_adversarial_notification_about_unknown_object_yields_empty_impact() -> None:
     """A notified_object_id with zero local edges_to entries of any kind
     yields an explicit, empty locally-impacted set and zero claim
     transitions — a legitimate outcome, not an error and not a crash
-    (MRR-NFR-012).
+    (MRR-NFR-012). Also item 1's "happy path, empty impact" acceptance
+    test: exactly one correction.notification_received event is STILL
+    appended (the "currently zero durable trace" gap this item closes) —
+    with an explicit empty locally_impacted_object_ids list, never omitted.
     """
-    service, _, object_repository, edge_repository, _ = _services()
+    service, _, object_repository, edge_repository, event_log = _services_with_notification()
     practice, private_key, key_id = _notifying_practice_fixture()
     this_node_id = new_urn("node")
     ring = practice_key_ring(practice)
@@ -1734,6 +1800,7 @@ def test_receive_adversarial_notification_about_unknown_object_yields_empty_impa
         recipient_node_id=this_node_id,
     )
 
+    correlation_id = _correlation_id()
     impact = service.receive_correction_notification(
         envelope,
         this_node_id=this_node_id,
@@ -1743,11 +1810,70 @@ def test_receive_adversarial_notification_about_unknown_object_yields_empty_impa
         already_processed_notification=_never_processed,
         actor=_ACTOR,
         policy_version=_POLICY_VERSION,
-        correlation_id=_correlation_id(),
+        correlation_id=correlation_id,
         at=_NOTIFICATION_SENT_AT,
     )
 
     assert impact.locally_impacted_object_ids == frozenset()
+
+    received_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.event_type == "correction.notification_received"
+    ]
+    assert len(received_events) == 1
+    assert received_events[0].object_id == notification.notification_id
+    assert received_events[0].object_revision == 1
+    assert received_events[0].payload["locally_impacted_object_ids"] == []
+
+
+def test_receive_without_record_event_dependency_raises_value_error_before_any_check() -> None:
+    """Item 1's misconfiguration acceptance test: a CorrectionImpactService
+    constructed without a record_event dependency raises ValueError on ANY
+    call to receive_correction_notification, before validate_inbound_envelope
+    even runs (verified by a spy already_processed_envelope predicate that
+    must never be consulted, since validate_inbound_envelope is what
+    consults it).
+    """
+    service, _, _, _, _ = _services()  # record_event NOT wired
+    practice, private_key, key_id = _notifying_practice_fixture()
+    this_node_id = new_urn("node")
+    ring = practice_key_ring(practice)
+
+    notification = _build_signed_notification(
+        notifying_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_practice_id=new_urn("practice"),
+        notified_object_ids=[new_urn("claim")],
+    )
+    envelope = _build_signed_envelope(
+        notification,
+        sender_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_node_id=this_node_id,
+    )
+
+    def _envelope_predicate_must_not_be_called(_message_id: str) -> bool:
+        raise AssertionError(
+            "validate_inbound_envelope (and therefore already_processed_envelope) must "
+            "never run once the fail-closed record_event check has already rejected the call"
+        )
+
+    with pytest.raises(ValueError, match="record_event"):
+        service.receive_correction_notification(
+            envelope,
+            this_node_id=this_node_id,
+            trusted_notifying_practice_id=practice.id,
+            ring=ring,
+            already_processed_envelope=_envelope_predicate_must_not_be_called,
+            already_processed_notification=_never_processed,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_SENT_AT,
+        )
 
 
 # ---------------------------------------------------------------------------

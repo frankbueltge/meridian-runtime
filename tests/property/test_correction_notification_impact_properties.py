@@ -16,6 +16,20 @@ convention, applied at this new service-layer call site. Both replay
 predicates (envelope-level and notification-level) are fixed to "never
 seen" so a call never fails as a false replay across examples/repeated
 calls within one example.
+
+task-packets/E9-T00.yaml amendment (2): ``_service_for`` now also wires the
+OPTIONAL ``record_event`` dependency (task-packets/E6-T03.yaml), via the
+same ``_FakeEventLog``/``append_for_test`` fake every other fixture in this
+batch already uses — required since item 1 made
+``receive_correction_notification``'s own ``correction.notification_received``
+event mandatory on every successful call (fail-closed via
+``_require_record_event`` otherwise). This was the exact caller the
+packet's own stop_condition named: a property test constructing
+``CorrectionImpactService`` without ``record_event``. The fake is a real,
+observable one (backed by the same ``_FakeEventLog.read_all()`` every other
+assertion in this file could use), not a swallow-everything stub —
+``_receive_over`` and the idempotency test both assert the new event's
+presence.
 """
 
 from __future__ import annotations
@@ -179,7 +193,24 @@ def _fake_record_edge(edge_repository: _FakeEdgeRepository, event_log: _FakeEven
     return _record_edge
 
 
-def _service_for(edges: list[TypedEdge]) -> CorrectionImpactService:
+def _fake_record_event(event_log: _FakeEventLog) -> Any:
+    """The ``RecordEventOnly`` shape (ADR-0007's event-only
+    ``mrr.persistence.unit_of_work.record_event`` path) — a real, observable
+    fake backed by the SAME ``_FakeEventLog`` every other fixture in this
+    module already appends to, not a swallow-everything stub. Wired as
+    ``CorrectionImpactService``'s OPTIONAL ``record_event`` dependency
+    (task-packets/E9-T00.yaml amendment (2)) so
+    ``receive_correction_notification``'s own mandatory ``correction.
+    notification_received`` event (item 1) can actually be appended.
+    """
+
+    def _record_event(event: DomainEvent) -> AppendedEvent:
+        return event_log.append_for_test(event)
+
+    return _record_event
+
+
+def _service_for(edges: list[TypedEdge]) -> tuple[CorrectionImpactService, _FakeEventLog]:
     object_repository = _FakeObjectRepository()
     event_log = _FakeEventLog()
     edge_repository = _FakeEdgeRepository(edges)
@@ -190,13 +221,15 @@ def _service_for(edges: list[TypedEdge]) -> CorrectionImpactService:
         _fake_record(object_repository, event_log),
         _fake_record_edge(edge_repository, event_log),
     )
-    return CorrectionImpactService(
+    service = CorrectionImpactService(
         object_repository,
         edge_repository,
         claim_service,
         event_log,
         _fake_record(object_repository, event_log),
+        _fake_record_event(event_log),
     )
+    return service, event_log
 
 
 # ---------------------------------------------------------------------------
@@ -314,7 +347,7 @@ def _never_processed(_: str) -> bool:
 
 
 def _receive_over(edges: list[TypedEdge]) -> frozenset[str]:
-    service = _service_for(edges)
+    service, event_log = _service_for(edges)
     impact = service.receive_correction_notification(
         _ENVELOPE,
         this_node_id=_THIS_NODE_ID,
@@ -327,12 +360,29 @@ def _receive_over(edges: list[TypedEdge]) -> frozenset[str]:
         correlation_id=new_urn("correction-run"),
         at=_NOW,
     )
+
+    # task-packets/E9-T00.yaml item 1: every successful call appends exactly
+    # one correction.notification_received event, keyed on the notification's
+    # own id, whose payload reports the SAME computed impact set this
+    # function returns — a fresh service/event_log per call, so exactly one.
+    received_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.event_type == "correction.notification_received"
+    ]
+    assert len(received_events) == 1
+    assert received_events[0].object_id == _NOTIFICATION.notification_id
+    assert received_events[0].object_revision == 1
+    assert received_events[0].payload["locally_impacted_object_ids"] == sorted(
+        impact.locally_impacted_object_ids
+    )
+
     return impact.locally_impacted_object_ids
 
 
 @given(edges=_edges_list_strategy)
 def test_local_impact_is_idempotent_over_repeated_calls(edges: list[TypedEdge]) -> None:
-    service = _service_for(edges)
+    service, event_log = _service_for(edges)
     first = service.receive_correction_notification(
         _ENVELOPE,
         this_node_id=_THIS_NODE_ID,
@@ -358,6 +408,25 @@ def test_local_impact_is_idempotent_over_repeated_calls(edges: list[TypedEdge]) 
         at=_NOW,
     )
     assert first.locally_impacted_object_ids == second.locally_impacted_object_ids
+
+    # Both calls succeed (the replay predicates are fixed to "never seen"),
+    # so both independently append their own correction.notification_received
+    # event — this service/helper builds no durable replay store of its own
+    # (E6-T03's own invariant, unchanged); replay protection is entirely the
+    # CALLER's concern. Two events, same notification id, same impact set.
+    received_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.event_type == "correction.notification_received"
+    ]
+    assert len(received_events) == 2
+    assert received_events[0].id != received_events[1].id  # two DISTINCT event ids
+    for event in received_events:
+        assert event.object_id == _NOTIFICATION.notification_id
+        assert event.object_revision == 1
+        assert event.payload["locally_impacted_object_ids"] == sorted(
+            first.locally_impacted_object_ids
+        )
 
 
 @given(edges=_edges_list_strategy, data=st.data())

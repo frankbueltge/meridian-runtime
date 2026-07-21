@@ -43,6 +43,10 @@ Acceptance-test mapping (task-packets/E2-T06.yaml):
   ``test_completed_result_seals_into_schema_valid_signed_crate_that_round_trips``
   (asserts ``source_records``/``evidence_anchors``/``proposed_claims`` are
   ``[]``).
+
+task-packets/E9-T00.yaml item 7 (additive ``seal()`` parameters):
+``test_source_records_evidence_anchors_proposed_claims_are_caller_supplied``,
+``test_source_records_evidence_anchors_proposed_claims_default_to_empty``.
 """
 
 from __future__ import annotations
@@ -334,6 +338,56 @@ def test_no_artifacts_supplied_yields_empty_list() -> None:
     stored = sealer.seal(run_manifest, result, bundle, **_seal_kwargs())
 
     assert stored.body["artifacts"] == []
+
+
+def test_source_records_evidence_anchors_proposed_claims_are_caller_supplied() -> None:
+    """task-packets/E9-T00.yaml item 7: passing non-empty
+    source_records/evidence_anchors/proposed_claims produces a sealed crate
+    whose own same-named fields equal exactly the passed-in lists, order
+    preserved.
+    """
+    sealer, _ = _sealer()
+    bundle = _bundle()
+    result = _execution_result(bundle, "completed")
+    run_manifest = _run_manifest_for(bundle, result)
+    source_records = [new_urn("source-record"), new_urn("source-record")]
+    evidence_anchors = [new_urn("evidence-anchor")]
+    proposed_claims = [new_urn("claim"), new_urn("claim"), new_urn("claim")]
+
+    stored = sealer.seal(
+        run_manifest,
+        result,
+        bundle,
+        **_seal_kwargs(
+            source_records=source_records,
+            evidence_anchors=evidence_anchors,
+            proposed_claims=proposed_claims,
+        ),
+    )
+
+    crate = EvidenceCrate.model_validate(stored.body)
+    assert crate.source_records == source_records
+    assert crate.evidence_anchors == evidence_anchors
+    assert crate.proposed_claims == proposed_claims
+
+
+def test_source_records_evidence_anchors_proposed_claims_default_to_empty() -> None:
+    """The three new keywords are omitted here — every EXISTING caller
+    (in particular run_local_evidence_loop, E2E-001, forbidden_changes)
+    behaves identically to before this item: empty arrays, same as
+    test_completed_result_seals_into_schema_valid_signed_crate_that_round_trips
+    already asserts for the no-keywords case.
+    """
+    sealer, _ = _sealer()
+    bundle = _bundle()
+    result = _execution_result(bundle, "completed")
+    run_manifest = _run_manifest_for(bundle, result)
+
+    stored = sealer.seal(run_manifest, result, bundle, **_seal_kwargs())
+
+    assert stored.body["source_records"] == []
+    assert stored.body["evidence_anchors"] == []
+    assert stored.body["proposed_claims"] == []
 
 
 def test_sealer_exposes_no_mutate_method() -> None:

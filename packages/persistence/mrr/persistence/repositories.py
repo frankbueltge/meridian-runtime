@@ -1082,6 +1082,24 @@ class PostgresDeliveryPendingStore:
         ``UPDATE`` statement is even constructed, so a rejected call leaves
         the row completely unchanged — the whole transaction never issues a
         write.
+
+        Accepted eventual consistency: this method commits the row update in
+        its OWN ``self._engine.begin()`` transaction, separate from the
+        caller's own subsequent ``correction.notification_sent`` event
+        append (task-packets/E9-T00.yaml item 4, PR #51 review M1). A crash
+        between the two leaves this row durable and correct — the row is the
+        authoritative operational state (AGENTS.md's own source-of-truth
+        split), never left inconsistent — while the event log momentarily
+        lacks that one attempt's own audit entry; the row's own
+        ``attempt_count``/``status`` still evidence the attempt actually
+        happened. This is a documented, bounded exception, not a violation
+        of docs/spec/03_API_AND_EVENTS.md section 5.3's transactional-outbox
+        MUST (read there as governing the PRIMARY object-revision-plus-event
+        pairing, not every subsequent retry-attempt-plus-event pairing on an
+        already-durable row) — see task-packets/E9-T00.yaml derived_decisions
+        (d) for the full reasoning and specification_gaps for the flagged,
+        reviewer-facing open reading. PROVISIONAL, not permanent: E9-T01's
+        threat-model review revisits this window explicitly.
         """
         with self._engine.begin() as conn:
             row = self._locked_row(conn, recipient_node_id, notification_id)
@@ -1167,6 +1185,13 @@ class PostgresDeliveryPendingStore:
         ``status="exhausted"``. See ``mrr.domain.delivery_retry.
         DeliveryPendingStore.mark_exhausted``'s own docstring for the full
         contract.
+
+        Accepted eventual consistency: identical to ``record_retry_attempt``'s
+        own docstring section of the same name — this method's row update
+        commits in its own transaction, separate from the caller's
+        subsequent ``correction.notification_sent`` event append
+        (task-packets/E9-T00.yaml item 4). See that section for the full
+        reasoning; PROVISIONAL pending E9-T01's threat-model review.
         """
         if not reason:
             raise ValueError("reason must not be empty")

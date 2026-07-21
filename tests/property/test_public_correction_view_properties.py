@@ -10,6 +10,16 @@ otherwise, over a wide generated input space" ->
 covers the "unresolved exactly matches is_unresolved_critical_correction"
 invariant (never a second, divergent definition) ->
 ``test_correction_row_unresolved_matches_the_reused_predicate``.
+
+task-packets/E9-T00.yaml item 6 (PR #50 review follow-up, test-only): the
+classification-map strategy is widened beyond the five canonical
+``Classification`` literals to also generate ``st.text()`` and explicit
+case/whitespace near-misses of ``"PUBLIC"`` (``_NEAR_MISS_PUBLIC_VALUES``),
+so the "any non-PUBLIC value never unlocks" property is pinned over a wide
+input space, not just the five declared levels. The production predicate
+itself (``mrr.domain.public_correction_view._all_ids_attested_public``,
+exact ``== "PUBLIC"`` string equality) is unchanged — already correct per
+that review.
 """
 
 from __future__ import annotations
@@ -55,13 +65,30 @@ _STATUSES = (
 _id_strategy = st.sampled_from(_OBJECT_IDS)
 _id_list_strategy = st.lists(_id_strategy, max_size=4)
 
+#: task-packets/E9-T00.yaml item 6: explicit case/whitespace near-misses of
+#: the literal string "PUBLIC" — each must still redact, since
+#: ``_all_ids_attested_public`` uses exact Python ``==`` string equality,
+#: never a case-insensitive or whitespace-trimmed comparison.
+_NEAR_MISS_PUBLIC_VALUES = ("public", "Public", " PUBLIC", "PUBLIC ", "PUBLIC\n")
+
+#: The widened value strategy for a classification map entry: the five
+#: canonical ``Classification`` literals (so the "known-public" case is
+#: still exercised), the explicit near-misses above, and arbitrary
+#: ``st.text()`` — pinning the "any non-PUBLIC value never unlocks"
+#: property over a wide input space, not just the five declared levels.
+_classification_value_strategy = st.one_of(
+    st.sampled_from(_ALL_CLASSIFICATIONS),
+    st.sampled_from(_NEAR_MISS_PUBLIC_VALUES),
+    st.text(),
+)
+
 #: A classification map covering only a SUBSET of _OBJECT_IDS (never all of
 #: them) so that "missing entry" is exercised as often as "known entry" —
 #: mirrors the task-packet's own emphasis that a missing key must redact
 #: exactly like a known non-public key.
 _classification_map_strategy = st.dictionaries(
     keys=_id_strategy,
-    values=st.sampled_from(_ALL_CLASSIFICATIONS),
+    values=_classification_value_strategy,
     max_size=len(_OBJECT_IDS),
 )
 

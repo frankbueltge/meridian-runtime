@@ -22,6 +22,11 @@ Acceptance-test mapping (task-packets/E2-T06.yaml, integration tier):
   ``test_signature_verifies_from_the_database``.
 - event provenance straight from the database (MRR-NFR-001) ->
   ``test_event_provenance_straight_from_database``.
+
+task-packets/E9-T00.yaml item 7, integration tier ("a real-Postgres
+EvidenceCrateSealer.seal() round trip with non-empty lists persists and
+re-reads correctly via ObjectRepository.get_latest") ->
+``test_seal_with_source_records_evidence_anchors_proposed_claims_round_trips``.
 """
 
 from __future__ import annotations
@@ -198,6 +203,44 @@ def test_seal_persists_revision_one_and_exactly_one_event_atomically(
     ]
     assert len(events) == 1
     assert events[0].event.event_type == "evidence_crate.sealed"
+
+
+def test_seal_with_source_records_evidence_anchors_proposed_claims_round_trips(
+    postgres_engine: Engine,
+) -> None:
+    """task-packets/E9-T00.yaml item 7, integration tier: a real-Postgres
+    round trip with non-empty source_records/evidence_anchors/
+    proposed_claims persists and re-reads correctly via
+    ``ObjectRepository.get_latest``.
+    """
+    sealer, object_repository, _ = _sealer_for(postgres_engine)
+    bundle = _bundle()
+    result = _execution_result(bundle, "completed", output_hash="sha256:" + "e" * 64)
+    run_manifest = _run_manifest_for(postgres_engine, bundle, result)
+    source_records = [new_urn("source-record"), new_urn("source-record")]
+    evidence_anchors = [new_urn("evidence-anchor")]
+    proposed_claims = [new_urn("claim")]
+
+    stored = sealer.seal(
+        run_manifest,
+        result,
+        bundle,
+        **_seal_kwargs(
+            source_records=source_records,
+            evidence_anchors=evidence_anchors,
+            proposed_claims=proposed_claims,
+        ),
+    )
+
+    persisted = object_repository.get_latest(stored.id)
+    assert persisted.body["source_records"] == source_records
+    assert persisted.body["evidence_anchors"] == evidence_anchors
+    assert persisted.body["proposed_claims"] == proposed_claims
+
+    crate = EvidenceCrate.model_validate(persisted.body)
+    assert crate.source_records == source_records
+    assert crate.evidence_anchors == evidence_anchors
+    assert crate.proposed_claims == proposed_claims
 
 
 @pytest.mark.parametrize("outcome", ["failed", "timed_out", "cancelled", "policy_denied"])

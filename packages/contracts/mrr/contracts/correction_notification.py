@@ -99,7 +99,23 @@ class CorrectionNotification(MRRModel):
     correction_revision: int = Field(ge=1)
     notifying_practice_id: Urn
     recipient_practice_id: Urn
-    notified_object_ids: list[Urn] = Field(min_length=1)
+    #: task-packets/E9-T00.yaml item 2 (derived_decisions (e)): ``max_length
+    #: =512`` is the first array-length bound in this repository, mirroring
+    #: schemas/correction-notification.schema.json's own ``maxItems``. Sized
+    #: against the concrete DoS-relevant cost it caps —
+    #: ``CorrectionImpactService._gather_local_impact_edges`` seeds its BFS
+    #: directly from this attacker-influenced (notifying-practice-
+    #: controlled) list, issuing one ``EdgeRepository.edges_to()`` query per
+    #: unique seed id, so an unbounded list alone could force an unbounded
+    #: number of seed-level queries before any further graph expansion is
+    #: even considered. 512 is a generous ceiling for the legitimate case
+    #: (one notification's own directly-affected ids for ONE recipient —
+    #: realistically low tens to low hundreds even for a broad correction)
+    #: while still capping the attacker-controlled input to a fixed,
+    #: reviewable number. ``CorrectionEvent.affected_objects``/
+    #: ``impact_objects`` remain unbounded — this bound applies only to this
+    #: narrower, cross-practice payload.
+    notified_object_ids: list[Urn] = Field(min_length=1, max_length=512)
     correction_type: CorrectionType
     severity: CorrectionSeverity
     reason: str = Field(min_length=1)

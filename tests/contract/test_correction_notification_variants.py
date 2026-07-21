@@ -12,13 +12,17 @@ model_validator-only rule.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from mrr.contracts.correction_notification import CorrectionNotification
 from mrr.domain.identity import new_urn
 from pydantic import ValidationError
+
+from scripts.check_contracts import SCHEMAS_DIR, build_registry, build_validator_for_schema
 
 _SENT_AT = datetime(2026, 7, 19, 12, 0, 0, tzinfo=UTC)
 _EXPIRES_AT = _SENT_AT + timedelta(minutes=5)
@@ -122,3 +126,48 @@ def test_empty_notified_object_ids_is_rejected() -> None:
 
     with pytest.raises(ValidationError):
         CorrectionNotification.model_validate(document)
+
+
+# ---------------------------------------------------------------------------
+# task-packets/E9-T00.yaml item 2: notified_object_ids maxItems/max_length
+# bound (512), enforced at BOTH tiers (JSON Schema and Pydantic).
+# ---------------------------------------------------------------------------
+
+
+def _validate_against_schema(document: dict[str, Any]) -> None:
+    """``_base_document``'s own ``sent_at``/``expires_at``/
+    ``signature.signed_at`` are raw ``datetime`` objects (fine for Pydantic,
+    which accepts them directly) — JSON Schema validation needs pure JSON
+    scalars, so this round-trips through ``json.dumps``/``json.loads`` first
+    (``default=`` handles any ``datetime`` value via ``.isoformat()``),
+    mirroring how every persisted ``StoredObject.body`` in this codebase is
+    itself a JSON-safe dict, never a dict carrying live ``datetime``
+    instances.
+    """
+    json_safe_document = json.loads(json.dumps(document, default=lambda value: value.isoformat()))
+    schema = json.loads((SCHEMAS_DIR / "correction-notification.schema.json").read_text())
+    registry = build_registry()
+    build_validator_for_schema(schema, registry).validate(json_safe_document)
+
+
+def _many_object_ids(count: int) -> list[str]:
+    return [new_urn("claim") for _ in range(count)]
+
+
+def test_notified_object_ids_at_the_512_bound_is_accepted_by_both_tiers() -> None:
+    document = _base_document(notified_object_ids=_many_object_ids(512))
+
+    _validate_against_schema(document)
+    notification = CorrectionNotification.model_validate(document)
+
+    assert len(notification.notified_object_ids) == 512
+
+
+def test_notified_object_ids_over_the_512_bound_is_rejected_by_both_tiers() -> None:
+    document = _base_document(notified_object_ids=_many_object_ids(513))
+
+    with pytest.raises(ValidationError, match="notified_object_ids"):
+        CorrectionNotification.model_validate(document)
+
+    with pytest.raises(JsonSchemaValidationError):
+        _validate_against_schema(document)
