@@ -2,9 +2,10 @@
 in docs/spec/01_SYSTEM_SPEC.md section 6 (task-packets/E1-T04.yaml):
 ``RESEARCH_SCORE_LIFECYCLE``, ``TASK_BUNDLE_LIFECYCLE``, ``CLAIM_LIFECYCLE``,
 ``CORRECTION_LIFECYCLE``, plus ``TRANSFER_LIFECYCLE`` (task-packets/
-E6-T01.yaml, added without a section-6 diagram to anchor it — see that
-machine's own comment block below and the "Open specification questions"
-list at the end of this docstring).
+E6-T01.yaml) and ``OBLIGATION_LIFECYCLE`` (task-packets/E6-T02.yaml), both
+added without a section-6 diagram to anchor them — see each machine's own
+comment block below and the "Open specification questions" list at the end
+of this docstring.
 
 State names match the owning schema's ``status`` enum exactly, including
 casing, where one exists (task-packets/E1-T04.yaml invariant): ResearchScore
@@ -74,6 +75,16 @@ or spec amendment):
   earlier ``deferred``/``unresolved``) is left undrawn and unimplemented —
   task-packets/E6-T01.yaml ``specification_gaps`` item 3 — pending a future
   specification amendment, exactly like this module's other open questions.
+- Obligation has no section-6 diagram either (task-packets/E6-T02.yaml
+  ``specification_gaps`` item 1). ``OBLIGATION_LIFECYCLE``'s two edges
+  (``open -> resolved``, ``open -> deferred``) are grounded only in section
+  3.8's two response endpoints (``POST .../resolve``, ``POST .../defer``)
+  and section 5.2's ``obligation.resolved`` event name (``obligation.
+  deferred`` is this task's own additive event — task-packets/E6-T02.yaml
+  derived_decisions (h)). Whether a ``deferred`` Obligation may later be
+  ``resolve``d (a second respond-style call) is left undrawn and
+  unimplemented, mirroring ``TRANSFER_LIFECYCLE``'s own identical open
+  question about a second ``respond`` after ``deferred``/``unresolved``.
 """
 
 from __future__ import annotations
@@ -471,4 +482,47 @@ TRANSFER_LIFECYCLE = StateMachine(
     states=_TRANSFER_STATES,
     transitions=_TRANSFER_TRANSITIONS,
     initial_state="created",
+)
+
+
+# ---------------------------------------------------------------------------
+# Obligation — task-packets/E6-T02.yaml. NO section-6 diagram exists for this
+# entity either (like TransferContract) — see the module docstring's "Open
+# specification questions" list.
+# ---------------------------------------------------------------------------
+#
+#   open -> {resolved, deferred}
+#
+# Grounded only in docs/spec/03_API_AND_EVENTS.md section 3.8's two response
+# endpoints (POST /v1/obligations/{id}/resolve, .../defer) and section 5.2's
+# obligation.resolved event name (obligation.deferred is this task's own
+# additive event, task-packets/E6-T02.yaml derived_decisions (h) — there is
+# no drawn/enumerated "obligation.deferred" in section 5.2's literal list,
+# but the API surface's own /defer endpoint needs SOME recorded outcome).
+# Both terminal states (resolved, deferred) have no drawn outgoing edge —
+# whether a deferred Obligation may later be resolved via a second
+# respond-style call is undrawn and out of scope, mirroring
+# TRANSFER_LIFECYCLE's own identical open question for TransferContract's
+# own respond.
+#
+# State names are lowercase, taken verbatim from the section 3.8 endpoint
+# names (resolve/defer) — the same discipline this module already applies
+# to TransferContract in the absence of any section-6 diagram or schema
+# precedent to anchor casing against instead (task-packets/E6-T02.yaml
+# derived_decisions (a)).
+
+_OBLIGATION_STATES = frozenset({"open", "resolved", "deferred"})
+
+_OBLIGATION_TRANSITIONS = frozenset(
+    {
+        ("open", "resolved"),
+        ("open", "deferred"),
+    }
+)
+
+OBLIGATION_LIFECYCLE = StateMachine(
+    name="Obligation",
+    states=_OBLIGATION_STATES,
+    transitions=_OBLIGATION_TRANSITIONS,
+    initial_state="open",
 )

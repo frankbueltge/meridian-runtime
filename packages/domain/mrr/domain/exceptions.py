@@ -1053,3 +1053,68 @@ class ParticipantIdentifiableTransferError(DomainError):
             "PARTICIPANT_IDENTIFIABLE — never exported by default (MRR-NFR-006, "
             "docs/spec/02_DOMAIN_MODEL.md section 4); nothing was persisted"
         )
+
+
+class ObligationSourceTransferNotFoundError(DomainError):
+    """Raised by ``mrr.services.obligation.service.ObligationService.
+    materialize_from_transfer`` (task-packets/E6-T02.yaml) when the
+    referenced ``TransferContract`` id (the Obligation's would-be
+    ``source_transfer_id``) resolves to no stored object at all. Kept as a
+    distinct type from ``TransferContractNotFoundError`` rather than reused,
+    because this service never touches ``mrr.services.transfer.service``
+    (forbidden_changes — Obligation reads a TransferContract's stored body
+    and event log directly via the generic ``ObjectRepository``, not through
+    that service) and the two errors are raised by unrelated callers for an
+    unrelated reason (one entity's own lookup, versus this entity's
+    materialization source lookup). Carries ``transfer_id``. Never returns
+    ``None`` or a boolean for a missing transfer.
+    """
+
+    def __init__(self, transfer_id: str) -> None:
+        self.transfer_id = transfer_id
+        super().__init__(
+            f"no TransferContract found for id {transfer_id!r} (Obligation materialization source)"
+        )
+
+
+class TransferNotAcceptedError(DomainError):
+    """Raised by ``ObligationService.materialize_from_transfer``
+    (task-packets/E6-T02.yaml, MRR-FR-083) when the referenced
+    ``TransferContract``'s latest event-derived decision — the latest
+    ``transfer.responded`` event's ``decision`` payload value, per E6-T01's
+    own ADR-0007 event-derived-status convention, NOT the stored content
+    record's permanent creation-time ``status`` snapshot — is not
+    ``"accepted"``/``"adapted"``. Covers ``"rejected"``/``"deferred"``/
+    ``"unresolved"`` alike, plus a transfer that was never responded to at
+    all (still ``"created"``/``"offered"`` — no ``transfer.responded`` event
+    exists yet), all read the same way: nothing was actually received by the
+    practice, so there is nothing yet to bind an obligation to. Checked
+    before anything is persisted — a caught instance always means no
+    Obligation revision or edge was written. Carries ``transfer_id`` and the
+    actual ``decision`` observed (``None`` when no ``transfer.responded``
+    event exists yet at all).
+    """
+
+    def __init__(self, transfer_id: str, decision: str | None) -> None:
+        self.transfer_id = transfer_id
+        self.decision = decision
+        observed = decision if decision is not None else "not yet responded to (no decision)"
+        super().__init__(
+            f"TransferContract {transfer_id!r} cannot materialize obligations: latest "
+            f"recorded decision is {observed!r}, not 'accepted'/'adapted' — nothing persisted"
+        )
+
+
+class ObligationNotFoundError(DomainError):
+    """Raised by ``mrr.services.obligation.service.ObligationService``
+    (task-packets/E6-T02.yaml) when a referenced ``Obligation`` id resolves
+    to no stored object at all. Carries ``obligation_id``. Never returns
+    ``None`` or a boolean for a missing obligation — matches
+    ``ClaimNotFoundError``/``CorrectionNotFoundError``/
+    ``TransferContractNotFoundError``'s own precedent for a first-class
+    object lookup.
+    """
+
+    def __init__(self, obligation_id: str) -> None:
+        self.obligation_id = obligation_id
+        super().__init__(f"no Obligation found for id {obligation_id!r}")

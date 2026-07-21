@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/obligation.schema.json",
+  "title": "MRR Obligation",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": ["kind", "source_transfer_id", "obligation_kind", "responsible_practice_id", "trigger", "status", "bound_objects", "propagated_objects"],
+      "properties": {
+        "kind": {"const": "Obligation"},
+        "source_transfer_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "obligation_kind": {
+          "type": "string",
+          "enum": ["review_correction", "preserve_attribution", "retain_caveat", "delete_or_restrict_data", "notify_downstream_recipients", "obtain_human_approval", "re_run_analysis", "respond_to_transfer"]
+        },
+        "responsible_practice_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "responsible_role": {"type": "string"},
+        "trigger": {"type": "string", "minLength": 1},
+        "deadline": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "status": {"type": "string", "enum": ["open", "resolved", "deferred"]},
+        "bound_objects": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "common.schema.json#/$defs/urn"}
+        },
+        "propagated_objects": {
+          "type": "array",
+          "items": {"$ref": "common.schema.json#/$defs/urn"}
+        },
+        "resolution_evidence": {"type": "string", "minLength": 1},
+        "escalation_policy": {"type": "object"},
+        "caveat_text": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
