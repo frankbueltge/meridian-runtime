@@ -11,7 +11,8 @@ by E5-T01; extended to a seventeenth entity, NodeMessageEnvelope, by
 E5-T03; extended to an eighteenth entity, OfflineBundle, by E5-T06;
 extended to a nineteenth entity, TransferContract, by E6-T01; extended to
 a twentieth entity, Obligation, by E6-T02; extended to a twenty-first
-entity, MethodProfile, by K0-T01).
+entity, MethodProfile, by K0-T01; extended to a twenty-second entity,
+CorrectionNotification, by E6-T03).
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -55,6 +56,7 @@ from jsonschema.exceptions import SchemaError, ValidationError
 from mrr.contracts import (
     Claim,
     CorrectionEvent,
+    CorrectionNotification,
     EvidenceAnchor,
     EvidenceCrate,
     Hypothesis,
@@ -92,6 +94,7 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "claim": Claim,
     "evidence-crate": EvidenceCrate,
     "correction-event": CorrectionEvent,
+    "correction-notification": CorrectionNotification,
     "run-manifest": RunManifest,
     "source-record": SourceRecord,
     "evidence-anchor": EvidenceAnchor,

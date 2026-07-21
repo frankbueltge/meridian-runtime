@@ -1,0 +1,26 @@
+{
+  "notification_id": "urn:mrr:correction-notification:01J00000000000000000000090",
+  "correction_id": "urn:mrr:correction:01J00000000000000000000013",
+  "correction_revision": 2,
+  "notifying_practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "recipient_practice_id": "urn:mrr:practice:01J00000000000000000000004",
+  "notified_object_ids": [
+    "urn:mrr:claim:01J00000000000000000000011"
+  ],
+  "correction_type": "numeric_error",
+  "severity": "material",
+  "reason": "The fixture denominator was later shown to be 120 rather than 100.",
+  "requested_action": "Mark dependent claims review_required and recompute.",
+  "replacement_object_id": null,
+  "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "nonce": "example-notification-nonce-0001",
+  "sent_at": "2026-07-19T12:00:00Z",
+  "expires_at": "2026-07-19T12:05:00Z",
+  "signature": {
+    "signer_practice_id": "urn:mrr:practice:01J00000000000000000000001",
+    "key_id": "key-2026-01",
+    "algorithm": "Ed25519",
+    "signed_at": "2026-07-19T12:00:00Z",
+    "value": "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG"
+  }
+}

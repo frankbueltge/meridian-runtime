@@ -36,24 +36,36 @@ Acceptance-test mapping (task-packets/E3-T06.yaml, unit tier):
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.contracts import Claim, CorrectionEvent
+from mrr.contracts.correction_notification import CorrectionNotification
+from mrr.contracts.node_message_envelope import NodeMessageEnvelope
+from mrr.contracts.practice import Practice
+from mrr.crypto.exceptions import SignatureVerificationError
+from mrr.crypto.keys import derive_key_id, encode_public_key, generate_ed25519_keypair
+from mrr.domain.envelope_transport import EnvelopeDeliveryOutcome, EnvelopeDeliveryRequest
 from mrr.domain.exceptions import (
     CorrectionNotFoundError,
+    CorrectionNotificationAlreadyProcessedError,
+    CorrectionNotificationNotWithinValidityWindowError,
     InvalidTransitionError,
     ObjectNotFoundError,
     RevisionConflictError,
     UnknownEdgeTypeError,
 )
+from mrr.domain.hashing_policy import sign_object
 from mrr.domain.identity import new_urn
+from mrr.domain.lifecycles import CORRECTION_LIFECYCLE
+from mrr.domain.manifest_trust import practice_key_ring
 from mrr.domain.repositories import EDGE_VOCABULARY, StoredObject, TypedEdge
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from mrr.services.claim.service import ClaimService
-from mrr.services.correction.service import CorrectionImpactService
+from mrr.services.correction.service import CorrectionImpactService, NotificationRecipient
 
 # ---------------------------------------------------------------------------
 # In-memory fakes — identical in spirit to
@@ -189,6 +201,45 @@ def _services() -> tuple[
         claim_service,
         event_log,
         _fake_record(object_repository, event_log),
+    )
+    return correction_service, claim_service, object_repository, edge_repository, event_log
+
+
+def _services_with_notification() -> tuple[
+    CorrectionImpactService,
+    ClaimService,
+    FakeObjectRepository,
+    FakeEdgeRepository,
+    FakeEventLog,
+]:
+    """Identical to :func:`_services` but additionally wires the OPTIONAL
+    ``record_event`` dependency (task-packets/E6-T03.yaml) — needed by
+    ``notify_affected_practices`` whenever more than one recipient's event
+    must be appended per call. A DB-free fake of
+    ``mrr.persistence.unit_of_work.record_event``'s shape: append the event,
+    write no object revision.
+    """
+    object_repository = FakeObjectRepository()
+    event_log = FakeEventLog()
+    edge_repository = FakeEdgeRepository()
+    claim_service = ClaimService(
+        object_repository,
+        event_log,
+        edge_repository,
+        _fake_record(object_repository, event_log),
+        _fake_record_edge(edge_repository, event_log),
+    )
+
+    def _record_event_only(event: DomainEvent) -> AppendedEvent:
+        return event_log.append_for_test(event)
+
+    correction_service = CorrectionImpactService(
+        object_repository,
+        edge_repository,
+        claim_service,
+        event_log,
+        _fake_record(object_repository, event_log),
+        _record_event_only,
     )
     return correction_service, claim_service, object_repository, edge_repository, event_log
 
@@ -696,3 +747,615 @@ def test_impact_computed_event_carries_complete_provenance() -> None:
         assert event.correlation_id == correlation_id
         assert event.object_id == correction.id
         assert event.occurred_at.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# E6-T03: cross-practice correction notification.
+# ---------------------------------------------------------------------------
+
+_NOTIFICATION_SENT_AT = datetime(2026, 7, 19, 12, 0, 0, tzinfo=UTC)
+_NOTIFICATION_EXPIRES_AT = _NOTIFICATION_SENT_AT + timedelta(minutes=5)
+
+
+class FakeEnvelopeTransport:
+    """A test-only ``EnvelopeTransport`` fake — one delivery outcome per
+    ``recipient_endpoint`` (fixed ahead of time, unlike ``message_id``,
+    which is freshly minted per envelope) — mirrors
+    ``mrr.domain.envelope_transport``'s own "tests use only an in-test fake"
+    precedent.
+    """
+
+    def __init__(self, status_by_endpoint: dict[str, str]) -> None:
+        self._status_by_endpoint = status_by_endpoint
+        self.sent_requests: list[EnvelopeDeliveryRequest] = []
+
+    def send(self, request: EnvelopeDeliveryRequest) -> EnvelopeDeliveryOutcome:
+        self.sent_requests.append(request)
+        status = self._status_by_endpoint[request.recipient_endpoint]
+        return EnvelopeDeliveryOutcome(status=status, message_id=request.envelope.message_id)  # type: ignore[arg-type]
+
+
+def _notifying_practice_fixture() -> tuple[Practice, Ed25519PrivateKey, str]:
+    """A fresh notifying-practice Practice + its one active signing key."""
+    private_key, public_key = generate_ed25519_keypair()
+    practice_id = new_urn("practice")
+    kid = derive_key_id(public_key)
+    practice = Practice.model_validate(
+        {
+            "id": practice_id,
+            "api_version": "mrr/v1alpha1",
+            "kind": "Practice",
+            "practice_id": practice_id,
+            "revision": 1,
+            "created_at": _NOTIFICATION_SENT_AT,
+            "created_by": new_urn("agent-role"),
+            "content_hash": "sha256:" + "a" * 64,
+            "name": "Fixture Notifying Practice",
+            "description": "Fixture practice for E6-T03 correction notification tests.",
+            "keys": [
+                {
+                    "kid": kid,
+                    "algorithm": "Ed25519",
+                    "encoded_public_key": encode_public_key(public_key),
+                    "valid_from": _NOTIFICATION_SENT_AT - timedelta(days=1),
+                    "valid_until": _NOTIFICATION_SENT_AT + timedelta(days=365),
+                    "state": "active",
+                }
+            ],
+            "governance_contacts": ["mailto:governance@fixture.invalid"],
+            "supported_policy_versions": ["policy-2026-07-01"],
+            "disclosure": {"max_disclosure": "PUBLIC", "trust_statement": "fixture"},
+        }
+    )
+    return practice, private_key, kid
+
+
+def _build_signed_notification(
+    *,
+    notifying_practice_id: str,
+    key_id: str,
+    private_key: Ed25519PrivateKey,
+    recipient_practice_id: str,
+    notified_object_ids: list[str],
+    **overrides: Any,
+) -> CorrectionNotification:
+    data: dict[str, Any] = {
+        "notification_id": new_urn("correction-notification"),
+        "correction_id": new_urn("correction"),
+        "correction_revision": 1,
+        "notifying_practice_id": notifying_practice_id,
+        "recipient_practice_id": recipient_practice_id,
+        "notified_object_ids": notified_object_ids,
+        "correction_type": "numeric_error",
+        "severity": "material",
+        "reason": "Fixture reason: the denominator was later shown to be wrong.",
+        "requested_action": "Mark dependent claims review_required and recompute.",
+        "replacement_object_id": None,
+        "content_hash": "sha256:" + "3" * 64,
+        "nonce": "n" * 16,
+        "sent_at": _NOTIFICATION_SENT_AT,
+        "expires_at": _NOTIFICATION_EXPIRES_AT,
+        "signature": {
+            "signer_practice_id": notifying_practice_id,
+            "key_id": key_id,
+            "algorithm": "Ed25519",
+            "signed_at": _NOTIFICATION_SENT_AT,
+            "value": "0" * 44,
+        },
+    }
+    data.update(overrides)
+    draft = CorrectionNotification.model_validate(data)
+    signature_value = sign_object(private_key, json.loads(draft.model_dump_json(exclude_none=True)))
+    return draft.model_copy(
+        update={"signature": draft.signature.model_copy(update={"value": signature_value})}
+    )
+
+
+def _build_signed_envelope(
+    notification: CorrectionNotification,
+    *,
+    sender_practice_id: str,
+    key_id: str,
+    private_key: Ed25519PrivateKey,
+    recipient_node_id: str,
+    **overrides: Any,
+) -> NodeMessageEnvelope:
+    data: dict[str, Any] = {
+        "message_id": new_urn("node-message-envelope"),
+        "sender_node_id": new_urn("node"),
+        "sender_practice_id": sender_practice_id,
+        "recipient_node_id": recipient_node_id,
+        "sent_at": _NOTIFICATION_SENT_AT,
+        "expires_at": _NOTIFICATION_EXPIRES_AT,
+        "payload_kind": "CorrectionNotification",
+        "payload_content_hash": notification.content_hash,
+        "payload": json.loads(notification.model_dump_json(exclude_none=True)),
+        "signature": {
+            "signer_practice_id": sender_practice_id,
+            "key_id": key_id,
+            "algorithm": "Ed25519",
+            "signed_at": _NOTIFICATION_SENT_AT,
+            "value": "0" * 44,
+        },
+    }
+    data.update(overrides)
+    draft = NodeMessageEnvelope.model_validate(data)
+    signature_value = sign_object(private_key, json.loads(draft.model_dump_json(exclude_none=True)))
+    return draft.model_copy(
+        update={"signature": draft.signature.model_copy(update={"value": signature_value})}
+    )
+
+
+def _never_processed(_: str) -> bool:
+    return False
+
+
+# ---------------------------------------------------------------------------
+# notify_affected_practices — outbound.
+# ---------------------------------------------------------------------------
+
+
+def test_notify_outbound_happy_path_two_recipients_delivered() -> None:
+    service, _, object_repository, _, event_log = _services_with_notification()
+    practice, private_key, key_id = _notifying_practice_fixture()
+
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+
+    recipient_a = NotificationRecipient(
+        recipient_practice_id=new_urn("practice"),
+        recipient_node_id=new_urn("node"),
+        recipient_endpoint="endpoint-a",
+        notified_object_ids=[correction.affected_objects[0].id],
+    )
+    recipient_b = NotificationRecipient(
+        recipient_practice_id=new_urn("practice"),
+        recipient_node_id=new_urn("node"),
+        recipient_endpoint="endpoint-b",
+        notified_object_ids=[correction.affected_objects[0].id],
+    )
+    transport = FakeEnvelopeTransport({"endpoint-a": "delivered", "endpoint-b": "delivered"})
+
+    stored = service.notify_affected_practices(
+        correction.id,
+        recipients=[recipient_a, recipient_b],
+        transport=transport,
+        sender_node_id=new_urn("node"),
+        notifying_practice_id=practice.id,
+        signing_key=private_key,
+        signing_key_id=key_id,
+        sent_at=_NOTIFICATION_SENT_AT,
+        expires_at=_NOTIFICATION_EXPIRES_AT,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+    )
+
+    assert stored.body["status"] == "AWAITING_RESPONSES"
+    assert [rev.body["status"] for rev in object_repository.list_revisions(correction.id)] == [
+        "OPEN",
+        "AWAITING_RESPONSES",
+    ]
+    assert len(transport.sent_requests) == 2
+
+    sent_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.object_id == correction.id
+        and appended.event.event_type == "correction.notification_sent"
+    ]
+    assert len(sent_events) == 2
+    assert {event.payload["delivery_status"] for event in sent_events} == {"sent"}
+    assert {event.payload["recipient_practice_id"] for event in sent_events} == {
+        recipient_a.recipient_practice_id,
+        recipient_b.recipient_practice_id,
+    }
+
+
+def test_notify_outbound_partial_failure_reaches_delivery_pending() -> None:
+    service, _, _, _, event_log = _services_with_notification()
+    practice, private_key, key_id = _notifying_practice_fixture()
+
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+
+    recipient_ok = NotificationRecipient(
+        recipient_practice_id=new_urn("practice"),
+        recipient_node_id=new_urn("node"),
+        recipient_endpoint="endpoint-ok",
+        notified_object_ids=[correction.affected_objects[0].id],
+    )
+    recipient_fails = NotificationRecipient(
+        recipient_practice_id=new_urn("practice"),
+        recipient_node_id=new_urn("node"),
+        recipient_endpoint="endpoint-fails",
+        notified_object_ids=[correction.affected_objects[0].id],
+    )
+    transport = FakeEnvelopeTransport({"endpoint-ok": "delivered", "endpoint-fails": "failed"})
+
+    stored = service.notify_affected_practices(
+        correction.id,
+        recipients=[recipient_ok, recipient_fails],
+        transport=transport,
+        sender_node_id=new_urn("node"),
+        notifying_practice_id=practice.id,
+        signing_key=private_key,
+        signing_key_id=key_id,
+        sent_at=_NOTIFICATION_SENT_AT,
+        expires_at=_NOTIFICATION_EXPIRES_AT,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+    )
+
+    assert stored.body["status"] == "DELIVERY_PENDING"
+
+    sent_events = {
+        appended.event.payload["recipient_practice_id"]: appended.event.payload["delivery_status"]
+        for appended in event_log.read_all()
+        if appended.event.object_id == correction.id
+        and appended.event.event_type == "correction.notification_sent"
+    }
+    assert sent_events[recipient_ok.recipient_practice_id] == "sent"
+    assert sent_events[recipient_fails.recipient_practice_id] == "pending"
+
+
+def test_notify_outbound_idempotency_no_duplicate_events_or_revision() -> None:
+    service, _, object_repository, _, event_log = _services_with_notification()
+    practice, private_key, key_id = _notifying_practice_fixture()
+
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+
+    recipient = NotificationRecipient(
+        recipient_practice_id=new_urn("practice"),
+        recipient_node_id=new_urn("node"),
+        recipient_endpoint="endpoint-a",
+        notified_object_ids=[correction.affected_objects[0].id],
+    )
+    transport = FakeEnvelopeTransport({"endpoint-a": "delivered"})
+
+    kwargs: dict[str, Any] = {
+        "recipients": [recipient],
+        "transport": transport,
+        "sender_node_id": new_urn("node"),
+        "notifying_practice_id": practice.id,
+        "signing_key": private_key,
+        "signing_key_id": key_id,
+        "sent_at": _NOTIFICATION_SENT_AT,
+        "expires_at": _NOTIFICATION_EXPIRES_AT,
+        "actor": _ACTOR,
+        "policy_version": _POLICY_VERSION,
+    }
+
+    first = service.notify_affected_practices(
+        correction.id, correlation_id=_correlation_id(), **kwargs
+    )
+    revisions_after_first = object_repository.list_revisions(correction.id)
+    events_after_first = list(event_log.read_all())
+    requests_after_first = list(transport.sent_requests)
+
+    second = service.notify_affected_practices(
+        correction.id, correlation_id=_correlation_id(), **kwargs
+    )
+
+    assert first.revision == second.revision
+    assert object_repository.list_revisions(correction.id) == revisions_after_first
+    assert event_log.read_all() == events_after_first
+    # No second delivery attempt was made for the already-"sent" recipient.
+    assert transport.sent_requests == requests_after_first
+
+
+def test_notify_without_record_event_dependency_raises_value_error_when_needed() -> None:
+    """``_services()`` (unlike ``_services_with_notification()``) does not
+    wire ``record_event`` — calling ``notify_affected_practices`` with two
+    recipients (which needs it, since only one event can be bundled with
+    the single new revision) must fail with a clear error rather than
+    silently dropping the second recipient's event.
+    """
+    service, _, _, _, _ = _services()
+    practice, private_key, key_id = _notifying_practice_fixture()
+
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+
+    recipients = [
+        NotificationRecipient(
+            recipient_practice_id=new_urn("practice"),
+            recipient_node_id=new_urn("node"),
+            recipient_endpoint=endpoint,
+            notified_object_ids=[correction.affected_objects[0].id],
+        )
+        for endpoint in ("endpoint-a", "endpoint-b")
+    ]
+    transport = FakeEnvelopeTransport({"endpoint-a": "delivered", "endpoint-b": "delivered"})
+
+    with pytest.raises(ValueError, match="record_event"):
+        service.notify_affected_practices(
+            correction.id,
+            recipients=recipients,
+            transport=transport,
+            sender_node_id=new_urn("node"),
+            notifying_practice_id=practice.id,
+            signing_key=private_key,
+            signing_key_id=key_id,
+            sent_at=_NOTIFICATION_SENT_AT,
+            expires_at=_NOTIFICATION_EXPIRES_AT,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION_LIFECYCLE conformance (adversarial) — guards that no new
+# illegal edge was accidentally introduced by this task's own hop-chain
+# logic (task-packets/E6-T03.yaml acceptance test).
+# ---------------------------------------------------------------------------
+
+
+def test_correction_lifecycle_forbids_direct_notifying_to_delivery_pending() -> None:
+    with pytest.raises(InvalidTransitionError):
+        CORRECTION_LIFECYCLE.assert_transition("NOTIFYING", "DELIVERY_PENDING")
+
+
+def test_correction_lifecycle_forbids_open_to_awaiting_responses_skipping_hops() -> None:
+    with pytest.raises(InvalidTransitionError):
+        CORRECTION_LIFECYCLE.assert_transition("OPEN", "AWAITING_RESPONSES")
+
+
+# ---------------------------------------------------------------------------
+# receive_correction_notification — inbound.
+# ---------------------------------------------------------------------------
+
+
+def test_receive_inbound_happy_path_marks_local_claims_review_required() -> None:
+    service, _, object_repository, edge_repository, _ = _services()
+    practice, private_key, key_id = _notifying_practice_fixture()
+    this_node_id = new_urn("node")
+    ring = practice_key_ring(practice)
+
+    notified_object_id = new_urn("claim")
+    local_dependent = _claim(status="under_review")
+    local_unrelated = _claim(status="under_review")
+    _seed(object_repository, local_dependent)
+    _seed(object_repository, local_unrelated)
+    _seed_dependency_edge(
+        edge_repository, dependent_id=local_dependent.id, dependency_id=notified_object_id
+    )
+
+    notification = _build_signed_notification(
+        notifying_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_practice_id=new_urn("practice"),
+        notified_object_ids=[notified_object_id],
+    )
+    envelope = _build_signed_envelope(
+        notification,
+        sender_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_node_id=this_node_id,
+    )
+
+    impact = service.receive_correction_notification(
+        envelope,
+        this_node_id=this_node_id,
+        trusted_notifying_practice_id=practice.id,
+        ring=ring,
+        already_processed_envelope=_never_processed,
+        already_processed_notification=_never_processed,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+
+    assert impact.notification_id == notification.notification_id
+    assert impact.locally_impacted_object_ids == frozenset({local_dependent.id})
+    assert object_repository.get_latest(local_dependent.id).body["status"] == "review_required"
+    assert object_repository.get_latest(local_unrelated.id).body["status"] == "under_review"
+
+
+def test_receive_adversarial_tampered_notification_is_rejected() -> None:
+    service, _, object_repository, edge_repository, _ = _services()
+    practice, private_key, key_id = _notifying_practice_fixture()
+    this_node_id = new_urn("node")
+    ring = practice_key_ring(practice)
+
+    notified_object_id = new_urn("claim")
+    local_dependent = _claim(status="under_review")
+    _seed(object_repository, local_dependent)
+    _seed_dependency_edge(
+        edge_repository, dependent_id=local_dependent.id, dependency_id=notified_object_id
+    )
+
+    notification = _build_signed_notification(
+        notifying_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_practice_id=new_urn("practice"),
+        notified_object_ids=[notified_object_id],
+    )
+    tampered_notification = notification.model_copy(update={"severity": "critical"})
+    envelope = _build_signed_envelope(
+        tampered_notification,
+        sender_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_node_id=this_node_id,
+        payload_content_hash=tampered_notification.content_hash,
+    )
+
+    with pytest.raises(SignatureVerificationError):
+        service.receive_correction_notification(
+            envelope,
+            this_node_id=this_node_id,
+            trusted_notifying_practice_id=practice.id,
+            ring=ring,
+            already_processed_envelope=_never_processed,
+            already_processed_notification=_never_processed,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_SENT_AT,
+        )
+
+    assert object_repository.get_latest(local_dependent.id).body["status"] == "under_review"
+
+
+def test_receive_adversarial_replayed_notification_is_rejected() -> None:
+    service, _, object_repository, edge_repository, _ = _services()
+    practice, private_key, key_id = _notifying_practice_fixture()
+    this_node_id = new_urn("node")
+    ring = practice_key_ring(practice)
+
+    notified_object_id = new_urn("claim")
+    local_dependent = _claim(status="under_review")
+    _seed(object_repository, local_dependent)
+    _seed_dependency_edge(
+        edge_repository, dependent_id=local_dependent.id, dependency_id=notified_object_id
+    )
+
+    notification = _build_signed_notification(
+        notifying_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_practice_id=new_urn("practice"),
+        notified_object_ids=[notified_object_id],
+    )
+    envelope = _build_signed_envelope(
+        notification,
+        sender_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_node_id=this_node_id,
+    )
+
+    def _already_seen(notification_id: str) -> bool:
+        assert notification_id == notification.notification_id
+        return True
+
+    with pytest.raises(CorrectionNotificationAlreadyProcessedError) as excinfo:
+        service.receive_correction_notification(
+            envelope,
+            this_node_id=this_node_id,
+            trusted_notifying_practice_id=practice.id,
+            ring=ring,
+            already_processed_envelope=_never_processed,
+            already_processed_notification=_already_seen,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_SENT_AT,
+        )
+    assert excinfo.value.notification_id == notification.notification_id
+    assert object_repository.get_latest(local_dependent.id).body["status"] == "under_review"
+
+
+def test_receive_adversarial_notification_outside_its_own_validity_window_is_rejected() -> None:
+    """The notification's OWN ``[sent_at, expires_at)`` window is a SECOND,
+    independent validity check from the wrapping envelope's own (task-
+    packets/E6-T03.yaml derived_decisions (b)) — evaluating at an instant
+    at/after the notification's own ``expires_at`` (but still within the
+    envelope's own, separately-set, later window) must fail closed.
+    """
+    service, _, object_repository, edge_repository, _ = _services()
+    practice, private_key, key_id = _notifying_practice_fixture()
+    this_node_id = new_urn("node")
+    ring = practice_key_ring(practice)
+
+    notified_object_id = new_urn("claim")
+    local_dependent = _claim(status="under_review")
+    _seed(object_repository, local_dependent)
+    _seed_dependency_edge(
+        edge_repository, dependent_id=local_dependent.id, dependency_id=notified_object_id
+    )
+
+    notification = _build_signed_notification(
+        notifying_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_practice_id=new_urn("practice"),
+        notified_object_ids=[notified_object_id],
+    )
+    # The envelope's OWN window is set independently, and later, so only the
+    # notification's own window check is what fails here.
+    envelope_expires_at = _NOTIFICATION_EXPIRES_AT + timedelta(minutes=30)
+    envelope = _build_signed_envelope(
+        notification,
+        sender_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_node_id=this_node_id,
+        expires_at=envelope_expires_at,
+    )
+
+    with pytest.raises(CorrectionNotificationNotWithinValidityWindowError) as excinfo:
+        service.receive_correction_notification(
+            envelope,
+            this_node_id=this_node_id,
+            trusted_notifying_practice_id=practice.id,
+            ring=ring,
+            already_processed_envelope=_never_processed,
+            already_processed_notification=_never_processed,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_EXPIRES_AT,
+        )
+    assert excinfo.value.notification_id == notification.notification_id
+    assert object_repository.get_latest(local_dependent.id).body["status"] == "under_review"
+
+
+def test_receive_adversarial_notification_about_unknown_object_yields_empty_impact() -> None:
+    """A notified_object_id with zero local edges_to entries of any kind
+    yields an explicit, empty locally-impacted set and zero claim
+    transitions — a legitimate outcome, not an error and not a crash
+    (MRR-NFR-012).
+    """
+    service, _, object_repository, edge_repository, _ = _services()
+    practice, private_key, key_id = _notifying_practice_fixture()
+    this_node_id = new_urn("node")
+    ring = practice_key_ring(practice)
+
+    unknown_object_id = new_urn("claim")  # never locally stored, no edges reference it
+
+    notification = _build_signed_notification(
+        notifying_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_practice_id=new_urn("practice"),
+        notified_object_ids=[unknown_object_id],
+    )
+    envelope = _build_signed_envelope(
+        notification,
+        sender_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_node_id=this_node_id,
+    )
+
+    impact = service.receive_correction_notification(
+        envelope,
+        this_node_id=this_node_id,
+        trusted_notifying_practice_id=practice.id,
+        ring=ring,
+        already_processed_envelope=_never_processed,
+        already_processed_notification=_never_processed,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+
+    assert impact.locally_impacted_object_ids == frozenset()
