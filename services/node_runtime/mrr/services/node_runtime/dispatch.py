@@ -159,11 +159,23 @@ def build_dispatch_table(
         found by either pass to its constructed ``Executor`` instance.
     """
     table: dict[str, Executor] = {}
-    for profile in accepted_profiles:
-        for capability_name in profile.executor_task_family:
-            factory = executor_factories.get(capability_name)
-            if factory is not None:
-                table[capability_name] = factory()
+    # PR #45 review follow-up (task-packets/K1-T03.yaml derived_decisions
+    # (k)): collect the SET of distinct capability names declared across ALL
+    # accepted_profiles entries first, then call factory() at most ONCE per
+    # distinct name — not once per (profile, capability_name) pair. Without
+    # this, two profiles (or two momentarily-both-"accepted"-looking
+    # revisions of the same profile) declaring the identical capability name
+    # would invoke factory() twice, silently discarding one constructed
+    # Executor instance.
+    declared_capability_names = {
+        capability_name
+        for profile in accepted_profiles
+        for capability_name in profile.executor_task_family
+    }
+    for capability_name in declared_capability_names:
+        factory = executor_factories.get(capability_name)
+        if factory is not None:
+            table[capability_name] = factory()
     for capability_name, factory in executor_factories.items():
         if capability_name not in table:
             table[capability_name] = factory()

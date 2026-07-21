@@ -30,6 +30,17 @@ flagged in the PR as straightforward corollaries of its invariants):
 ``dispatch_table``/``executor`` override is supplied) and
 ``test_unknown_capability_never_falls_back_to_reference_executor`` (pinning
 the "no third outcome, no silent fallback" invariant directly).
+
+--- K1-T03: the build_dispatch_table dedup fix (PR #45 review follow-up) ----
+
+``test_two_profiles_declaring_the_same_capability_invoke_the_factory_exactly_once``
+pins task-packets/K1-T03.yaml derived_decisions (k): two ``MethodProfile``s
+(or two accepted revisions momentarily both resolved as "accepted") both
+declaring the SAME capability name in ``executor_task_family`` invoke a
+caller-supplied factory for that name EXACTLY ONCE, not once per (profile,
+capability_name) pair — the latent bug PR #45's own review flagged, made
+reachable for the first time by this packet's own real, profile-declared
+``mrr.method.systematic_evidence_synthesis/1`` capability.
 """
 
 from __future__ import annotations
@@ -295,3 +306,69 @@ def test_an_unrelated_profile_declared_capability_does_not_interfere() -> None:
     assert isinstance(dispatch(reference_bundle, table), ReferenceTaskExecutor)
     other_bundle = _bundle(capability_name="mrr.method.other/1")
     assert dispatch(other_bundle, table) is other_fake
+
+
+# ---------------------------------------------------------------------------
+# K1-T03: the build_dispatch_table dedup fix (PR #45 review follow-up,
+# derived_decisions (k)).
+# ---------------------------------------------------------------------------
+
+
+def test_two_profiles_declaring_the_same_capability_invoke_the_factory_exactly_once() -> None:
+    """Two MethodProfiles (e.g. one mid-supersession) both declaring
+    ``"mrr.method.systematic_evidence_synthesis/1"`` must not cause a
+    call-counting factory to run twice — PR #45's own review flagged this as
+    latent-until-a-second-real-capability-exists; this packet's own
+    capability is that trigger case.
+    """
+    calls = 0
+
+    def _factory() -> Executor:
+        nonlocal calls
+        calls += 1
+        return _FakeExecutor()
+
+    profile_a = _profile(executor_task_family=["mrr.method.systematic_evidence_synthesis/1"])
+    profile_b = _profile(executor_task_family=["mrr.method.systematic_evidence_synthesis/1"])
+
+    table = build_dispatch_table(
+        [profile_a, profile_b], {"mrr.method.systematic_evidence_synthesis/1": _factory}
+    )
+
+    assert calls == 1
+    assert set(table) == {"mrr.method.systematic_evidence_synthesis/1"}
+
+    bundle = _bundle(capability_name="mrr.method.systematic_evidence_synthesis/1")
+    assert dispatch(bundle, table) is not None
+
+
+def test_two_profiles_with_disjoint_capabilities_still_each_get_exactly_one_call() -> None:
+    """Byte-identical-in-every-observable-respect regression guard (the
+    dedup fix's own invariant): a single profile, or multiple profiles with
+    DISJOINT capability names, still calls each distinct factory exactly
+    once — zero behavior change for the case that was already correct.
+    """
+    calls_a = 0
+    calls_b = 0
+
+    def _factory_a() -> Executor:
+        nonlocal calls_a
+        calls_a += 1
+        return _FakeExecutor("a")
+
+    def _factory_b() -> Executor:
+        nonlocal calls_b
+        calls_b += 1
+        return _FakeExecutor("b")
+
+    profile_a = _profile(executor_task_family=["mrr.method.disjoint-a/1"])
+    profile_b = _profile(executor_task_family=["mrr.method.disjoint-b/1"])
+
+    table = build_dispatch_table(
+        [profile_a, profile_b],
+        {"mrr.method.disjoint-a/1": _factory_a, "mrr.method.disjoint-b/1": _factory_b},
+    )
+
+    assert calls_a == 1
+    assert calls_b == 1
+    assert set(table) == {"mrr.method.disjoint-a/1", "mrr.method.disjoint-b/1"}
