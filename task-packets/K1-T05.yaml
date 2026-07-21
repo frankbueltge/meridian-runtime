@@ -1,0 +1,188 @@
+task_id: K1-T05
+title: >-
+  Verification recording CLI — `mrr verification record`: the operator path
+  that lets ANY approved verifier candidate persist a VerificationResult for
+  an existing claim, closing the tooling gap the verification design memo
+  names ("ein CLI-Recording-Pfad für VerificationResult existiert aktuell
+  nicht — nur der Service").
+status: approved
+epic: K1
+reviewer_resolution: >-
+  Approved 2026-07-22 by the main session as reviewing instance. The owner
+  (Frank) decided the verification design in person this night
+  (docs/design/2026-07-22-verifikations-entscheidung-und-bauprogramm.md,
+  Entscheidung 1: candidates c + d) and commissioned the build program
+  (Entscheidung 2); this packet is step 1 of that program and is
+  deliberately verifier-agnostic — it builds the recording PATH, not any
+  verification CONTENT. All primary design choices are CONFIRMED: (1) input
+  as ONE contract-validated JSON file (--verification-file), following the
+  K1-T04c one-file-flag precedent, never a flag-per-field explosion — the
+  externally visible structure stays schema-validated end to end (AGENTS
+  rule 6); (2) the CLI adds NO domain behavior (the E2-T07 CLI law): rule-8
+  self-verification refusal, target-kind checking, fail-recommendation
+  claim-status driving all remain exclusively VerificationService.record's
+  business; the CLI surfaces typed failures with distinct exit codes;
+  (3) --run-executor-id is an explicit optional flag, NEVER derived by the
+  CLI from stored state (deriving it would be domain behavior and would
+  guess where the spec requires the caller to know); (4) anchoring in the
+  K-epic (not E3) follows the K1-T03b code-ownership precedent read
+  together with the program context: the packet exists to verify K1's two
+  real claims, its first consumer is K1-T06, and the E3-T04 service file
+  itself is untouched.
+depends_on: [K1-T04, K1-T04b]
+derivation: >-
+  Derived 2026-07-22 from: the K2 gate decision's consequence line
+  (docs/design/2026-07-21-k2-gate-decision.md — "die Verifikations-Frage
+  ... wird als eigene Design-Frage aufgemacht"), the verification design
+  memo (docs/design/2026-07-21-verifikations-design-memo.md §6: every
+  candidate needs a recording path before anyone can write an entry), and
+  the owner's in-session decision record
+  (docs/design/2026-07-22-verifikations-entscheidung-und-bauprogramm.md).
+  Code facts verified first-hand at derivation time: VerificationService
+  .record(verification, claim, *, run_executor_id, actor, policy_version,
+  correlation_id) exists and enforces the rule-8 gate before any write
+  (services/control_plane/mrr/services/verification/service.py:161-190);
+  the VerificationResult contract is complete with its two MRR-FR-072/073
+  conditional validators (packages/contracts/mrr/contracts/
+  verification_result.py:163-205); the `mrr` console script wires
+  subcommands via argparse in services/cli/main.py with the connection
+  flags --database-url / --policy-version / --correlation-id and delegates
+  the synthesis family to synthesis_main.py — the same delegation shape
+  this packet extends with a `verification` family.
+objective: >-
+  After this packet, an operator (human or session) holding a fully valid
+  VerificationResult JSON document can persist it against a claim stored in
+  a reachable PostgreSQL database with one command, atomically with its
+  `verification.recorded` event, and the documented service-level policies
+  (rule-8 refusal; recommendation=="fail" driving claim status) observably
+  apply through the CLI — with explicit, typed, non-zero-exit failures and
+  no silent fallback of any kind (MRR-NFR-012).
+source_of_truth:
+  - docs/spec/01_SYSTEM_SPEC.md            # §7.7 Review and Verification Service
+  - docs/spec/02_DOMAIN_MODEL.md           # VerificationResult, Claim lifecycle
+  - docs/spec/03_API_AND_EVENTS.md         # verification.recorded event
+  - schemas/verification-result.schema.json
+  - task-packets/E3-T04.yaml               # the service this CLI fronts
+  - task-packets/E2-T07.yaml               # the CLI law: thin, no domain behavior
+  - task-packets/K1-T04c.yaml              # one-file-flag precedent
+  - docs/design/2026-07-22-verifikations-entscheidung-und-bauprogramm.md
+requirements:
+  - >-
+    R1: a new `verification` subcommand family on the `mrr` console script
+    with one command `record`, taking --database-url (required),
+    --verification-file (required; path to a JSON document parsed and
+    validated as the VerificationResult contract), --claim-id (required;
+    URN of the target claim, loaded from the database), --run-executor-id
+    (optional), --actor (required), --policy-version (required, no
+    packet-specific default that could masquerade as policy),
+    --correlation-id (optional, generated if absent following the existing
+    CLI precedent).
+  - >-
+    R2: the command loads the claim's current revision from the generic
+    object store table, calls VerificationService.record exactly once, and
+    prints a JSON result line naming the stored verification's id and
+    revision and the claim's (possibly transitioned) status.
+  - >-
+    R3: dependency checks before any service call, per MRR-NFR-012 and the
+    existing CLI shape: unreachable database and unreadable/invalid
+    verification file each produce a clear, specific message and a distinct
+    non-zero exit code; no in-memory fallback exists.
+  - >-
+    R4: every failure the service raises (rule-8 self-verification refusal,
+    unknown claim, contract violation, target-kind mismatch) surfaces as a
+    typed, clearly attributed CLI failure with a non-zero exit code — never
+    a stack trace as UX, never a swallowed exception (AGENTS rule 12).
+allowed_paths:
+  - services/control_plane/mrr/services/cli/main.py            # subcommand registration + delegation only
+  - services/control_plane/mrr/services/cli/verification_main.py   # new: the argparse family
+  - services/control_plane/mrr/services/cli/verification_orchestration.py  # new: wiring, no domain behavior
+  - tests/unit/cli/test_verification_cli_args.py               # new
+  - tests/integration/services/test_verification_cli_recording.py  # new
+  - tests/e2e/test_e2e_verification_record.py                  # new, only if the e2e tier fits the existing harness shape
+  - tests/EMPTY_TIERS.txt                                      # only if a previously empty tier gains its first test
+forbidden_changes:
+  - services/control_plane/mrr/services/verification/service.py   # the service is E3-T04's; this packet fronts it, never edits it
+  - packages/contracts/mrr/contracts/verification_result.py       # contract closed; no field, no validator change
+  - schemas/verification-result.schema.json                       # schema closed
+  - services/control_plane/mrr/services/claim/service.py          # claim-status policy stays where it lives
+  - any migration                                                  # the generic object store suffices (K0-T01 precedent)
+derived_decisions:
+  - >-
+    (a) Input file, not flags: the VerificationResult arrives as a complete
+    JSON document and is validated by the existing Pydantic contract before
+    any database connection is opened. The CLI never assembles a
+    VerificationResult from loose flags — assembling one is authoring, and
+    authoring belongs to the verifier, not the transport.
+  - >-
+    (b) No default policy-version: unlike `mrr run`'s local-loop default,
+    recording a verification against a REAL claim is a governance act; the
+    caller states the policy version explicitly every time.
+  - >-
+    (c) The reviewer_id inside the file is authoritative and is NOT
+    cross-checked against --actor: actor is the transport identity (who
+    operates the CLI), reviewer_id the epistemic identity (who verified).
+    The service's rule-8 gate judges reviewer_id; conflating the two would
+    silently narrow candidate (d) (a cross-practice verdict carried in by
+    an operator) out of existence.
+  - >-
+    (d) Exit-code map extends the existing one: 2 dependency unavailable
+    (DB unreachable, file missing/unparseable/contract-invalid), 3 recording
+    refused (rule-8, unknown claim, target-kind, any DomainError). 0 only on
+    a persisted write.
+invariants:
+  - The CLI performs no write outside VerificationService.record's single
+    atomic unit of work.
+  - A contract-invalid file never opens a database connection.
+  - Rule-8 refusals exit non-zero and leave zero rows and zero events behind.
+  - No model/LLM dependency exists anywhere on this path.
+acceptance_tests:
+  - >-
+    AT1 (integration, live Postgres): a valid VerificationResult file for a
+    stored claim records successfully; the verification row and its
+    `verification.recorded` event exist atomically; the printed JSON names
+    id, revision, and claim status.
+  - >-
+    AT2 (integration): the same file with reviewer_id equal to the claim's
+    proposer_id is refused via the service's rule-8 gate; exit code 3; no
+    row, no event.
+  - >-
+    AT3 (integration): recommendation=="fail" observably drives the claim's
+    status through ClaimService per E3-T04's documented policy, visible in
+    the CLI's printed claim status.
+  - >-
+    AT4 (unit): a file failing the MRR-FR-072 conditional (source-type with
+    empty evidence_inspected) is rejected with the contract's own message,
+    exit code 2, before any connection attempt.
+  - >-
+    AT5 (unit): --help output for the family and the command documents every
+    flag; unknown-claim URN produces exit 3 with the claim id named.
+commands:
+  - make format-check
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+  - make security-check
+specification_gaps:
+  - >-
+    The spec has no wire format for CARRYING a cross-practice verification
+    verdict into the CLI (candidate d's bridge). Deliberately out of scope:
+    K1-T06 records candidate-c results directly; the Ulysses path, if the
+    offer is taken, transfers with full attribution via the same file
+    format, and a dedicated bridge object remains a future derivation.
+required_output:
+  - task identifier, implementation summary, files changed, tests added,
+    exact commands executed with results, security implications, known
+    limitations — per AGENTS "Required delivery format".
+stop_conditions:
+  - >-
+    If recording cannot be made atomic through the existing
+    RecordRevisionWithEvent binder without touching a forbidden path, STOP
+    and report the dependency instead of widening scope.
+  - >-
+    If the e2e harness cannot drive the new subcommand without duplicating
+    the synthesis harness wholesale, deliver AT1-AT5 in unit+integration
+    tiers and record the e2e gap honestly in the PR body instead of forcing
+    a copy.
