@@ -56,7 +56,6 @@ E1-T06 built them.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -72,11 +71,14 @@ from mrr.domain.hashing_policy import compute_content_hash
 from mrr.domain.identity import new_urn
 from mrr.domain.lifecycles import RESEARCH_SCORE_LIFECYCLE
 from mrr.domain.repositories import ObjectRepository, StoredObject
-from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
-from sqlalchemy import Engine
 
 #: Statuses from which a run may start (MRR-FR-004 / docs/spec/01_SYSTEM_SPEC.md
 #: section 6.1: "Only APPROVED and ACTIVE revisions may start work").
@@ -88,14 +90,6 @@ _STARTABLE_STATUSES = frozenset({"APPROVED", "ACTIVE"})
 #: transition source — see ``ResearchScoreService.create`` for why this
 #: reuses the typed transition error rather than inventing a new one.
 _NEW_SCORE_SENTINEL_STATE = "<new>"
-
-#: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
-#: takes once its ``engine``/``object_repository``/``event_log`` arguments are
-#: bound — see the module docstring for why ``ResearchScoreService`` depends
-#: on this instead of calling that function directly.
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
 
 
 class _EventJournal(Protocol):
@@ -111,35 +105,6 @@ class _EventJournal(Protocol):
     """
 
     def read_all(self) -> list[AppendedEvent]: ...
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``mrr.persistence.unit_of_work.record_object_revision_with_event``
-    to a concrete ``sqlalchemy.Engine``/``PostgresObjectRepository``/
-    ``PostgresEventLog`` triple, producing the ``RecordRevisionWithEvent``
-    callable ``ResearchScoreService`` depends on for atomic writes. This is
-    the only function in this module that imports the concrete E1-T06
-    persistence classes by name — production wiring and integration tests
-    call it once to build the ``record`` argument
-    ``ResearchScoreService.__init__`` takes; DB-free unit tests skip it
-    entirely and pass their own trivial callable of the same
-    ``RecordRevisionWithEvent`` shape, backed by in-memory fakes, instead.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 def _score_to_stored_object(score: ResearchScore) -> StoredObject:

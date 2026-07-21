@@ -112,19 +112,13 @@ modules that never import one another.
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
+from datetime import datetime
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from mrr.contracts.evidence_crate import EvidenceCrate
-from mrr.crypto.keys import decode_public_key
-from mrr.domain.exceptions import (
-    CrateKeyNotValidError,
-    CrateSignerMismatchError,
-    UnknownKeyIdError,
-)
-from mrr.domain.hashing_policy import verify_object_signature
+from mrr.domain.exceptions import CrateKeyNotValidError, CrateSignerMismatchError
 from mrr.domain.key_management import KeyRing
+from mrr.domain.trust_resolution import resolve_trusted_signer_key, verify_trusted_signature
 
 __all__ = [
     "resolve_trusted_crate_key",
@@ -181,30 +175,13 @@ def resolve_trusted_crate_key(
         mrr.crypto.exceptions.UnsupportedAlgorithmError: condition (d) fails
             -- ``crate.signature.algorithm`` is not ``"Ed25519"``.
     """
-    if crate.signature.signer_practice_id != trusted_node_practice_id:
-        raise CrateSignerMismatchError(
-            claimed_signer_practice_id=crate.signature.signer_practice_id,
-            trusted_practice_id=trusted_node_practice_id,
-        )
-
-    kid = crate.signature.key_id
-    descriptor = ring.get(kid)
-    if descriptor is None:
-        raise UnknownKeyIdError(kid)
-
-    evaluation_instant = at if at is not None else datetime.now(UTC)
-    if not ring.is_valid_at(evaluation_instant, kid):
-        raise CrateKeyNotValidError(kid, at=evaluation_instant)
-
-    # Decode the RESOLVED descriptor's own key -- never any key the crate
-    # itself claims -- so a substituted signing key cannot be accepted even
-    # if it happens to claim a trusted kid (task-packets/E5-T05.yaml's
-    # key-substitution acceptance test).
-    verifying_key = decode_public_key(descriptor.encoded_public_key)
-    verify_object_signature(
-        verifying_key,
-        json.loads(crate.model_dump_json(exclude_none=True)),
-        crate.signature.value,
-        algorithm=crate.signature.algorithm,
+    verifying_key = resolve_trusted_signer_key(
+        crate,
+        trusted_node_practice_id,
+        ring,
+        at=at,
+        signer_mismatch_error=CrateSignerMismatchError,
+        key_not_valid_error=CrateKeyNotValidError,
     )
+    verify_trusted_signature(crate, verifying_key)
     return verifying_key

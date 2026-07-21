@@ -177,7 +177,12 @@ from mrr.domain.repositories import (
 )
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
 from mrr.persistence.tables import edges_table
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from sqlalchemy import Engine
@@ -222,17 +227,6 @@ _RETAIN_CAVEAT_KIND = "retain_caveat"
 #: placeholder never leaks into any persisted hash.
 _PLACEHOLDER_CONTENT_HASH = "sha256:" + "0" * 64
 
-#: The callable shape ``mrr.persistence.unit_of_work.
-#: record_object_revision_with_event`` takes once its ``engine``/
-#: ``object_repository``/``event_log`` arguments are bound — the plain
-#: revision-plus-event path, used by ``resolve``/``defer`` (neither ever
-#: touches ``subject_to_obligation`` edges). A local copy, not a shared
-#: import — see ``mrr.services.claim.service``'s own module docstring for
-#: why each service module keeps its own.
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
-
 #: The callable shape ``bind_revision_with_edges_unit_of_work`` below
 #: produces: insert an object revision, ANY NUMBER of typed edges, and
 #: append exactly ONE domain event, all atomically. See the module
@@ -250,29 +244,6 @@ class _EventJournal(Protocol):
     """
 
     def read_all(self) -> list[AppendedEvent]: ...
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` to a concrete
-    ``sqlalchemy.Engine``/``PostgresObjectRepository``/``PostgresEventLog``
-    triple — identical in shape and purpose to every other service module's
-    own ``bind_unit_of_work``. Used by ``resolve``/``defer`` only.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 def bind_revision_with_edges_unit_of_work(

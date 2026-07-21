@@ -164,7 +164,7 @@ task cannot represent as a schema-valid crate without guessing.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -182,12 +182,14 @@ from mrr.contracts import (
 from mrr.domain.hashing_policy import compute_content_hash, sign_object
 from mrr.domain.identity import new_urn
 from mrr.domain.repositories import StoredObject
-from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import (
+    RecordRevisionWithEvent as RecordRevisionWithEvent,
+)
+from mrr.persistence.unit_of_work import (
+    bind_unit_of_work as bind_unit_of_work,
+)
 from mrr.provenance.events import DomainEvent
-from mrr.provenance.log import AppendedEvent
 from mrr.services.node_runtime.executor import ExecutionResult
-from sqlalchemy import Engine
 
 #: docs/spec/01_SYSTEM_SPEC.md MRR-FR-050's event: every sealed crate writes
 #: exactly one of these (task-packets/E2-T06.yaml invariant: "sealing records
@@ -203,42 +205,6 @@ _EVENT_SEALED = "evidence_crate.sealed"
 #: placeholder's actual value can never leak into what gets hashed or
 #: signed.
 _PLACEHOLDER_SIGNATURE_VALUE = "0" * 44
-
-#: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
-#: takes once its ``engine``/``object_repository``/``event_log`` arguments
-#: are bound. Identical in shape to every other service's own
-#: ``RecordRevisionWithEvent`` -- see ``mrr.services.node_runtime.run_manifest``
-#: for why this is a local copy, not a shared import, across separate
-#: service modules.
-RecordRevisionWithEvent = Callable[
-    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
-]
-
-
-def bind_unit_of_work(
-    engine: Engine,
-    object_repository: PostgresObjectRepository,
-    event_log: PostgresEventLog,
-) -> RecordRevisionWithEvent:
-    """Bind ``record_object_revision_with_event`` to a concrete
-    ``sqlalchemy.Engine``/``PostgresObjectRepository``/``PostgresEventLog``
-    triple, producing the ``RecordRevisionWithEvent`` callable
-    ``EvidenceCrateSealer`` depends on for its one atomic write. Production
-    wiring and integration tests call this once; DB-free unit tests pass
-    their own trivial callable of the same shape, backed by an in-memory
-    fake, instead.
-    """
-
-    def _record(
-        obj: StoredObject,
-        expected_current_revision: int | None,
-        event: DomainEvent,
-    ) -> tuple[StoredObject, AppendedEvent]:
-        return record_object_revision_with_event(
-            engine, object_repository, event_log, obj, expected_current_revision, event
-        )
-
-    return _record
 
 
 def _crate_to_stored_object(crate: EvidenceCrate) -> StoredObject:

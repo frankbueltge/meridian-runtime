@@ -98,6 +98,48 @@ def record_object_revision_with_event(
         return stored, appended
 
 
+#: The callable shape ``record_object_revision_with_event`` takes once its
+#: ``engine``/``object_repository``/``event_log`` arguments are bound — see
+#: ``bind_unit_of_work`` below. Added here (task-packets/E9-T00b.yaml,
+#: behavior-preserving DRY consolidation) as the single canonical definition;
+#: every one of the 19 service modules that used to define this identical
+#: alias locally now re-exports it from here instead
+#: (``from mrr.persistence.unit_of_work import RecordRevisionWithEvent as
+#: RecordRevisionWithEvent``) — see this module's own history for why it
+#: previously lived only at each call site (task-packets/E2-T01.yaml's own
+#: ``allowed_paths`` did not include this file).
+RecordRevisionWithEvent = Callable[
+    [StoredObject, int | None, DomainEvent], tuple[StoredObject, AppendedEvent]
+]
+
+
+def bind_unit_of_work(
+    engine: Engine,
+    object_repository: PostgresObjectRepository,
+    event_log: PostgresEventLog,
+) -> RecordRevisionWithEvent:
+    """Bind ``record_object_revision_with_event`` to a concrete
+    ``sqlalchemy.Engine``/``PostgresObjectRepository``/``PostgresEventLog``
+    triple, producing the ``RecordRevisionWithEvent`` callable each service
+    depends on for atomic writes. Production wiring and integration tests
+    call it once to build the ``record`` argument a service's own
+    ``__init__`` takes; DB-free unit tests skip it entirely and pass their
+    own trivial callable of the same ``RecordRevisionWithEvent`` shape,
+    backed by in-memory fakes, instead.
+    """
+
+    def _record(
+        obj: StoredObject,
+        expected_current_revision: int | None,
+        event: DomainEvent,
+    ) -> tuple[StoredObject, AppendedEvent]:
+        return record_object_revision_with_event(
+            engine, object_repository, event_log, obj, expected_current_revision, event
+        )
+
+    return _record
+
+
 def record_event(
     engine: Engine,
     event_log: EventLog[Connection],
