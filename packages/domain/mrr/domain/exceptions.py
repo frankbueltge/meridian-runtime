@@ -1172,3 +1172,20 @@ class MissingResolutionEvidenceError(DomainError):
             f"Obligation {obligation_id!r} cannot be resolved: resolution_evidence must be "
             "non-empty (MRR-NFR-001) — nothing persisted"
         )
+
+
+class MethodProfileNotFoundError(DomainError):
+    """Raised by ``mrr.services.method_profile.service.MethodProfileService``
+    (task-packets/K0-T01.yaml) when a referenced ``MethodProfile`` id
+    resolves to no stored object at all. Carries ``profile_id`` — the
+    object's own freshly minted ``id`` (``urn:mrr:method-profile:<ulid>``),
+    NOT its body-only ``profile_key`` slug (task-packets/K0-T01.yaml
+    derived_decisions (b): object identity is this object's own minted id,
+    mirroring ``ResearchScore``/``Claim``, not the human-legible
+    ``profile_key``). Never returns ``None`` or a boolean for a missing
+    profile.
+    """
+
+    def __init__(self, profile_id: str) -> None:
+        self.profile_id = profile_id
+        super().__init__(f"no MethodProfile found for id {profile_id!r}")

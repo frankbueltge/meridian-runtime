@@ -1,6 +1,7 @@
 """Unit tests for mrr.domain.lifecycles (E1-T04; extended to
 ``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml; extended to
-``OBLIGATION_LIFECYCLE`` by task-packets/E6-T02.yaml).
+``OBLIGATION_LIFECYCLE`` by task-packets/E6-T02.yaml; extended to
+``METHOD_PROFILE_LIFECYCLE`` by task-packets/K0-T01.yaml).
 
 Acceptance-test mapping (task-packets/E1-T04.yaml):
 
@@ -11,10 +12,10 @@ Acceptance-test mapping (task-packets/E1-T04.yaml):
 - "the typed error exposes machine, from-state, and to-state" ->
   ``test_invalid_transition_error_exposes_machine_from_and_to``.
 - state-set-matches-schema-enum invariant -> the
-  ``test_*_states_match_contract_status_literal`` group (all six machines,
-  since ADR-0005 gave TaskBundle a schema/contract status enum too, and
-  task-packets/E6-T01.yaml/E6-T02.yaml give TransferContract/Obligation one
-  from the start).
+  ``test_*_states_match_contract_status_literal`` group (all seven
+  machines, since ADR-0005 gave TaskBundle a schema/contract status enum
+  too, and task-packets/E6-T01.yaml/E6-T02.yaml/K0-T01.yaml give
+  TransferContract/Obligation/MethodProfile one from the start).
 
 Obligation-specific acceptance-test mapping (task-packets/E6-T02.yaml):
 
@@ -34,6 +35,7 @@ import pytest
 from mrr.contracts import (
     ClaimStatus,
     CorrectionStatus,
+    MethodProfileStatus,
     ObligationStatus,
     ResearchScoreStatus,
     TaskBundleStatus,
@@ -43,6 +45,7 @@ from mrr.domain.exceptions import InvalidTransitionError
 from mrr.domain.lifecycles import (
     CLAIM_LIFECYCLE,
     CORRECTION_LIFECYCLE,
+    METHOD_PROFILE_LIFECYCLE,
     OBLIGATION_LIFECYCLE,
     RESEARCH_SCORE_LIFECYCLE,
     TASK_BUNDLE_LIFECYCLE,
@@ -57,6 +60,7 @@ _ALL_MACHINES = [
     CORRECTION_LIFECYCLE,
     TRANSFER_LIFECYCLE,
     OBLIGATION_LIFECYCLE,
+    METHOD_PROFILE_LIFECYCLE,
 ]
 
 #: Terminal states per machine, i.e. states that are never a transition
@@ -74,6 +78,7 @@ _TERMINAL_STATES: dict[str, frozenset[str]] = {
     ),
     "TransferContract": frozenset({"accepted", "adapted", "rejected", "deferred", "unresolved"}),
     "Obligation": frozenset({"resolved", "deferred"}),
+    "MethodProfile": frozenset({"superseded"}),
 }
 
 
@@ -118,6 +123,10 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         (OBLIGATION_LIFECYCLE, "resolved", "deferred"),  # terminal, no way back
         (OBLIGATION_LIFECYCLE, "deferred", "resolved"),  # terminal, no way back
         (OBLIGATION_LIFECYCLE, "deferred", "open"),  # no drawn revisit edge
+        (METHOD_PROFILE_LIFECYCLE, "draft", "superseded"),  # skips accepted
+        (METHOD_PROFILE_LIFECYCLE, "superseded", "accepted"),  # terminal, no way back
+        (METHOD_PROFILE_LIFECYCLE, "accepted", "draft"),  # no drawn revisit edge
+        (METHOD_PROFILE_LIFECYCLE, "draft", "draft"),  # no self-transition
     ],
     ids=[
         "research-score-suspended-to-active",
@@ -140,6 +149,10 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         "obligation-resolved-to-deferred-terminal",
         "obligation-deferred-to-resolved-terminal",
         "obligation-deferred-to-open-no-revisit",
+        "method-profile-draft-to-superseded-skips-accepted",
+        "method-profile-superseded-to-accepted-terminal",
+        "method-profile-accepted-to-draft-no-revisit",
+        "method-profile-draft-to-draft-no-self-transition",
     ],
 )
 def test_representative_undrawn_transitions_are_rejected(
@@ -292,6 +305,10 @@ def test_transfer_states_match_contract_status_literal() -> None:
 
 def test_obligation_states_match_contract_status_literal() -> None:
     assert OBLIGATION_LIFECYCLE.states == set(get_args(ObligationStatus))
+
+
+def test_method_profile_states_match_contract_status_literal() -> None:
+    assert METHOD_PROFILE_LIFECYCLE.states == set(get_args(MethodProfileStatus))
 
 
 # ---------------------------------------------------------------------------

@@ -2,10 +2,12 @@
 in docs/spec/01_SYSTEM_SPEC.md section 6 (task-packets/E1-T04.yaml):
 ``RESEARCH_SCORE_LIFECYCLE``, ``TASK_BUNDLE_LIFECYCLE``, ``CLAIM_LIFECYCLE``,
 ``CORRECTION_LIFECYCLE``, plus ``TRANSFER_LIFECYCLE`` (task-packets/
-E6-T01.yaml) and ``OBLIGATION_LIFECYCLE`` (task-packets/E6-T02.yaml), both
-added without a section-6 diagram to anchor them — see each machine's own
-comment block below and the "Open specification questions" list at the end
-of this docstring.
+E6-T01.yaml), ``OBLIGATION_LIFECYCLE`` (task-packets/E6-T02.yaml), and
+``METHOD_PROFILE_LIFECYCLE`` (task-packets/K0-T01.yaml, the Research Method
+Kernel's first task — grounded in docs/spec/08_RESEARCH_METHOD_KERNEL.md
+section 3's table). None of the three has a section-6 diagram to anchor it
+— see each machine's own comment block below and the "Open specification
+questions" list at the end of this docstring.
 
 State names match the owning schema's ``status`` enum exactly, including
 casing, where one exists (task-packets/E1-T04.yaml invariant): ResearchScore
@@ -85,6 +87,13 @@ or spec amendment):
   ``resolve``d (a second respond-style call) is left undrawn and
   unimplemented, mirroring ``TRANSFER_LIFECYCLE``'s own identical open
   question about a second ``respond`` after ``deferred``/``unresolved``.
+- Whether a superseded ``MethodProfile`` may ever transition further (e.g.
+  back toward ``draft`` for a correction) is undrawn — mirrors
+  ``ResearchScore``'s own open question above for its ``SUSPENDED`` state.
+  ``METHOD_PROFILE_LIFECYCLE`` declares exactly the two edges docs/spec/
+  08_RESEARCH_METHOD_KERNEL.md section 3's table shows (``draft ->
+  accepted``, ``accepted -> superseded``) and nothing else (task-packets/
+  K0-T01.yaml ``specification_gaps``).
 """
 
 from __future__ import annotations
@@ -525,4 +534,47 @@ OBLIGATION_LIFECYCLE = StateMachine(
     states=_OBLIGATION_STATES,
     transitions=_OBLIGATION_TRANSITIONS,
     initial_state="open",
+)
+
+
+# ---------------------------------------------------------------------------
+# MethodProfile — task-packets/K0-T01.yaml (docs/spec/08_RESEARCH_METHOD_KERNEL.md
+# section 3's table). No section-6 diagram exists for this entity either
+# (like TransferContract above) — it is grounded only in spec 08 section 3's
+# table row: "MethodProfile | section 2 declaration | draft -> accepted ->
+# superseded".
+# ---------------------------------------------------------------------------
+#
+#   draft -> accepted -> superseded
+#
+# Every transition mints a NEW REVISION with `status` changed in the body
+# (content hash recomputed) — MethodProfile is UNSIGNED and revision-based,
+# like ResearchScore/Claim, not event-only like TaskBundle (task-packets/
+# K0-T01.yaml derived_decisions (a)). State names are lowercase, taken
+# verbatim from spec 08 section 3's own table spelling — the same discipline
+# this module already applies to Claim and TransferContract when no
+# section-6 diagram exists to anchor casing against instead.
+#
+# `superseded` has no drawn outgoing edge (open question above, mirroring
+# ResearchScore's own undrawn path out of SUSPENDED): a superseded profile
+# revision cannot transition further within this machine. A later, semver-
+# bumped profile supersedes the OLD id via a freshly minted new id's own
+# `supersedes` field (inherited from baseObject) — a cross-id relationship,
+# not a transition on this state machine (task-packets/K0-T01.yaml
+# derived_decisions (b)).
+
+_METHOD_PROFILE_STATES = frozenset({"draft", "accepted", "superseded"})
+
+_METHOD_PROFILE_TRANSITIONS = frozenset(
+    {
+        ("draft", "accepted"),
+        ("accepted", "superseded"),
+    }
+)
+
+METHOD_PROFILE_LIFECYCLE = StateMachine(
+    name="MethodProfile",
+    states=_METHOD_PROFILE_STATES,
+    transitions=_METHOD_PROFILE_TRANSITIONS,
+    initial_state="draft",
 )
