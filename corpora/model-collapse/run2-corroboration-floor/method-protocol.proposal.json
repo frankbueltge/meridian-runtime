@@ -1,0 +1,19 @@
+{
+  "extraction_fields": ["claim_relevant_finding", "classification_basis"],
+  "inclusion_criteria": [
+    "catalogued in the pinned theory-atlas or works-atlas snapshot (corpora/model-collapse/{theory,works}-atlas.snapshot.json)",
+    "works-atlas candidates: own `clusters` array contains 7 (\"AI self-consumption\" per src/data/field/clusters.json) -- 15 entries, fixed before classification",
+    "theory-atlas candidates: fixed, disclosed keyword match over tags/summary/work (\"model collapse\", \"model-collapse\", \"self-consuming\", \"self-consumption\", \"autophagy\", \"MAD\", \"curse of recursion\") -- 3 entries, fixed before classification",
+    "provenance-verified per the atlas's own curation standard (primary_secondary_derived in {primary, secondary})"
+  ],
+  "exclusion_criteria": [
+    "secondary commentary with no direct access to the work or paper itself (primary_secondary_derived == derived)",
+    "atlas entries whose own record is insufficient to decide instantiate-vs-reference honestly"
+  ],
+  "sensitivity_variations": ["corroboration-floor-v1"],
+  "planned_analyses": [
+    "model-collapse-mechanism-theory-confirmation",
+    "instantiation-vs-reference-classification"
+  ],
+  "kill_conditions": ["fewer than 3 included sources -> stop_insufficient_evidence"]
+}
