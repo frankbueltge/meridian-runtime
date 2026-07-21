@@ -1,0 +1,311 @@
+task_id: K0-T02
+title: Capability dispatch layer — select an Executor by TaskBundle.capability, fail closed on an unrouted capability, keep ReferenceTaskExecutor wired as the reference-capability default
+status: draft
+depends_on: [K0-T01]
+derivation: >-
+  Derived by a planning session (not yet reviewed) per docs/spec/07_AGENT_TASK_TEMPLATE.md
+  section 5 from docs/spec/08_RESEARCH_METHOD_KERNEL.md section 1 ("A Method Profile is
+  an executor task family plus a rulebook, not a researcher. It plugs into the runtime's
+  existing executor boundary (the `Executor` protocol and the capability-based dispatch
+  layer, which this kernel introduces).") and section 8's tiering table ("Executor
+  dispatch layer (capability -> executor) | bounded, already designed for | low"), plus
+  docs/design/2026-07-21-research-method-kernel-plan.md's K0 epic definition
+  ("K0-T02 -- Capability dispatch layer. The 'future dispatch layer' the executor module
+  already names: select an Executor implementation by TaskBundle.capability, fail
+  closed on unknown capability with a typed error, keep ReferenceTaskExecutor as the
+  fallback for the existing reference capability. Acceptance: dispatch table driven by
+  registered profiles; unknown capability produces policy_denied-style explicit
+  failure, never a silent fallback; existing E2E-001 loop unchanged."). Second task of
+  the K0 epic, depends_on [K0-T01] for the MethodProfile object this task's table-
+  building step reads (`executor_task_family`) — K0-T01 exists only as an unreviewed
+  sibling planning packet with no MethodProfile schema/contract/service yet in the
+  repository at the time this one is derived, so this dependency is a real sequencing
+  requirement, not a formality (see stop_conditions for how this task's OWN pieces that
+  do not need MethodProfile may still proceed independently). The exact deferral this
+  task implements is quoted verbatim from
+  services/node_runtime/mrr/services/node_runtime/executor.py's `ReferenceTaskExecutor`
+  docstring (lines 219-224, in its "What this executor actually runs" section):
+  "Selecting WHICH `Executor` implementation should handle a given `TaskBundle` by its
+  `capability` is a future dispatch layer's responsibility (e.g. the deferred
+  OCI-executor adapter's own capability check), not this class's: a caller must itself
+  only route genuinely reference-shaped bundles here." The one production caller that
+  currently makes this selection by hardcoding, rather than dispatching, is
+  services/control_plane/mrr/services/cli/orchestration.py's `run_local_evidence_loop`,
+  at the line `resolved_executor: Executor = executor if executor is not None else
+  ReferenceTaskExecutor()` (module line 546, step "5. Execute") — confirmed the only
+  such line in that function; every other of its seven numbered steps is untouched by
+  this task. `packages/contracts/mrr/contracts/task_bundle.py`'s `CapabilityRef` (a
+  `{name, version}` pair, mirrored on every `TaskBundle.capability`) is the value this
+  task dispatches on, by `name` only (matching MethodProfile's own `executor_task_family`
+  shape, K0-T01 derived_decisions (f) — capability NAMES, not versioned refs).
+objective: >-
+  Provide the capability dispatch layer that
+  services/node_runtime/mrr/services/node_runtime/executor.py's own `ReferenceTaskExecutor`
+  docstring explicitly defers: a framework-free lookup from a capability name
+  (`TaskBundle.capability.name`) to the `Executor` instance that should run it, built
+  from (1) currently-accepted `MethodProfile`s' `executor_task_family` capability names
+  (K0-T01) paired with caller-supplied `Executor` factories for those names, and (2) the
+  existing reference capability, unchanged. An unrouted capability name fails closed
+  with a distinct, typed `UnknownCapabilityError` — never a silent fallback to
+  `ReferenceTaskExecutor` or to any other default. `run_local_evidence_loop`, which
+  today hardcodes its default executor, is rewired to resolve it through this dispatch
+  table instead of that one hardcoded line — for the existing reference-capability path
+  (no `MethodProfile` yet accepted, no dispatch table argument supplied), this produces
+  the byte-identical `ReferenceTaskExecutor` instance as before, so the existing
+  single-node evidence loop
+  (docs/spec/05_EVALUATION_AND_ACCEPTANCE.md's E2E-001,
+  tests/e2e/test_e2e_001_single_node_evidence_loop.py) is a PINNED regression, not a
+  rewrite.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#1-position-in-the-architecture
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#4-normative-requirements
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#8-tiering-and-honesty-annex
+  - docs/design/2026-07-21-research-method-kernel-plan.md
+  - docs/spec/01_SYSTEM_SPEC.md#45-stage-5--local-execution
+  - docs/spec/01_SYSTEM_SPEC.md#75-node-runtime
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/05_EVALUATION_AND_ACCEPTANCE.md#e2e-001-single-node-evidence-loop
+  - services/node_runtime/mrr/services/node_runtime/executor.py
+  - packages/contracts/mrr/contracts/task_bundle.py
+  - services/control_plane/mrr/services/cli/orchestration.py
+  - packages/domain/mrr/domain/exceptions.py
+  - pyproject.toml
+  - task-packets/K0-T01.yaml
+requirements:
+  - MRR-MTH-020
+  - MRR-NFR-005
+  - MRR-NFR-012
+  - MRR-NFR-010
+allowed_paths:
+  - services/node_runtime/mrr/services/node_runtime/dispatch.py
+  - packages/domain/mrr/domain/exceptions.py
+  - services/control_plane/mrr/services/cli/orchestration.py
+  - tests/unit/services/node_runtime/**
+  - tests/unit/services/cli/**
+  - tests/unit/domain/**
+  - tests/e2e/**
+  - tests/integration/services/node_runtime/**
+forbidden_changes:
+  - >-
+    the Executor protocol's own signature, ExecutionResult/TerminalOutcome shape, and
+    ReferenceTaskExecutor's internal logic (policy_gate, is_cancelled, transform,
+    wall-clock timeout handling, idempotency memo) — reused completely unchanged; this
+    task adds one NEW sibling module and never edits the existing executor.py class
+  - >-
+    MethodProfile persistence or MethodProfileService itself (K0-T01) — this task
+    consumes an already-resolved list[MethodProfile] the CALLER supplies; dispatch.py
+    makes no ObjectRepository/EventLog call and imports no control-plane service module
+  - >-
+    any REAL profile-driven Executor implementation (the systematic_evidence_synthesis
+    executor, or any other concrete non-reference Executor) — K1-T03; this task's own
+    tests exercise the dispatch MECHANISM with an in-test fake Executor registered under
+    a second capability name, not a real second implementation
+  - >-
+    the Policy Gateway (docs/spec/01_SYSTEM_SPEC.md section 7.4, not yet built) — an
+    unrouted capability is a ROUTING failure (this task's own UnknownCapabilityError),
+    never a policy-gateway verdict; the two are not conflated or merged into one
+    mechanism
+  - >-
+    run_local_evidence_loop's signed-object construction, hashing/signing convention
+    (ADR-0004), or any of its seven numbered steps other than the single
+    executor-selection line this task's own derivation cites — every other line of that
+    function is untouched
+  - HTTP/FastAPI endpoints
+  - both import-linter contracts in pyproject.toml (must remain unmodified and KEPT)
+  - packages/persistence/** and any Alembic migration
+derived_decisions: >-
+  (a) Placement: services/node_runtime, not services/control_plane. `Executor`,
+  `ReferenceTaskExecutor`, `ExecutionResult`, and `TerminalOutcome` all already live in
+  services/node_runtime/mrr/services/node_runtime/executor.py, and pyproject.toml's two
+  import-linter contracts draw no boundary between the `mrr.services.control_plane`-style
+  leaves and `mrr.services.node_runtime` (contract 2, "Nothing inward imports the
+  services layer", only forbids CORE packages from importing ANY `mrr.services.*`; it
+  says nothing about the two services roots importing each other) — confirmed by reading
+  both contracts directly. docs/spec/01_SYSTEM_SPEC.md section 7.5 ("Node Runtime:
+  ... executes approved work") frames deciding HOW to execute an already-accepted
+  bundle as this component's own responsibility, which dispatch-by-capability is a part
+  of. The new module, services/node_runtime/mrr/services/node_runtime/dispatch.py, is
+  therefore a sibling of executor.py, not a new control-plane module. Flagged as a
+  derived (not spec-forced) placement in specification_gaps.
+  (b) `dispatch.py` is a PURE function/table over caller-supplied data, exactly mirroring
+  `mrr.domain.correction_impact.compute_impact`'s and
+  `mrr.domain.obligation_propagation.compute_obligation_binding`'s own "pure function
+  over a caller-supplied graph, no DB call inside it" precedent (task-packets/
+  E3-T06.yaml, task-packets/E6-T02.yaml). `build_dispatch_table` takes an already-
+  resolved `Sequence[MethodProfile]` (plain `mrr.contracts` objects — a leaf module
+  services/node_runtime already legitimately imports elsewhere, e.g. TaskBundle) plus a
+  caller-supplied `Mapping[str, ExecutorFactory]`; it never calls
+  `MethodProfileService.find_accepted_by_capability` itself. The CALLER (production
+  wiring in `run_local_evidence_loop`, itself in control_plane, which already imports
+  `Executor`/`ReferenceTaskExecutor`/`TerminalOutcome` from node_runtime today) is what
+  bridges the K0-T01 registry read and this task's table-building step, exactly as it
+  already bridges `CapabilityRegistry`/`TaskBundleService`/`ReferenceTaskExecutor`
+  today.
+  (c) `UnknownCapabilityError` (new, packages/domain/mrr/domain/exceptions.py, mirroring
+  `UnknownEdgeTypeError`'s minimal single-field-carry precedent: `capability_name`)
+  RAISES and propagates unmodified to the caller — it does NOT get converted into an
+  `ExecutionResult(outcome="policy_denied", ...)` sealed through `RunManifest`/
+  `EvidenceCrate`. This mirrors `CapabilityNotDeclaredError`'s/`ScoreNotApprovedError`'s
+  identical existing precedent: both are pre-execution ADMISSION gates that raise
+  BEFORE any run ever starts, and neither produces a terminal execution record either —
+  a `TaskBundle` naming an unroutable capability never reaches the executor at all, so
+  there is no "run" for `RunManifest`/`EvidenceCrate` to seal. "policy_denied-style" in
+  the plan text is read here as "conceptually analogous to a policy denial: fails
+  closed, categorized, never silently substitutes a default executor" rather than
+  "literally reuses the `TerminalOutcome.policy_denied` enum value" — flagged as an
+  ambiguous phrase in specification_gaps, since the alternative reading is equally
+  defensible.
+  (d) `run_local_evidence_loop` rewiring is a MINIMAL, single-line-level change. The
+  existing line `resolved_executor: Executor = executor if executor is not None else
+  ReferenceTaskExecutor()` is replaced by: if a caller passes an explicit `executor=`
+  override, use it exactly as today (unchanged precedence, so every existing test that
+  injects a policy-gated/slow/cancelled `ReferenceTaskExecutor` via that parameter keeps
+  passing unmodified); otherwise resolve through
+  `dispatch(accepted_bundle, dispatch_table)`, where the new optional
+  `dispatch_table: CapabilityDispatchTable | None = None` parameter defaults to a
+  single-entry table built by `build_dispatch_table` from an empty profile list plus
+  `{DEFAULT_CAPABILITY_NAME: ReferenceTaskExecutor}` — reproducing today's default
+  behavior byte-for-byte for the one capability E2E-001 exercises.
+  (e) Table-building policy for a declared-but-unwired capability: a MethodProfile that
+  declares a capability name in `executor_task_family` with NO caller-supplied factory
+  in `executor_factories` is simply ABSENT from the built table — dispatching it later
+  raises the identical `UnknownCapabilityError` as any other unrecognized name, rather
+  than `build_dispatch_table` itself raising a distinct table-construction-time error.
+  This keeps exactly one failure surface for "this capability cannot be routed right
+  now", whatever the reason. Flagged as a derived choice, not a forced one, in
+  specification_gaps — a stricter, eager-validating alternative is equally defensible.
+specification_gaps:
+  - >-
+    Placement (node_runtime vs. control_plane, derived_decisions (a)) is not settled by
+    spec 08 or the plan doc, which name only "a dispatch layer" / "the executor
+    module already names" without a package, and is not forced by either
+    import-linter contract (confirmed: neither draws a boundary between the two
+    services roots). A reviewer may instead prefer control_plane, closer to the
+    MethodProfile registry this task's table-building step reads from. Flagged for
+    confirmation before a second caller (e.g. a future K1 service) commits to this
+    module's location.
+  - >-
+    Whether UnknownCapabilityError should propagate unmodified (this task's default,
+    derived_decisions (c), mirroring CapabilityNotDeclaredError/ScoreNotApprovedError)
+    or instead be caught by the caller and converted into an explicit terminal
+    ExecutionResult(outcome="policy_denied", ...) sealed through the existing
+    RunManifest/EvidenceCrate machinery (extending MRR-FR-043's enumerated
+    non-completed-outcome set to cover "no executor was even found for this
+    capability") is not settled by the plan's "policy_denied-style" phrasing, which
+    reads compatibly either way. This task implements the simpler, more precedented
+    "raises before execution begins" form; flagged for reviewer confirmation.
+  - >-
+    Whether a MethodProfile-declared capability with no caller-supplied executor
+    factory should fail at table-construction time (eager, catching a misconfiguration
+    earlier) or only at dispatch time (this task's default, derived_decisions (e)) is
+    undrawn by the plan text either way.
+  - >-
+    Whether services/node_runtime and services/control_plane should be added to
+    import-linter contract 1's framework-free source_modules list (making the "no
+    framework import" discipline this task's own new dispatch.py module follows, in
+    imitation of executor.py's own existing discipline, an ENFORCED contract rather
+    than a self-imposed convention) is out of this task's scope to decide unilaterally
+    — flagged, not changed.
+invariants:
+  - >-
+    dispatch(task_bundle, table) returns the Executor registered under
+    task_bundle.capability.name in table, or raises UnknownCapabilityError — there is
+    no third outcome and no default/fallback Executor ever returned for an
+    unrecognized name
+  - >-
+    ReferenceTaskExecutor remains reachable under DEFAULT_CAPABILITY_NAME in the
+    default table run_local_evidence_loop builds when no dispatch_table is supplied —
+    byte-identical to today's hardcoded default for that one capability
+  - >-
+    build_dispatch_table makes no ObjectRepository/EventLog/HTTP call and imports no
+    control-plane module — it is a pure function over a caller-supplied
+    Sequence[MethodProfile] and a caller-supplied mapping of capability name to
+    Executor factory
+  - >-
+    an explicit executor= override passed to run_local_evidence_loop is used exactly as
+    before (unchanged precedence over the dispatch table) — every existing test that
+    injects a policy-gated/slow/cancelled ReferenceTaskExecutor via that parameter keeps
+    passing unmodified
+  - >-
+    tests/e2e/test_e2e_001_single_node_evidence_loop.py passes unmodified — pinned as a
+    regression, not rewritten
+  - >-
+    both import-linter contracts stay KEPT; the new dispatch module imports no provider
+    SDK, no web/workflow framework, and opens no network
+acceptance_tests:
+  - dispatching a TaskBundle whose capability.name matches a table entry returns that exact Executor instance
+  - >-
+    dispatching a TaskBundle whose capability.name has no table entry raises
+    UnknownCapabilityError, carrying the unrecognized capability_name
+  - >-
+    build_dispatch_table, given one accepted MethodProfile declaring a NEW capability
+    name plus a caller-supplied fake Executor factory for that name, produces a table
+    that successfully dispatches a TaskBundle declaring that capability — proving the
+    mechanism generalizes beyond the single hardcoded reference capability, without any
+    real K1-T03 executor existing yet
+  - >-
+    build_dispatch_table, given a MethodProfile that declares a capability name with NO
+    caller-supplied factory, produces a table where that name is simply absent —
+    dispatching it later raises the same UnknownCapabilityError as any other
+    unrecognized name, not a distinct table-construction error
+  - >-
+    run_local_evidence_loop called with no dispatch_table and no executor override
+    resolves to the same ReferenceTaskExecutor-backed default as before this task
+    (regression: output_hash/run_state match the pre-existing expectation)
+  - >-
+    run_local_evidence_loop called with an explicit executor= override still uses
+    exactly that instance, ignoring any dispatch table — existing tests exercising the
+    policy-denied/timed-out/cancelled paths via this parameter pass unmodified
+  - >-
+    tests/e2e/test_e2e_001_single_node_evidence_loop.py (E2E-001) passes unmodified,
+    pinning this task's non-regression
+  - >-
+    after adding the new module, both import-linter contracts are still KEPT
+    (tests/unit/architecture/test_import_boundaries.py passes)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-integration
+  - make test-e2e
+required_output:
+  - implementation summary
+  - the CapabilityDispatchTable shape, dispatch()/build_dispatch_table(), and UnknownCapabilityError
+  - >-
+    the exact rewiring of run_local_evidence_loop's executor-selection line, and
+    confirmation every other step of that function is unchanged
+  - >-
+    changed files, additive domain errors, and explicit confirmation that
+    packages/persistence/** and migrations/ were NOT touched
+  - >-
+    tests added and exact command results (format, lint, typecheck, test,
+    test-integration, test-e2e) proving green, INCLUDING the unmodified E2E-001 run
+  - >-
+    security/privacy implications (no new network or provider surface; fail-closed on
+    an unrouted capability; no silent fallback executor)
+  - open specification questions exactly as listed under specification_gaps
+stop_conditions:
+  - >-
+    "existing E2E-001 loop unchanged" is found to require any behavioral change beyond
+    the single executor-selection line this task's derivation names — stop and report
+    rather than widening the diff
+  - >-
+    a reviewer determines UnknownCapabilityError should instead be converted into a
+    policy_denied ExecutionResult sealed through RunManifest/EvidenceCrate
+    (specification_gaps) — stop rather than guessing which of the two designs is wanted
+  - >-
+    K0-T01's MethodProfile contract does not yet exist in the codebase when
+    implementation begins — the CapabilityDispatchTable type, dispatch(),
+    UnknownCapabilityError, and their unit tests (with an in-test fake profile-like
+    object, or a second hardcoded capability name, standing in for a real
+    MethodProfile) MAY proceed independently, but build_dispatch_table's signature and
+    its own tests MUST NOT invent a placeholder MethodProfile shape diverging from
+    K0-T01's actual contract — stop that portion and report the blocking dependency
+    instead
+  - >-
+    implementation requires modifying the Executor protocol itself,
+    ReferenceTaskExecutor's internals, MethodProfileService, packages/persistence/**,
+    or either import-linter contract — confirmed unnecessary at planning time; report
+    if that assumption turns out false
