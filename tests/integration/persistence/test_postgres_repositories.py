@@ -24,6 +24,11 @@ Acceptance-test mapping:
   the CHECK constraint to reject one of the four new types ... proving
   genuine reversibility" ->
   ``test_migration_downgrade_reverts_check_constraint_to_reject_a_new_edge_type``.
+- [E1-T03b, ADR-0010 derived_decisions (b)] "persistence round trip, no
+  migration: a StoredObject whose body includes
+  classification: SYNTHETIC_TEST_FIXTURE round-trips byte-for-byte on the
+  CURRENT, unmodified Alembic head" ->
+  ``test_stored_object_body_classification_key_round_trips_without_migration``.
 """
 
 from __future__ import annotations
@@ -136,6 +141,38 @@ def test_insert_then_update_revision_round_trips(postgres_engine: Engine) -> Non
 
     all_revisions = repo.list_revisions(object_id)
     assert [rev.revision for rev in all_revisions] == [1, 2]
+
+
+def test_stored_object_body_classification_key_round_trips_without_migration(
+    postgres_engine: Engine,
+) -> None:
+    """task-packets/E1-T03b.yaml derived_decisions (b): a ``body`` dict
+    carrying a ``"classification"`` key (ADR-0010's new
+    ``BaseObjectClassification`` value ``SYNTHETIC_TEST_FIXTURE``) round-trips
+    byte-for-byte through ``insert_revision``/``get_latest`` against the
+    CURRENT, unmodified Alembic head -- no migration, no
+    ``objects_table``/``StoredObject`` column change. Proves the "no
+    migration needed" claim by direct execution, mirroring exactly how
+    ``TransferService``'s own already-shipped
+    ``_ensure_no_participant_identifiable_object`` already reads
+    ``body.get("classification")`` for ``TaskBundle`` bodies today, with no
+    dedicated column either.
+    """
+    repo = PostgresObjectRepository(postgres_engine)
+    object_id = new_urn("claim")
+
+    revision = _stored_object(
+        id=object_id,
+        revision=1,
+        body={"status": "draft", "classification": "SYNTHETIC_TEST_FIXTURE"},
+    )
+    repo.insert_revision(revision, expected_current_revision=None)
+
+    latest = repo.get_latest(object_id)
+    assert latest.body == {"status": "draft", "classification": "SYNTHETIC_TEST_FIXTURE"}
+
+    fetched = repo.get_revision(object_id, 1)
+    assert fetched.body == {"status": "draft", "classification": "SYNTHETIC_TEST_FIXTURE"}
 
 
 def test_get_latest_raises_not_found_for_unknown_id(postgres_engine: Engine) -> None:

@@ -15,6 +15,7 @@ created_by
 content_hash
 supersedes (optional)
 labels (optional)
+classification (optional)
 ```
 
 ### 1.1 Identifiers
@@ -457,6 +458,8 @@ Minimum levels:
 | PARTICIPANT_IDENTIFIABLE | directly or indirectly identifiable field data | never exported by default |
 
 Derived data does not automatically receive a lower classification. A local disclosure review determines whether aggregation or redaction changes classification.
+
+A sixth value, `SYNTHETIC_TEST_FIXTURE`, marks fixture-derived objects that MUST never be treated as empirical evidence (ADR-0010). Every first-class object MAY carry this vocabulary via the optional `baseObject.classification` field; absence means unclassified, and unclassified MUST NOT satisfy any classification-gated check.
 
 ## 5. Field-research extensions
 
