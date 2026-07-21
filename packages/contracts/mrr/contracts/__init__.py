@@ -1,18 +1,18 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Nineteen hand-written Pydantic v2 models mirror the nineteen entity
+Twenty hand-written Pydantic v2 models mirror the twenty entity
 schemas in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``,
 ``Claim``, ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest``
 (E2-T05), ``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
 (E3-T03), ``VerificationResult`` (E3-T04), ``ModelProfile``/
 ``ModelInvocation`` (E4-T01), ``Hypothesis`` (E4-T03),
 ``SkepticalChallenge`` (E4-T04), ``Practice`` (E5-T01),
-``NodeMessageEnvelope`` (E5-T03), ``OfflineBundle`` (E5-T06), and
-``TransferContract`` (E6-T01). Shared building blocks mirroring
-``schemas/common.schema.json`` live in ``mrr.contracts.common`` and are
-re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``, ``Budget``,
-``BaseObject``, ``MRRModel``).
+``NodeMessageEnvelope`` (E5-T03), ``OfflineBundle`` (E5-T06),
+``TransferContract`` (E6-T01), and ``Obligation`` (E6-T02). Shared building
+blocks mirroring ``schemas/common.schema.json`` live in ``mrr.contracts.common``
+and are re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``,
+``Budget``, ``BaseObject``, ``MRRModel``).
 
 These models are hand-written rather than generated from the JSON Schemas
 (see the PR body for the full rationale): the claim schema's conditional
@@ -86,6 +86,7 @@ from mrr.contracts.node_manifest import (
     TransportMode,
 )
 from mrr.contracts.node_message_envelope import NodeMessageEnvelope
+from mrr.contracts.obligation import Obligation, ObligationStatus
 from mrr.contracts.offline_bundle import BundleEncryption, BundleEntry, OfflineBundle
 from mrr.contracts.practice import DisclosureAndTrust, Practice, PublicKeyDescriptor
 from mrr.contracts.research_score import (
@@ -180,7 +181,9 @@ __all__ = [
     "NodeManifest",
     "NodeMessageEnvelope",
     "NumericRecomputation",
+    "Obligation",
     "ObligationKind",
+    "ObligationStatus",
     "ObligationStub",
     "OfflineBundle",
     "OperationKind",

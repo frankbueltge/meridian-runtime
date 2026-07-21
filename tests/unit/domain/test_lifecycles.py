@@ -1,5 +1,6 @@
 """Unit tests for mrr.domain.lifecycles (E1-T04; extended to
-``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml).
+``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml; extended to
+``OBLIGATION_LIFECYCLE`` by task-packets/E6-T02.yaml).
 
 Acceptance-test mapping (task-packets/E1-T04.yaml):
 
@@ -10,9 +11,19 @@ Acceptance-test mapping (task-packets/E1-T04.yaml):
 - "the typed error exposes machine, from-state, and to-state" ->
   ``test_invalid_transition_error_exposes_machine_from_and_to``.
 - state-set-matches-schema-enum invariant -> the
-  ``test_*_states_match_contract_status_literal`` group (all five machines,
+  ``test_*_states_match_contract_status_literal`` group (all six machines,
   since ADR-0005 gave TaskBundle a schema/contract status enum too, and
-  task-packets/E6-T01.yaml gives TransferContract one from the start).
+  task-packets/E6-T01.yaml/E6-T02.yaml give TransferContract/Obligation one
+  from the start).
+
+Obligation-specific acceptance-test mapping (task-packets/E6-T02.yaml):
+
+- "the resolve/defer actions each require the Obligation to currently be
+  open; an illegal call ... raises InvalidTransitionError and persists/
+  appends nothing" -> the ``OBLIGATION_LIFECYCLE``-parametrized cases in
+  ``test_every_declared_edge_is_accepted``,
+  ``test_representative_undrawn_transitions_are_rejected``, and
+  ``test_terminal_states_reject_every_outgoing_transition``.
 """
 
 from __future__ import annotations
@@ -23,6 +34,7 @@ import pytest
 from mrr.contracts import (
     ClaimStatus,
     CorrectionStatus,
+    ObligationStatus,
     ResearchScoreStatus,
     TaskBundleStatus,
     TransferStatus,
@@ -31,6 +43,7 @@ from mrr.domain.exceptions import InvalidTransitionError
 from mrr.domain.lifecycles import (
     CLAIM_LIFECYCLE,
     CORRECTION_LIFECYCLE,
+    OBLIGATION_LIFECYCLE,
     RESEARCH_SCORE_LIFECYCLE,
     TASK_BUNDLE_LIFECYCLE,
     TRANSFER_LIFECYCLE,
@@ -43,6 +56,7 @@ _ALL_MACHINES = [
     CLAIM_LIFECYCLE,
     CORRECTION_LIFECYCLE,
     TRANSFER_LIFECYCLE,
+    OBLIGATION_LIFECYCLE,
 ]
 
 #: Terminal states per machine, i.e. states that are never a transition
@@ -59,6 +73,7 @@ _TERMINAL_STATES: dict[str, frozenset[str]] = {
         {"DELIVERY_PENDING", "RESOLVED", "PARTIALLY_RESOLVED", "REJECTED_BY_RECIPIENT"}
     ),
     "TransferContract": frozenset({"accepted", "adapted", "rejected", "deferred", "unresolved"}),
+    "Obligation": frozenset({"resolved", "deferred"}),
 }
 
 
@@ -99,6 +114,10 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         (TRANSFER_LIFECYCLE, "offered", "offered"),  # no self-transition
         (TRANSFER_LIFECYCLE, "accepted", "offered"),  # terminal, no way back
         (TRANSFER_LIFECYCLE, "deferred", "accepted"),  # no drawn revisit edge
+        (OBLIGATION_LIFECYCLE, "open", "open"),  # no self-transition
+        (OBLIGATION_LIFECYCLE, "resolved", "deferred"),  # terminal, no way back
+        (OBLIGATION_LIFECYCLE, "deferred", "resolved"),  # terminal, no way back
+        (OBLIGATION_LIFECYCLE, "deferred", "open"),  # no drawn revisit edge
     ],
     ids=[
         "research-score-suspended-to-active",
@@ -117,6 +136,10 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         "transfer-offered-to-offered-no-self-transition",
         "transfer-accepted-to-offered-terminal",
         "transfer-deferred-to-accepted-no-revisit",
+        "obligation-open-to-open-no-self-transition",
+        "obligation-resolved-to-deferred-terminal",
+        "obligation-deferred-to-resolved-terminal",
+        "obligation-deferred-to-open-no-revisit",
     ],
 )
 def test_representative_undrawn_transitions_are_rejected(
@@ -265,6 +288,10 @@ def test_task_bundle_states_match_contract_status_literal() -> None:
 
 def test_transfer_states_match_contract_status_literal() -> None:
     assert TRANSFER_LIFECYCLE.states == set(get_args(TransferStatus))
+
+
+def test_obligation_states_match_contract_status_literal() -> None:
+    assert OBLIGATION_LIFECYCLE.states == set(get_args(ObligationStatus))
 
 
 # ---------------------------------------------------------------------------
