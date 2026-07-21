@@ -29,6 +29,27 @@ Acceptance-test mapping (task-packets/E3-T07.yaml, unit tier):
 - a missing claim -> ``test_provenance_map_on_missing_claim_raises``.
 - cycle safety -> ``test_provenance_map_terminates_on_a_cyclic_graph``.
 - writes nothing -> ``test_building_a_projection_writes_no_new_revision_or_edge``.
+
+Acceptance-test mapping (task-packets/E6-T05.yaml, unit/service tier —
+per-row redaction behavior itself is unit-tested DB-free in
+tests/unit/domain/test_public_correction_view.py; the tests below exercise
+the SERVICE-level population/filtering/reuse behavior over these same
+fakes):
+
+- "no attestation at all ... the correction is never dropped from the list"
+  -> ``test_public_correction_view_includes_unresolved_critical_correction_with_no_attestation``.
+- an unresolved critical correction's structural facts survive full
+  redaction, but a resolved or non-critical correction is excluded from the
+  VIEW entirely (MRR-FR-095's own "unresolved critical" scoping applied to
+  the service-level population) ->
+  ``test_public_correction_view_excludes_a_resolved_correction``,
+  ``test_public_correction_view_excludes_a_non_critical_correction``.
+- ``build_public_claim_table`` mirrors ``build_claim_table``'s own full
+  population (every claim ever created, not just flagged ones) ->
+  ``test_public_claim_table_includes_every_claim_redacted_by_default``.
+- writes nothing -> ``test_public_projection_methods_write_no_new_revision_or_edge``.
+- determinism -> ``test_public_correction_view_is_deterministic_on_rebuild``,
+  ``test_public_claim_table_is_deterministic_on_rebuild``.
 """
 
 from __future__ import annotations
@@ -38,6 +59,7 @@ from typing import Any
 
 import pytest
 from mrr.contracts import Claim, CorrectionEvent, EvidenceAnchor, SourceRecord
+from mrr.domain.artifacts import Classification
 from mrr.domain.exceptions import (
     ClaimNotFoundError,
     ObjectNotFoundError,
@@ -917,5 +939,283 @@ def test_build_provenance_map_is_deterministic_on_rebuild() -> None:
 
     first = projection_service.build_provenance_map(claim.id)
     second = projection_service.build_provenance_map(claim.id)
+
+    assert first == second
+
+
+# ---------------------------------------------------------------------------
+# build_public_correction_view / build_public_claim_table (task-packets/
+# E6-T05.yaml). Per-row redaction logic itself is unit-tested DB-free in
+# tests/unit/domain/test_public_correction_view.py; these tests exercise the
+# service-level population, filtering, and "writes nothing"/determinism
+# behavior over the same fakes/services this file already uses.
+# ---------------------------------------------------------------------------
+
+
+def test_public_correction_view_includes_unresolved_critical_correction_with_no_attestation() -> (
+    None
+):
+    (
+        projection_service,
+        claim_service,
+        correction_service,
+        _source_record_service,
+        _evidence_anchor_service,
+        _object_repository,
+        _edge_repository,
+        _event_log,
+    ) = _services()
+    claim = _claim(status="draft")
+    claim_service.create(
+        claim, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    correction = _correction(affected_object_ids=[claim.id])
+    correction_service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+
+    rows = {row.correction_id: row for row in projection_service.build_public_correction_view({})}
+
+    assert correction.id in rows
+    row = rows[correction.id]
+    assert row.severity == correction.severity
+    assert row.status == correction.status
+    assert row.correction_type == correction.correction_type
+    assert row.affected_object_ids == (claim.id,)
+    assert row.unresolved is True
+    assert row.redacted is True
+    assert row.reason is None
+    assert row.requested_action is None
+
+
+def test_public_correction_view_fully_attested_shows_reason_and_requested_action() -> None:
+    (
+        projection_service,
+        claim_service,
+        correction_service,
+        _source_record_service,
+        _evidence_anchor_service,
+        _object_repository,
+        _edge_repository,
+        _event_log,
+    ) = _services()
+    claim = _claim(status="draft")
+    claim_service.create(
+        claim, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    correction = _correction(affected_object_ids=[claim.id])
+    correction_service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    attestation: dict[str, Classification] = {correction.id: "PUBLIC", claim.id: "PUBLIC"}
+
+    rows = {
+        row.correction_id: row
+        for row in projection_service.build_public_correction_view(attestation)
+    }
+
+    assert rows[correction.id].redacted is False
+    assert rows[correction.id].reason == correction.reason
+    assert rows[correction.id].requested_action == correction.requested_action
+
+
+def test_public_correction_view_excludes_a_resolved_correction() -> None:
+    (
+        projection_service,
+        claim_service,
+        correction_service,
+        _source_record_service,
+        _evidence_anchor_service,
+        object_repository,
+        _edge_repository,
+        _event_log,
+    ) = _services()
+    claim = _claim(status="draft")
+    claim_service.create(
+        claim, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    correction = _correction(affected_object_ids=[claim.id])
+    stored_correction = correction_service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    _reseal_with_status(object_repository, stored_correction, status="RESOLVED")
+
+    rows = {row.correction_id: row for row in projection_service.build_public_correction_view({})}
+
+    assert correction.id not in rows
+
+
+def test_public_correction_view_excludes_a_non_critical_correction() -> None:
+    (
+        projection_service,
+        claim_service,
+        correction_service,
+        _source_record_service,
+        _evidence_anchor_service,
+        _object_repository,
+        _edge_repository,
+        _event_log,
+    ) = _services()
+    claim = _claim(status="draft")
+    claim_service.create(
+        claim, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    correction = _correction(affected_object_ids=[claim.id], severity="material")
+    correction_service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+
+    rows = {row.correction_id: row for row in projection_service.build_public_correction_view({})}
+
+    assert correction.id not in rows
+
+
+def test_public_claim_table_includes_every_claim_redacted_by_default() -> None:
+    (
+        projection_service,
+        claim_service,
+        correction_service,
+        _source_record_service,
+        _evidence_anchor_service,
+        _object_repository,
+        _edge_repository,
+        _event_log,
+    ) = _services()
+    flagged = _claim(status="draft")
+    unflagged = _claim(status="draft")
+    claim_service.create(
+        flagged, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    claim_service.create(
+        unflagged, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    correction = _correction(affected_object_ids=[flagged.id])
+    correction_service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+
+    rows = {row.claim_id: row for row in projection_service.build_public_claim_table({})}
+
+    assert flagged.id in rows
+    assert unflagged.id in rows
+    assert rows[flagged.id].flagged is True
+    assert rows[flagged.id].redacted is True
+    assert rows[flagged.id].assertion is None
+    assert rows[unflagged.id].flagged is False
+    assert rows[unflagged.id].redacted is True
+    assert rows[unflagged.id].assertion is None
+
+
+def test_public_claim_table_fully_attested_shows_assertion() -> None:
+    (
+        projection_service,
+        claim_service,
+        correction_service,
+        _source_record_service,
+        _evidence_anchor_service,
+        _object_repository,
+        _edge_repository,
+        _event_log,
+    ) = _services()
+    claim = _claim(status="draft")
+    claim_service.create(
+        claim, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    correction = _correction(affected_object_ids=[claim.id])
+    correction_service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    attestation: dict[str, Classification] = {claim.id: "PUBLIC", correction.id: "PUBLIC"}
+
+    rows = {row.claim_id: row for row in projection_service.build_public_claim_table(attestation)}
+
+    assert rows[claim.id].redacted is False
+    assert rows[claim.id].assertion == claim.assertion
+
+
+def test_public_projection_methods_write_no_new_revision_or_edge() -> None:
+    (
+        projection_service,
+        claim_service,
+        correction_service,
+        _source_record_service,
+        _evidence_anchor_service,
+        object_repository,
+        edge_repository,
+        event_log,
+    ) = _services()
+    claim = _claim(status="draft")
+    claim_service.create(
+        claim, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    correction = _correction(affected_object_ids=[claim.id])
+    correction_service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+
+    revisions_before = {
+        object_id: list(revisions) for object_id, revisions in object_repository._revisions.items()
+    }
+    edges_before = list(edge_repository._edges)
+    events_before = list(event_log.read_all())
+
+    projection_service.build_public_correction_view({})
+    projection_service.build_public_claim_table({})
+
+    assert object_repository._revisions == revisions_before
+    assert edge_repository._edges == edges_before
+    assert event_log.read_all() == events_before
+
+
+def test_public_correction_view_is_deterministic_on_rebuild() -> None:
+    (
+        projection_service,
+        claim_service,
+        correction_service,
+        _source_record_service,
+        _evidence_anchor_service,
+        _object_repository,
+        _edge_repository,
+        _event_log,
+    ) = _services()
+    claim = _claim(status="draft")
+    claim_service.create(
+        claim, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    correction = _correction(affected_object_ids=[claim.id])
+    correction_service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    attestation: dict[str, Classification] = {claim.id: "PUBLIC", correction.id: "PUBLIC"}
+
+    first = projection_service.build_public_correction_view(attestation)
+    second = projection_service.build_public_correction_view(attestation)
+
+    assert first == second
+
+
+def test_public_claim_table_is_deterministic_on_rebuild() -> None:
+    (
+        projection_service,
+        claim_service,
+        correction_service,
+        _source_record_service,
+        _evidence_anchor_service,
+        _object_repository,
+        _edge_repository,
+        _event_log,
+    ) = _services()
+    claim = _claim(status="draft")
+    claim_service.create(
+        claim, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    correction = _correction(affected_object_ids=[claim.id])
+    correction_service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    attestation: dict[str, Classification] = {claim.id: "PUBLIC", correction.id: "PUBLIC"}
+
+    first = projection_service.build_public_claim_table(attestation)
+    second = projection_service.build_public_claim_table(attestation)
 
     assert first == second
