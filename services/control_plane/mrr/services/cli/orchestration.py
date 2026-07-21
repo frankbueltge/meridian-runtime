@@ -102,6 +102,11 @@ from mrr.domain.identity import new_urn
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
 from mrr.services.capability_registry.service import CapabilityRegistry
 from mrr.services.capability_registry.service import bind_unit_of_work as _bind_capability_uow
+from mrr.services.node_runtime.dispatch import (
+    CapabilityDispatchTable,
+    build_dispatch_table,
+    dispatch,
+)
 from mrr.services.node_runtime.evidence_crate import EvidenceCrateSealer
 from mrr.services.node_runtime.evidence_crate import bind_unit_of_work as _bind_crate_uow
 from mrr.services.node_runtime.executor import Executor, ReferenceTaskExecutor, TerminalOutcome
@@ -451,6 +456,7 @@ def run_local_evidence_loop(
     timeout_seconds: int = 30,
     code_revision: str | None = None,
     executor: Executor | None = None,
+    dispatch_table: CapabilityDispatchTable | None = None,
     execution_attempt: int = 1,
     approve_score: bool = True,
 ) -> LocalEvidenceLoopResult:
@@ -476,10 +482,34 @@ def run_local_evidence_loop(
             deliberately). No Task Bundle, Run Manifest, or Evidence Crate is
             created in that case; the exception propagates to the caller
             unmodified.
-        executor: defaults to a plain ``ReferenceTaskExecutor()``. A caller
-            (or a test exercising the policy-denied/timed-out paths) may pass
-            one already configured with a ``policy_gate``, ``is_cancelled``,
-            or a deliberately slow ``transform``.
+        executor: an explicit override, used exactly as supplied — unchanged
+            precedence over ``dispatch_table`` below, so every existing
+            caller that injects a policy-gated/slow/cancelled
+            ``ReferenceTaskExecutor`` this way keeps working unmodified. A
+            caller (or a test exercising the policy-denied/timed-out paths)
+            passes one already configured with a ``policy_gate``,
+            ``is_cancelled``, or a deliberately slow ``transform``. Defaults
+            to ``None`` — "resolve through the capability dispatch table
+            instead" (see ``dispatch_table``).
+        dispatch_table: the ``mrr.services.node_runtime.dispatch
+            .CapabilityDispatchTable`` consulted (via
+            ``mrr.services.node_runtime.dispatch.dispatch``, keyed on
+            ``accepted_bundle.capability.name``) when no ``executor``
+            override is supplied. Defaults to ``None``, meaning "build the
+            single-entry default table for the existing reference
+            capability" — ``build_dispatch_table([], {DEFAULT_CAPABILITY_NAME:
+            ReferenceTaskExecutor})`` — reproducing today's hardcoded
+            ``ReferenceTaskExecutor()`` default byte-for-byte (same
+            behavior/output, a fresh instance either way) for the one
+            capability E2E-001 exercises. A caller with one or more accepted
+            ``MethodProfile``\\s builds its own table (typically via
+            ``build_dispatch_table`` fed by
+            ``MethodProfileService.find_accepted_by_capability``-derived
+            profiles) and passes it here instead. An unrouted capability
+            name raises ``mrr.domain.exceptions.UnknownCapabilityError``
+            (fail closed — never a silent fallback to
+            ``ReferenceTaskExecutor`` or any other default), propagated
+            unmodified before any Run Manifest or Evidence Crate is touched.
         input_bytes: the reference task's declared input.
         input_artifact_id: the URN identifying the declared input artifact in
             ``TaskBundle.inputs``/the executor's ``inputs`` mapping. Defaults
@@ -526,8 +556,10 @@ def run_local_evidence_loop(
             ``EvidenceCrateSealer.seal``, propagated unmodified.
         Any other typed error a composed service itself raises (e.g.
         ``mrr.crypto.exceptions.SignatureVerificationError``,
-        ``mrr.domain.exceptions.CapabilityNotDeclaredError``) propagates
-        unmodified — this function adds no new error handling of its own.
+        ``mrr.domain.exceptions.CapabilityNotDeclaredError``,
+        ``mrr.domain.exceptions.UnknownCapabilityError`` — see
+        ``dispatch_table`` above) propagates unmodified — this function adds
+        no new error handling of its own.
     """
     resolved_actor = actor if actor is not None else new_urn("agent-role")
     resolved_correlation_id = (
@@ -543,7 +575,6 @@ def run_local_evidence_loop(
     resolved_input_artifact_id = (
         input_artifact_id if input_artifact_id is not None else new_urn("artifact")
     )
-    resolved_executor: Executor = executor if executor is not None else ReferenceTaskExecutor()
 
     object_repository = PostgresObjectRepository(engine)
     event_log = PostgresEventLog(engine)
@@ -696,7 +727,21 @@ def run_local_evidence_loop(
     # executed bundle is provably the one the origin signed and the node accepted.
     accepted_bundle = TaskBundle.model_validate(accepted.content.body)
 
-    # --- 5. Execute (ReferenceTaskExecutor by default — deterministic, no LLM).
+    # --- 5. Execute (ReferenceTaskExecutor by default — deterministic, no LLM;
+    #        an explicit executor= override is used exactly as supplied,
+    #        unchanged precedence; otherwise resolved through the capability
+    #        dispatch table, keyed on the ACCEPTED bundle's own declared
+    #        capability name — see dispatch_table's own docstring above).
+    resolved_executor: Executor
+    if executor is not None:
+        resolved_executor = executor
+    else:
+        resolved_dispatch_table = (
+            dispatch_table
+            if dispatch_table is not None
+            else build_dispatch_table([], {DEFAULT_CAPABILITY_NAME: ReferenceTaskExecutor})
+        )
+        resolved_executor = dispatch(accepted_bundle, resolved_dispatch_table)
     resolved_inputs: dict[str, bytes] = {
         input_artifact_ref.artifact_id: artifact_store.get(input_descriptor.content_hash)
     }
