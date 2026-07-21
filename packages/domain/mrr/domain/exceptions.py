@@ -951,3 +951,105 @@ class BundleEntryHashMismatchError(DomainError):
             f"envelope_content_hash {declared!r}, but its carried envelope's actual content "
             f"hash is {actual!r}"
         )
+
+
+class TransferContractNotFoundError(DomainError):
+    """Raised by ``mrr.services.transfer.service.TransferService``
+    (task-packets/E6-T01.yaml) when a referenced ``TransferContract`` id
+    resolves to no stored object at all. Carries ``transfer_id``. Never
+    returns ``None`` or a boolean for a missing transfer — matches
+    ``TaskBundleNotFoundError``'s/``CorrectionNotFoundError``'s own
+    precedent for a first-class object lookup.
+    """
+
+    def __init__(self, transfer_id: str) -> None:
+        self.transfer_id = transfer_id
+        super().__init__(f"no TransferContract found for id {transfer_id!r}")
+
+
+class TransferSignerMismatchError(DomainError):
+    """Raised by ``mrr.domain.transfer_trust.resolve_trusted_transfer_key``
+    (task-packets/E6-T01.yaml) when a ``TransferContract``'s
+    ``signature.signer_practice_id`` does not equal the id of the practice
+    the receiving side actually trusts as THIS contract's SENDER. Mirrors
+    ``TaskSignerMismatchError``'s/``CrateSignerMismatchError``'s identical
+    fact pattern (docs/spec/04_SECURITY_AND_POLICY.md section 8.1: "Trust is
+    per practice and capability, not universal"), kept as a SEPARATE type
+    rather than reused because it is raised for a different carrying object
+    (a transfer contract, not a task bundle, manifest, envelope, or crate) —
+    see ``UnknownKeyIdError``'s docstring for why that one, unlike this one,
+    IS reused verbatim. Unlike ``resolve_trusted_task_key`` (symmetric —
+    authenticates either negotiation leg of the MRR-FR-022/023 round trip),
+    ``resolve_trusted_transfer_key`` has exactly one direction: the
+    RECEIVING practice always authenticates the SENDER's origin signature —
+    there is no analog of a node-proposed counter-signature for a transfer
+    in this task's scope. Carries ``claimed_signer_practice_id`` (from the
+    contract's own signature) and ``trusted_practice_id`` (the practice the
+    caller actually trusts as this transfer's sender).
+    """
+
+    def __init__(self, *, claimed_signer_practice_id: str, trusted_practice_id: str) -> None:
+        self.claimed_signer_practice_id = claimed_signer_practice_id
+        self.trusted_practice_id = trusted_practice_id
+        super().__init__(
+            "transfer contract signature.signer_practice_id "
+            f"{claimed_signer_practice_id!r} does not equal the trusted sender "
+            f"practice id {trusted_practice_id!r}"
+        )
+
+
+class TransferKeyNotValidError(DomainError):
+    """Raised by ``mrr.domain.transfer_trust.resolve_trusted_transfer_key``
+    (task-packets/E6-T01.yaml) when a ``TransferContract``'s claimed signing
+    key id DOES resolve to a descriptor in the trusted sender practice's
+    ``KeyRing`` (see ``UnknownKeyIdError`` for the case where it does not),
+    but that descriptor is not
+    ``mrr.domain.key_management.KeyRing.is_valid_at`` the evaluation
+    instant — revoked, rotated, expired, or not yet valid. Mirrors
+    ``TaskKeyNotValidError``'s/``CrateKeyNotValidError``'s identical fact
+    pattern for a ``TransferContract``, kept as a separate type for the same
+    reason ``TransferSignerMismatchError`` is. This is what rejects a
+    transfer offer signed by a key that has since been revoked or rotated
+    even though the raw Ed25519 signature itself is still cryptographically
+    valid over the contract's bytes (docs/spec/04_SECURITY_AND_POLICY.md
+    section 8.4: "New objects are rejected after revocation.") — trust
+    anchoring is deliberately a stronger gate than raw signature
+    verification alone, evaluated at the RESPOND instant, not the contract's
+    own ``created_at``. Carries ``kid`` and the evaluation instant ``at``.
+    """
+
+    def __init__(self, kid: str, *, at: datetime) -> None:
+        self.kid = kid
+        self.at = at
+        super().__init__(
+            f"key {kid!r} is not valid at evaluation instant {at.isoformat()!r} "
+            "(revoked, rotated, expired, or not yet valid)"
+        )
+
+
+class ParticipantIdentifiableTransferError(DomainError):
+    """Raised by ``mrr.services.transfer.service.TransferService.create``
+    (task-packets/E6-T01.yaml, MRR-NFR-006: "Raw restricted data MUST remain
+    local unless a specific approved transfer permits export") when one of
+    ``TransferContract.transferred_objects`` resolves to a stored object
+    whose own body carries ``classification == "PARTICIPANT_IDENTIFIABLE"``.
+
+    docs/spec/02_DOMAIN_MODEL.md section 4's classification table states
+    PARTICIPANT_IDENTIFIABLE data is "never exported by default," and no
+    consent-override machinery exists in this task's scope (that is E7
+    field-research policy) — MRR-NFR-006 is read as licensing
+    INTERNAL/RESTRICTED/SENSITIVE transfer via an approved
+    ``TransferContract``, but NOT overriding PARTICIPANT_IDENTIFIABLE's
+    stricter "never by default." Checked BEFORE anything is persisted — a
+    caught instance always means no ``TransferContract`` revision or event
+    was written. Carries ``transferred_object_id`` (the offending entry's
+    own ``id``).
+    """
+
+    def __init__(self, transferred_object_id: str) -> None:
+        self.transferred_object_id = transferred_object_id
+        super().__init__(
+            f"TransferContract references {transferred_object_id!r}, which is classified "
+            "PARTICIPANT_IDENTIFIABLE — never exported by default (MRR-NFR-006, "
+            "docs/spec/02_DOMAIN_MODEL.md section 4); nothing was persisted"
+        )

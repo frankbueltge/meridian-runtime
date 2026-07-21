@@ -1,17 +1,18 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Eighteen hand-written Pydantic v2 models mirror the eighteen entity
+Nineteen hand-written Pydantic v2 models mirror the nineteen entity
 schemas in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``,
 ``Claim``, ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest``
 (E2-T05), ``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
 (E3-T03), ``VerificationResult`` (E3-T04), ``ModelProfile``/
 ``ModelInvocation`` (E4-T01), ``Hypothesis`` (E4-T03),
 ``SkepticalChallenge`` (E4-T04), ``Practice`` (E5-T01),
-``NodeMessageEnvelope`` (E5-T03), and ``OfflineBundle`` (E5-T06). Shared
-building blocks mirroring ``schemas/common.schema.json`` live in
-``mrr.contracts.common`` and are re-exported here too (``Signature``,
-``ArtifactRef``, ``Scope``, ``Budget``, ``BaseObject``, ``MRRModel``).
+``NodeMessageEnvelope`` (E5-T03), ``OfflineBundle`` (E5-T06), and
+``TransferContract`` (E6-T01). Shared building blocks mirroring
+``schemas/common.schema.json`` live in ``mrr.contracts.common`` and are
+re-exported here too (``Signature``, ``ArtifactRef``, ``Scope``, ``Budget``,
+``BaseObject``, ``MRRModel``).
 
 These models are hand-written rather than generated from the JSON Schemas
 (see the PR body for the full rationale): the claim schema's conditional
@@ -108,6 +109,13 @@ from mrr.contracts.task_bundle import (
     TaskBundle,
     TaskBundleStatus,
 )
+from mrr.contracts.transfer_contract import (
+    ObligationKind,
+    ObligationStub,
+    TransferContract,
+    TransferredObjectRef,
+    TransferStatus,
+)
 from mrr.contracts.verification_result import (
     Finding,
     FindingSeverity,
@@ -172,6 +180,8 @@ __all__ = [
     "NodeManifest",
     "NodeMessageEnvelope",
     "NumericRecomputation",
+    "ObligationKind",
+    "ObligationStub",
     "OfflineBundle",
     "OperationKind",
     "Practice",
@@ -203,6 +213,9 @@ __all__ = [
     "TextLocator",
     "TokenUsage",
     "ToolCallStatus",
+    "TransferContract",
+    "TransferStatus",
+    "TransferredObjectRef",
     "TransportMode",
     "UncertaintyEntry",
     "UncertaintyKind",

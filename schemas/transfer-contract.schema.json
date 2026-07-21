@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/transfer-contract.schema.json",
+  "title": "MRR TransferContract",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": ["kind", "sender_practice_id", "receiver_practice_id", "transferred_objects", "purpose", "permitted_uses", "disclosure_rules", "attribution_rules", "caveats", "correction_subscription", "obligations", "nonce", "expires_at", "signature", "status"],
+      "properties": {
+        "kind": {"const": "TransferContract"},
+        "sender_practice_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "receiver_practice_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "transferred_objects": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "content_hash"],
+            "properties": {
+              "id": {"$ref": "common.schema.json#/$defs/urn"},
+              "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "purpose": {"type": "string", "minLength": 1},
+        "permitted_uses": {"type": "array", "items": {"type": "string"}},
+        "disclosure_rules": {"type": "object"},
+        "attribution_rules": {"type": "object"},
+        "caveats": {"type": "array", "items": {"type": "string"}},
+        "correction_subscription": {"type": "boolean"},
+        "obligations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["review_correction", "preserve_attribution", "retain_caveat", "delete_or_restrict_data", "notify_downstream_recipients", "obtain_human_approval", "re_run_analysis", "respond_to_transfer"]
+              },
+              "deadline": {"$ref": "common.schema.json#/$defs/timestamp"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "nonce": {"type": "string", "minLength": 16},
+        "expires_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "signature": {"$ref": "common.schema.json#/$defs/signature"},
+        "status": {"type": "string", "enum": ["created", "offered", "accepted", "adapted", "rejected", "deferred", "unresolved"]}
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
