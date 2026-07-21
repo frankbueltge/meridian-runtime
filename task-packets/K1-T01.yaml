@@ -1,0 +1,993 @@
+task_id: K1-T01
+title: >-
+  Kernel governance contracts — QuestionModel, ConceptCharter, MethodProtocol
+  (with lock/amendment lifecycle), EvidenceMatrix, MethodRuling, and
+  ResearchDecision: baseObject-composed schemas, Pydantic contracts,
+  lifecycle state machines, examples, and contract tests. No service, no
+  persistence, no migration, no edges.
+status: approved
+reviewer_resolution: >-
+  Approved 2026-07-21 with the following resolutions of the flagged gaps:
+  (1) The MethodProtocol lifecycle question is resolved by a spec-08
+  amendment in the same commit — amended -> reviewed is a drawn edge (the
+  re-review cycle), so an amendment is re-reviewable and re-lockable and
+  repeated amendments are possible without a self-transition; each lock
+  binds its own revision's content hash, keeping earlier-lock work
+  auditable. Implement the machine with that edge. (2) Lock hash IS the
+  locked revision's baseObject.content_hash (ADR-0004) plus
+  locked_by/locked_at — confirmed. (3) MTH-017 scope/non-applicability
+  lives on MethodRuling for now; whether Claim needs its own copy is
+  K1-T02's question — confirmed. (4) The proposed
+  EvidenceMatrixVerificationStatus vocabulary is accepted as a local,
+  versioned vocabulary. (5) issued_by stays distinct from created_by (the
+  accountable decider may differ from the writer) — confirmed.
+derivation: >-
+  Derived by a planning session (not yet reviewed) per
+  docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/design/2026-07-21-research-method-kernel-plan.md's K1 epic definition
+  (`K1-T01 — Kernel governance contracts. QuestionModel, ConceptCharter,
+  MethodProtocol (with lock/amendment lifecycle), EvidenceMatrix,
+  MethodRuling, ResearchDecision: schemas (baseObject-composed), Pydantic
+  contracts, lifecycle state machines, examples, contract tests. Lock
+  semantics per MTH-007/008 ... No migration.`, lines 37-42) and
+  docs/spec/08_RESEARCH_METHOD_KERNEL.md (status ACCEPTED, 2026-07-21)
+  section 3's object table (lines 40-55: the six kinds and their exact
+  lifecycles — QuestionModel/ConceptCharter draft -> accepted -> superseded;
+  MethodProtocol draft -> reviewed -> locked -> amended | executed;
+  EvidenceMatrix draft -> active -> frozen -> superseded; MethodRuling
+  pending -> issued -> superseded; ResearchDecision issued, append-only) and
+  section 4's normative requirements (lines 76-140). This packet implements
+  the CONTRACT SHAPES only — no registry/service, no persistence wiring, no
+  migration, no edges — mirroring exactly how task-packets/K0-T01.yaml (the
+  immediately preceding K-epic task, merged via PR #44, `b6ffdaa`) scoped
+  itself to schema+contract+lifecycle for MethodProfile alone, and how
+  task-packets/E1-T03.yaml demonstrated this repository's own precedent for
+  bundling several baseObject-composed schemas, Pydantic models, and a
+  cross-validation harness into ONE task packet rather than one packet per
+  entity (`E1-T03`: six schemas — research-score, node-manifest, task-bundle,
+  claim, evidence-crate, correction-event — in one packet, `commands: make
+  test-contract`).
+
+  Ground-truth check at derivation time (2026-07-21, main at `d49cb7d`):
+  `scripts/check_contracts.py`'s `ENTITY_MODELS` dict (lines 88-110) carries
+  exactly twenty-one entities today, the twenty-first being `method-profile`
+  per that module's own docstring (lines 1-14: "extended to a twenty-first
+  entity, MethodProfile, by K0-T01"). Two further entities are planned but
+  NOT yet implemented in code, confirmed by direct search (no
+  `CorrectionNotification`/`CorrectionResponse` string anywhere under
+  `packages/`): task-packets/E6-T03.yaml (`CorrectionNotification`, status
+  `approved` — governance-approved per commit `cdb9fc1`, "Governance: E6-T03
+  approved", but that commit approves the DESIGN, not a merged
+  implementation; no `schemas/correction-notification.schema.json`,
+  no `packages/contracts/mrr/contracts/correction_notification.py` exist),
+  and task-packets/E6-T04.yaml (`CorrectionResponse`, status `draft`, also
+  unimplemented). Neither is assumed complete or in-flight by this packet;
+  see specification_gaps for the resulting ordinal-numbering caveat on this
+  packet's own six entities.
+
+  MethodProfile's own contract module
+  (packages/contracts/mrr/contracts/method_profile.py) is this task's direct
+  structural template: `ClaimCeiling`/`CLAIM_CEILING_ORDER` (lines 124-151,
+  reused verbatim here, not redeclared, for `MethodRuling.ruled_ceiling`),
+  the "every declared field required unconditionally" discipline (module
+  docstring's "Every declared field is required unconditionally" section,
+  lines 84-104, and task-packets/K0-T01.yaml derived_decisions (h)), and the
+  UNSIGNED/revision-based (not event-only, not ADR-0004-signed)
+  classification for every Layer-1 method object (task-packets/K0-T01.yaml
+  derived_decisions (a)) all carry over unchanged to these six new entities.
+  `packages/domain/mrr/domain/lifecycles.py`'s existing seven `StateMachine`
+  constants (lines 174-580, most recently `METHOD_PROFILE_LIFECYCLE` at
+  lines 541-580) are the direct template for the six new machines this task
+  adds, including that module's own established discipline of declaring
+  ONLY transitions literally drawn in the owning specification text and
+  flagging everything else as an open question (module docstring's "Open
+  specification questions" section, lines 36-96) rather than inventing a
+  plausible-but-undrawn edge — this discipline is load-bearing for
+  MethodProtocol's own lock/amendment shape below (see derived_decisions).
+  `packages/contracts/mrr/contracts/common.py`'s `Scope` model (lines
+  102-114, mirroring `schemas/common.schema.json#/$defs/scope`, lines 59-68)
+  is reused verbatim for QuestionModel's "population/scope/time" and
+  MethodRuling's "scope of validity" (MTH-017) rather than inventing a
+  parallel shape. `packages/domain/mrr/domain/hashing_policy.py`'s
+  `compute_content_hash` (lines 80-85, composing `mrr.crypto.canonical` per
+  ADR-0004) is cited, not touched, as the exact mechanism that already
+  produces "the exact content hash" MTH-007 requires a lock to bind —
+  see derived_decisions for why this task adds no new hashing function.
+objective: >-
+  Provide the six Layer-1 method-governance object kinds
+  (docs/spec/08_RESEARCH_METHOD_KERNEL.md section 3) as baseObject-composed
+  JSON Schemas, mirroring Pydantic v2 contracts, one example each, one
+  `StateMachine` lifecycle definition each in
+  packages/domain/mrr/domain/lifecycles.py, and contract-tier tests
+  (positive round-trip via scripts/check_contracts.py's `ENTITY_MODELS`,
+  per-entity variant tests, negative fixtures, unit and property tests
+  against the six new lifecycle machines). This is CONTRACT-SHAPE work
+  only: no `MethodProtocolService`-style registry or persistence-service is
+  introduced (no new `services/**` path is touched at all), no Alembic
+  migration is added (the generic `objects` table's un-CHECKed
+  `kind` column already accepts any string, exactly as
+  task-packets/K0-T01.yaml confirmed for `MethodProfile`), no new
+  `EDGE_VOCABULARY` member or edge-type CHECK-constraint migration is added
+  (the four new edge types spec 08 section 3 names —
+  `operationalizes`/`governed_by_protocol`/`ruled_by`/`decided_by` — are
+  explicitly task-packets/K1-T02.yaml's own scope per
+  docs/design/2026-07-21-research-method-kernel-plan.md lines 43-49), no
+  domain event is emitted anywhere (MRR-MTH-019's "profile activation,
+  protocol lock, ruling issuance, kill triggers, and research decisions MUST
+  each emit a domain event" requires a service to call from — none exists
+  in this packet's scope, so MTH-019 is explicitly NOT claimed as satisfied
+  here), and no claim-ceiling ENFORCEMENT is added (MRR-MTH-004/005/006's
+  `CLAIM_CEILING_EXCEEDED` gate against a real `Claim` is
+  task-packets/K1-T02.yaml's job; this task only imports and reuses the
+  already-declared `ClaimCeiling`/`CLAIM_CEILING_ORDER` vocabulary for
+  `MethodRuling.ruled_ceiling`).
+
+  MethodProtocol's lock/amendment shape (MRR-MTH-007/008) is this packet's
+  heaviest and most novel piece — described fully in derived_decisions and
+  scoped crisply: this packet defines the SCHEMA-LEVEL co-occurrence
+  invariants (locked status requires `locked_at`/`locked_by`; amended status
+  requires a non-null `amendment` block) and the STATE-MACHINE shape (which
+  transitions are legal), both testable today with no service; it does NOT
+  implement the actual persistence-level tamper-proofing of an
+  already-locked revision's stored bytes, which is an existing, unchanged,
+  generic guarantee of `mrr.domain.repositories.ObjectRepository`'s
+  append-only `insert_revision` (already exercised by
+  tests/unit/domain/test_repositories.py and
+  tests/integration/persistence/test_postgres_repositories.py for ANY
+  object kind, not extended or duplicated by this packet).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#3-method-governance-objects-layer-1
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#4-normative-requirements
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#5-profile-systematic_evidence_synthesis-v1-the-first-profile
+  - docs/design/2026-07-21-research-method-kernel-plan.md
+  - docs/design/2026-07-21-research-method-kernel-rework.md#5-the-first-profile-systematic_evidence_synthesis-on-the-two-atlases
+  - docs/spec/adr/ADR-0004-CANONICAL-OBJECT-SERIALIZATION.md
+  - docs/spec/02_DOMAIN_MODEL.md#1-identity-revision-and-hashing
+  - docs/spec/02_DOMAIN_MODEL.md#28-sourcerecord
+  - docs/spec/02_DOMAIN_MODEL.md#29-evidenceanchor
+  - docs/spec/02_DOMAIN_MODEL.md#210-sourcefamily
+  - docs/spec/02_DOMAIN_MODEL.md#211-claim
+  - schemas/common.schema.json
+  - schemas/method-profile.schema.json
+  - schemas/claim.schema.json
+  - schemas/source-record.schema.json
+  - schemas/evidence-anchor.schema.json
+  - packages/contracts/mrr/contracts/common.py
+  - packages/contracts/mrr/contracts/method_profile.py
+  - packages/contracts/mrr/contracts/claim.py
+  - packages/contracts/mrr/contracts/source_record.py
+  - packages/contracts/mrr/contracts/evidence_anchor.py
+  - packages/contracts/mrr/contracts/verification_result.py
+  - packages/contracts/mrr/contracts/source_family.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - packages/domain/mrr/domain/repositories.py
+  - scripts/check_contracts.py
+  - task-packets/K0-T01.yaml
+  - task-packets/E1-T03.yaml
+  - task-packets/E6-T03.yaml
+  - task-packets/E6-T04.yaml
+  - migrations/versions/b9e7d0e3aff6_initial_schema_objects_and_edges_tables.py
+  - tests/unit/domain/test_lifecycles.py
+  - tests/property/test_lifecycle_properties.py
+  - tests/contract/test_method_profile_variants.py
+  - tests/contract/test_examples.py
+requirements:
+  - MRR-MTH-001
+  - MRR-MTH-002
+  - MRR-MTH-007
+  - MRR-MTH-008
+  - MRR-MTH-010
+  - MRR-MTH-011
+  - MRR-MTH-015
+  - MRR-MTH-017
+  - MRR-MTH-020
+  - MRR-NFR-001
+  - MRR-NFR-002
+  - MRR-NFR-003
+  - MRR-NFR-010
+allowed_paths:
+  - schemas/question-model.schema.json
+  - schemas/concept-charter.schema.json
+  - schemas/method-protocol.schema.json
+  - schemas/evidence-matrix.schema.json
+  - schemas/method-ruling.schema.json
+  - schemas/research-decision.schema.json
+  - examples/question-model.example.json
+  - examples/concept-charter.example.json
+  - examples/method-protocol.example.json
+  - examples/evidence-matrix.example.json
+  - examples/method-ruling.example.json
+  - examples/research-decision.example.json
+  - packages/contracts/mrr/contracts/question_model.py
+  - packages/contracts/mrr/contracts/concept_charter.py
+  - packages/contracts/mrr/contracts/method_protocol.py
+  - packages/contracts/mrr/contracts/evidence_matrix.py
+  - packages/contracts/mrr/contracts/method_ruling.py
+  - packages/contracts/mrr/contracts/research_decision.py
+  - packages/contracts/mrr/contracts/__init__.py
+  - packages/domain/mrr/domain/lifecycles.py
+  - packages/domain/mrr/domain/exceptions.py
+  - scripts/check_contracts.py
+  - tests/unit/domain/**
+  - tests/property/**
+  - tests/contract/**
+forbidden_changes:
+  - >-
+    any `services/**` path whatsoever (no `MethodProtocolService`,
+    `QuestionModelService`, `EvidenceMatrixService`, `MethodRulingService`,
+    or `ResearchDecisionService`, and no additive method on any EXISTING
+    service) — registry/persistence-service wiring is explicitly
+    task-packets/K1-T02.yaml/K1-T03.yaml's job, not this one's; this packet
+    proves its lifecycle machines and contract invariants directly against
+    `mrr.domain.lifecycles.StateMachine` and the Pydantic models themselves,
+    exactly as task-packets/E1-T04.yaml's own lifecycle definitions were
+    tested a full epic before any service (E2-T01) existed to drive them
+  - >-
+    `packages/persistence/**` and any Alembic migration under `migrations/`
+    — confirmed unnecessary: `migrations/versions/
+    b9e7d0e3aff6_initial_schema_objects_and_edges_tables.py` defines
+    `objects.kind` as an un-CHECKed `sa.Text()` column (line 69; only
+    `edges.edge_type` carries a CHECK constraint, lines 93-95), so six new
+    `kind` string values need no schema change, exactly as
+    task-packets/K0-T01.yaml confirmed for `MethodProfile`
+  - >-
+    `mrr.domain.repositories.EDGE_VOCABULARY` (lines 27-56) and any edge-type
+    CHECK-constraint migration — the four new edge types spec 08 section 3
+    names (`operationalizes`, `governed_by_protocol`, `ruled_by`,
+    `decided_by`) are explicitly task-packets/K1-T02.yaml's scope per the
+    plan doc's own K1-T02 line ("`EDGE_VOCABULARY` + CHECK-constraint
+    migration for `operationalizes`, `governed_by_protocol`, `ruled_by`,
+    `decided_by`"); this packet adds none of them and wires no graph edge
+    for any of the six new entities — every cross-object reference below
+    (e.g. `MethodProtocol.profile_id`, `EvidenceMatrix.protocol_id`) is a
+    PLAIN body field, never an edge, mirroring
+    `mrr.contracts.evidence_anchor.EvidenceAnchor.source_record_id`'s own
+    by-reference-only precedent (a plain field existing before, and
+    independent of, any later graph-edge addition)
+  - >-
+    actual claim-ceiling ENFORCEMENT (`CLAIM_CEILING_EXCEEDED` at claim
+    submission or projection rendering, MRR-MTH-004/005/006) and any change
+    to `schemas/claim.schema.json` or
+    `packages/contracts/mrr/contracts/claim.py` — task-packets/K1-T02.yaml's
+    job; this task only imports `ClaimCeiling`/`CLAIM_CEILING_ORDER` from
+    `mrr.contracts.method_profile` (K0-T01, already declared, never
+    redeclared) for `MethodRuling.ruled_ceiling` and never checks it against
+    a real `Claim`. Claim itself gains no new field from this packet — see
+    derived_decisions/specification_gaps for why MTH-017's "claims ... MUST
+    carry" scope-of-validity/non-applicability text is satisfied here via
+    `MethodRuling` instead, pending a K1-T02 decision on whether `Claim`
+    also needs its own copy
+  - >-
+    kill-condition transition PLUMBING (MRR-MTH-010's "a triggered kill
+    condition MUST deterministically transition the affected branch") and
+    the synthetic-fixture fail-closed gate (MRR-MTH-012,
+    `SYNTHETIC_FIXTURE_NOT_EVIDENCE`) — both task-packets/K1-T02.yaml's job;
+    this packet only adds the REQUIRED, non-empty `kill_conditions` field on
+    `MethodProtocol` as declared data, with no transition-triggering logic
+    anywhere
+  - >-
+    the real `systematic_evidence_synthesis` executor, any atlas/corpus
+    ingestion, model-assisted extraction, or deterministic `MethodRuling`
+    ISSUANCE logic (task-packets/K1-T03.yaml/K1-T04.yaml) — this packet
+    defines the `MethodRuling`/`EvidenceMatrix` SHAPES only, never populates
+    them from real evidence
+  - >-
+    `services/node_runtime/**`, the `Executor` protocol, and any capability
+    dispatch machinery (task-packets/K0-T02.yaml) — untouched, unrelated to
+    this packet's scope
+  - HTTP/FastAPI endpoints
+  - both import-linter contracts in `pyproject.toml` (must remain unmodified and KEPT)
+  - >-
+    domain-event emission of any kind (MRR-MTH-019) — no service exists in
+    this packet's scope to call from; the six lifecycle machines are pure,
+    side-effect-free `StateMachine` data, exactly like the other seven
+    already in `packages/domain/mrr/domain/lifecycles.py` before their own
+    driving services existed
+derived_decisions:
+  - >-
+    Cross-cutting (all six entities). Every one of the six new object kinds
+    is UNSIGNED and revision-based — like `MethodProfile`
+    (task-packets/K0-T01.yaml derived_decisions (a)), not event-only like
+    `TaskBundle` and not one of the three ADR-0004 cross-practice SIGNED
+    kinds (`NodeManifest`/`TaskBundle`/`EvidenceCrate`). Spec 08 section 3's
+    table shows no signature requirement for any Layer-1 method object, and
+    none of the six is itself transferred cross-practice within K0/K1 scope
+    (they are LOCAL methodological/governance records of one practice's own
+    research process). Each lifecycle transition therefore mints a NEW
+    REVISION with `status` (and, where relevant, other body fields) changed,
+    exactly mirroring `ResearchScoreService._transition`'s/
+    `MethodProfileService`'s own pattern — though no such service exists in
+    THIS packet's own scope (see forbidden_changes); this decision only
+    fixes the SHAPE a future K1-T02/K1-T03 service will drive.
+  - >-
+    Cross-cutting: the "lock hash" (MRR-MTH-007: "Locking binds the exact
+    content hash, actor, and time") is NOT a new, separately-computed field
+    on `MethodProtocol`. It IS that locked revision's own already-existing
+    `baseObject.content_hash` (schemas/common.schema.json `$defs.baseObject`,
+    computed per ADR-0004 by `mrr.domain.hashing_policy.compute_content_hash`,
+    unchanged, not touched by this task) — every first-class MRR object
+    already carries this field, and once a revision is inserted via the
+    existing, unchanged, append-only `ObjectRepository.insert_revision`, that
+    revision's own `content_hash` is permanently addressable by
+    `(id, revision)` for as long as the object exists, which is exactly "the
+    exact content hash" MTH-007 asks a lock to bind. Introducing a SEPARATE,
+    redundant `lock_hash` field that merely copies `content_hash` at lock
+    time was considered and rejected: it would either (a) have to be
+    computed over a payload that excludes itself to avoid circularity,
+    duplicating `hashing_policy`'s own exclusion-field policy for no new
+    information, or (b) silently drift from the true stored `content_hash`
+    if any canonicalization detail ever changed. This task instead adds
+    exactly two NEW body fields recording the two facts `content_hash` alone
+    does not carry — WHO locked it and WHEN — `locked_by: Urn` and
+    `locked_at: AwareDatetime`, both required non-null exactly when `status`
+    is `locked`, `amended`, or `executed` (the lock, once made, is a
+    permanent historical fact carried forward on every later revision of the
+    same object id) and both required null on `draft`/`reviewed`. Flagged in
+    specification_gaps as an interpretive choice, not the only one a
+    reviewer might make.
+  - >-
+    MethodProtocol's lifecycle shape (the heart of this packet). Spec 08
+    section 3's table row reads literally "draft -> reviewed -> **locked** ->
+    amended | executed" — read, per
+    packages/domain/mrr/domain/lifecycles.py's own established discipline of
+    declaring only transitions the owning text literally draws (module
+    docstring, "Open specification questions"; also
+    task-packets/E1-T04.yaml's invariant "only transitions drawn ... are
+    legal"), as a two-way BRANCH directly off `locked`: `(locked, amended)`
+    and `(locked, executed)`, and nothing else. `METHOD_PROTOCOL_LIFECYCLE`
+    therefore declares exactly four edges — `(draft, reviewed)`,
+    `(reviewed, locked)`, `(locked, amended)`, `(locked, executed)` — with
+    both `amended` and `executed` TERMINAL (no further drawn edge from
+    either). Two consequences of this literal reading are flagged
+    PROMINENTLY as open specification questions rather than silently
+    resolved, because they matter operationally to K1-T02/K1-T03: (i) under
+    this reading, a protocol that is EVER amended can never subsequently
+    reach `executed` in this state machine — no `(amended, executed)` edge
+    is drawn anywhere in spec 08's own table text — which seems to conflict
+    with MRR-MTH-008's own premise that execution can still proceed under an
+    amended (possibly outcome-informed-demoted) protocol; (ii) a protocol
+    cannot be amended a SECOND time, because `StateMachine.__post_init__`
+    structurally forbids declaring any self-transition
+    (`packages/domain/mrr/domain/lifecycles.py` lines 131-137,
+    "self-transition ... is not drawn ... and must not be declared"), so
+    `(amended, amended)` cannot be declared even if it were desired, and no
+    `(amended, locked)` re-locking edge is drawn in spec 08's text either.
+    Both are left UNDRAWN and unimplemented, mirroring this module's own
+    existing treatment of `ResearchScore.SUSPENDED`'s dead end and
+    `TransferContract`/`Obligation`'s "second respond" open questions,
+    rather than inventing a plausible resolution unilaterally.
+  - >-
+    MethodProtocol's `amendment` block. MRR-MTH-008 ("Post-lock changes MUST
+    be amendments: a new revision recording reason, actor, and whether
+    outcome information had been observed") is realized as one nested
+    object, `ProtocolAmendment` (`reason: str` non-empty, `actor: Urn`,
+    `amended_at: AwareDatetime`, `outcome_information_observed: bool`, and
+    `amended_locked_content_hash: Sha256` — an explicit back-reference to the
+    EXACT locked revision's own `content_hash` being amended, letting a
+    reader confirm precisely which locked commitment changed without a
+    revision-history walk), required non-null exactly when `status ==
+    "amended"` and required null otherwise. `outcome_information_observed`
+    is a plain, undecorated `bool` with no default — MTH-008's "demotes
+    affected analyses to exploratory" consequence is explicitly NOT
+    implemented here (that demotion acts on downstream Claims/analyses, a
+    K1-T02/K1-T03 concern); this task only makes the FACT
+    machine-recordable, unconditionally, on every amendment.
+  - >-
+    QuestionModel. `claim_type_sought` reuses
+    `mrr.contracts.claim.ClaimType` verbatim (the existing seven-value
+    docs/spec/02_DOMAIN_MODEL.md section 2.11 vocabulary), mirroring
+    task-packets/K0-T01.yaml derived_decisions (d)'s identical reuse for
+    `MethodProfile.claim_types` — the only difference is cardinality
+    (`claim_type_sought` is singular per spec 08 section 3's "claim type
+    sought", `MethodProfile.claim_types` is the plural set a profile CAN
+    produce). `scope` reuses `mrr.contracts.common.Scope`
+    (`schemas/common.schema.json#/$defs/scope`) verbatim for spec 08's
+    "population/scope/time" rather than inventing a parallel population/
+    time/geography shape. `load_bearing_terms` is `list[str]`, schema-present
+    but NOT required non-empty — mirroring
+    `MethodProfile.inappropriate_uses`'s own identical precedent (spec 08
+    doesn't say the list must be non-empty; task-packets/K0-T01.yaml
+    specification_gaps flags the identical judgment call there) — flagged
+    again here rather than silently forcing a minimum. MRR-MTH-001's
+    "MUST be represented as an accepted QuestionModel before an executor
+    task ... is negotiated" and "MUST NOT directly create an executable
+    analysis task" are structural facts this schema supports (a
+    `QuestionModel` is a first-class, reviewable object with its OWN
+    lifecycle, distinct from and prior to any `TaskBundle`) but are not
+    THEMSELVES enforced by any code in this packet — enforcement that a
+    `TaskBundle` actually references an ACCEPTED `QuestionModel` is
+    K1-T02/K1-T03 service-level work, since it requires a repository lookup.
+  - >-
+    ConceptCharter. `entries` is `list[ConceptCharterEntry]`, required
+    non-empty (`Field(min_length=1)`, mirroring
+    `mrr.contracts.source_family.SourceFamily.member_source_ids`'s own
+    identical non-degeneracy precedent: a charter with zero entries
+    operationalizes nothing). Each entry carries its OWN `entry_id: str`
+    (non-empty, unique within one `ConceptCharter` revision, enforced by a
+    `model_validator`) because spec 08 section 3's edge description
+    ("`operationalizes` — ConceptCharter entry -> QuestionModel term") points
+    at ONE entry, not the whole charter, and MRR-MTH-018's "versioned
+    charter entries" (referenced by
+    `MethodProtocol.sensitivity_variations` here) needs a stable handle
+    finer-grained than the charter's own `baseObject.id`. `term` (the
+    load-bearing term string it operationalizes — expected, but NOT
+    schema-enforced here, to match a string appearing in some
+    `QuestionModel.load_bearing_terms` list; cross-object matching is
+    service-level, deferred) and `definition` (the operationalization text
+    itself) are both required non-empty strings; `scope_note` is optional.
+    The `operationalizes` EDGE itself (ConceptCharter entry -> QuestionModel
+    term) is explicitly task-packets/K1-T02.yaml's addition, per
+    forbidden_changes — this packet's entries exist as addressable data
+    ahead of that edge, mirroring the "plain field/entry now, edge later"
+    precedent `mrr.contracts.source_record.SourceRecord.source_family_id`
+    already set (E3-T01) before `SourceFamily`'s own edge machinery (E3-T03).
+  - >-
+    EvidenceMatrix. `rows: list[EvidenceMatrixRow]` carries NO minimum
+    length — deliberately, unlike `ConceptCharter.entries`. MRR-MTH-011
+    ("`insufficient_evidence` outcomes ... are successful terminal results
+    ... MUST NOT be silently omitted from any claim landscape") means a
+    matrix that legitimately found ZERO usable sources must remain
+    constructible and addressable, not rejected as degenerate — a zero-row
+    `EvidenceMatrix` is exactly the honest record a later
+    `stop_insufficient_evidence` `ResearchDecision` would point back to.
+    Each row (per this task's explicit instruction) carries
+    `source_record_id: Urn` (-> `SourceRecord`, E3-T01, cited not modified),
+    an optional `evidence_anchor_id: Urn | None` (a row may exist before any
+    `EvidenceAnchor` resolves it), an optional `source_family_id: Urn | None`
+    (mirroring `SourceRecord.source_family_id`'s own identical optionality —
+    E3-T03's `SourceFamily` machinery may not have run yet),
+    `verification_status` (a NEW, minimal three-value vocabulary —
+    `verified` / `unverifiable` / `pending` — proposed by this task since no
+    existing vocabulary names it; the closest existing analog,
+    `mrr.contracts.evidence_anchor.AnchorValidationStatus`
+    (`validated`/`unvalidated`/`invalid`), does not have a value meaning
+    specifically "we tried and this source cannot be verified", which
+    MRR-MTH-015's "unverifiable rows are marked, never dropped" requires by
+    name; flagged in specification_gaps as this task's own minimal proposal,
+    mirroring `mrr.contracts.evidence_anchor.RecomputationStatus`'s own
+    identical "not a specification-given vocabulary" precedent disclosure),
+    `unverifiable_reason: str | None` (required non-null, non-empty exactly
+    when `verification_status == "unverifiable"`, enforced by a
+    `model_validator` — MRR-MTH-015's headline gate), `claim_relevant_finding:
+    str` (non-empty — the actual finding text this row records), and
+    `extraction: dict[str, str]` (free-form, keyed by the governing
+    `MethodProtocol`'s own `extraction_fields` names; not cross-validated
+    against them here — service-level, deferred). `row_id` values are
+    required unique within one `EvidenceMatrix` revision (model_validator),
+    mirroring `ConceptCharter.entries[].entry_id`'s identical uniqueness
+    treatment, so a future edge or projection can address one row
+    unambiguously.
+  - >-
+    MethodRuling. `ruled_ceiling: ClaimCeiling` imports and reuses
+    `mrr.contracts.method_profile.ClaimCeiling`/`CLAIM_CEILING_ORDER`
+    verbatim (this task's own explicit instruction) — never redeclared.
+    MRR-MTH-017's "scope of validity and at least one named non-
+    applicability condition" is placed HERE, on `MethodRuling`
+    (`scope_of_validity: Scope`, reusing `mrr.contracts.common.Scope`
+    verbatim like QuestionModel does, and `non_applicability_conditions:
+    list[str]`), rather than as a new field on `Claim` — deliberately, for
+    two reasons: (1) `schemas/claim.schema.json`/
+    `packages/contracts/mrr/contracts/claim.py` are explicitly outside this
+    packet's `allowed_paths` (K1-T02 territory, since claim-service
+    enforcement is that task's job); (2) `MethodRuling` is precisely the
+    object that "licenses claim language" for a branch (spec 08 section 3),
+    so recording scope/non-applicability once per ruling — inherited by
+    every claim the eventual `ruled_by` edge (K1-T02) points at — is more
+    DRY than restating it on every individual claim. This is a placement
+    DECISION, not a foreclosure: whether `Claim` should ALSO carry its own
+    copy (to literally satisfy MTH-017's "claims ... MUST carry" wording at
+    the claim-object level, e.g. for a claim-only projection that never
+    joins back to its ruling) is explicitly left to task-packets/K1-T02.yaml
+    when it touches `claim.schema.json`; flagged in specification_gaps.
+    `non_applicability_conditions` is required non-empty exactly when
+    `CLAIM_CEILING_ORDER.index(ruled_ceiling) >
+    CLAIM_CEILING_ORDER.index("descriptive")` (i.e. `associational_unadjusted`
+    and every stronger ceiling) — MTH-017's own "claims above descriptive"
+    threshold, enforced by a `model_validator` importing the same ordered
+    tuple rather than re-deriving it. `ruling_basis` is a two-value
+    discriminator (`deterministic_rule` / `human_review`) with exactly one
+    of `deterministic_rule_reference: str | None` /
+    `human_review: HumanReviewReference | None`
+    (`{reviewer_id: Urn, review_note: str}`) populated to match — mirroring
+    `mrr.contracts.evidence_anchor.EvidenceAnchor`'s own `anchor_kind`-picks-
+    the-active-half pattern exactly, enforced by an identically-shaped
+    `model_validator`. `issued_by: Urn` is required unconditionally
+    (following `MethodProfile`'s own "every field required from draft"
+    discipline, task-packets/K0-T01.yaml derived_decisions (h), applied here
+    too for consistency: even a `pending` `MethodRuling` revision already
+    carries its full proposed content, not an empty shell) — flagged in
+    specification_gaps as possibly redundant with `baseObject.created_by`
+    for some callers, kept distinct anyway because a system process could
+    persist a ruling on a human reviewer's behalf (mirroring
+    `VerificationResult.reviewer_id`'s own coexistence with `created_by`).
+    `protocol_id: Urn` and `applies_to_analysis: str` (a free-string tag,
+    NOT a first-class "branch" object — none exists anywhere in this
+    repository, confirmed by search) identify which governing
+    `MethodProtocol` and which of its `planned_analyses` entries this
+    ruling covers; this cross-object correspondence is not validated here
+    (service-level, deferred).
+  - >-
+    ResearchDecision. `decision_type` is the exact seven-value closed
+    vocabulary spec 08 section 3 names verbatim (`continue`, `revise`,
+    `narrow_scope`, `kill_branch`, `replicate`, `escalate_human_review`,
+    `stop_insufficient_evidence`) — nothing added, nothing dropped.
+    MRR-MTH-011's "`stop_insufficient_evidence` decisions are successful
+    terminal results ... MUST NOT be silently omitted" is satisfied at the
+    CONTRACT level by validating `stop_insufficient_evidence` IDENTICALLY to
+    every other `decision_type` value — no extra required field, no
+    distinguishing `is_error`/`is_terminal` flag anywhere on the model —
+    since special-casing it would itself be the kind of silent
+    differential treatment MTH-011 warns against. "Append-only (no
+    lifecycle transitions — one revision, ever)" is realized as: (a)
+    `status` is a `Literal["issued"]` — the only value that has ever
+    existed for this kind, so a `ResearchDecision` is never CONSTRUCTED in
+    any other status; (b) `RESEARCH_DECISION_LIFECYCLE` (see below) is
+    declared with exactly one state and an EMPTY transitions set — not
+    omitted entirely — so that ANY future service driving it via
+    `StateMachine.assert_transition` (mirroring every other machine's own
+    calling convention) structurally can never find a legal transition,
+    including `("issued", "issued")`, without needing a special "this
+    machine doesn't support transitions" carve-out anywhere in calling
+    code. This is a considered, not merely convenient, choice: it keeps
+    `ResearchDecision` uniform with the other five machines for any future
+    generic code that iterates `packages/domain/mrr/domain/lifecycles.py`'s
+    full machine list (exactly as
+    tests/unit/domain/test_lifecycles.py/tests/property/
+    test_lifecycle_properties.py already do via their own `_ALL_MACHINES`
+    tuples), rather than requiring an exception. This task does NOT add a
+    `decided_by` field distinct from `baseObject.created_by` (unlike
+    `MethodRuling`'s explicit `issued_by`) — flagged in specification_gaps
+    as an asymmetry, not resolved unilaterally.
+  - >-
+    ENTITY_MODELS/ordinal-numbering coordination (mirrors
+    task-packets/K0-T01.yaml's own identical coordination note verbatim in
+    spirit). `scripts/check_contracts.py`'s `ENTITY_MODELS` dict is keyed by
+    entity NAME, not merge order or count, so any sequencing among this
+    packet, task-packets/E6-T03.yaml (`CorrectionNotification`, approved,
+    unimplemented), and task-packets/E6-T04.yaml (`CorrectionResponse`,
+    draft, unimplemented) is safe there — a plain Python dict literal, an
+    ordinary textual merge conflict at worst, never a semantic one.
+    Likewise `packages/domain/mrr/domain/lifecycles.py` is a plain module
+    each task appends independent module-level `StateMachine` constants to.
+    This packet's own six entities are described throughout as "the
+    22nd-27th" ONLY relative to the confirmed 21-entity baseline on `main`
+    at derivation time (2026-07-21, `d49cb7d`) — if E6-T03 and/or E6-T04
+    land first, the true ordinals shift to 23rd-28th or 24th-29th
+    respectively; the exact number is textual/documentation color only
+    (module docstrings, PR descriptions) and never a functional dependency,
+    exactly as task-packets/E6-T04.yaml's own derivation already
+    demonstrates by hedging its ordinal claim ("the 22nd ... assuming
+    TransferContract/Obligation/CorrectionNotification land first as the
+    19th/20th/21st") against a plan that did not in fact happen that way
+    (`MethodProfile`, not `CorrectionNotification`, took the 21st slot).
+specification_gaps:
+  - >-
+    Packet scope and size. This packet bundles six entities — one of them
+    (`MethodProtocol`) genuinely novel and non-trivial (lock/amendment
+    machinery, five states, two model_validators) — into ONE task packet,
+    per the plan doc's own explicit K1-T01 definition and the
+    task-packets/E1-T03.yaml precedent for bundling several
+    baseObject-composed schema/model pairs into one packet. If reviewed
+    implementation effort proves unmanageable as a single PR, the natural
+    split point is `MethodProtocol` alone (the heaviest, most novel piece)
+    versus the other five (which all follow already-well-established
+    linear or two-state-shorter-branch lifecycle shapes with no genuinely
+    new invariant machinery beyond field-presence conditionals already
+    precedented by `EvidenceAnchor`/`VerificationResult`). This packet is
+    NOT itself split into K1-T01a/b, since the plan document defines K1-T01
+    as this exact six-entity bundle and splitting it would require a plan
+    amendment, not just an implementation-time decision — see the
+    accompanying recommendation delivered alongside this packet.
+  - >-
+    The "lock hash IS `baseObject.content_hash`, not a new field"
+    interpretation (derived_decisions) is this task's own reading of
+    MRR-MTH-007's "Locking binds the exact content hash" — a reviewer could
+    instead prefer an explicit, redundantly-stored `lock_hash: Sha256`
+    field for defensive self-description (e.g. so a projection reading only
+    the CURRENT/latest revision, without walking revision history, can
+    still see what was locked). Flagged for reviewer confirmation before
+    K1-T02/K1-T03 build any consumer against this shape.
+  - >-
+    MethodProtocol's lifecycle shape leaves TWO edges undrawn, both
+    operationally significant: whether `(amended, executed)` should be
+    legal (an amended protocol's confirmatory branch would otherwise be
+    permanently stuck at `amended`, unable to reach `executed` in this
+    state machine — which appears to be in tension with MRR-MTH-008's own
+    premise that amended protocols can still be executed, just with
+    affected analyses demoted to exploratory), and whether a protocol may
+    be amended a SECOND time (blocked structurally by
+    `StateMachine`'s self-transition ban, since `(amended, amended)` cannot
+    be declared, and no `(amended, locked)` re-locking edge is drawn in
+    spec 08's own table text either). Both are read literally from the
+    table's punctuation and left UNDRAWN per derived_decisions, mirroring
+    this module's own established discipline elsewhere
+    (`ResearchScore.SUSPENDED`, `TransferContract`/`Obligation`'s "second
+    respond" questions) — but these two, unlike those precedents, block a
+    plausible and likely-needed real K1-T03 execution path. This is the
+    single most important open question in this packet; a reviewer or a
+    spec amendment to docs/spec/08_RESEARCH_METHOD_KERNEL.md section 3
+    should resolve it explicitly before K1-T02's kill-condition-transition
+    work or K1-T03's real executor needs to drive `MethodProtocol` past a
+    first amendment.
+  - >-
+    The `reviewed` state carries no additional structured field (e.g. no
+    `reviewed_by`/`reviewed_at`) — spec 08 section 3 names only the state,
+    not a review record shape, unlike `locked`'s explicit
+    actor-plus-time requirement (MTH-007). If a future task wants a
+    recorded reviewer, that is a schema amendment, not inferred here.
+  - >-
+    `EvidenceMatrixVerificationStatus`'s three values (`verified`,
+    `unverifiable`, `pending`) are this task's own minimal proposal, not a
+    specification-given vocabulary — spec 08 section 3/MTH-015 name
+    "verification status" without enumerating values, mirroring
+    `mrr.contracts.evidence_anchor.RecomputationStatus`'s identical
+    "not a specification-given vocabulary" disclosure. A reviewer may
+    prefer reusing `mrr.contracts.evidence_anchor.AnchorValidationStatus`
+    (`validated`/`unvalidated`/`invalid`) instead, though that vocabulary
+    has no value meaning specifically "attempted and cannot be verified".
+  - >-
+    Whether `Claim` itself should ALSO carry a copy of
+    `scope_of_validity`/`non_applicability_conditions` (rather than only
+    `MethodRuling`, this task's own placement decision for MTH-017) is
+    explicitly left open for task-packets/K1-T02.yaml, which is the first
+    task in this scope allowed to touch `claim.schema.json`.
+  - >-
+    `MethodRuling.issued_by` may be substantively redundant with
+    `baseObject.created_by` for many real callers (both name "who is
+    responsible for this revision"); kept as a distinct field per this
+    task's own reading of the explicit task instruction naming it, and
+    mirroring `VerificationResult.reviewer_id`'s own coexistence with
+    `created_by` — flagged for reviewer scrutiny rather than collapsed
+    unilaterally.
+  - >-
+    `ResearchDecision` does NOT gain a `decided_by` field distinct from
+    `baseObject.created_by`, unlike `MethodRuling`'s explicit `issued_by` —
+    an asymmetry this task chose for leanness (no explicit instruction
+    named it for `ResearchDecision`) but flagged for reviewer confirmation
+    that the two entities should not instead be modeled symmetrically.
+  - >-
+    No first-class "branch" or "analysis" object exists anywhere in this
+    repository (confirmed by search). `MethodRuling.applies_to_analysis`
+    and `ResearchDecision.applies_to_analysis` are both free-form string
+    tags intended to match one entry of the governing `MethodProtocol`'s own
+    `planned_analyses` list; this cross-object consistency is NOT validated
+    here (would require a repository lookup — no service exists in this
+    packet) and is deferred to whichever future K1-T02/K1-T03 service layer
+    resolves "branch" as a first-class concept, if it ever becomes one.
+  - >-
+    `QuestionModel.load_bearing_terms` and `MethodProtocol.
+    extraction_fields`/`inclusion_criteria`/`exclusion_criteria`/
+    `sensitivity_variations` are all schema-present but NOT required
+    non-empty, mirroring `MethodProfile.inappropriate_uses`'s own identical,
+    already-flagged judgment call (task-packets/K0-T01.yaml
+    specification_gaps) rather than inventing a non-degeneracy floor spec 08
+    does not itself state. `MethodProtocol.planned_analyses` and
+    `kill_conditions`, by contrast, ARE required non-empty (MTH-010 is
+    explicit about kill conditions; a protocol with zero planned analyses
+    would have nothing for a later `MethodRuling` to rule on) — flagged as
+    the one asymmetric floor this task does impose, for reviewer scrutiny.
+  - >-
+    `MethodProtocol.sensitivity_variations` (MTH-018: "the varied
+    classifications MUST be versioned charter entries") is represented as
+    `list[str]`, intended as a list of `ConceptCharterEntry.entry_id`
+    values — this cross-object reference is NOT validated here (no service,
+    no repository lookup) and MTH-018's own further requirement ("results
+    under each variation MUST be reported") is entirely unaddressed by this
+    packet — deferred wholesale to K1-T03/K1-T04, the real executor tasks.
+  - >-
+    This packet does not resolve whether `EvidenceMatrix.protocol_id`/
+    `question_id`, `MethodRuling.protocol_id`, or `ResearchDecision.
+    protocol_id` must reference a protocol/question that is ACTUALLY
+    accepted/locked at construction time — that would require a repository
+    lookup, which no service in this packet's scope performs. Every such
+    field is a structurally-validated (`Urn`-shaped) but semantically
+    unresolved reference, exactly mirroring `SourceRecord.source_family_id`'s
+    own established "bare, structurally-validated but semantically
+    unresolved URN" precedent (E3-T01).
+  - >-
+    True persistence-level tamper-proofing of an already-locked
+    `MethodProtocol` revision's stored bytes (i.e. "can a later write ever
+    overwrite revision N's own row") is NOT independently re-tested by this
+    packet under a `MethodProtocol`-specific integration test — that
+    guarantee is architecture-level, already generic across every object
+    kind (`mrr.domain.repositories.ObjectRepository`'s append-only
+    `insert_revision`, `packages/persistence/**`, both unchanged and
+    outside this packet's `allowed_paths`), and already exercised by the
+    EXISTING generic repository test suite. This packet's own tests instead
+    prove the CONTRACT-level co-occurrence invariants (locked status
+    requires `locked_at`/`locked_by`; amended status requires a non-null
+    `amendment`) via construction-time validation and a property test over
+    randomly generated field-presence combinations — the only enforcement
+    surface available with no service or persistence code in scope. See the
+    objective and derived_decisions for the full reasoning.
+invariants:
+  - >-
+    every one of the six new object kinds composes
+    `common.schema.json#/$defs/baseObject` exactly (id, api_version, kind,
+    practice_id, revision, created_at, created_by, content_hash, plus
+    optional supersedes/labels) — a method object without the baseObject
+    contract is invalid (spec 08 section 3)
+  - >-
+    none of the six carries a `signature` field — all are UNSIGNED,
+    revision-based, local objects, mirroring `MethodProfile`'s own identical
+    treatment (task-packets/K0-T01.yaml derived_decisions (a))
+  - >-
+    `QuestionModel.claim_type_sought` accepts only
+    `mrr.contracts.claim.ClaimType`'s seven values, imported and reused
+    verbatim, never redeclared; an unrecognized value is rejected by both
+    JSON Schema and Pydantic
+  - >-
+    `QuestionModel.scope` and `MethodRuling.scope_of_validity` both reuse
+    `mrr.contracts.common.Scope` verbatim (no parallel population/time/
+    geography shape is invented)
+  - >-
+    `ConceptCharter.entries` requires at least one entry; every entry's
+    `entry_id` is unique within one `ConceptCharter` revision, enforced by a
+    `model_validator`; a duplicate `entry_id` is rejected
+  - >-
+    `MethodProtocol.kill_conditions` and `MethodProtocol.planned_analyses`
+    each require at least one entry (MRR-MTH-010 for kill_conditions); an
+    empty list for either is rejected by both JSON Schema and Pydantic
+  - >-
+    `MethodProtocol.locked_at` and `locked_by` are both non-null exactly
+    when `status` is one of `locked`/`amended`/`executed`, and both null
+    exactly when `status` is `draft`/`reviewed` — enforced by a
+    `model_validator`; any other combination (e.g. `locked_at` set while
+    `status == "draft"`, or `status == "locked"` with `locked_by` null) is
+    rejected at construction, never silently accepted or defaulted
+  - >-
+    `MethodProtocol.amendment` is non-null exactly when `status ==
+    "amended"`, and null for every other status — enforced by a
+    `model_validator`; a `status == "amended"` object with `amendment: null`
+    is rejected, as is a non-`"amended"`-status object carrying a non-null
+    `amendment`
+  - >-
+    `METHOD_PROTOCOL_LIFECYCLE`'s only legal edges are `(draft, reviewed)`,
+    `(reviewed, locked)`, `(locked, amended)`, `(locked, executed)`; both
+    `amended` and `executed` are terminal (no further legal outgoing
+    transition from either) — see specification_gaps for why this is
+    flagged, not silently treated as final
+  - >-
+    `EvidenceMatrix.rows` carries no minimum length — a zero-row matrix is
+    schema-valid and Pydantic-valid, per MRR-MTH-011's "insufficient_
+    evidence ... MUST NOT be silently omitted" reasoning
+  - >-
+    every `EvidenceMatrixRow` with `verification_status == "unverifiable"`
+    carries a non-null, non-empty `unverifiable_reason`; every row's
+    `row_id` is unique within one `EvidenceMatrix` revision — both enforced
+    by `model_validator`s; MRR-MTH-015's "unverifiable rows are marked,
+    never dropped" is a structural fact of the schema, not a convention
+  - >-
+    `MethodRuling.ruled_ceiling` accepts only
+    `mrr.contracts.method_profile.ClaimCeiling`'s seven values, imported and
+    reused verbatim; `CLAIM_CEILING_ORDER` is imported, never redeclared,
+    for the MTH-017 threshold check below
+  - >-
+    `MethodRuling.non_applicability_conditions` is non-empty exactly when
+    `CLAIM_CEILING_ORDER.index(ruled_ceiling) >
+    CLAIM_CEILING_ORDER.index("descriptive")` (MRR-MTH-017); a ruling at
+    `descriptive` or below may declare an empty list, a ruling above it may
+    not
+  - >-
+    `MethodRuling.ruling_basis` picks exactly one of
+    `deterministic_rule_reference` / `human_review` to be non-null, matching
+    the discriminator value; the other is null; a ruling with neither or
+    both populated is rejected
+  - >-
+    `ResearchDecision.decision_type` accepts only the exact seven spec 08
+    section 3 values, nothing added or dropped; `stop_insufficient_evidence`
+    validates identically to every other value, with no distinguishing
+    required field or flag (MRR-MTH-011)
+  - >-
+    `ResearchDecision.status` is `Literal["issued"]`; `RESEARCH_DECISION_
+    LIFECYCLE` declares exactly one state and zero legal transitions — every
+    `(from, to)` pair, including `("issued", "issued")`, is illegal and
+    raises `InvalidTransitionError` if ever checked, structurally modeling
+    append-only-ness
+  - >-
+    none of the six new lifecycle machines declares a self-transition
+    anywhere (`StateMachine.__post_init__`'s existing, unchanged guard would
+    reject any attempt to do so)
+  - >-
+    both import-linter contracts stay KEPT; every new contract/domain module
+    imports no provider SDK, no web/workflow framework, and opens no network
+  - >-
+    no Alembic migration is added; `objects.kind` equal to any of
+    `QuestionModel`/`ConceptCharter`/`MethodProtocol`/`EvidenceMatrix`/
+    `MethodRuling`/`ResearchDecision` is accepted by the existing un-CHECKed
+    Text column exactly as-is
+  - >-
+    no `EDGE_VOCABULARY` member is added; no graph edge of any kind is
+    written or read by any code this packet introduces
+acceptance_tests:
+  - >-
+    schema round-trip for all six entities — each of
+    `schemas/question-model.schema.json`,
+    `schemas/concept-charter.schema.json`,
+    `schemas/method-protocol.schema.json`,
+    `schemas/evidence-matrix.schema.json`,
+    `schemas/method-ruling.schema.json`, and
+    `schemas/research-decision.schema.json` is a valid Draft 2020-12
+    document; the committed example for each validates against both its
+    JSON Schema and its Pydantic model and round-trips via
+    `scripts/check_contracts.py`'s `ENTITY_MODELS` (extended with all six)
+  - >-
+    `test_every_schema_has_an_example_and_a_model` (tests/contract/
+    test_examples.py's existing generic guard) passes with all six new
+    entities included, with no separate change to that test's own logic
+  - QuestionModel — an unrecognized `claim_type_sought` string is rejected by both JSON Schema and Pydantic
+  - QuestionModel — a document missing `raw_question` is rejected at construction
+  - >-
+    ConceptCharter — an `entries` list with two entries sharing the same
+    `entry_id` is rejected by the Pydantic `model_validator`; an empty
+    `entries` list is rejected by both JSON Schema (`minItems`) and Pydantic
+  - >-
+    MethodProtocol — `status: "locked"` with `locked_at` or `locked_by` null
+    is rejected; `status: "draft"` with a non-null `locked_at` is rejected;
+    every legal co-occurrence (draft/reviewed with both null; locked/
+    amended/executed with both non-null) is accepted
+  - >-
+    MethodProtocol — `status: "amended"` with `amendment: null` is rejected;
+    `status: "locked"` with a non-null `amendment` is rejected;
+    `status: "amended"` with a fully-populated `amendment` block is accepted
+  - >-
+    MethodProtocol — property test: for randomly generated combinations of
+    `(status, locked_at is-None, locked_by is-None, amendment is-None)`,
+    construction succeeds if and only if the combination matches one of the
+    two legal co-occurrence patterns declared above; every other
+    combination raises `pydantic.ValidationError`, never a partial success
+  - MethodProtocol — an empty `kill_conditions` list is rejected; an empty `planned_analyses` list is rejected
+  - >-
+    EvidenceMatrix — a row with `verification_status: "unverifiable"` and a
+    null or empty `unverifiable_reason` is rejected; the identical row with
+    a non-empty `unverifiable_reason` is accepted
+  - EvidenceMatrix — an `EvidenceMatrix` with an empty `rows` list validates successfully (MRR-MTH-011)
+  - >-
+    EvidenceMatrix — two rows sharing the same `row_id` within one matrix
+    are rejected by the Pydantic `model_validator`
+  - >-
+    MethodRuling — `ruled_ceiling` accepts all seven
+    `CLAIM_CEILING_ORDER` values (imported from `mrr.contracts.method_profile`,
+    not redeclared); an unrecognized ceiling string is rejected
+  - >-
+    MethodRuling — `ruled_ceiling: "causal_local"` (above `descriptive`)
+    with an empty `non_applicability_conditions` list is rejected;
+    `ruled_ceiling: "descriptive"` with an empty list is accepted;
+    `ruled_ceiling: "associational_unadjusted"` with a non-empty list is
+    accepted
+  - >-
+    MethodRuling — `ruling_basis: "deterministic_rule"` with a non-null
+    `human_review` (or a null `deterministic_rule_reference`) is rejected;
+    `ruling_basis: "human_review"` with a non-null
+    `deterministic_rule_reference` (or a null `human_review`) is rejected;
+    each basis with exactly its own matching field populated is accepted
+  - >-
+    ResearchDecision — `decision_type: "stop_insufficient_evidence"`
+    validates with the identical required-field set as every other
+    `decision_type` value (no special-cased field)
+  - ResearchDecision — an unrecognized `decision_type` string is rejected; `status` accepts only `"issued"`
+  - >-
+    lifecycle unit tests (extending tests/unit/domain/test_lifecycles.py's
+    existing `_ALL_MACHINES`-parametrized suite with all six new machines,
+    no new test bodies required beyond extending the tuples/dicts already
+    parametrized there, mirroring how `METHOD_PROFILE_LIFECYCLE`'s own
+    addition needed no new test function): every declared edge for each new
+    machine is accepted; representative UNDRAWN transitions are rejected —
+    at minimum, for `METHOD_PROTOCOL_LIFECYCLE`: `(locked, locked)` (no
+    self-transition), `(amended, executed)`, `(amended, amended)`,
+    `(executed, anything)`, `(draft, locked)` (skips reviewed); for
+    `EVIDENCE_MATRIX_LIFECYCLE`: `(draft, frozen)` (skips active),
+    `(superseded, draft)`; for `METHOD_RULING_LIFECYCLE`: `(pending,
+    superseded)` (skips issued); for `RESEARCH_DECISION_LIFECYCLE`:
+    `(issued, issued)`
+  - >-
+    terminal-states test (extending the existing
+    `test_terminal_states_reject_every_outgoing_transition` parametrization):
+    `amended`/`executed` for `METHOD_PROTOCOL_LIFECYCLE`, `superseded` for
+    `QUESTION_MODEL_LIFECYCLE`/`CONCEPT_CHARTER_LIFECYCLE`/
+    `EVIDENCE_MATRIX_LIFECYCLE`/`METHOD_RULING_LIFECYCLE`, and `issued` for
+    `RESEARCH_DECISION_LIFECYCLE` each reject every candidate outgoing
+    transition
+  - >-
+    drift-protection test (extending the existing
+    `test_*_states_match_contract_status_literal` group): each new
+    machine's `.states` set equals `set(get_args(<EntityStatus>))` for its
+    own Pydantic status Literal, for all six new entities
+  - >-
+    property tests (extending tests/property/test_lifecycle_properties.py's
+    `_ALL_MACHINES` tuple with all six new machines, no new test bodies
+    required): `can_transition` matches the declared edge set exactly;
+    `assert_transition` never silently passes an illegal pair; random
+    transition sequences from each machine's initial state never cross an
+    undrawn edge — including `RESEARCH_DECISION_LIFECYCLE`, whose empty
+    transition set makes every random walk step raise
+    `InvalidTransitionError` immediately, proving append-only-ness
+    structurally
+  - >-
+    negative fixtures (tests/contract/fixtures/invalid/, wired through the
+    existing tests/contract/test_negative_fixtures.py, mirroring the
+    existing `method-profile-*.json`/`hypothesis-*.json` naming convention):
+    at minimum
+    `question-model-unknown-claim-type.json`,
+    `concept-charter-duplicate-entry-id.json`,
+    `method-protocol-locked-missing-locked-at.json`,
+    `method-protocol-amended-missing-amendment.json`,
+    `evidence-matrix-unverifiable-missing-reason.json`,
+    `method-ruling-unknown-ceiling.json`,
+    `method-ruling-non-applicability-empty-above-descriptive.json`, and
+    `research-decision-unknown-decision-type.json`
+  - after adding the six new modules, both import-linter contracts are still KEPT (tests/unit/architecture/test_import_boundaries.py passes)
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+required_output:
+  - implementation summary
+  - >-
+    the six schema/contract/example triples, the six new
+    `mrr.domain.lifecycles.StateMachine` constants
+    (`QUESTION_MODEL_LIFECYCLE`, `CONCEPT_CHARTER_LIFECYCLE`,
+    `METHOD_PROTOCOL_LIFECYCLE`, `EVIDENCE_MATRIX_LIFECYCLE`,
+    `METHOD_RULING_LIFECYCLE`, `RESEARCH_DECISION_LIFECYCLE`), and the
+    `scripts/check_contracts.py` `ENTITY_MODELS` registration for all six
+  - >-
+    changed files, and explicit confirmation that no `services/**` path,
+    `packages/persistence/**`, any migration, `EDGE_VOCABULARY`,
+    `schemas/claim.schema.json`, `packages/contracts/mrr/contracts/claim.py`,
+    or either import-linter contract was touched
+  - tests added and exact command results (format, lint, typecheck, test, test-contract) proving green
+  - >-
+    security/privacy implications (no signature or cross-practice transport
+    introduced for any of the six kinds; no provider SDK; no network;
+    append-only revisions; no domain event emitted, by design — see
+    forbidden_changes)
+  - >-
+    open specification questions exactly as listed under
+    specification_gaps, with PROMINENT emphasis on the `MethodProtocol`
+    `(amended, executed)`/second-amendment open question, since it has the
+    clearest downstream operational consequence for K1-T02/K1-T03
+  - >-
+    a recommendation on whether this packet should have been split,
+    matching the recommendation delivered alongside this packet at
+    derivation time
+stop_conditions:
+  - >-
+    MethodProtocol's lock/amendment co-occurrence invariants
+    (`locked_at`/`locked_by`/`amendment` required-iff-status) cannot be
+    expressed as Pydantic `model_validator`s without either an optional
+    lock-time field or a silently-defaulted amendment block — stop and
+    report rather than weakening MRR-MTH-007/008
+  - >-
+    a reviewer determines `MethodProtocol` MUST be able to reach `executed`
+    after an amendment, or MUST be amendable more than once
+    (specification_gaps) — stop rather than inventing a new edge or
+    special-casing the self-transition ban; request a spec-08-section-3
+    amendment or an explicit reviewer ruling on the intended graph shape
+    before declaring any additional edge
+  - >-
+    a reviewer determines the "lock hash IS `content_hash`, no new field"
+    reading (derived_decisions) is wrong and an explicit `lock_hash` field
+    is required — stop rather than guessing which shape K1-T02/K1-T03 will
+    build against
+  - >-
+    a reviewer determines `Claim` itself must also carry
+    `scope_of_validity`/`non_applicability_conditions` (rather than only
+    `MethodRuling`) before this packet is accepted — stop rather than
+    touching `schemas/claim.schema.json`, which is outside `allowed_paths`
+  - >-
+    implementation requires modifying `packages/persistence/**`, any
+    Alembic migration, `mrr.domain.repositories.EDGE_VOCABULARY`, or either
+    import-linter contract — confirmed unnecessary at planning time; report
+    if that assumption turns out false
+  - >-
+    task-packets/E6-T03.yaml or task-packets/E6-T04.yaml land in code before
+    this packet's implementation begins and their own entities' addition to
+    `ENTITY_MODELS`/`lifecycles.py` creates a genuine SEMANTIC (not merely
+    textual) conflict with this packet's own additions — stop and report
+    rather than silently resolving a conflict beyond an ordinary merge
