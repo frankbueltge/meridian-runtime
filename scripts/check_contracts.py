@@ -12,7 +12,13 @@ E5-T03; extended to an eighteenth entity, OfflineBundle, by E5-T06;
 extended to a nineteenth entity, TransferContract, by E6-T01; extended to
 a twentieth entity, Obligation, by E6-T02; extended to a twenty-first
 entity, MethodProfile, by K0-T01; extended to a twenty-second entity,
-CorrectionNotification, by E6-T03).
+CorrectionNotification, by E6-T03; extended to a twenty-third through
+twenty-eighth entity — QuestionModel, ConceptCharter, MethodProtocol,
+EvidenceMatrix, MethodRuling, ResearchDecision — by K1-T01. Per
+task-packets/K1-T01.yaml derived_decisions, this ordinal count is
+documentation color only, never a functional dependency: ENTITY_MODELS is
+a plain dict keyed by entity name, so sequencing among K0-T01/E6-T03/
+K1-T01 is an ordinary textual merge at worst.
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -55,12 +61,16 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 from mrr.contracts import (
     Claim,
+    ConceptCharter,
     CorrectionEvent,
     CorrectionNotification,
     EvidenceAnchor,
     EvidenceCrate,
+    EvidenceMatrix,
     Hypothesis,
     MethodProfile,
+    MethodProtocol,
+    MethodRuling,
     ModelInvocation,
     ModelProfile,
     NodeManifest,
@@ -68,6 +78,8 @@ from mrr.contracts import (
     Obligation,
     OfflineBundle,
     Practice,
+    QuestionModel,
+    ResearchDecision,
     ResearchScore,
     RunManifest,
     SkepticalChallenge,
@@ -110,6 +122,12 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "transfer-contract": TransferContract,
     "obligation": Obligation,
     "method-profile": MethodProfile,
+    "question-model": QuestionModel,
+    "concept-charter": ConceptCharter,
+    "method-protocol": MethodProtocol,
+    "evidence-matrix": EvidenceMatrix,
+    "method-ruling": MethodRuling,
+    "research-decision": ResearchDecision,
 }
 
 

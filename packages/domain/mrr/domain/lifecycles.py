@@ -2,12 +2,17 @@
 in docs/spec/01_SYSTEM_SPEC.md section 6 (task-packets/E1-T04.yaml):
 ``RESEARCH_SCORE_LIFECYCLE``, ``TASK_BUNDLE_LIFECYCLE``, ``CLAIM_LIFECYCLE``,
 ``CORRECTION_LIFECYCLE``, plus ``TRANSFER_LIFECYCLE`` (task-packets/
-E6-T01.yaml), ``OBLIGATION_LIFECYCLE`` (task-packets/E6-T02.yaml), and
+E6-T01.yaml), ``OBLIGATION_LIFECYCLE`` (task-packets/E6-T02.yaml),
 ``METHOD_PROFILE_LIFECYCLE`` (task-packets/K0-T01.yaml, the Research Method
 Kernel's first task — grounded in docs/spec/08_RESEARCH_METHOD_KERNEL.md
-section 3's table). None of the three has a section-6 diagram to anchor it
-— see each machine's own comment block below and the "Open specification
-questions" list at the end of this docstring.
+section 3's table), and ``QUESTION_MODEL_LIFECYCLE``/
+``CONCEPT_CHARTER_LIFECYCLE``/``METHOD_PROTOCOL_LIFECYCLE``/
+``EVIDENCE_MATRIX_LIFECYCLE``/``METHOD_RULING_LIFECYCLE``/
+``RESEARCH_DECISION_LIFECYCLE`` (task-packets/K1-T01.yaml, the kernel
+governance contracts task — also grounded in spec 08 section 3's table, AS
+AMENDED by commit 1d453bf for ``MethodProtocol``). None of these has a
+section-6 diagram to anchor it — see each machine's own comment block below
+and the "Open specification questions" list at the end of this docstring.
 
 State names match the owning schema's ``status`` enum exactly, including
 casing, where one exists (task-packets/E1-T04.yaml invariant): ResearchScore
@@ -94,6 +99,51 @@ or spec amendment):
   08_RESEARCH_METHOD_KERNEL.md section 3's table shows (``draft ->
   accepted``, ``accepted -> superseded``) and nothing else (task-packets/
   K0-T01.yaml ``specification_gaps``).
+- ``QUESTION_MODEL_LIFECYCLE`` and ``CONCEPT_CHARTER_LIFECYCLE`` (task-packets/
+  K1-T01.yaml) each declare exactly the same two-edge shape as
+  ``METHOD_PROFILE_LIFECYCLE`` (``draft -> accepted``, ``accepted ->
+  superseded``), grounded in the identical spec 08 section 3 table
+  spelling for each entity. Whether ``superseded`` may ever transition
+  further is undrawn for both, mirroring ``METHOD_PROFILE_LIFECYCLE``'s own
+  identical open question.
+- ``METHOD_PROTOCOL_LIFECYCLE`` (task-packets/K1-T01.yaml) is grounded in
+  spec 08 section 3's table row, AS AMENDED by commit 1d453bf
+  ("Spec-08-Amendment MethodProtocol-Re-Review-Zyklus"): "draft -> reviewed
+  -> locked -> amended | executed; amended -> reviewed". Declares exactly
+  five edges — ``(draft, reviewed)``, ``(reviewed, locked)``, ``(locked,
+  amended)``, ``(locked, executed)``, ``(amended, reviewed)`` — with
+  ``executed`` the ONLY terminal state. Before this amendment, the literal
+  four-edge reading left ``amended`` a dead end (no drawn way back to
+  ``reviewed``/``locked``/``executed``, and no legal second amendment,
+  since ``StateMachine.__post_init__`` forbids declaring ``(amended,
+  amended)`` as a self-transition) — flagged as the single most
+  operationally significant open question by task-packets/K1-T01.yaml's own
+  derivation agent, and resolved by the amendment: an amended protocol
+  re-enters review, and from there may be re-locked (a fresh lock event,
+  its own ``locked_at``/``locked_by``/``content_hash``) toward ``executed``
+  or amended again — never via a direct ``(amended, executed)`` or
+  ``(amended, amended)`` edge, both of which remain UNDRAWN and illegal.
+- ``EVIDENCE_MATRIX_LIFECYCLE`` (task-packets/K1-T01.yaml) declares three
+  edges verbatim from spec 08 section 3's table: ``draft -> active -> frozen
+  -> superseded``. Whether ``superseded`` may transition further is
+  undrawn, mirroring ``METHOD_PROFILE_LIFECYCLE``'s own identical open
+  question.
+- ``METHOD_RULING_LIFECYCLE`` (task-packets/K1-T01.yaml) declares two edges
+  verbatim from spec 08 section 3's table: ``pending -> issued ->
+  superseded``. Whether ``superseded`` may transition further is undrawn,
+  mirroring the same open question above.
+- ``RESEARCH_DECISION_LIFECYCLE`` (task-packets/K1-T01.yaml) is
+  deliberately declared with exactly ONE state (``issued``) and an EMPTY
+  transition set — spec 08 section 3's table names it "issued
+  (append-only)" with no further state at all. This is a considered choice,
+  not an oversight: it keeps ``ResearchDecision`` uniform with the other
+  machines for any generic code iterating this module's full machine list
+  (this module's own ``StateMachine.__post_init__`` accepts a machine with
+  zero transitions without complaint), rather than requiring a
+  "this machine doesn't support transitions" carve-out anywhere in calling
+  code. Every ``(from, to)`` pair, including ``("issued", "issued")``, is
+  therefore illegal — proving append-only-ness structurally rather than by
+  convention.
 """
 
 from __future__ import annotations
@@ -577,4 +627,203 @@ METHOD_PROFILE_LIFECYCLE = StateMachine(
     states=_METHOD_PROFILE_STATES,
     transitions=_METHOD_PROFILE_TRANSITIONS,
     initial_state="draft",
+)
+
+
+# ---------------------------------------------------------------------------
+# QuestionModel — task-packets/K1-T01.yaml (docs/spec/08_RESEARCH_METHOD_KERNEL.md
+# section 3's table). No section-6 diagram exists for this entity either —
+# grounded only in spec 08 section 3's table row: "QuestionModel |
+# decomposition of a question ... | draft -> accepted -> superseded".
+# ---------------------------------------------------------------------------
+#
+#   draft -> accepted -> superseded
+#
+# Identical shape to METHOD_PROFILE_LIFECYCLE. `superseded` has no drawn
+# outgoing edge (open question above, mirroring MethodProfile's own
+# identical treatment).
+
+_QUESTION_MODEL_STATES = frozenset({"draft", "accepted", "superseded"})
+
+_QUESTION_MODEL_TRANSITIONS = frozenset(
+    {
+        ("draft", "accepted"),
+        ("accepted", "superseded"),
+    }
+)
+
+QUESTION_MODEL_LIFECYCLE = StateMachine(
+    name="QuestionModel",
+    states=_QUESTION_MODEL_STATES,
+    transitions=_QUESTION_MODEL_TRANSITIONS,
+    initial_state="draft",
+)
+
+
+# ---------------------------------------------------------------------------
+# ConceptCharter — task-packets/K1-T01.yaml (docs/spec/08_RESEARCH_METHOD_KERNEL.md
+# section 3's table). No section-6 diagram exists for this entity either —
+# grounded only in spec 08 section 3's table row: "ConceptCharter |
+# versioned local operationalizations ... | draft -> accepted -> superseded".
+# ---------------------------------------------------------------------------
+#
+#   draft -> accepted -> superseded
+#
+# Identical shape to METHOD_PROFILE_LIFECYCLE/QUESTION_MODEL_LIFECYCLE.
+# `superseded` has no drawn outgoing edge (open question above).
+
+_CONCEPT_CHARTER_STATES = frozenset({"draft", "accepted", "superseded"})
+
+_CONCEPT_CHARTER_TRANSITIONS = frozenset(
+    {
+        ("draft", "accepted"),
+        ("accepted", "superseded"),
+    }
+)
+
+CONCEPT_CHARTER_LIFECYCLE = StateMachine(
+    name="ConceptCharter",
+    states=_CONCEPT_CHARTER_STATES,
+    transitions=_CONCEPT_CHARTER_TRANSITIONS,
+    initial_state="draft",
+)
+
+
+# ---------------------------------------------------------------------------
+# MethodProtocol — task-packets/K1-T01.yaml (docs/spec/08_RESEARCH_METHOD_KERNEL.md
+# section 3's table, AS AMENDED by commit 1d453bf "Spec-08-Amendment
+# MethodProtocol-Re-Review-Zyklus"). No section-6 diagram exists for this
+# entity either — grounded only in spec 08 section 3's table row, as
+# amended: "draft -> reviewed -> locked -> amended | executed; amended ->
+# reviewed (re-review cycle: an amendment is a new revision that must be
+# re-reviewed and re-locked before further confirmatory work; each lock
+# binds that revision's own content hash, so work recorded under an
+# earlier lock stays auditable against its own hash)".
+# ---------------------------------------------------------------------------
+#
+#   draft -> reviewed -> locked -> amended
+#                            |        |
+#                            |        +-> reviewed  (re-review cycle)
+#                            +-> executed
+#
+# Five edges: (draft, reviewed), (reviewed, locked), (locked, amended),
+# (locked, executed), (amended, reviewed). `executed` is the ONLY terminal
+# state — see the module docstring's "Open specification questions" section
+# for the full history of why this edge was added (task-packets/K1-T01.yaml
+# flagged the literal four-edge reading's `amended` dead end as its single
+# most operationally significant open question; commit 1d453bf resolves it
+# by amending spec 08 section 3's table text itself, not by this module
+# inventing an undrawn edge unilaterally).
+#
+# Still UNDRAWN and illegal, even after the amendment: `(amended, executed)`
+# (an amended protocol must pass back through a fresh reviewed/locked pair
+# before further confirmatory work — never a direct shortcut to executed)
+# and `(amended, amended)` (a second amendment must also pass back through
+# reviewed/locked first; `StateMachine.__post_init__`'s self-transition ban
+# would reject a direct declaration of this edge regardless). `(draft,
+# locked)` (skips reviewed) and `(reviewed, executed)`/`(reviewed,
+# amended)` (skip locked) are likewise undrawn.
+
+_METHOD_PROTOCOL_STATES = frozenset({"draft", "reviewed", "locked", "amended", "executed"})
+
+_METHOD_PROTOCOL_TRANSITIONS = frozenset(
+    {
+        ("draft", "reviewed"),
+        ("reviewed", "locked"),
+        ("locked", "amended"),
+        ("locked", "executed"),
+        ("amended", "reviewed"),
+    }
+)
+
+METHOD_PROTOCOL_LIFECYCLE = StateMachine(
+    name="MethodProtocol",
+    states=_METHOD_PROTOCOL_STATES,
+    transitions=_METHOD_PROTOCOL_TRANSITIONS,
+    initial_state="draft",
+)
+
+
+# ---------------------------------------------------------------------------
+# EvidenceMatrix — task-packets/K1-T01.yaml (docs/spec/08_RESEARCH_METHOD_KERNEL.md
+# section 3's table). No section-6 diagram exists for this entity either —
+# grounded only in spec 08 section 3's table row: "EvidenceMatrix |
+# structured evidence ... | draft -> active -> frozen -> superseded".
+# ---------------------------------------------------------------------------
+#
+#   draft -> active -> frozen -> superseded
+#
+# `superseded` has no drawn outgoing edge (open question above, mirroring
+# METHOD_PROFILE_LIFECYCLE's own identical treatment).
+
+_EVIDENCE_MATRIX_STATES = frozenset({"draft", "active", "frozen", "superseded"})
+
+_EVIDENCE_MATRIX_TRANSITIONS = frozenset(
+    {
+        ("draft", "active"),
+        ("active", "frozen"),
+        ("frozen", "superseded"),
+    }
+)
+
+EVIDENCE_MATRIX_LIFECYCLE = StateMachine(
+    name="EvidenceMatrix",
+    states=_EVIDENCE_MATRIX_STATES,
+    transitions=_EVIDENCE_MATRIX_TRANSITIONS,
+    initial_state="draft",
+)
+
+
+# ---------------------------------------------------------------------------
+# MethodRuling — task-packets/K1-T01.yaml (docs/spec/08_RESEARCH_METHOD_KERNEL.md
+# section 3's table). No section-6 diagram exists for this entity either —
+# grounded only in spec 08 section 3's table row: "MethodRuling | the
+# ruling that licenses claim language ... | pending -> issued -> superseded".
+# ---------------------------------------------------------------------------
+#
+#   pending -> issued -> superseded
+#
+# `superseded` has no drawn outgoing edge (open question above, mirroring
+# METHOD_PROFILE_LIFECYCLE's own identical treatment).
+
+_METHOD_RULING_STATES = frozenset({"pending", "issued", "superseded"})
+
+_METHOD_RULING_TRANSITIONS = frozenset(
+    {
+        ("pending", "issued"),
+        ("issued", "superseded"),
+    }
+)
+
+METHOD_RULING_LIFECYCLE = StateMachine(
+    name="MethodRuling",
+    states=_METHOD_RULING_STATES,
+    transitions=_METHOD_RULING_TRANSITIONS,
+    initial_state="pending",
+)
+
+
+# ---------------------------------------------------------------------------
+# ResearchDecision — task-packets/K1-T01.yaml (docs/spec/08_RESEARCH_METHOD_KERNEL.md
+# section 3's table). No section-6 diagram exists for this entity either —
+# grounded only in spec 08 section 3's table row: "ResearchDecision |
+# adaptive decision record ... | issued (append-only)".
+# ---------------------------------------------------------------------------
+#
+#   issued  (one state, zero transitions — append-only)
+#
+# Deliberately declared with exactly one state and an EMPTY transition set
+# (see the module docstring's "Open specification questions" section) —
+# every `(from, to)` pair, including `("issued", "issued")`, is illegal,
+# proving append-only-ness structurally rather than by convention.
+
+_RESEARCH_DECISION_STATES = frozenset({"issued"})
+
+_RESEARCH_DECISION_TRANSITIONS: frozenset[Transition] = frozenset()
+
+RESEARCH_DECISION_LIFECYCLE = StateMachine(
+    name="ResearchDecision",
+    states=_RESEARCH_DECISION_STATES,
+    transitions=_RESEARCH_DECISION_TRANSITIONS,
+    initial_state="issued",
 )

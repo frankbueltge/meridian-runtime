@@ -1,0 +1,21 @@
+{
+  "id": "urn:mrr:method-protocol:01J00000000000000000000232",
+  "api_version": "mrr/v1alpha1",
+  "kind": "MethodProtocol",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 2,
+  "created_at": "2026-07-21T09:10:00Z",
+  "created_by": "urn:mrr:person:01J00000000000000000000002",
+  "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333334",
+  "profile_id": "urn:mrr:method-profile:01J00000000000000000000110",
+  "extraction_fields": ["claim_relevant_finding"],
+  "inclusion_criteria": ["provenance-verified"],
+  "exclusion_criteria": [],
+  "sensitivity_variations": [],
+  "planned_analyses": ["instantiation-vs-reference-classification"],
+  "kill_conditions": ["fewer than 5 included sources -> stop_insufficient_evidence"],
+  "locked_at": "2026-07-21T09:30:00Z",
+  "locked_by": "urn:mrr:person:01J00000000000000000000002",
+  "amendment": null,
+  "status": "amended"
+}

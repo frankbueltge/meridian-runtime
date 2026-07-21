@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/evidence-matrix.schema.json",
+  "title": "MRR EvidenceMatrix",
+  "description": "docs/spec/08_RESEARCH_METHOD_KERNEL.md (status ACCEPTED, 2026-07-21) section 3's object table ('EvidenceMatrix | structured evidence: one row per source x claim-relevant finding, each row anchored to a resolvable SourceRecord/EvidenceAnchor with verification status and source family | draft -> active -> frozen -> superseded'). Fourth of the six task-packets/K1-T01.yaml entities. MRR-MTH-015: every row MUST anchor a resolvable source with a verification status and a source family; unverifiable rows are marked, never dropped. 'rows' carries NO minimum length (deliberately, unlike ConceptCharter.entries) — MRR-MTH-011: 'insufficient_evidence outcomes ... MUST NOT be silently omitted from any claim landscape' means a matrix that legitimately found zero usable sources must remain constructible, not rejected as degenerate. 'verification_status' is this task's own minimal, three-value local vocabulary (not a specification-given one, mirroring evidence-anchor.schema.json's own recomputation_status disclosure) — accepted per task-packets/K1-T01.yaml reviewer_resolution.",
+  "$defs": {
+    "evidenceMatrixRow": {
+      "type": "object",
+      "required": ["row_id", "source_record_id", "verification_status", "claim_relevant_finding", "extraction"],
+      "properties": {
+        "row_id": {
+          "description": "Stable handle for this row, unique within one EvidenceMatrix revision (enforced by a Pydantic model_validator).",
+          "type": "string",
+          "minLength": 1
+        },
+        "source_record_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "evidence_anchor_id": {
+          "description": "A row may exist before any EvidenceAnchor resolves it.",
+          "anyOf": [{"$ref": "common.schema.json#/$defs/urn"}, {"type": "null"}]
+        },
+        "source_family_id": {
+          "description": "Mirrors SourceRecord.source_family_id's own identical optionality — SourceFamily machinery may not have run yet.",
+          "anyOf": [{"$ref": "common.schema.json#/$defs/urn"}, {"type": "null"}]
+        },
+        "verification_status": {
+          "type": "string",
+          "enum": ["verified", "unverifiable", "pending"]
+        },
+        "unverifiable_reason": {
+          "description": "MRR-MTH-015: required non-null, non-empty exactly when verification_status == 'unverifiable' — 'unverifiable rows are marked, never dropped'.",
+          "anyOf": [{"type": "string"}, {"type": "null"}]
+        },
+        "claim_relevant_finding": {
+          "description": "The actual finding text this row records.",
+          "type": "string",
+          "minLength": 1
+        },
+        "extraction": {
+          "description": "Free-form, keyed by the governing MethodProtocol's own extraction_fields names — not cross-validated against them here (service-level, deferred).",
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {"verification_status": {"const": "unverifiable"}},
+            "required": ["verification_status"]
+          },
+          "then": {
+            "required": ["unverifiable_reason"],
+            "properties": {"unverifiable_reason": {"type": "string", "minLength": 1}}
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": ["kind", "protocol_id", "question_id", "rows", "status"],
+      "properties": {
+        "kind": {"const": "EvidenceMatrix"},
+        "protocol_id": {
+          "description": "The locked MethodProtocol this matrix is assembled under. A plain body field, never an edge; not validated to resolve to a locked MethodProtocol here (service-level, deferred).",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "question_id": {
+          "description": "The QuestionModel this matrix's evidence addresses. A plain body field, never an edge; not validated to resolve to an accepted QuestionModel here (service-level, deferred).",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "rows": {
+          "description": "MRR-MTH-011: no minimum length — a zero-row matrix (legitimately found no usable sources) is schema-valid.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidenceMatrixRow"}
+        },
+        "status": {
+          "description": "Lifecycle status (spec 08 section 3's table: draft -> active -> frozen -> superseded).",
+          "type": "string",
+          "enum": ["draft", "active", "frozen", "superseded"]
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

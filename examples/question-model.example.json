@@ -1,0 +1,20 @@
+{
+  "id": "urn:mrr:question-model:01J00000000000000000000210",
+  "api_version": "mrr/v1alpha1",
+  "kind": "QuestionModel",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-21T09:00:00Z",
+  "created_by": "urn:mrr:person:01J00000000000000000000002",
+  "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "raw_question": "Do works catalogued under AI-self-consumption actually instantiate the model-collapse mechanism the technical literature describes, or merely reference it?",
+  "claim_type_sought": "interpretive",
+  "scope": {
+    "population": "works in the works atlas (214 verified data/AI artworks) tagged AI-self-consumption",
+    "time": "atlas snapshot as of the profile's first run",
+    "geography": null,
+    "conditions": ["work must be catalogued, not merely mentioned in secondary commentary"]
+  },
+  "load_bearing_terms": ["model-collapse mechanism", "instantiate", "reference"],
+  "status": "accepted"
+}

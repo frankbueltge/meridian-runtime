@@ -1,6 +1,10 @@
 """Property tests for mrr.domain.lifecycles (E1-T04; extended to
-``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml, and to
-``METHOD_PROFILE_LIFECYCLE`` by task-packets/K0-T01.yaml).
+``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml, to
+``METHOD_PROFILE_LIFECYCLE`` by task-packets/K0-T01.yaml, and to
+``QUESTION_MODEL_LIFECYCLE``/``CONCEPT_CHARTER_LIFECYCLE``/
+``METHOD_PROTOCOL_LIFECYCLE``/``EVIDENCE_MATRIX_LIFECYCLE``/
+``METHOD_RULING_LIFECYCLE``/``RESEARCH_DECISION_LIFECYCLE`` by
+task-packets/K1-T01.yaml).
 
 Acceptance-test mapping (task-packets/E1-T04.yaml): "property test - randomly
 generated undrawn transitions never succeed", plus the packet's plan-time
@@ -14,6 +18,15 @@ than hard-coding one property per machine) means adding
 E6-T01.yaml's own acceptance test, "property test: random invalid
 TRANSFER_LIFECYCLE transition sequences never succeed (mirrors the Claim
 lifecycle property test's own discipline)" — no new test bodies needed.
+
+``RESEARCH_DECISION_LIFECYCLE`` (task-packets/K1-T01.yaml) is a
+one-state, zero-transition machine — every property below still holds for
+it unmodified: ``can_transition`` trivially agrees with the (empty) declared
+edge set, ``assert_transition`` never silently passes anything since nothing
+is ever a legal pair, and a random walk from its sole initial state
+(``"issued"``) never advances, raising ``InvalidTransitionError`` on every
+single step — proving append-only-ness structurally, exactly as
+task-packets/K1-T01.yaml's own acceptance test describes.
 """
 
 from __future__ import annotations
@@ -24,8 +37,14 @@ from hypothesis import strategies as st
 from mrr.domain.exceptions import InvalidTransitionError
 from mrr.domain.lifecycles import (
     CLAIM_LIFECYCLE,
+    CONCEPT_CHARTER_LIFECYCLE,
     CORRECTION_LIFECYCLE,
+    EVIDENCE_MATRIX_LIFECYCLE,
     METHOD_PROFILE_LIFECYCLE,
+    METHOD_PROTOCOL_LIFECYCLE,
+    METHOD_RULING_LIFECYCLE,
+    QUESTION_MODEL_LIFECYCLE,
+    RESEARCH_DECISION_LIFECYCLE,
     RESEARCH_SCORE_LIFECYCLE,
     TASK_BUNDLE_LIFECYCLE,
     TRANSFER_LIFECYCLE,
@@ -39,6 +58,12 @@ _ALL_MACHINES = (
     CORRECTION_LIFECYCLE,
     TRANSFER_LIFECYCLE,
     METHOD_PROFILE_LIFECYCLE,
+    QUESTION_MODEL_LIFECYCLE,
+    CONCEPT_CHARTER_LIFECYCLE,
+    METHOD_PROTOCOL_LIFECYCLE,
+    EVIDENCE_MATRIX_LIFECYCLE,
+    METHOD_RULING_LIFECYCLE,
+    RESEARCH_DECISION_LIFECYCLE,
 )
 
 

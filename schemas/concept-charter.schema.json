@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/concept-charter.schema.json",
+  "title": "MRR ConceptCharter",
+  "description": "docs/spec/08_RESEARCH_METHOD_KERNEL.md (status ACCEPTED, 2026-07-21) section 3's object table ('ConceptCharter | versioned local operationalizations of load-bearing terms; a local map, never a global ontology | draft -> accepted -> superseded'). Second of the six task-packets/K1-T01.yaml entities. 'entries' is required non-empty (a charter with zero entries operationalizes nothing, mirroring source-family.schema.json's own member_source_ids non-degeneracy precedent). Each entry carries its own entry_id — required unique within one ConceptCharter revision (enforced at the Pydantic layer by a model_validator; JSON Schema's uniqueItems does not check a single sub-field) — because spec 08 section 3's 'operationalizes' edge description (ConceptCharter entry -> QuestionModel term) points at ONE entry, and MRR-MTH-018's 'versioned charter entries' (referenced by MethodProtocol.sensitivity_variations) needs a stable handle finer-grained than the charter's own baseObject.id. The operationalizes edge itself is explicitly task-packets/K1-T02.yaml's addition — these entries exist as addressable data ahead of that edge.",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": ["kind", "entries", "status"],
+      "properties": {
+        "kind": {"const": "ConceptCharter"},
+        "entries": {
+          "description": "Versioned local operationalizations of load-bearing terms (spec 08 section 3). Required non-empty — a charter with zero entries operationalizes nothing. `uniqueItems` catches a fully-duplicated entry at the schema level; the stronger same-entry_id-different-content case (the more common real mistake) is caught only by the Pydantic model_validator below, since JSON Schema has no per-subfield uniqueness construct.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "required": ["entry_id", "term", "definition"],
+            "properties": {
+              "entry_id": {
+                "description": "Stable handle for this entry, unique within one ConceptCharter revision (enforced by a Pydantic model_validator, not expressible as a plain JSON Schema per-field constraint). Referenced by MethodProtocol.sensitivity_variations (MTH-018) and, in a later task, the operationalizes edge.",
+                "type": "string",
+                "minLength": 1
+              },
+              "term": {
+                "description": "The load-bearing term this entry operationalizes — expected, but not schema-enforced here, to match a string in some QuestionModel.load_bearing_terms list (cross-object matching is service-level, deferred).",
+                "type": "string",
+                "minLength": 1
+              },
+              "definition": {
+                "description": "The operationalization text itself — this local map's actual content.",
+                "type": "string",
+                "minLength": 1
+              },
+              "scope_note": {
+                "anyOf": [{"type": "string"}, {"type": "null"}]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "status": {
+          "description": "Lifecycle status (spec 08 section 3's table: draft -> accepted -> superseded).",
+          "type": "string",
+          "enum": ["draft", "accepted", "superseded"]
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

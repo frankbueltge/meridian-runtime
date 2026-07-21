@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/method-ruling.schema.json",
+  "title": "MRR MethodRuling",
+  "description": "docs/spec/08_RESEARCH_METHOD_KERNEL.md (status ACCEPTED, 2026-07-21) section 3's object table ('MethodRuling | the ruling that licenses claim language: which ceiling applies to which branch, and why; issued deterministically where rules suffice, by attributed human review where they do not | pending -> issued -> superseded'). Fifth of the six task-packets/K1-T01.yaml entities. 'ruled_ceiling' imports and reuses mrr.contracts.method_profile.ClaimCeiling/CLAIM_CEILING_ORDER verbatim, never redeclared. MRR-MTH-017 ('Claims above descriptive MUST carry an explicit scope of validity and at least one named non-applicability condition') is placed HERE rather than on Claim (task-packets/K1-T01.yaml derived_decisions/specification_gaps: schemas/claim.schema.json is outside this task's allowed_paths; whether Claim should ALSO carry its own copy is left to task-packets/K1-T02.yaml). 'ruling_basis' picks exactly one of deterministic_rule_reference / human_review, mirroring evidence-anchor.schema.json's own anchor_kind-picks-the-active-half pattern.",
+  "$defs": {
+    "humanReviewReference": {
+      "type": "object",
+      "required": ["reviewer_id", "review_note"],
+      "properties": {
+        "reviewer_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "review_note": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "ruled_ceiling",
+        "scope_of_validity",
+        "non_applicability_conditions",
+        "ruling_basis",
+        "issued_by",
+        "protocol_id",
+        "applies_to_analysis",
+        "status"
+      ],
+      "properties": {
+        "kind": {"const": "MethodRuling"},
+        "ruled_ceiling": {
+          "description": "Imported and reused verbatim from mrr.contracts.method_profile.ClaimCeiling (task-packets/K0-T01.yaml) — never redeclared.",
+          "type": "string",
+          "enum": [
+            "insufficient_evidence",
+            "mechanism_hypothesis",
+            "descriptive",
+            "associational_unadjusted",
+            "associational_adjusted",
+            "causal_local",
+            "causal_bounded"
+          ]
+        },
+        "scope_of_validity": {
+          "description": "MRR-MTH-017. Reuses common.schema.json#/$defs/scope verbatim, like QuestionModel.scope.",
+          "$ref": "common.schema.json#/$defs/scope"
+        },
+        "non_applicability_conditions": {
+          "description": "MRR-MTH-017: at least one named non-applicability condition, required non-empty exactly when ruled_ceiling is above 'descriptive' in CLAIM_CEILING_ORDER (associational_unadjusted and every stronger ceiling). A ruling at descriptive or below may declare an empty list.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "ruling_basis": {
+          "description": "Discriminator picking exactly one of deterministic_rule_reference / human_review.",
+          "type": "string",
+          "enum": ["deterministic_rule", "human_review"]
+        },
+        "deterministic_rule_reference": {
+          "anyOf": [{"type": "string"}, {"type": "null"}]
+        },
+        "human_review": {
+          "anyOf": [{"$ref": "#/$defs/humanReviewReference"}, {"type": "null"}]
+        },
+        "issued_by": {
+          "description": "The accountable decider for this ruling — distinct from baseObject.created_by, since a system process could persist a ruling on a human reviewer's behalf (mirrors VerificationResult.reviewer_id's own coexistence with created_by). Required unconditionally, even at 'pending'.",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "protocol_id": {
+          "description": "The governing MethodProtocol this ruling covers. A plain body field, never an edge; not validated to resolve to a locked MethodProtocol here (service-level, deferred).",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "applies_to_analysis": {
+          "description": "A free-string tag matching one entry of the governing MethodProtocol's own planned_analyses list. No first-class 'branch'/'analysis' object exists in this repository; this cross-object correspondence is not validated here (service-level, deferred).",
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "description": "Lifecycle status (spec 08 section 3's table: pending -> issued -> superseded).",
+          "type": "string",
+          "enum": ["pending", "issued", "superseded"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "ruled_ceiling": {
+                "enum": ["associational_unadjusted", "associational_adjusted", "causal_local", "causal_bounded"]
+              }
+            },
+            "required": ["ruled_ceiling"]
+          },
+          "then": {
+            "properties": {"non_applicability_conditions": {"minItems": 1}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"ruling_basis": {"const": "deterministic_rule"}},
+            "required": ["ruling_basis"]
+          },
+          "then": {
+            "required": ["deterministic_rule_reference"],
+            "properties": {
+              "deterministic_rule_reference": {"not": {"type": "null"}},
+              "human_review": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"ruling_basis": {"const": "human_review"}},
+            "required": ["ruling_basis"]
+          },
+          "then": {
+            "required": ["human_review"],
+            "properties": {
+              "human_review": {"not": {"type": "null"}},
+              "deterministic_rule_reference": {"type": "null"}
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

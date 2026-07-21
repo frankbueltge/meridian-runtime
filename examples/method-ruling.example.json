@@ -1,0 +1,31 @@
+{
+  "id": "urn:mrr:method-ruling:01J00000000000000000000250",
+  "api_version": "mrr/v1alpha1",
+  "kind": "MethodRuling",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-21T10:30:00Z",
+  "created_by": "urn:mrr:person:01J00000000000000000000002",
+  "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+  "ruled_ceiling": "associational_unadjusted",
+  "scope_of_validity": {
+    "population": "works catalogued under AI-self-consumption in the works atlas",
+    "time": "as of the profile's first run",
+    "geography": null,
+    "conditions": ["provenance-verified inclusion only"]
+  },
+  "non_applicability_conditions": [
+    "does not apply to works whose training provenance is unverifiable (see EvidenceMatrix row-002)",
+    "does not license any causal claim about WHY a given artist chose recursive training"
+  ],
+  "ruling_basis": "human_review",
+  "deterministic_rule_reference": null,
+  "human_review": {
+    "reviewer_id": "urn:mrr:person:01J00000000000000000000004",
+    "review_note": "Ceiling set at associational_unadjusted per profile's own max_claim_ceiling (MRR-MTH-006, synthesis design); no adjustment for confounders performed."
+  },
+  "issued_by": "urn:mrr:person:01J00000000000000000000004",
+  "protocol_id": "urn:mrr:method-protocol:01J00000000000000000000230",
+  "applies_to_analysis": "instantiation-vs-reference-classification",
+  "status": "issued"
+}

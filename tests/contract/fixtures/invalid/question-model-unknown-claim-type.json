@@ -1,0 +1,20 @@
+{
+  "id": "urn:mrr:question-model:01J00000000000000000000211",
+  "api_version": "mrr/v1alpha1",
+  "kind": "QuestionModel",
+  "practice_id": "urn:mrr:practice:01J00000000000000000000001",
+  "revision": 1,
+  "created_at": "2026-07-21T09:00:00Z",
+  "created_by": "urn:mrr:person:01J00000000000000000000002",
+  "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "raw_question": "Does this work instantiate the mechanism?",
+  "claim_type_sought": "prophetic",
+  "scope": {
+    "population": "works atlas",
+    "time": null,
+    "geography": null,
+    "conditions": []
+  },
+  "load_bearing_terms": ["model-collapse mechanism"],
+  "status": "draft"
+}
