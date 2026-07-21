@@ -1,0 +1,748 @@
+task_id: E9-T00b
+title: >-
+  DRY consolidation: the five near-identical trust resolvers and the
+  nineteen local unit-of-work binder copies (strictly behavior-preserving)
+status: approved
+epic: E9
+reviewer_resolution: >-
+  Approved 2026-07-21 by the main session as reviewing instance, under the
+  owner's documented same-day merge delegation. All primary choices are
+  CONFIRMED: (1) the task id `E9-T00b` — the reviewer acknowledges this
+  consciously EXTENDS the repository's b-suffix convention (from
+  "later-discovered completeness gap in the same task's own scope" to
+  "same-slot sibling deliberately excluded at derivation time for
+  review-granularity"), and accepts the extension as documented in the
+  derivation's own TASK ID section rather than silently drifting the
+  convention; (2) the shared-core shape in derived_decisions (b) —
+  injected error CONSTRUCTORS via typed Protocols preserve AGENTS.md's
+  distinct-failure-kinds requirement while unifying the logic, and the
+  split into resolve/verify keeps manifest_trust's unique condition (d)
+  interleaved exactly where it runs today; (3) `packages/domain` as the
+  only layering-legal home (derived_decisions (c)); (4) the `as X as X`
+  explicit-reexport idiom for the 19 service files, with the
+  zero-test-edit outcome as the acceptance bar; (5) the exclusions
+  (envelope_validation/offline_bundle, the two edge-binder variants,
+  dispatch.py already done) stay excluded.
+
+  The reviewer explicitly ACCEPTS the derivation's mandate-citation
+  correction as the accurate record: E9-T00's own derivation misattributed
+  the trust-resolver deferral to E5-T00.yaml/K1-T03.yaml; the verified
+  citations are E5-T05.yaml, E6-T01.yaml, E6-T03.yaml plus the echoing
+  module docstrings. Correcting a predecessor packet's citation error in
+  the successor's derivation (rather than editing the merged predecessor)
+  is the right mechanism and matches this repository's practice. Reviewer
+  spot-checks at approval time: the E5-T05 staging quote verified present
+  (em-dash variant), the 19-copy count verified exact by independent grep,
+  TaskSignerMismatchError's "kept as a SEPARATE type" rationale verified
+  in exceptions.py.
+
+  SCHEDULING NOTE, binding on this session: implementation starts only
+  AFTER E1-T03b (in flight at approval time) has merged, to keep rebases
+  trivial — the two packets share no allowed_paths, but sequential
+  implementation is the established discipline for same-day batches.
+  Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from a
+  long-deferred cleanup this repository's own task packets have repeatedly
+  named and repeatedly postponed. Two independent duplication patterns are
+  in scope, verified directly against the CURRENT code on `main` (not
+  against any prior review comment alone) before being included here:
+
+  PATTERN 1 - the trust resolvers. `packages/domain/mrr/domain/
+  manifest_trust.py` (E5-T02), `task_trust.py` (E5-T04), `crate_trust.py`
+  (E5-T05), `transfer_trust.py` (E6-T01), and `correction_notification.py`'s
+  own `resolve_trusted_correction_notification_key` (E6-T03) each
+  independently implement "resolve a cross-practice object's claimed
+  signer to a trusted Ed25519 key, fail closed with a distinct typed error
+  per condition." The deferral is stated, verbatim or near-verbatim, FOUR
+  times by three different task packets and echoed in two module
+  docstrings - all independently re-confirmed present in the files named,
+  not merely asserted: (1) `task-packets/E5-T05.yaml` forbidden_changes:
+  "the E5-T02 manifest_trust, E5-T03 envelope_validation, and E5-T04
+  task_trust modules are NOT refactored here - a future DRY of the now-FOUR
+  near-identical signer-key resolvers is a separate, reviewed cleanup (keep
+  this additive and low-risk)." (2) `task-packets/E6-T01.yaml` (the
+  `transfer_trust` packet) forbidden_changes: "it is not refactored into
+  one shared resolver with `resolve_trusted_task_key`/
+  `resolve_trusted_crate_key` even though the three are now near-identical
+  - task-packets/E6-T01.yaml forbidden_changes: 'a future DRY of the
+  now-four near-identical trust resolvers is a separate, reviewed cleanup,
+  matching the E5-T05/E5-T06 precedent.'" - reproduced identically inside
+  `packages/domain/mrr/domain/transfer_trust.py`'s own module docstring,
+  confirmed by direct reading. (3) `task-packets/E6-T03.yaml` (the
+  `correction_notification` packet) forbidden_changes: "the four existing
+  near-identical resolvers, manifest_trust/task_trust/crate_trust/
+  transfer_trust, are NOT refactored into one shared function even though
+  this one looks near-identical; a future DRY of the now-five resolvers is
+  a separate, reviewed cleanup" - reproduced identically inside
+  `packages/domain/mrr/domain/correction_notification.py`'s own module
+  docstring lines 9-19, confirmed by direct reading. Three staging notes,
+  four citations, one escalating count (four resolvers, then four, then
+  five) - this packet is that deferred cleanup, for all five.
+
+  CORRECTION TO THE MISSION BRIEFING: the derivation prompt for this task
+  stated the deferral was flagged in `task-packets/E5-T00.yaml`,
+  `E6-T03.yaml`, and `K1-T03.yaml`, echoing `task-packets/E9-T00.yaml`'s own
+  derivation, which makes the identical claim ("flagged as a deliberate,
+  deferred future cleanup in task-packets/E5-T00.yaml, E6-T03.yaml, and
+  K1-T03.yaml alike, every time in the same words"). Direct verification
+  (`grep -n -i "cleanup" task-packets/E5-T00.yaml` and
+  `grep -n -i "trust resolver\|DRY" task-packets/K1-T03.yaml`) finds NEITHER
+  claim true: `E5-T00.yaml` is the ADR-0004 canonical-signing-form
+  unification task (NodeManifest/TaskBundle/EvidenceCrate signing bytes) -
+  it never mentions a trust resolver or a DRY deferral at all.
+  `K1-T03.yaml` never mentions trust resolvers or this deferral either (it
+  DOES engage with the OTHER pattern in this packet's scope - see PATTERN 2
+  below - just not this one). `task-packets/E9-T00.yaml`'s own citation of
+  `E5-T00.yaml` and `K1-T03.yaml` for the trust-resolver deferral is
+  therefore itself inaccurate; this derivation corrects the record rather
+  than propagating it, per this repository's own established practice
+  (E9-T00's own reviewer_resolution amends its predecessors when direct
+  verification disagrees with a prior claim). The real, verified citations
+  are E5-T05.yaml / E6-T01.yaml / E6-T03.yaml plus their echoing module
+  docstrings, listed above.
+
+  PATTERN 2 - the unit-of-work binder. `grep -rln
+  "^RecordRevisionWithEvent = Callable\[" packages/ services/` finds the
+  IDENTICAL two-symbol pair - a `RecordRevisionWithEvent` type alias and a
+  `bind_unit_of_work(engine, object_repository, event_log)` factory
+  function whose body composes `mrr.persistence.unit_of_work.
+  record_object_revision_with_event` - independently redefined in
+  NINETEEN files (not "roughly three" as this packet's own mission
+  briefing estimated; the briefing's number was checked against the
+  current code and found low by an order of magnitude, corrected here):
+  `services/control_plane/mrr/services/{obligation,research_score,
+  correction,evidence,task_bundle,concept_charter,method_protocol,
+  transfer,source_family,verification,capability_registry,method_profile,
+  evidence_matrix,question_model,research_decision,method_ruling,
+  claim}/service.py` (17 files) plus `services/node_runtime/mrr/services/
+  node_runtime/{evidence_crate,run_manifest}.py` (2 files). Stripping
+  triple-quoted docstrings and blank lines, every one of the 19
+  `bind_unit_of_work` function bodies and every one of the 19
+  `RecordRevisionWithEvent` type-alias lines is CODE-IDENTICAL (verified by
+  this derivation: extracted each with `awk`, stripped docstrings with a
+  small Python script, and confirmed exactly one distinct normalized body
+  across all 19 files) - only the surrounding docstring prose differs. The
+  pattern's own origin and rationale is documented at its root, in
+  `services/control_plane/mrr/services/research_score/service.py`'s module
+  docstring (E2-T01, the FIRST caller of `record_object_revision_with_event`):
+  it is local rather than an addition to `mrr.persistence` because
+  "task-packets/E2-T01.yaml forbids modifying those persistence internals -
+  'reuse E1-T05/T06 as-is'" - i.e. E2-T01's OWN `allowed_paths` did not
+  include `packages/persistence/**`, a scoping constraint specific to that
+  one task, not a permanent architectural ruling. Every later module
+  (E3-T01 evidence/service.py onward) copied the same local pair forward
+  with the same self-aware docstring note - most explicitly, `mrr.services.
+  source_family.service`'s own docstring, which every later module points
+  back to: "identical in shape to every other service's own
+  RecordRevisionWithEvent - a local copy, not a shared import, across
+  separate service modules." `task-packets/K1-T03.yaml` derived_decisions
+  (b) and (j) explicitly rely on and extend this SAME convention for its
+  own three new services ("mirroring `SourceFamilyService`'s own EXACT
+  shape... NOT a shared import across the three - the same 'local copy...
+  across separate service modules' precedent `source_family/service.py`'s
+  own docstring already establishes") - this is the engagement with pattern
+  2 the mission briefing's citation of K1-T03.yaml was actually pointing
+  at, just misattributed to the trust-resolver pattern instead.
+
+  EXPLICITLY VERIFIED AS ALREADY DONE, EXCLUDED FROM THIS PACKET: the
+  `build_dispatch_table` two-pass-into-one-pass dedup
+  `task-packets/K1-T03.yaml` derived_decisions (k) describes (PR #45
+  review) is already merged - `services/node_runtime/mrr/services/
+  node_runtime/dispatch.py` lines 160-175 show the exact "collect the SET
+  of distinct capability names... then call factory() at most ONCE"
+  structure the derived_decisions describes, with the identical comment
+  citing "PR #45 review follow-up (task-packets/K1-T03.yaml derived_
+  decisions (k))" still in place; `git log --oneline -- .../dispatch.py`
+  shows commit `accfef0` ("K1-T03: systematic_evidence_synthesis executor
+  ... (#52)") as the change that landed it. Nothing further to do there;
+  this packet touches `dispatch.py` not at all.
+
+  EXPLICITLY EXCLUDED, NOT PART OF "THE FIVE": `packages/domain/mrr/domain/
+  envelope_validation.py`'s `validate_inbound_envelope` (E5-T03) and
+  `packages/domain/mrr/domain/offline_bundle.py`'s `validate_inbound_bundle`
+  (E5-T06) each embed ONE condition with the same signer-resolution SHAPE
+  (confirmed: `EnvelopeSignerMismatchError`/`EnvelopeKeyNotValidError` and
+  `BundleSignerMismatchError`/`BundleKeyNotValidError` exist in
+  `packages/domain/mrr/domain/exceptions.py` with the identical constructor
+  shapes as the five resolvers' own error pairs), but each is ONE step
+  inside a LARGER function that also checks recipient identity, a validity
+  window, a payload/manifest content-hash consistency, and replay - never
+  named as one of "the five trust resolvers" by any task packet's own
+  forbidden_changes (which consistently enumerate exactly manifest_trust/
+  task_trust/crate_trust/transfer_trust/correction_notification and no
+  others), and mixing a genuinely different-shaped function's partial
+  extraction into this packet would violate compiler rule 1 ("select no
+  more than one cohesive domain behavior"). Left untouched; flagged in
+  specification_gaps as a plausible future follow-up, not decided here.
+  Also explicitly excluded: `RecordEdgeWithEvent`/`bind_edge_unit_of_work`
+  (`services/control_plane/mrr/services/claim/service.py`) and its
+  deliberately-divergent generalized sibling `RecordEdgesWithEvent`/
+  `bind_edge_unit_of_work` (`services/control_plane/mrr/services/
+  transfer/service.py`, whose own module docstring section "bind_edge_
+  unit_of_work here is a LOCAL, GENERALIZED copy" states it is NOT the same
+  shape as claim.service's version, composing "ANY number of edges" against
+  claim.service's "exactly ONE edge") - only two real definitions, already
+  documented as intentionally non-identical, and never referred to as part
+  of "the RecordRevisionWithEvent/bind_unit_of_work pattern" by any task
+  packet; a structurally different problem, not folded in here.
+
+  TASK ID: chosen as `E9-T00b`, not a bare new epic-level number. Reasoning:
+  `task-packets/E9-T00.yaml` already occupies the "sits before the
+  roadmapped E9-T01..T07, a new first task of Epic E9, not one of the
+  numbered seven" position, and its own forbidden_changes explicitly names
+  this exact cleanup as one more "loose end" it deliberately declined to
+  fold in ("mixing a behavior-preserving refactor with seven independent
+  behavioral/test changes would make this batch harder to review and roll
+  back piecemeal") - not because it is thematically unrelated to "tying off
+  loose ends before E9-T01" (E9-T00's own stated reason for existing at
+  all), but purely for review-granularity. That makes this packet E9-T00's
+  natural sibling precursor, not a numbered hardening deliverable in its
+  own right (it has no user-visible acceptance criterion of its own the way
+  E9-T01..T07 each do) and not a continuation of E9-T00's SEVEN items
+  either. This repository's own "b" suffix precedent (E5-T00/E5-T00b,
+  E5-T02/E5-T02b, E5-T07/E5-T07b) is admittedly closer to "a later-
+  discovered completeness gap in the SAME base task's own scope" than to
+  "a same-numbered sibling deliberately excluded at derivation time for
+  review-granularity reasons" - flagged plainly as a naming judgment call
+  in specification_gaps, with the reasoning above as this packet's own
+  primary choice and the alternative (a bare new id, e.g. a standalone
+  epic-level task) named for a reviewer to redirect to if preferred.
+objective: >-
+  Eliminate both duplications with zero behavior change, verified
+  mechanically rather than asserted: (1) extract the trust resolvers'
+  genuinely SHARED steps - conditions (a) signer-practice match, (b) unknown
+  key id, (c) key-not-valid-at-instant, and the final decode-and-verify step
+  - into one new module, `packages/domain/mrr/domain/trust_resolution.py`,
+  and make each of the five existing `resolve_trusted_*_key` functions a
+  thin wrapper that calls it with its own typed error classes made explicit
+  as arguments; `manifest_trust`'s extra, genuinely UNIQUE condition (the
+  declared-`public_keys` check) stays in `manifest_trust.py` itself,
+  inserted between the shared key-resolution call and the shared
+  verify-signature call, exactly where it already runs today. (2) add
+  `RecordRevisionWithEvent`/`bind_unit_of_work` to `packages/persistence/
+  mrr/persistence/unit_of_work.py` (the module that already defines the
+  `record_object_revision_with_event` function they merely bind) and
+  replace all 19 local definitions with a two-line explicit re-export
+  (`from mrr.persistence.unit_of_work import RecordRevisionWithEvent as
+  RecordRevisionWithEvent, bind_unit_of_work as bind_unit_of_work`), so
+  every existing `from mrr.services.<x>.service import bind_unit_of_work`
+  (33 test files, 2 CLI wiring modules, verified by direct grep) keeps
+  resolving to the exact same callable shape, unchanged, with ZERO test or
+  wiring-module edits required - not merely import-PATH-compatible, but
+  byte-for-byte unmodified. No schema, event, migration, or
+  signature-verification-semantics change anywhere in either consolidation.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e9--hardening-and-production-operation
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - task-packets/E1-T06.yaml
+  - task-packets/E2-T01.yaml
+  - task-packets/E5-T02.yaml
+  - task-packets/E5-T04.yaml
+  - task-packets/E5-T05.yaml
+  - task-packets/E6-T01.yaml
+  - task-packets/E6-T03.yaml
+  - task-packets/K1-T03.yaml
+  - task-packets/E9-T00.yaml
+  - packages/domain/mrr/domain/manifest_trust.py
+  - packages/domain/mrr/domain/task_trust.py
+  - packages/domain/mrr/domain/crate_trust.py
+  - packages/domain/mrr/domain/transfer_trust.py
+  - packages/domain/mrr/domain/correction_notification.py
+  - packages/domain/mrr/domain/exceptions.py
+  - packages/domain/mrr/domain/key_management.py
+  - packages/contracts/mrr/contracts/common.py
+  - packages/persistence/mrr/persistence/unit_of_work.py
+  - services/control_plane/mrr/services/research_score/service.py
+  - services/control_plane/mrr/services/source_family/service.py
+  - pyproject.toml
+requirements:
+  - MRR-FR-004
+  - MRR-FR-020
+  - MRR-FR-022
+  - MRR-FR-023
+  - MRR-FR-024
+  - MRR-FR-031
+  - MRR-FR-050
+  - MRR-FR-080
+  - MRR-FR-081
+  - MRR-FR-082
+  - MRR-FR-083
+  - MRR-FR-084
+  - MRR-FR-094
+  - MRR-NFR-001
+  - MRR-NFR-002
+  - MRR-NFR-006
+  - MRR-NFR-007
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - packages/domain/mrr/domain/manifest_trust.py
+  - packages/domain/mrr/domain/task_trust.py
+  - packages/domain/mrr/domain/crate_trust.py
+  - packages/domain/mrr/domain/transfer_trust.py
+  - packages/domain/mrr/domain/correction_notification.py
+  - packages/domain/mrr/domain/trust_resolution.py
+  - packages/persistence/mrr/persistence/unit_of_work.py
+  - services/control_plane/mrr/services/obligation/service.py
+  - services/control_plane/mrr/services/research_score/service.py
+  - services/control_plane/mrr/services/correction/service.py
+  - services/control_plane/mrr/services/evidence/service.py
+  - services/control_plane/mrr/services/task_bundle/service.py
+  - services/control_plane/mrr/services/concept_charter/service.py
+  - services/control_plane/mrr/services/method_protocol/service.py
+  - services/control_plane/mrr/services/transfer/service.py
+  - services/control_plane/mrr/services/source_family/service.py
+  - services/control_plane/mrr/services/verification/service.py
+  - services/control_plane/mrr/services/capability_registry/service.py
+  - services/control_plane/mrr/services/method_profile/service.py
+  - services/control_plane/mrr/services/evidence_matrix/service.py
+  - services/control_plane/mrr/services/question_model/service.py
+  - services/control_plane/mrr/services/research_decision/service.py
+  - services/control_plane/mrr/services/method_ruling/service.py
+  - services/control_plane/mrr/services/claim/service.py
+  - services/node_runtime/mrr/services/node_runtime/evidence_crate.py
+  - services/node_runtime/mrr/services/node_runtime/run_manifest.py
+  - tests/unit/domain/test_trust_resolution.py
+  - tests/unit/persistence/test_unit_of_work.py
+forbidden_changes:
+  - >-
+    packages/domain/mrr/domain/exceptions.py - no error class is added,
+    removed, renamed, or given a changed constructor signature; every one
+    of the ten existing signer-mismatch/key-not-valid error pairs
+    (Manifest/Task/Crate/Transfer/CorrectionNotification) and the shared
+    UnknownKeyIdError keep their exact current identity, message text, and
+    constructor keyword shape - this packet only changes WHICH function
+    body constructs and raises them, never what they are
+  - >-
+    packages/domain/mrr/domain/envelope_validation.py and
+    packages/domain/mrr/domain/offline_bundle.py - not part of "the five
+    trust resolvers" (see derivation); their own EnvelopeSignerMismatchError/
+    EnvelopeKeyNotValidError and BundleSignerMismatchError/
+    BundleKeyNotValidError pairs are untouched and their embedded
+    signer-resolution steps are NOT refactored to call
+    trust_resolution.py in this packet
+  - >-
+    services/control_plane/mrr/services/claim/service.py's
+    RecordEdgeWithEvent/bind_edge_unit_of_work and
+    services/control_plane/mrr/services/transfer/service.py's
+    RecordEdgesWithEvent/bind_edge_unit_of_work - a structurally different,
+    already-documented-as-non-identical pattern, out of scope (see
+    derivation)
+  - >-
+    services/node_runtime/mrr/services/node_runtime/dispatch.py - the
+    build_dispatch_table dedup this packet's own mission briefing asked to
+    verify is CONFIRMED ALREADY LANDED (PR #52, commit accfef0); this file
+    is not touched at all
+  - >-
+    any of the 33 test files that import bind_unit_of_work/
+    RecordRevisionWithEvent from a services/*/service.py module (see
+    derivation's grep-verified list) - every one of these imports MUST
+    keep working with NO edit, proven by running the existing suites
+    unmodified, not by updating their import lines
+  - >-
+    the five CLI wiring modules that import bind_unit_of_work from a
+    services/*/service.py module (services/control_plane/mrr/services/
+    cli/orchestration.py, synthesis_setup.py, synthesis_orchestration.py)
+    - unaffected callers, not edited, not added to allowed_paths
+  - >-
+    mrr.domain.hashing_policy.verify_object_signature, mrr.crypto.keys.
+    decode_public_key, mrr.domain.key_management.KeyRing/
+    PublicKeyDescriptor, and mrr.persistence.unit_of_work.
+    record_object_revision_with_event themselves - every one of these is
+    called BY the consolidated code exactly as it is called today; none of
+    their own bodies, signatures, or semantics change
+  - >-
+    any JSON Schema under schemas/**, any Pydantic contract under
+    packages/contracts/**, any example fixture under examples/**, any
+    Alembic migration, and any change to the two import-linter contracts in
+    pyproject.toml - this is a pure internal refactor of already-existing,
+    already-tested logic; nothing externally observable changes shape
+  - >-
+    the five resolver functions' own public names, parameter names, parameter
+    order, defaults, return types, or docstring "Args"/"Returns"/"Raises"
+    semantics (some docstring PROSE may be trimmed to remove now-redundant
+    "identical to my sibling module" cross-references once the sharing is
+    real code rather than a comment, but the documented contract - what
+    exceptions are raised, in what order, under what conditions - MUST read
+    identically to today)
+  - HTTP/FastAPI endpoints anywhere, and any network egress
+derived_decisions:
+  - >-
+    (a) TRUST RESOLVER COMMONALITY/DIFFERENCE MATRIX. Every one of the five
+    resolvers has the identical five-parameter public signature shape -
+    `resolve_trusted_<X>_key(obj, trusted_<Y>_practice_id, ring, *, at=None)
+    -> Ed25519PublicKey` (parameter NAMES for the trusted-practice-id vary
+    cosmetically - `trusted_practice_id` (manifest), `trusted_signer_
+    practice_id` (task, transfer), `trusted_node_practice_id` (crate),
+    `trusted_notifying_practice_id` (correction notification) - same
+    semantic role every time: "the practice id the CALLER trusts as this
+    object's signer," never derived or looked up by the function itself).
+    All five objects carry their signature via the SAME shared Pydantic
+    type, `mrr.contracts.common.Signature` (`signer_practice_id: Urn`,
+    `key_id: str`, `algorithm: Literal["Ed25519"]`, `value: str`,
+    `signed_at`) - confirmed by direct grep of all five contracts' own
+    `signature: Signature` field declarations - so every resolver's
+    condition logic operates on structurally identical data. IDENTICAL
+    logic, line for line, confirmed by direct reading of all five files:
+    condition (a) `obj.signature.signer_practice_id !=
+    trusted_..._practice_id` raises a distinctly-NAMED-but-identically-
+    SHAPED `<X>SignerMismatchError(claimed_signer_practice_id=...,
+    trusted_practice_id=...)` (all five error classes share the EXACT
+    constructor keyword signature, confirmed by direct reading of
+    exceptions.py); condition (b) `ring.get(kid)` returning `None` raises
+    the SAME, already-shared `UnknownKeyIdError(kid)` in all five (no
+    per-object variant exists for this one condition - exceptions.py's own
+    docstring explains why: "its name and fields are already generic...
+    unlike ManifestSignerMismatchError/ManifestKeyNotValidError"); condition
+    (c) `not ring.is_valid_at(evaluation_instant, kid)` raises a
+    distinctly-named-but-identically-shaped `<X>KeyNotValidError(kid, at=
+    evaluation_instant)` (again, all five share the exact constructor
+    keyword shape); the final step - `decode_public_key(descriptor.
+    encoded_public_key)` then `verify_object_signature(verifying_key,
+    json.loads(obj.model_dump_json(exclude_none=True)), obj.signature.value,
+    algorithm=obj.signature.algorithm)` - is IDENTICAL code in all five,
+    differing only in which local variable name holds `obj`. WHY they
+    differ at all: only two axes - (i) which typed error pair to raise
+    (cosmetic, by design - AGENTS.md's prohibited-shortcuts list forbids
+    collapsing distinct failure kinds into one generic type, so keeping
+    five distinctly-named SignerMismatch/KeyNotValid pairs is a deliberate,
+    KEPT design choice, not itself duplication to remove); (ii)
+    manifest_trust's own extra, condition (d) - "the resolved descriptor's
+    key is one of the manifest's own declared public_keys" - which has NO
+    analog in the other four (confirmed: TaskBundle/EvidenceCrate/
+    TransferContract/CorrectionNotification contracts have no `public_keys`
+    field at all; only NodeManifest does, `Field(min_length=1)`) because
+    only a NodeManifest is ITSELF the thing declaring which keys speak for
+    a node - a genuine, spec-grounded semantic difference, not an
+    oversight, and the ONE piece of resolver logic this packet does NOT
+    unify away.
+  - >-
+    (b) TRUST RESOLVER TARGET SHAPE. New module
+    `packages/domain/mrr/domain/trust_resolution.py` (packages/domain is
+    where all five existing resolvers already live; no layering change)
+    exposes two functions, both PUBLIC (mirroring this codebase's own
+    existing precedent of `manifest_trust.practice_key_ring` being a public,
+    cross-imported shared helper, not a leading-underscore private symbol):
+    `resolve_trusted_signer_key(obj, trusted_practice_id, ring, *, at,
+    signer_mismatch_error, key_not_valid_error) -> Ed25519PublicKey` -
+    conditions (a)/(b)/(c) plus decoding the resolved descriptor's key,
+    typed against a local `SignedObject` Protocol requiring only
+    `.signature: Signature` and `.model_dump_json(*, exclude_none: bool =
+    ...) -> str` (every one of the five Pydantic contracts already
+    satisfies this structurally); `signer_mismatch_error`/`key_not_valid_
+    error` are injected as the two typed-error CONSTRUCTORS the caller
+    wants raised (typed via two small local Protocols matching each error
+    family's own exact keyword shape - `def __call__(self, *,
+    claimed_signer_practice_id: str, trusted_practice_id: str) ->
+    DomainError` and `def __call__(self, kid: str, *, at: datetime) ->
+    DomainError` respectively) - so the SAME core function raises
+    `ManifestSignerMismatchError` for one caller and
+    `TaskSignerMismatchError` for another without ever branching on object
+    type internally. `verify_trusted_signature(obj, verifying_key) -> None`
+    - the final decode-body-and-verify step, taking the ALREADY-resolved
+    key so it can be called either immediately after
+    `resolve_trusted_signer_key` (four of the five resolvers) or after an
+    extra caller-side check runs first (manifest_trust). Each of the five
+    existing files' PUBLIC function becomes exactly: call
+    `resolve_trusted_signer_key` with its own two error classes bound;
+    for manifest_trust ONLY, run the existing, UNCHANGED declared-
+    public_keys loop (still raising the existing
+    `ManifestKeyNotDeclaredError` - which has no shared analog and is not
+    touched); call `verify_trusted_signature`; return the key. This is the
+    "old file's diff reduces to delegation with site-specific parameters
+    made explicit" shape the mission asked for - each of the five diffs is
+    independently readable and independently revertible without touching
+    the other four.
+  - >-
+    (c) WHY packages/domain, NOT packages/persistence OR a services layer,
+    FOR trust_resolution.py. Both import-linter contracts in pyproject.toml
+    apply to `mrr.domain` as a listed `source_module`: contract 1 (MRR-
+    NFR-010) forbids `mrr.domain` importing fastapi/starlette/temporalio/
+    openai/anthropic/boto3/botocore - trust_resolution.py imports only
+    `cryptography`, `mrr.contracts.common.Signature`, `mrr.crypto.keys`,
+    `mrr.domain.exceptions.DomainError`, `mrr.domain.hashing_policy.
+    verify_object_signature`, `mrr.domain.key_management.KeyRing` - all
+    already-permitted imports every existing resolver already makes, so
+    contract 1 stays satisfied trivially. Contract 2 forbids `mrr.domain`
+    importing `mrr.services` - trust_resolution.py imports nothing from
+    services either. Placing it anywhere under `mrr.services` instead would
+    be a straight regression (the five existing resolvers living in
+    `mrr.domain` would then have to import FROM `mrr.services`, which
+    contract 2 forbids outright) - packages/domain is not a choice among
+    alternatives, it is the only layer both existing resolvers already
+    occupy and both contracts already permit.
+  - >-
+    (d) UNIT-OF-WORK COMMONALITY. Stripped of docstrings, all 19
+    `RecordRevisionWithEvent = Callable[[StoredObject, int | None,
+    DomainEvent], tuple[StoredObject, AppendedEvent]]` lines and all 19
+    `bind_unit_of_work(engine, object_repository, event_log)` function
+    bodies are 100% code-identical (verified mechanically by this
+    derivation: `awk` extraction per file, a small Python script stripping
+    triple-quoted docstrings and blank lines, then comparing the 19
+    normalized bodies - exactly one distinct body). There is no
+    "commonality/difference matrix" to draw for this pattern the way there
+    is for the trust resolvers - there is no difference at all in the code
+    that runs; every one of the 19 copies exists purely because
+    `packages/persistence/mrr/persistence/unit_of_work.py` already contains
+    the ONE function (`record_object_revision_with_event`) every copy binds,
+    and no earlier task's `allowed_paths` included that file (see
+    derivation's E2-T01 root-cause finding) until this one's does.
+  - >-
+    (e) UNIT-OF-WORK TARGET SHAPE AND THE ZERO-TEST-EDIT RE-EXPORT. Add
+    `RecordRevisionWithEvent` and `bind_unit_of_work` to
+    `packages/persistence/mrr/persistence/unit_of_work.py` immediately
+    after `record_object_revision_with_event` (before `record_event`),
+    using EXACTLY the existing body (byte-identical to what all 19 copies
+    already contain) - this file already imports every symbol both
+    definitions need (`Callable`, `StoredObject`, `PostgresEventLog`,
+    `PostgresObjectRepository`, `DomainEvent`, `AppendedEvent`, `Engine`),
+    confirmed by direct reading, so this addition requires ZERO new
+    imports in unit_of_work.py. Then, in each of the 19 service files,
+    delete the local `RecordRevisionWithEvent = Callable[...]` line and the
+    local `def bind_unit_of_work(...): ...` block, and replace the existing
+    `from mrr.persistence.unit_of_work import record_object_revision_with_
+    event` import (now otherwise-unused in every file where it was only
+    ever referenced inside the deleted closure - confirmed to be the only
+    use site in each of the 19 files) with `from mrr.persistence.
+    unit_of_work import (RecordRevisionWithEvent as RecordRevisionWithEvent,
+    bind_unit_of_work as bind_unit_of_work)`. The redundant `as X as X`
+    form is not stylistic - `pyproject.toml`'s `[tool.mypy] strict = true`
+    includes `no_implicit_reexport`, and NONE of the 19 files declares an
+    `__all__` (confirmed by `grep -l "^__all__"` across all 19 - zero
+    matches), so a bare `from ... import bind_unit_of_work` would make
+    mypy --strict reject every cross-module `from mrr.services.<x>.service
+    import bind_unit_of_work` in the 33 dependent test files and 3 CLI
+    wiring modules as "module has no attribute." The explicit-reexport
+    idiom is what makes those 33+3 call sites need ZERO edits - not merely
+    an import-PATH update as the mission's own fallback language
+    anticipated, but no edit at all, because `mrr.services.<x>.service.
+    bind_unit_of_work` remains a real, resolvable attribute of that exact
+    module either way. `RecordRevisionWithEvent` stays additionally
+    referenced within each of the 19 files as a live type annotation (each
+    service's own `__init__`/`self._record: RecordRevisionWithEvent`), so
+    ruff's unused-import check has no bare "imported but never referenced"
+    case to flag for that symbol regardless; `bind_unit_of_work` itself is
+    typically referenced nowhere else inside its OWN defining file (only by
+    external callers), which is exactly the case the `as X as X` idiom
+    exists for.
+  - >-
+    (f) ORDERING PRESERVED EXACTLY. Every existing resolver's condition
+    order is reproduced without reordering: (a) signer match, (b) unknown
+    kid, (c) key not valid at instant, [manifest_trust only:] (d) key not
+    among declared public_keys, then the final verify step - never
+    reordered, never short-circuited differently, never evaluated
+    speculatively out of order. The unit-of-work change reorders nothing
+    at the call-site level either - `bind_unit_of_work(engine, object_
+    repository, event_log)` still returns a callable with the exact same
+    three-argument, unchanged call shape
+    `record(obj, expected_current_revision, event)`, still ultimately
+    calling `record_object_revision_with_event` inside one
+    `engine.begin()` transaction, unchanged.
+invariants:
+  - >-
+    every one of the 2,665+ existing lines across tests/unit/domain/
+    test_manifest_trust.py, test_task_trust.py, test_crate_trust.py,
+    test_transfer_trust.py, test_correction_notification.py, and tests/
+    property/test_manifest_trust_properties.py, test_task_trust_properties.
+    py, test_crate_trust_properties.py, test_transfer_trust_properties.py
+    passes UNMODIFIED - none of these files is in allowed_paths and none
+    may be edited.
+  - >-
+    every one of the 33 test files and 3 CLI wiring modules (services/
+    control_plane/mrr/services/cli/{orchestration,synthesis_setup,
+    synthesis_orchestration}.py) that imports bind_unit_of_work/
+    RecordRevisionWithEvent from a services/*/service.py or services/
+    node_runtime/*/*.py module passes/imports UNMODIFIED - none of these
+    files is in allowed_paths and none may be edited.
+  - >-
+    for each of the five trust-resolver public functions, the exact set of
+    exceptions raised, their exact types, their exact constructor
+    arguments, and the exact order in which conditions are checked are
+    byte-for-byte unchanged from before this packet - provable by the
+    existing test suites passing unmodified plus a direct diff read of each
+    file showing pure delegation.
+  - >-
+    for the unit-of-work binder, `bind_unit_of_work(engine, object_
+    repository, event_log)` returns a callable with the identical
+    three-argument call shape and identical transactional behavior
+    (one `engine.begin()` block wrapping one object-revision insert plus
+    one event append) as every one of the 19 pre-existing local copies.
+  - both import-linter contracts in pyproject.toml remain KEPT throughout.
+  - >-
+    make typecheck (mypy --strict) is clean with no new `# type: ignore`
+    anywhere in either consolidation.
+  - >-
+    no schema, contract, example fixture, or Alembic migration changes;
+    no new or changed error message text; no new or changed domain event.
+acceptance_tests:
+  - >-
+    trust resolvers, mechanical equivalence: for each of manifest_trust.py/
+    task_trust.py/crate_trust.py/transfer_trust.py/correction_notification.py,
+    `git diff main` shows the function body reduced to (at most) a
+    declared-public-keys block plus two calls into
+    mrr.domain.trust_resolution with that file's own two error classes
+    passed explicitly - reviewable by inspection without re-deriving the
+    logic, per the mission's own "reviewer can verify equivalence
+    mechanically" requirement.
+  - >-
+    trust resolvers, regression: every existing test in tests/unit/domain/
+    test_{manifest,task,crate,transfer}_trust.py, test_correction_
+    notification.py, and tests/property/test_{manifest,task,crate,
+    transfer}_trust_properties.py passes with zero modification to those
+    files - proves all five accept-rule condition orders, all typed
+    exceptions, and all fail-closed behavior are unchanged.
+  - >-
+    trust resolvers, new coverage: tests/unit/domain/test_trust_resolution.py
+    (new) exercises resolve_trusted_signer_key/verify_trusted_signature
+    directly against a minimal fake SignedObject and both injected-error
+    Protocols, DB-free, proving the shared core's own condition order and
+    fail-closed behavior independent of any of the five callers - this is
+    genuinely additive coverage the current per-module tests do not
+    provide (no test today exercises the shared shape in isolation from a
+    specific object type).
+  - >-
+    manifest_trust's unique condition (d) still runs in the same relative
+    position (after key-validity, before signature verification) and still
+    raises ManifestKeyNotDeclaredError for a resolved key not among the
+    manifest's own declared public_keys, and the ADR-0009 key-identity
+    (not string-identity) comparison behavior is unchanged - proven by the
+    existing test_manifest_trust.py/test_manifest_trust_properties.py
+    suites passing unmodified.
+  - >-
+    unit-of-work, mechanical equivalence: for each of the 19 service files,
+    `git diff main` shows exactly the local RecordRevisionWithEvent/
+    bind_unit_of_work definition replaced by the two-symbol explicit
+    re-export import, and the now-otherwise-unused
+    record_object_revision_with_event import removed - no other line in
+    any of the 19 files changes.
+  - >-
+    unit-of-work, regression: every one of the 33 test files and 3 CLI
+    wiring modules identified in derivation continues to import and call
+    bind_unit_of_work/RecordRevisionWithEvent from its existing
+    mrr.services.<x>.service (or mrr.services.node_runtime.<x>) import
+    path with ZERO edits, and every integration/unit/e2e test that
+    exercises a service's create/transition method through that binder
+    passes unmodified.
+  - >-
+    unit-of-work, new coverage: tests/unit/persistence/test_unit_of_work.py
+    gains a DB-free test proving bind_unit_of_work(engine, object_
+    repository, event_log)'s returned callable, when invoked with a
+    (StoredObject, expected_revision, DomainEvent) triple, calls
+    record_object_revision_with_event with exactly the bound engine/
+    object_repository/event_log plus the per-call arguments unchanged
+    (using the module's own existing FakeObjectRepository/FakeEventLog
+    style already established in that file).
+  - >-
+    layering: `make lint` (which runs `lint-imports`, the import-linter
+    CLI) passes with both contracts KEPT; `make typecheck` passes with
+    zero new `# type: ignore`.
+  - >-
+    full-suite regression: make test, make test-contract, make
+    test-integration, make test-e2e, and make security-check are all green,
+    proving no observable behavior changed anywhere the existing suites
+    already cover (capability_registry, task_bundle negotiation, evidence
+    crate receipt, transfer negotiation, correction notification receipt,
+    and every one of the 19 services' own create/transition flows).
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+  - make security-check
+required_output:
+  - >-
+    implementation summary organized in two parts (trust resolvers; unit-of-
+    work binder), each listing exactly which files changed and confirming
+    every forbidden_changes path was NOT touched
+  - >-
+    the exact final signature of trust_resolution.py's two functions and
+    the two error-constructor Protocols, and a short per-resolver table
+    showing which two error classes each of the five callers binds
+  - >-
+    the git diff of each of the five trust-resolver files and each of the
+    19 service files, small enough to review inline, demonstrating the
+    delegation shape claimed above
+  - >-
+    tests added (test_trust_resolution.py, the new bind_unit_of_work test
+    in test_unit_of_work.py) and confirmation, by file list, that no other
+    test file was modified
+  - exact commands executed and their results (all eight from `commands`)
+  - >-
+    security/privacy implications - none of the fail-closed behavior,
+    typed-error identity, or ADR-0004/ADR-0009 canonicalization changes;
+    this is an internal-structure-only refactor of already-reviewed
+    security-critical code, so the required_output should say plainly
+    whether the implementer re-read each moved condition against its
+    original module's own docstring rationale before deleting the
+    duplicate, not just that tests passed
+  - >-
+    confirmation that build_dispatch_table (already consolidated, PR #52)
+    was NOT touched, and that envelope_validation.py/offline_bundle.py/
+    RecordEdgeWithEvent/bind_edge_unit_of_work (explicitly out of scope)
+    were NOT touched
+  - open specification questions exactly as listed under specification_gaps
+stop_conditions:
+  - >-
+    any of the five trust resolvers turns out to be semantically DIFFERENT
+    from the commonality matrix in derived_decisions (a) in a way this
+    derivation missed - e.g. a condition-ordering difference, an extra
+    check beyond manifest_trust's declared-public-keys one, or a
+    Signature-shaped field that is not actually identical across all five
+    contracts - stop immediately, do not force-unify; report the exact
+    divergence and which file it is in.
+  - >-
+    any of the 19 bind_unit_of_work/RecordRevisionWithEvent local copies
+    turns out to NOT be code-identical to the other 18 once re-diffed at
+    implementation time (this derivation's own diffing was against the
+    commit current at derivation time; if main has moved and a copy has
+    drifted) - stop, do not silently pick one version as canonical; report
+    which file diverges and how.
+  - >-
+    making the trust_resolution.py extraction requires widening the
+    SignedObject Protocol beyond `.signature`/`.model_dump_json` in a way
+    that would also require importing a specific object's own contracts
+    module into trust_resolution.py (defeating the point of a
+    object-type-agnostic shared core) - stop and report.
+  - >-
+    the `as X as X` explicit-reexport idiom does not, in practice, satisfy
+    mypy --strict's no_implicit_reexport check for a cross-module `from
+    mrr.services.<x>.service import bind_unit_of_work` - stop and report
+    the exact mypy error rather than adding `__all__` to all 19 files as an
+    unplanned, wider-blast-radius workaround without checking back first.
+  - >-
+    any existing test (not only the ones enumerated in this packet) fails
+    after either consolidation - stop, do not modify the failing test to
+    make it pass; report exactly which test and why, mirroring
+    task-packets/E9-T00.yaml's own precedent for this exact situation (its
+    reviewer_resolution amendment (6), where a fail-closed check correctly
+    surfaced a test-fixture gap the packet's own derivation had missed).
+specification_gaps:
+  - >-
+    the task id `E9-T00b` is this packet's own naming judgment call, not a
+    settled repository convention - see derivation's "TASK ID" section for
+    the full reasoning and the acknowledged tension with this repo's
+    existing "b = later-discovered completeness gap in the same base
+    task's scope" precedent. A reviewer preferring a different id (e.g. a
+    bare new epic-level number) can rename the file with no content change
+    required.
+  - >-
+    whether envelope_validation.py's and offline_bundle.py's own embedded
+    signer-key-resolution steps (which already share the same UnknownKeyIdError
+    reuse convention and a structurally similar - but not identical -
+    accept-rule shape) should ALSO be migrated to call
+    mrr.domain.trust_resolution's shared core in a later, separate packet
+    is left open, not decided here - flagged only because this derivation
+    surfaced it while confirming what does and does not belong to "the
+    five."
+  - >-
+    whether the five resolvers' own docstrings should be trimmed of their
+    now-redundant "mirrors X's identical fact pattern" cross-references
+    once the sharing is expressed in real code rather than prose is left to
+    the implementer's judgment - forbidden_changes requires the DOCUMENTED
+    contract (exceptions raised, order, conditions) to read identically,
+    but does not mandate preserving every comparative sentence verbatim.
