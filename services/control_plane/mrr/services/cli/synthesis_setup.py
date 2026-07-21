@@ -37,7 +37,12 @@ bypass governance with a raw, test-only ``_seed_generic``-style insert
    ``question_model_id``/``method_protocol_id``, the real ``corpus_entries``
    derived from the pinned atlas snapshots, and the ``protocol_parameters``
    sidecar (with ``protocol_id``/``protocol_lock_content_hash`` filled in
-   from the just-locked protocol's own real id/content_hash).
+   from the just-locked protocol's own real id/content_hash). When the
+   caller also supplies ``sensitivity_variation_parameters`` (MRR-MTH-018,
+   task-packets/K1-T04c.yaml), the SAME two fields are overwritten on a
+   shallow copy of EVERY supplied variation's own parameters dict, for the
+   identical reason: no caller can know the protocol's real, minted id/
+   content_hash before this function creates and locks it.
 
 Extraction stays entirely model-free throughout (derived_decisions (j)): no
 ``executor``/``extraction_callable`` override is injected unless the caller
@@ -45,11 +50,35 @@ explicitly supplies one — ``run_synthesis_evidence_loop``'s own default
 (``executor=None`` -> dispatch-table resolution of
 ``SystematicEvidenceSynthesisExecutor`` with ``extraction_callable=None``) is
 used, exactly like K1-T03's own headline acceptance path.
+
+--- MRR-MTH-018: sensitivity-variation-parameters passthrough (task-packets/K1-T04c.yaml) ---
+
+``establish_and_run_synthesis`` gains one new, additive, default-``None``
+keyword parameter, ``sensitivity_variation_parameters`` (keyword-only,
+immediately after ``protocol_parameters`` — mirroring
+``run_synthesis_evidence_loop``'s own identical parameter order, K1-T03b).
+``None``/absent (every caller before this packet) is passed straight through
+as ``sensitivity_variation_parameters=None`` in ``loop_kwargs`` — byte-for-
+byte equivalent to the key not existing there at all, since
+``run_synthesis_evidence_loop``'s own truthiness guard treats an explicit
+``None`` and an omitted argument identically. When supplied (a non-empty
+mapping), this function builds a NEW mapping — one shallow-copied dict per
+``variation_entry_id`` — with ``protocol_id``/``protocol_lock_content_hash``
+OVERWRITTEN from the SAME just-locked ``MethodProtocol`` the base
+``protocol_parameters`` sidecar's own fields are overwritten from (step 6
+above), discarding any caller-supplied placeholder — a caller-authored
+variation-parameters file necessarily carries placeholder values for these
+two fields (there is no way to author the real ones in advance), so without
+this overwrite the passthrough would be unusable by exactly the caller it
+exists to unblock. The resulting mapping is handed to
+``run_synthesis_evidence_loop`` under the SAME parameter name, unchanged
+otherwise.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -362,6 +391,7 @@ def establish_and_run_synthesis(
     method_protocol: dict[str, Any],
     corpus_entries: list[dict[str, Any]],
     protocol_parameters: dict[str, Any],
+    sensitivity_variation_parameters: Mapping[str, dict[str, Any]] | None = None,
     method_profile: dict[str, Any] | None = None,
     method_profile_id: Urn | None = None,
     actor: Urn | None = None,
@@ -403,6 +433,19 @@ def establish_and_run_synthesis(
             OVERWRITTEN here with the just-locked protocol's own real
             id/content_hash; any caller-supplied placeholder values are
             discarded.
+        sensitivity_variation_parameters: MRR-MTH-018 (task-packets/
+            K1-T04c.yaml) — an OPTIONAL mapping of ``variation_entry_id ->``
+            a plain dict shaped per ``mrr.services.node_runtime.
+            synthesis_executor.SensitivityVariationParameters``. ``None`` or
+            empty (the default) is byte-for-byte equivalent to this
+            parameter not existing at all. When supplied, EVERY entry's own
+            ``protocol_id``/``protocol_lock_content_hash`` is OVERWRITTEN
+            with the just-locked protocol's own real id/content_hash, the
+            SAME treatment ``protocol_parameters`` above already receives;
+            any caller-supplied placeholder values there are discarded too.
+            The resulting mapping is passed through unchanged to
+            ``run_synthesis_evidence_loop``'s own identically-named
+            parameter.
         method_profile: body-only ``MethodProfile`` content for a FRESH
             profile this call proposes+accepts. Ignored if
             ``method_profile_id`` is given. Defaults to
@@ -572,6 +615,23 @@ def establish_and_run_synthesis(
     final_protocol_parameters["protocol_id"] = resolved_method_protocol_id
     final_protocol_parameters["protocol_lock_content_hash"] = locked_content_hash
 
+    # --- 6b. MRR-MTH-018 (task-packets/K1-T04c.yaml): the SAME fill-in,
+    #         adjacent, per supplied sensitivity-variation entry — a
+    #         caller-supplied variation-parameters file necessarily carries
+    #         placeholder protocol_id/protocol_lock_content_hash strings
+    #         (there is no way to author real ones in advance), so this
+    #         overwrites them the same way, unconditionally, on a NEW
+    #         shallow-copied dict per entry (the caller-supplied mapping
+    #         itself is never mutated).
+    final_sensitivity_variation_parameters: dict[str, dict[str, Any]] | None = None
+    if sensitivity_variation_parameters:
+        final_sensitivity_variation_parameters = {}
+        for variation_entry_id, variation_params in sensitivity_variation_parameters.items():
+            final_variation_params = dict(variation_params)
+            final_variation_params["protocol_id"] = resolved_method_protocol_id
+            final_variation_params["protocol_lock_content_hash"] = locked_content_hash
+            final_sensitivity_variation_parameters[variation_entry_id] = final_variation_params
+
     loop_kwargs: dict[str, Any] = {
         "engine": engine,
         "artifact_store": artifact_store,
@@ -581,6 +641,7 @@ def establish_and_run_synthesis(
         "method_protocol_id": resolved_method_protocol_id,
         "corpus_entries": corpus_entries,
         "protocol_parameters": final_protocol_parameters,
+        "sensitivity_variation_parameters": final_sensitivity_variation_parameters,
         "actor": resolved_actor,
         "policy_version": policy_version,
         "correlation_id": resolved_correlation_id,

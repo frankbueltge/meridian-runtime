@@ -18,6 +18,18 @@ The five new, this-run-specific flags (``--question-model-file``,
 ``corpora/model-collapse/*.json`` paths, so ``mrr synthesis run
 --database-url ... --artifact-root ...`` alone reproduces the committed real
 run with no further arguments.
+
+A sixth flag, ``--sensitivity-variation-parameters-file`` (MRR-MTH-018,
+task-packets/K1-T04c.yaml), is deliberately DIFFERENT: it defaults to
+``None``, not a committed fixture path — run 1 has no such fixture, and this
+packet mints none (derived_decisions (d)). When given, the file is parsed
+via the SAME ``_load_json_file`` helper the other five flags already use and
+passed through unchanged as ``establish_and_run_synthesis``'s own
+``sensitivity_variation_parameters`` keyword. When omitted (the default),
+``sensitivity_variation_parameters=None`` is passed, matching that
+function's own default exactly — a bare ``mrr synthesis run --database-url
+... --artifact-root ...`` continues to reproduce run 1 with zero declared
+variations, byte-identical to before this packet.
 """
 
 from __future__ import annotations
@@ -174,6 +186,19 @@ def _add_run_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentP
         default=_DEFAULT_PROTOCOL_PARAMETERS_FILE,
         help="The protocol-parameters sidecar. Defaults to the committed fixture.",
     )
+    run_parser.add_argument(
+        "--sensitivity-variation-parameters-file",
+        type=Path,
+        default=None,
+        help=(
+            "MRR-MTH-018 (task-packets/K1-T04c.yaml): a JSON object mapping each declared "
+            "MethodProtocol.sensitivity_variations entry_id to its own "
+            "SensitivityVariationParameters-shaped body. Optional, no committed fixture "
+            "default (unlike the five --*-file flags above): omitted means "
+            "sensitivity_variation_parameters=None, reproducing run 1 with zero declared "
+            "variations."
+        ),
+    )
     run_parser.add_argument("--timeout-seconds", type=int, default=30)
     run_parser.add_argument(
         "--code-revision",
@@ -261,6 +286,11 @@ def run_command(args: argparse.Namespace) -> int:
         method_protocol = _load_json_file(args.method_protocol_file)
         corpus_entries = _load_json_file(args.corpus_file)
         protocol_parameters = _load_json_file(args.protocol_parameters_file)
+        sensitivity_variation_parameters = (
+            _load_json_file(args.sensitivity_variation_parameters_file)
+            if args.sensitivity_variation_parameters_file is not None
+            else None
+        )
     except OSError as exc:
         print(
             f"mrr synthesis run: cannot read a fixture file ({exc}). Refusing to fabricate a "
@@ -282,6 +312,7 @@ def run_command(args: argparse.Namespace) -> int:
         "method_protocol": method_protocol,
         "corpus_entries": corpus_entries,
         "protocol_parameters": protocol_parameters,
+        "sensitivity_variation_parameters": sensitivity_variation_parameters,
         "policy_version": args.policy_version,
         "capability_version": args.capability_version,
         "timeout_seconds": args.timeout_seconds,
