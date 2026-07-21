@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/question-model.schema.json",
+  "title": "MRR QuestionModel",
+  "description": "docs/spec/08_RESEARCH_METHOD_KERNEL.md (status ACCEPTED, 2026-07-21) section 3's object table ('QuestionModel | decomposition of a question: claim type sought, population/scope/time, load-bearing terms flagged for operationalization | draft -> accepted -> superseded'). First of the six task-packets/K1-T01.yaml entities. MRR-MTH-001: a question addressed through the runtime MUST be represented as an accepted QuestionModel before an executor task for it is negotiated; a raw natural-language question MUST NOT directly create an executable analysis task. This schema makes a QuestionModel a first-class, independently reviewable object with its own lifecycle, distinct from and prior to any TaskBundle — it does not itself enforce that a TaskBundle references one (service-level, deferred to task-packets/K1-T02.yaml). 'claim_type_sought' reuses claim.schema.json's own 'claim_type' enum verbatim (singular — the one claim type this question seeks, versus MethodProfile.claim_types' plural set a profile CAN produce). 'scope' reuses common.schema.json#/$defs/scope verbatim for 'population/scope/time' rather than inventing a parallel shape. 'load_bearing_terms' is required present but NOT required non-empty, mirroring MethodProfile.inappropriate_uses' identical judgment call (task-packets/K0-T01.yaml specification_gaps).",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "raw_question",
+        "claim_type_sought",
+        "scope",
+        "load_bearing_terms",
+        "status"
+      ],
+      "properties": {
+        "kind": {"const": "QuestionModel"},
+        "raw_question": {
+          "description": "The original natural-language question this object decomposes (MRR-MTH-001). Never itself an executable task.",
+          "type": "string",
+          "minLength": 1
+        },
+        "claim_type_sought": {
+          "description": "The single claim type this question seeks, drawn verbatim from schemas/claim.schema.json's own 'claim_type' enum (mrr.contracts.claim.ClaimType) — no parallel vocabulary invented.",
+          "type": "string",
+          "enum": ["observational", "causal", "statistical", "methodological", "interpretive", "normative", "speculative"]
+        },
+        "scope": {"$ref": "common.schema.json#/$defs/scope"},
+        "load_bearing_terms": {
+          "description": "Terms flagged for operationalization via a ConceptCharter entry (MRR-MTH-002: every load-bearing term of an accepted QuestionModel MUST reference a versioned ConceptCharter operationalization — not itself validated here, service-level). An empty array is schema-valid; spec 08 does not require a non-empty floor (mirrors MethodProfile.inappropriate_uses' identical precedent).",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "status": {
+          "description": "Lifecycle status (spec 08 section 3's table: draft -> accepted -> superseded).",
+          "type": "string",
+          "enum": ["draft", "accepted", "superseded"]
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

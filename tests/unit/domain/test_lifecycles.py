@@ -1,7 +1,22 @@
 """Unit tests for mrr.domain.lifecycles (E1-T04; extended to
 ``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml; extended to
 ``OBLIGATION_LIFECYCLE`` by task-packets/E6-T02.yaml; extended to
-``METHOD_PROFILE_LIFECYCLE`` by task-packets/K0-T01.yaml).
+``METHOD_PROFILE_LIFECYCLE`` by task-packets/K0-T01.yaml; extended to
+``QUESTION_MODEL_LIFECYCLE``/``CONCEPT_CHARTER_LIFECYCLE``/
+``METHOD_PROTOCOL_LIFECYCLE``/``EVIDENCE_MATRIX_LIFECYCLE``/
+``METHOD_RULING_LIFECYCLE``/``RESEARCH_DECISION_LIFECYCLE`` by
+task-packets/K1-T01.yaml).
+
+Deviation from task-packets/K1-T01.yaml's "no new test bodies required"
+framing: ``RESEARCH_DECISION_LIFECYCLE`` is a deliberately one-state,
+zero-transition machine (append-only, no lifecycle transitions at all —
+see mrr.domain.lifecycles module docstring), which
+``test_every_declared_edge_is_accepted``'s original unconditional
+``assert machine.transitions`` would otherwise incorrectly flag as a bug.
+That one assertion is adjusted below to allowlist this single legitimate
+exception; every other test in this module is extended purely by adding
+entries to the existing parametrized tuples/dicts, exactly as the packet
+describes.
 
 Acceptance-test mapping (task-packets/E1-T04.yaml):
 
@@ -34,9 +49,15 @@ from typing import get_args
 import pytest
 from mrr.contracts import (
     ClaimStatus,
+    ConceptCharterStatus,
     CorrectionStatus,
+    EvidenceMatrixStatus,
     MethodProfileStatus,
+    MethodProtocolStatus,
+    MethodRulingStatus,
     ObligationStatus,
+    QuestionModelStatus,
+    ResearchDecisionStatus,
     ResearchScoreStatus,
     TaskBundleStatus,
     TransferStatus,
@@ -44,9 +65,15 @@ from mrr.contracts import (
 from mrr.domain.exceptions import InvalidTransitionError
 from mrr.domain.lifecycles import (
     CLAIM_LIFECYCLE,
+    CONCEPT_CHARTER_LIFECYCLE,
     CORRECTION_LIFECYCLE,
+    EVIDENCE_MATRIX_LIFECYCLE,
     METHOD_PROFILE_LIFECYCLE,
+    METHOD_PROTOCOL_LIFECYCLE,
+    METHOD_RULING_LIFECYCLE,
     OBLIGATION_LIFECYCLE,
+    QUESTION_MODEL_LIFECYCLE,
+    RESEARCH_DECISION_LIFECYCLE,
     RESEARCH_SCORE_LIFECYCLE,
     TASK_BUNDLE_LIFECYCLE,
     TRANSFER_LIFECYCLE,
@@ -61,7 +88,17 @@ _ALL_MACHINES = [
     TRANSFER_LIFECYCLE,
     OBLIGATION_LIFECYCLE,
     METHOD_PROFILE_LIFECYCLE,
+    QUESTION_MODEL_LIFECYCLE,
+    CONCEPT_CHARTER_LIFECYCLE,
+    METHOD_PROTOCOL_LIFECYCLE,
+    EVIDENCE_MATRIX_LIFECYCLE,
+    METHOD_RULING_LIFECYCLE,
+    RESEARCH_DECISION_LIFECYCLE,
 ]
+
+#: The one legitimate zero-transition machine (task-packets/K1-T01.yaml) —
+#: see the module docstring's "Deviation" note.
+_ZERO_TRANSITION_MACHINE_NAMES = frozenset({"ResearchDecision"})
 
 #: Terminal states per machine, i.e. states that are never a transition
 #: source in the declared edge set. Independently enumerated here (rather
@@ -79,6 +116,16 @@ _TERMINAL_STATES: dict[str, frozenset[str]] = {
     "TransferContract": frozenset({"accepted", "adapted", "rejected", "deferred", "unresolved"}),
     "Obligation": frozenset({"resolved", "deferred"}),
     "MethodProfile": frozenset({"superseded"}),
+    "QuestionModel": frozenset({"superseded"}),
+    "ConceptCharter": frozenset({"superseded"}),
+    # Only `executed` is terminal here — `amended` re-enters review under
+    # the spec-08 amendment (commit 1d453bf) and is NOT a dead end, unlike
+    # the literal pre-amendment table reading task-packets/K1-T01.yaml's own
+    # derivation agent flagged.
+    "MethodProtocol": frozenset({"executed"}),
+    "EvidenceMatrix": frozenset({"superseded"}),
+    "MethodRuling": frozenset({"superseded"}),
+    "ResearchDecision": frozenset({"issued"}),
 }
 
 
@@ -89,7 +136,8 @@ _TERMINAL_STATES: dict[str, frozenset[str]] = {
 
 @pytest.mark.parametrize("machine", _ALL_MACHINES, ids=lambda m: m.name)
 def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
-    assert machine.transitions, f"{machine.name}: expected at least one declared edge"
+    if machine.name not in _ZERO_TRANSITION_MACHINE_NAMES:
+        assert machine.transitions, f"{machine.name}: expected at least one declared edge"
     for from_state, to_state in machine.transitions:
         assert machine.can_transition(from_state, to_state)
         machine.assert_transition(from_state, to_state)  # must not raise
@@ -127,6 +175,28 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         (METHOD_PROFILE_LIFECYCLE, "superseded", "accepted"),  # terminal, no way back
         (METHOD_PROFILE_LIFECYCLE, "accepted", "draft"),  # no drawn revisit edge
         (METHOD_PROFILE_LIFECYCLE, "draft", "draft"),  # no self-transition
+        (QUESTION_MODEL_LIFECYCLE, "draft", "superseded"),  # skips accepted
+        (QUESTION_MODEL_LIFECYCLE, "superseded", "accepted"),  # terminal, no way back
+        (QUESTION_MODEL_LIFECYCLE, "draft", "draft"),  # no self-transition
+        (CONCEPT_CHARTER_LIFECYCLE, "draft", "superseded"),  # skips accepted
+        (CONCEPT_CHARTER_LIFECYCLE, "superseded", "accepted"),  # terminal, no way back
+        (CONCEPT_CHARTER_LIFECYCLE, "draft", "draft"),  # no self-transition
+        (METHOD_PROTOCOL_LIFECYCLE, "locked", "locked"),  # no self-transition
+        (METHOD_PROTOCOL_LIFECYCLE, "amended", "executed"),  # still undrawn post-amendment
+        (METHOD_PROTOCOL_LIFECYCLE, "amended", "amended"),  # no self-transition
+        (METHOD_PROTOCOL_LIFECYCLE, "amended", "locked"),  # must re-review first
+        (METHOD_PROTOCOL_LIFECYCLE, "executed", "amended"),  # terminal, no way back
+        (METHOD_PROTOCOL_LIFECYCLE, "executed", "reviewed"),  # terminal, no way back
+        (METHOD_PROTOCOL_LIFECYCLE, "draft", "locked"),  # skips reviewed
+        (METHOD_PROTOCOL_LIFECYCLE, "reviewed", "executed"),  # skips locked
+        (METHOD_PROTOCOL_LIFECYCLE, "reviewed", "amended"),  # skips locked
+        (EVIDENCE_MATRIX_LIFECYCLE, "draft", "frozen"),  # skips active
+        (EVIDENCE_MATRIX_LIFECYCLE, "superseded", "draft"),  # terminal, no way back
+        (EVIDENCE_MATRIX_LIFECYCLE, "draft", "draft"),  # no self-transition
+        (METHOD_RULING_LIFECYCLE, "pending", "superseded"),  # skips issued
+        (METHOD_RULING_LIFECYCLE, "superseded", "pending"),  # terminal, no way back
+        (METHOD_RULING_LIFECYCLE, "pending", "pending"),  # no self-transition
+        (RESEARCH_DECISION_LIFECYCLE, "issued", "issued"),  # append-only, no self-transition
     ],
     ids=[
         "research-score-suspended-to-active",
@@ -153,6 +223,28 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         "method-profile-superseded-to-accepted-terminal",
         "method-profile-accepted-to-draft-no-revisit",
         "method-profile-draft-to-draft-no-self-transition",
+        "question-model-draft-to-superseded-skips-accepted",
+        "question-model-superseded-to-accepted-terminal",
+        "question-model-draft-to-draft-no-self-transition",
+        "concept-charter-draft-to-superseded-skips-accepted",
+        "concept-charter-superseded-to-accepted-terminal",
+        "concept-charter-draft-to-draft-no-self-transition",
+        "method-protocol-locked-to-locked-no-self-transition",
+        "method-protocol-amended-to-executed-still-undrawn",
+        "method-protocol-amended-to-amended-no-self-transition",
+        "method-protocol-amended-to-locked-must-re-review-first",
+        "method-protocol-executed-to-amended-terminal",
+        "method-protocol-executed-to-reviewed-terminal",
+        "method-protocol-draft-to-locked-skips-reviewed",
+        "method-protocol-reviewed-to-executed-skips-locked",
+        "method-protocol-reviewed-to-amended-skips-locked",
+        "evidence-matrix-draft-to-frozen-skips-active",
+        "evidence-matrix-superseded-to-draft-terminal",
+        "evidence-matrix-draft-to-draft-no-self-transition",
+        "method-ruling-pending-to-superseded-skips-issued",
+        "method-ruling-superseded-to-pending-terminal",
+        "method-ruling-pending-to-pending-no-self-transition",
+        "research-decision-issued-to-issued-append-only",
     ],
 )
 def test_representative_undrawn_transitions_are_rejected(
@@ -309,6 +401,30 @@ def test_obligation_states_match_contract_status_literal() -> None:
 
 def test_method_profile_states_match_contract_status_literal() -> None:
     assert METHOD_PROFILE_LIFECYCLE.states == set(get_args(MethodProfileStatus))
+
+
+def test_question_model_states_match_contract_status_literal() -> None:
+    assert QUESTION_MODEL_LIFECYCLE.states == set(get_args(QuestionModelStatus))
+
+
+def test_concept_charter_states_match_contract_status_literal() -> None:
+    assert CONCEPT_CHARTER_LIFECYCLE.states == set(get_args(ConceptCharterStatus))
+
+
+def test_method_protocol_states_match_contract_status_literal() -> None:
+    assert METHOD_PROTOCOL_LIFECYCLE.states == set(get_args(MethodProtocolStatus))
+
+
+def test_evidence_matrix_states_match_contract_status_literal() -> None:
+    assert EVIDENCE_MATRIX_LIFECYCLE.states == set(get_args(EvidenceMatrixStatus))
+
+
+def test_method_ruling_states_match_contract_status_literal() -> None:
+    assert METHOD_RULING_LIFECYCLE.states == set(get_args(MethodRulingStatus))
+
+
+def test_research_decision_states_match_contract_status_literal() -> None:
+    assert RESEARCH_DECISION_LIFECYCLE.states == set(get_args(ResearchDecisionStatus))
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/research-decision.schema.json",
+  "title": "MRR ResearchDecision",
+  "description": "docs/spec/08_RESEARCH_METHOD_KERNEL.md (status ACCEPTED, 2026-07-21) section 3's object table ('ResearchDecision | adaptive decision record: continue, revise, narrow_scope, kill_branch, replicate, escalate_human_review, stop_insufficient_evidence | issued (append-only)'). Sixth and final of the six task-packets/K1-T01.yaml entities. 'decision_type' is the exact seven-value closed vocabulary, nothing added or dropped. MRR-MTH-011 ('stop_insufficient_evidence decisions are successful terminal results ... MUST NOT be silently omitted') is satisfied at the contract level by validating stop_insufficient_evidence IDENTICALLY to every other decision_type value — no extra required field, no distinguishing flag. 'status' is a single-value const ('issued') — append-only, no lifecycle transitions (see mrr.domain.lifecycles.RESEARCH_DECISION_LIFECYCLE, declared with one state and zero legal transitions). 'rationale' is this task's own minimal addition (not itself named by spec 08's one-line table entry) — a decision record with no recorded reasoning would be an audit dead end; flagged as an open specification point.",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": ["kind", "decision_type", "protocol_id", "applies_to_analysis", "rationale", "status"],
+      "properties": {
+        "kind": {"const": "ResearchDecision"},
+        "decision_type": {
+          "description": "The exact seven spec 08 section 3 values, verbatim.",
+          "type": "string",
+          "enum": [
+            "continue",
+            "revise",
+            "narrow_scope",
+            "kill_branch",
+            "replicate",
+            "escalate_human_review",
+            "stop_insufficient_evidence"
+          ]
+        },
+        "protocol_id": {
+          "description": "The governing MethodProtocol this decision was made under. A plain body field, never an edge; not validated to resolve to a real MethodProtocol here (service-level, deferred).",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "applies_to_analysis": {
+          "description": "A free-string tag matching one entry of the governing MethodProtocol's own planned_analyses list, mirroring MethodRuling.applies_to_analysis's identical shape. No first-class 'branch' object exists in this repository; this cross-object correspondence is not validated here.",
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "description": "The reasoning behind this decision. This task's own minimal addition (not itself named by spec 08's one-line table entry) — every decision_type value requires it identically, so this does not reintroduce the per-type special-casing MRR-MTH-011 warns against.",
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "description": "Append-only: the only value that has ever existed for this kind (spec 08 section 3: 'issued (append-only)').",
+          "const": "issued"
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

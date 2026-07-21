@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/method-protocol.schema.json",
+  "title": "MRR MethodProtocol",
+  "description": "docs/spec/08_RESEARCH_METHOD_KERNEL.md (status ACCEPTED, 2026-07-21) section 3's object table, AS AMENDED (commit 1d453bf, 'Spec-08-Amendment MethodProtocol-Re-Review-Zyklus'): 'MethodProtocol | the lockable commitment document of a profile ...: criteria, rules, analyses, kill conditions | draft -> reviewed -> locked -> amended | executed; amended -> reviewed (re-review cycle)'. Third and heaviest of the six task-packets/K1-T01.yaml entities — see mrr.domain.lifecycles.METHOD_PROTOCOL_LIFECYCLE for the state machine this amendment produces. MRR-MTH-007: locking binds the exact content hash, actor, and time — realized here NOT as a new, separately-computed field, but as this locked revision's own baseObject.content_hash (ADR-0004) plus two new body fields recording the two facts content_hash alone does not carry: locked_by and locked_at (task-packets/K1-T01.yaml derived_decisions). MRR-MTH-008: post-lock changes MUST be amendments — a new revision recording reason, actor, and whether outcome information had been observed; realized as the nested 'amendment' object, non-null exactly when status == 'amended'. MRR-MTH-010: at least one kill condition is required. 'sensitivity_variations' is intended as a list of ConceptCharterEntry.entry_id values (MTH-018) — this cross-object reference is not validated here (service-level, deferred).",
+  "$defs": {
+    "protocolAmendment": {
+      "type": "object",
+      "required": ["reason", "actor", "amended_at", "outcome_information_observed", "amended_locked_content_hash"],
+      "properties": {
+        "reason": {"type": "string", "minLength": 1},
+        "actor": {"$ref": "common.schema.json#/$defs/urn"},
+        "amended_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "outcome_information_observed": {
+          "description": "MRR-MTH-008: whether outcome information had been observed at the time of this amendment. An outcome-informed amendment demotes affected analyses to exploratory — that demotion itself is NOT implemented here (service-level, K1-T02/K1-T03); this field only makes the fact machine-recordable.",
+          "type": "boolean"
+        },
+        "amended_locked_content_hash": {
+          "description": "An explicit back-reference to the exact locked revision's own content_hash being amended, letting a reader confirm precisely which locked commitment changed without a revision-history walk.",
+          "$ref": "common.schema.json#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "profile_id",
+        "extraction_fields",
+        "inclusion_criteria",
+        "exclusion_criteria",
+        "sensitivity_variations",
+        "planned_analyses",
+        "kill_conditions",
+        "status"
+      ],
+      "properties": {
+        "kind": {"const": "MethodProtocol"},
+        "profile_id": {
+          "description": "The MethodProfile this protocol commits to. A plain body field, never an edge (task-packets/K1-T02.yaml's job); not validated to resolve to an accepted MethodProfile here (service-level, deferred).",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "extraction_fields": {
+          "description": "Named fields a governed EvidenceMatrix row's 'extraction' map is keyed by (not cross-validated against them here — service-level, deferred). Present but not required non-empty.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "inclusion_criteria": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "exclusion_criteria": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "sensitivity_variations": {
+          "description": "MTH-018: intended as a list of ConceptCharterEntry.entry_id values naming the varied classifications a sensitivity analysis runs over. Not cross-validated against a real ConceptCharter here (service-level, deferred).",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "planned_analyses": {
+          "description": "Required non-empty — a protocol with zero planned analyses would have nothing for a later MethodRuling to rule on.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"}
+        },
+        "kill_conditions": {
+          "description": "MRR-MTH-010: every MethodProtocol MUST declare at least one kill condition. Declared data only — no transition-triggering logic (task-packets/K1-T02.yaml's job).",
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"}
+        },
+        "locked_at": {
+          "description": "MRR-MTH-007. Non-null exactly when status is one of locked/amended/executed; null when status is draft/reviewed.",
+          "anyOf": [{"$ref": "common.schema.json#/$defs/timestamp"}, {"type": "null"}]
+        },
+        "locked_by": {
+          "description": "MRR-MTH-007. Non-null exactly when status is one of locked/amended/executed; null when status is draft/reviewed.",
+          "anyOf": [{"$ref": "common.schema.json#/$defs/urn"}, {"type": "null"}]
+        },
+        "amendment": {
+          "description": "MRR-MTH-008. Non-null exactly when status == 'amended'; null for every other status.",
+          "anyOf": [{"$ref": "#/$defs/protocolAmendment"}, {"type": "null"}]
+        },
+        "status": {
+          "description": "Lifecycle status, as amended (commit 1d453bf): draft -> reviewed -> locked -> amended | executed; amended -> reviewed (re-review cycle). See mrr.domain.lifecycles.METHOD_PROTOCOL_LIFECYCLE.",
+          "type": "string",
+          "enum": ["draft", "reviewed", "locked", "amended", "executed"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"enum": ["locked", "amended", "executed"]}},
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["locked_at", "locked_by"],
+            "properties": {
+              "locked_at": {"not": {"type": "null"}},
+              "locked_by": {"not": {"type": "null"}}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"enum": ["draft", "reviewed"]}},
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "locked_at": {"type": "null"},
+              "locked_by": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "amended"}},
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["amendment"],
+            "properties": {
+              "amendment": {"not": {"type": "null"}}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"enum": ["draft", "reviewed", "locked", "executed"]}},
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "amendment": {"type": "null"}
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

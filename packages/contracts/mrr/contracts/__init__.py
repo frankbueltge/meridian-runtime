@@ -1,7 +1,7 @@
 """JSON Schema and Pydantic contracts for externally visible objects and domain events
 per docs/spec/03_API_AND_EVENTS.md.
 
-Twenty-two hand-written Pydantic v2 models mirror the twenty-two entity
+Twenty-eight hand-written Pydantic v2 models mirror the twenty-eight entity
 schemas in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``,
 ``Claim``, ``EvidenceCrate``, ``CorrectionEvent`` (E1-T03), ``RunManifest``
 (E2-T05), ``SourceRecord``/``EvidenceAnchor`` (E3-T01), ``SourceFamily``
@@ -10,13 +10,17 @@ schemas in schemas/: ``ResearchScore``, ``NodeManifest``, ``TaskBundle``,
 ``SkepticalChallenge`` (E4-T04), ``Practice`` (E5-T01),
 ``NodeMessageEnvelope`` (E5-T03), ``OfflineBundle`` (E5-T06),
 ``TransferContract`` (E6-T01), ``Obligation`` (E6-T02),
-``MethodProfile`` (task-packets/K0-T01.yaml — the Research Method Kernel's
-first task, numbered as a K epic rather than an E epic; NOT
-``ModelProfile``, see ``mrr.contracts.method_profile``'s module docstring),
-and ``CorrectionNotification`` (E6-T03).
-Shared building blocks mirroring ``schemas/common.schema.json`` live in
-``mrr.contracts.common`` and are re-exported here too (``Signature``,
-``ArtifactRef``, ``Scope``, ``Budget``, ``BaseObject``, ``MRRModel``).
+``CorrectionNotification`` (E6-T03), ``MethodProfile`` (task-packets/
+K0-T01.yaml — the Research Method Kernel's first task, numbered as a K
+epic rather than an E epic; NOT ``ModelProfile``, see
+``mrr.contracts.method_profile``'s module docstring), and
+``QuestionModel``/``ConceptCharter``/``MethodProtocol``/``EvidenceMatrix``/
+``MethodRuling``/``ResearchDecision`` (task-packets/K1-T01.yaml — kernel
+governance contracts; NOT ``MethodProfile``, a distinct entity from
+K0-T01). Shared building blocks mirroring ``schemas/common.schema.json``
+live in ``mrr.contracts.common`` and are re-exported here too
+(``Signature``, ``ArtifactRef``, ``Scope``, ``Budget``, ``BaseObject``,
+``MRRModel``).
 
 These models are hand-written rather than generated from the JSON Schemas
 (see the PR body for the full rationale): the claim schema's conditional
@@ -43,6 +47,7 @@ from mrr.contracts.common import (
     Signature,
     Urn,
 )
+from mrr.contracts.concept_charter import ConceptCharter, ConceptCharterEntry, ConceptCharterStatus
 from mrr.contracts.correction_event import (
     AffectedObjectRef,
     CorrectionEvent,
@@ -67,6 +72,12 @@ from mrr.contracts.evidence_crate import (
     FailureEntry,
     RunState,
 )
+from mrr.contracts.evidence_matrix import (
+    EvidenceMatrix,
+    EvidenceMatrixRow,
+    EvidenceMatrixStatus,
+    EvidenceMatrixVerificationStatus,
+)
 from mrr.contracts.hypothesis import (
     BRANCH_ROLES,
     BranchRole,
@@ -81,6 +92,13 @@ from mrr.contracts.method_profile import (
     ExecutorStepKind,
     MethodProfile,
     MethodProfileStatus,
+)
+from mrr.contracts.method_protocol import MethodProtocol, MethodProtocolStatus, ProtocolAmendment
+from mrr.contracts.method_ruling import (
+    HumanReviewReference,
+    MethodRuling,
+    MethodRulingStatus,
+    RulingBasis,
 )
 from mrr.contracts.model_invocation import (
     ModelInvocation,
@@ -102,6 +120,12 @@ from mrr.contracts.node_message_envelope import NodeMessageEnvelope
 from mrr.contracts.obligation import Obligation, ObligationStatus
 from mrr.contracts.offline_bundle import BundleEncryption, BundleEntry, OfflineBundle
 from mrr.contracts.practice import DisclosureAndTrust, Practice, PublicKeyDescriptor
+from mrr.contracts.question_model import QuestionModel, QuestionModelStatus
+from mrr.contracts.research_decision import (
+    ResearchDecision,
+    ResearchDecisionStatus,
+    ResearchDecisionType,
+)
 from mrr.contracts.research_score import (
     MaxDisclosure,
     MethodsPolicy,
@@ -166,6 +190,9 @@ __all__ = [
     "ClaimType",
     "Classification",
     "ComputationalSelector",
+    "ConceptCharter",
+    "ConceptCharterEntry",
+    "ConceptCharterStatus",
     "CorrectionEvent",
     "CorrectionNotification",
     "CorrectionSeverity",
@@ -176,6 +203,10 @@ __all__ = [
     "EnvironmentInfo",
     "EvidenceAnchor",
     "EvidenceCrate",
+    "EvidenceMatrix",
+    "EvidenceMatrixRow",
+    "EvidenceMatrixStatus",
+    "EvidenceMatrixVerificationStatus",
     "EvidenceRelation",
     "ExecutionSpec",
     "ExecutorStepDeclaration",
@@ -184,6 +215,7 @@ __all__ = [
     "FailureEntry",
     "Finding",
     "FindingSeverity",
+    "HumanReviewReference",
     "Hypothesis",
     "HypothesisStatus",
     "IndependenceProfile",
@@ -191,6 +223,10 @@ __all__ = [
     "MaxDisclosure",
     "MethodProfile",
     "MethodProfileStatus",
+    "MethodProtocol",
+    "MethodProtocolStatus",
+    "MethodRuling",
+    "MethodRulingStatus",
     "MethodsPolicy",
     "ModelInvocation",
     "ModelProfile",
@@ -208,15 +244,22 @@ __all__ = [
     "OfflineBundle",
     "OperationKind",
     "Practice",
+    "ProtocolAmendment",
     "PublicKeyDescriptor",
     "PublicationPolicy",
+    "QuestionModel",
+    "QuestionModelStatus",
     "RecomputationStatus",
     "Recommendation",
     "RedactionPolicy",
     "RelationshipType",
+    "ResearchDecision",
+    "ResearchDecisionStatus",
+    "ResearchDecisionType",
     "ResearchScore",
     "ResearchScoreStatus",
     "ResourceLimits",
+    "RulingBasis",
     "RunCost",
     "RunManifest",
     "RunResourceUsage",
