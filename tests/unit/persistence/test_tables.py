@@ -1,8 +1,9 @@
 """Unit tests for mrr.persistence.tables: metadata sanity only, no database
-connection (E1-T05, extended by E1-T06 for domain_events/outbox and by
-E5-T07 for processed_ids). Table structure against a live PostgreSQL -
-including that the CHECK constraint actually rejects invalid rows - is
-exercised by the integration tier (tests/integration/persistence/).
+connection (E1-T05, extended by E1-T06 for domain_events/outbox, by E5-T07
+for processed_ids, and by E5-T07b for key_revocations). Table structure
+against a live PostgreSQL - including that the CHECK constraint actually
+rejects invalid rows - is exercised by the integration tier
+(tests/integration/persistence/).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from mrr.domain.repositories import EDGE_VOCABULARY
 from mrr.persistence.tables import (
     domain_events_table,
     edges_table,
+    key_revocations_table,
     objects_table,
     outbox_table,
     processed_ids_table,
@@ -235,3 +237,41 @@ def test_processed_ids_table_has_expires_at_index() -> None:
         tuple(column.name for column in index.columns) for index in processed_ids_table.indexes
     }
     assert ("expires_at",) in index_columns
+
+
+# ---------------------------------------------------------------------------
+# key_revocations (E5-T07b).
+# ---------------------------------------------------------------------------
+
+
+def test_key_revocations_table_primary_key_is_kid_only() -> None:
+    pk_columns = {column.name for column in key_revocations_table.primary_key.columns}
+    assert pk_columns == {"kid"}
+
+
+def test_key_revocations_table_has_expected_columns() -> None:
+    expected = {"kid", "practice_id", "revoked_at", "reason"}
+    assert {column.name for column in key_revocations_table.columns} == expected
+
+
+def test_key_revocations_table_nullable_columns_are_exactly_reason() -> None:
+    # kid, practice_id, and revoked_at are always required; reason is the
+    # only optional column - mirrors RevocationRecord's own dataclass shape.
+    nullable = {column.name for column in key_revocations_table.columns if column.nullable}
+    assert nullable == {"reason"}
+
+
+def test_key_revocations_table_has_no_check_constraint() -> None:
+    # Unlike processed_ids.id_kind or edges.edge_type, no column here is
+    # constrained by a closed vocabulary.
+    check_constraints = [
+        c for c in key_revocations_table.constraints if isinstance(c, CheckConstraint)
+    ]
+    assert check_constraints == []
+
+
+def test_key_revocations_table_has_no_index() -> None:
+    # Unlike processed_ids (indexed on expires_at for prune_expired's
+    # candidate prefilter), key_revocations has no prune/sweep path at all -
+    # every lookup is a single get_revocation(kid) against the primary key.
+    assert list(key_revocations_table.indexes) == []

@@ -3,10 +3,13 @@ protocols (task-packets/E1-T05.yaml), against a supplied
 ``sqlalchemy.Engine``, plus the ``mrr.provenance.log`` protocols
 (task-packets/E1-T06.yaml) — ``PostgresEventLog`` (the append-only,
 tamper-evident domain event log) and ``InProcessOutboxDispatcher`` (the
-at-least-once reference outbox dispatcher) — and ``PostgresProcessedIdStore``
+at-least-once reference outbox dispatcher) — ``PostgresProcessedIdStore``
 (task-packets/E5-T07.yaml), the durable replay/idempotency store backing
 ``mrr.domain.envelope_validation.AlreadyProcessed`` and ``mrr.domain.
-offline_bundle.BundleAlreadyProcessed``. See that class's own docstring.
+offline_bundle.BundleAlreadyProcessed`` (see that class's own docstring), and
+``PostgresKeyRevocationStore`` (task-packets/E5-T07b.yaml), the durable,
+append-only key-revocation-fact store backing ``mrr.domain.trust_revocation.
+trust_revoked_after_creation``. See that class's own docstring.
 
 Optimistic concurrency (``PostgresObjectRepository.insert_revision``) is
 belt-and-braces:
@@ -62,9 +65,11 @@ from mrr.domain.exceptions import (
 )
 from mrr.domain.replay_retention import ProcessedIdKind, processed_id_retention_horizon
 from mrr.domain.repositories import EDGE_VOCABULARY, StoredObject, TypedEdge
+from mrr.domain.trust_revocation import RevocationRecord
 from mrr.persistence.tables import (
     domain_events_table,
     edges_table,
+    key_revocations_table,
     objects_table,
     outbox_table,
     processed_ids_table,
@@ -763,3 +768,156 @@ class PostgresProcessedIdStore:
                 )
             )
             return result.rowcount
+
+
+class PostgresKeyRevocationStore:
+    """Durable, append-only key-revocation-fact store (task-packets/
+    E5-T07b.yaml) against ``mrr.persistence.tables.key_revocations_table`` —
+    the persistence layer a durably recorded revocation fact for
+    ``mrr.domain.trust_revocation.trust_revoked_after_creation`` is read
+    from.
+
+    Keyed by ``kid`` ALONE — see ``key_revocations_table``'s own docstring
+    for why a kid needs no additional scoping the way ``processed_ids_table``
+    needs ``recipient_node_id``.
+
+    NO update and NO delete method exists anywhere on this class: "a
+    revocation, once recorded, can never be un-recorded by any public
+    interface" is enforced by the absence of any such method, not by a
+    runtime check. This is a deliberately more rigid guarantee than
+    ``mrr.domain.key_management.revoke``'s in-memory, freely-repeatable
+    ``replace(descriptor, state="revoked")`` — appropriate because THIS
+    store is the durable, single source of truth for "when", where the
+    in-memory ring is a transient, caller-assembled view. This class is also
+    deliberately NOT wired to feed a ``mrr.domain.key_management.KeyRing``:
+    doing so would re-invite exactly the at-instant re-verification of an
+    already-accepted object that docs/spec/04_SECURITY_AND_POLICY.md section
+    8.4's "existing objects remain historically attributable" forbids — see
+    ``mrr.domain.trust_revocation``'s own module docstring.
+
+    This store performs NO authorization check that ``practice_id`` actually
+    owns ``kid`` — that check needs a persisted practice/key registry that
+    does not exist anywhere in this codebase yet (task-packets/E5-T02.yaml's
+    own forbidden_changes: "a NEW persisted practice registry ... is a later
+    concern"), so it is the CALLER's responsibility, exactly like
+    ``PostgresProcessedIdStore.record_processed`` leaving the decision of
+    what to record to its caller.
+    """
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def record_revocation(
+        self,
+        kid: str,
+        *,
+        practice_id: str,
+        revoked_at: datetime,
+        reason: str | None = None,
+    ) -> bool:
+        """Idempotently record ``kid`` as revoked, opening its own
+        transaction.
+
+        ``INSERT ... ON CONFLICT (kid) DO NOTHING`` is the entire
+        idempotency AND immutability mechanism: recording the SAME ``kid``
+        twice — even with a different ``practice_id``/``revoked_at``/
+        ``reason`` — is a no-op at the database itself, never an
+        application-level "check then insert" that could race, and it
+        PRESERVES the first-ever recorded fact: the original row is never
+        touched.
+
+        Args:
+            kid: the revoked Ed25519 public key's id
+                (``mrr.crypto.keys.derive_key_id``).
+            practice_id: the id of the practice revoking ``kid``.
+            revoked_at: the instant the revocation takes effect —
+                caller-supplied, exactly like ``mrr.provenance.events.
+                DomainEvent.occurred_at`` and ``PostgresProcessedIdStore.
+                record_processed``'s own ``at``, never generated internally.
+            reason: an optional free-text reason.
+
+        Returns:
+            ``True`` if this call newly inserted the row, ``False`` if
+            ``kid`` already existed (the idempotent no-op case) — in which
+            case the row's original ``practice_id``/``revoked_at``/
+            ``reason`` are left completely unchanged.
+        """
+        with self._engine.begin() as conn:
+            return self._record_revocation_core(
+                conn, kid, practice_id=practice_id, revoked_at=revoked_at, reason=reason
+            )
+
+    def record_revocation_with_connection(
+        self,
+        conn: Connection,
+        kid: str,
+        *,
+        practice_id: str,
+        revoked_at: datetime,
+        reason: str | None = None,
+    ) -> bool:
+        """Same as ``record_revocation``, but writes through a
+        caller-supplied ``Connection`` instead of opening its own
+        transaction — the connection-accepting variant so recording a
+        revocation can share ONE transaction with whatever else a caller's
+        unit of work does (mirrors ``PostgresProcessedIdStore.
+        record_processed_with_connection``'s identical split from
+        ``record_processed``). The caller owns the transaction's lifecycle:
+        a rollback after this call leaves no row, whether or not this call
+        itself newly inserted one.
+        """
+        return self._record_revocation_core(
+            conn, kid, practice_id=practice_id, revoked_at=revoked_at, reason=reason
+        )
+
+    def _record_revocation_core(
+        self,
+        conn: Connection,
+        kid: str,
+        *,
+        practice_id: str,
+        revoked_at: datetime,
+        reason: str | None,
+    ) -> bool:
+        """``RETURNING`` — not ``CursorResult.rowcount`` — carries the
+        "newly inserted?" answer. See ``PostgresProcessedIdStore.
+        _record_processed_core``'s own docstring for why: SQLAlchemy
+        memoizes ``rowcount`` only for UPDATE/DELETE, and for a plain INSERT
+        the psycopg 3 cursor is already closed by the time ``rowcount`` is
+        read, which yields ``-1`` — i.e. ``rowcount > 0`` is ``False`` even
+        for a genuinely new row. ``ON CONFLICT DO NOTHING RETURNING``
+        instead reports the fact directly from the server: exactly one row
+        comes back iff this statement inserted, no row iff ``kid`` already
+        existed.
+        """
+        stmt = (
+            pg_insert(key_revocations_table)
+            .values(
+                kid=kid,
+                practice_id=practice_id,
+                revoked_at=revoked_at,
+                reason=reason,
+            )
+            .on_conflict_do_nothing(index_elements=["kid"])
+            .returning(key_revocations_table.c.kid)
+        )
+        return conn.execute(stmt).first() is not None
+
+    def get_revocation(self, kid: str) -> RevocationRecord | None:
+        """Return the ``RevocationRecord`` for ``kid`` if and only if
+        ``record_revocation``/``record_revocation_with_connection`` has ever
+        been called for it; ``None`` if ``kid`` has never been recorded —
+        there is no other source of "is this kid revoked" in this table.
+        """
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                sa.select(key_revocations_table).where(key_revocations_table.c.kid == kid)
+            ).first()
+        if row is None:
+            return None
+        return RevocationRecord(
+            kid=row.kid,
+            practice_id=row.practice_id,
+            revoked_at=row.revoked_at,
+            reason=row.reason,
+        )
