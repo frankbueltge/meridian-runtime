@@ -23,6 +23,9 @@ Acceptance-test mapping (task-packets/E6-T02.yaml, integration tier):
   Obligation revisions persist atomically with their events and that no
   migration was needed" -> ``test_materialize_propagate_resolve_persist_atomically``,
   ``test_no_migration_needed_kind_and_edge_type_accepted_by_existing_schema``.
+- materialize_from_transfer is at-most-once per transfer against a real
+  database (reviewer-driven amendment) ->
+  ``test_materialize_is_at_most_once_per_transfer_against_real_postgres``.
 """
 
 from __future__ import annotations
@@ -31,9 +34,11 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 import sqlalchemy as sa
 from mrr.contracts import Obligation, Practice, TransferContract
 from mrr.crypto.keys import derive_key_id, encode_public_key, generate_ed25519_keypair
+from mrr.domain.exceptions import ObligationsAlreadyMaterializedError
 from mrr.domain.hashing_policy import sign_object
 from mrr.domain.identity import new_urn
 from mrr.persistence.repositories import (
@@ -352,3 +357,80 @@ def test_no_migration_needed_kind_and_edge_type_accepted_by_existing_schema(
 
     stored = object_repository.get_latest(obligation.id)
     assert Obligation.model_validate(stored.body).kind == "Obligation"
+
+
+def test_materialize_is_at_most_once_per_transfer_against_real_postgres(
+    postgres_engine: Engine,
+) -> None:
+    """A second materialize_from_transfer call for the same, real, persisted
+    TransferContract raises ObligationsAlreadyMaterializedError and leaves
+    exactly the first call's Obligation rows, subject_to_obligation edges,
+    and obligation.created events in place — no silent duplicate Obligation
+    set (reviewer-driven amendment to the original PR).
+    """
+    transfer_service, _transfer_object_repository = _transfer_service_for(postgres_engine)
+    obligation_service, object_repository, edge_repository, event_log = _obligation_service_for(
+        postgres_engine
+    )
+    practice, private_key, kid = _practice_and_key()
+    contract = _sign(_contract(sender_practice_id=practice.id, key_id=kid), private_key)
+    correlation_id = new_urn("research-run")
+
+    transfer_service.create(
+        contract, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    transfer_service.offer(
+        contract.id, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    transfer_service.respond(
+        contract.id,
+        "accepted",
+        practice,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+    )
+
+    # This fixture's contract carries both an explicit preserve_attribution
+    # stub AND a non-empty caveats field, so two Obligations materialize.
+    first_call = obligation_service.materialize_from_transfer(
+        contract.id, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    assert len(first_call) == 2
+    first_call_ids = {obj.id for obj in first_call}
+
+    def _count_domain_events(object_id: str) -> int:
+        with postgres_engine.connect() as conn:
+            return conn.execute(
+                sa.select(sa.func.count())
+                .select_from(domain_events_table)
+                .where(domain_events_table.c.object_id == object_id)
+            ).scalar_one()
+
+    revisions_after_first = {obj.id: object_repository.list_revisions(obj.id) for obj in first_call}
+    bound_edges_after_first = {
+        obj.id: list(edge_repository.edges_to(obj.id, "subject_to_obligation"))
+        for obj in first_call
+    }
+    event_counts_after_first = {obj.id: _count_domain_events(obj.id) for obj in first_call}
+
+    with pytest.raises(ObligationsAlreadyMaterializedError) as excinfo:
+        obligation_service.materialize_from_transfer(
+            contract.id,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=correlation_id,
+        )
+
+    assert excinfo.value.transfer_id == contract.id
+    assert set(excinfo.value.obligation_ids) == first_call_ids
+
+    # Exactly the first call's rows remain: no new Obligation object, no new
+    # subject_to_obligation edge, no new obligation.created event.
+    for obj in first_call:
+        assert object_repository.list_revisions(obj.id) == revisions_after_first[obj.id]
+        assert (
+            list(edge_repository.edges_to(obj.id, "subject_to_obligation"))
+            == bound_edges_after_first[obj.id]
+        )
+        assert _count_domain_events(obj.id) == event_counts_after_first[obj.id]

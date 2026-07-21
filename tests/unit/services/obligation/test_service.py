@@ -25,6 +25,8 @@ Acceptance-test mapping (task-packets/E6-T02.yaml):
   ``test_materialize_rejects_a_transfer_never_responded_to``.
 - ``ObligationSourceTransferNotFoundError`` ->
   ``test_materialize_missing_transfer_raises_source_not_found``.
+- materialization is at-most-once per transfer (reviewer-driven amendment) ->
+  ``test_materialize_is_at_most_once_per_transfer``.
 - "adaptation is discovered by propagation, not by materialization" ->
   ``test_adaptation_is_discovered_by_propagation_not_materialization``.
 - "line graph, branching graph, cyclic graph, disconnected graph" ->
@@ -42,6 +44,8 @@ Acceptance-test mapping (task-packets/E6-T02.yaml):
 - "illegal-transition matrix" -> ``test_resolve_or_defer_on_a_non_open_obligation_fails_closed``.
 - "never-silently-dropped" ->
   ``test_resolve_never_touches_prior_subject_to_obligation_edges_or_revisions``.
+- ``resolve`` rejects empty ``resolution_evidence`` (reviewer-driven
+  amendment) -> ``test_resolve_rejects_empty_resolution_evidence``.
 - property test is ``tests/property/test_obligation_propagation_properties.py``
   (this module exercises ``ObligationService.propagate``, the SERVICE'S own
   query-driven BFS, not the pure ``compute_obligation_binding`` directly).
@@ -61,8 +65,10 @@ import pytest
 from mrr.contracts import TransferContract
 from mrr.domain.exceptions import (
     InvalidTransitionError,
+    MissingResolutionEvidenceError,
     ObjectNotFoundError,
     ObligationNotFoundError,
+    ObligationsAlreadyMaterializedError,
     ObligationSourceTransferNotFoundError,
     RevisionConflictError,
     TransferNotAcceptedError,
@@ -569,6 +575,78 @@ def test_materialize_missing_transfer_raises_source_not_found() -> None:
 
 
 # ---------------------------------------------------------------------------
+# materialize_from_transfer(): at-most-once per transfer.
+# ---------------------------------------------------------------------------
+
+
+def test_materialize_is_at_most_once_per_transfer() -> None:
+    """A second materialize_from_transfer call for the same transfer must
+    not mint a second, independent Obligation set — it fails closed and
+    persists nothing, leaving exactly the first call's objects/edges/events
+    in place.
+    """
+    service, object_repository, edge_repository, event_log = _harness()
+    transferred_object_id = new_urn("claim")
+    contract = _transfer_contract(
+        transferred_object_ids=[transferred_object_id],
+        obligations=[{"kind": "preserve_attribution"}, {"kind": "review_correction"}],
+    )
+    _seed(object_repository, contract)
+    _respond(event_log, contract.id, "accepted")
+
+    first_call = _materialize(service, contract.id)
+    assert len(first_call) == 2
+    first_call_obligation_ids = {obj.id for obj in first_call}
+
+    object_ids_after_first = set(object_repository._revisions.keys())
+    edges_after_first = {
+        edge.id
+        for obligation in first_call
+        for edge in edge_repository.edges_to(obligation.id, "subject_to_obligation")
+    }
+    assert len(edges_after_first) == 2  # one bound object x two Obligations
+    events_after_first = list(event_log.read_all())
+
+    with pytest.raises(ObligationsAlreadyMaterializedError) as excinfo:
+        _materialize(service, contract.id)
+
+    assert excinfo.value.transfer_id == contract.id
+    assert set(excinfo.value.obligation_ids) == first_call_obligation_ids
+
+    # Exactly the first call's objects/edges/events remain — nothing more,
+    # nothing less.
+    assert set(object_repository._revisions.keys()) == object_ids_after_first
+    for obligation in first_call:
+        assert object_repository.list_revisions(obligation.id) == [obligation]
+    edges_after_second_attempt = {
+        edge.id
+        for obligation in first_call
+        for edge in edge_repository.edges_to(obligation.id, "subject_to_obligation")
+    }
+    assert edges_after_second_attempt == edges_after_first
+    assert event_log.read_all() == events_after_first
+
+
+def test_materialize_is_at_most_once_even_for_a_caveats_only_obligation() -> None:
+    """The guard fires from the source_transfer_id carried on ANY prior
+    obligation.created event for this transfer, including one materialized
+    only via the caveats mechanism (no explicit obligations stub at all).
+    """
+    service, object_repository, _edge_repository, event_log = _harness()
+    contract = _transfer_contract(obligations=[], caveats=["Treat with caution."])
+    _seed(object_repository, contract)
+    _respond(event_log, contract.id, "accepted")
+
+    first_call = _materialize(service, contract.id)
+    assert len(first_call) == 1
+
+    with pytest.raises(ObligationsAlreadyMaterializedError) as excinfo:
+        _materialize(service, contract.id)
+
+    assert excinfo.value.obligation_ids == [first_call[0].id]
+
+
+# ---------------------------------------------------------------------------
 # Adaptation is discovered by propagation, not materialization.
 # ---------------------------------------------------------------------------
 
@@ -909,6 +987,24 @@ def test_resolve_missing_obligation_raises() -> None:
             policy_version=_POLICY_VERSION,
             correlation_id=_correlation_id(),
         )
+
+
+def test_resolve_rejects_empty_resolution_evidence() -> None:
+    service, object_repository, _edge_repository, event_log = _harness()
+    root = new_urn("claim")
+    obligation = _materialize_one_obligation(service, object_repository, event_log, root=root)
+
+    with pytest.raises(MissingResolutionEvidenceError) as excinfo:
+        service.resolve(
+            obligation.id,
+            "",
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+
+    assert excinfo.value.obligation_id == obligation.id
+    assert object_repository.list_revisions(obligation.id) == [obligation]
 
 
 # ---------------------------------------------------------------------------

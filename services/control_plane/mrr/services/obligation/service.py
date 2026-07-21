@@ -46,6 +46,26 @@ decisions), but follows directly from the same invariant text
 rather than fail-open for the "no decision recorded yet" case — flagged in
 the PR body as this task's own extension, not a literal enumeration.
 
+--- Materialization is AT-MOST-ONCE per transfer (idempotency guard) --------
+
+``materialize_from_transfer`` is a one-time creation step, exactly like
+every other service's own ``create()``/``record()`` — NOT a repeatable
+operation the way ``propagate`` is. A second call for a transfer that has
+already had obligations materialized must not mint a second, independent
+Obligation set (each with its own fresh id and its own
+``subject_to_obligation`` edges) — that would silently duplicate the
+transfer's MRR-FR-083 duty set rather than being a safe no-op. Before
+creating anything, ``materialize_from_transfer`` scans the event log for an
+existing ``obligation.created`` event whose payload's ``source_transfer_id``
+matches this ``transfer_id`` (the same shape of scan
+``_latest_transfer_decision``/``_last_event_id_for`` already perform); if any
+exists, it raises ``ObligationsAlreadyMaterializedError`` and persists
+nothing — checked BEFORE the decision-gate read, so a caller cannot bypass
+the guard by any path. This is why the ``obligation.created`` event's own
+payload carries ``source_transfer_id`` explicitly (see ``_materialize_one``
+below) — it is this guard's only durable evidence, not merely descriptive
+metadata.
+
 --- One Obligation per stub, one more for non-empty caveats (derived
     decisions (c), (e)) --------------------------------------------------
 
@@ -136,8 +156,10 @@ import sqlalchemy as sa
 from mrr.contracts import Obligation, TransferContract, Urn
 from mrr.domain.correction_impact import IMPACT_EDGE_TYPES
 from mrr.domain.exceptions import (
+    MissingResolutionEvidenceError,
     ObjectNotFoundError,
     ObligationNotFoundError,
+    ObligationsAlreadyMaterializedError,
     ObligationSourceTransferNotFoundError,
     TransferNotAcceptedError,
     UnknownEdgeTypeError,
@@ -342,6 +364,21 @@ def _latest_transfer_decision(
     return str(last.payload["decision"]), last.id
 
 
+def _materialized_obligation_ids_for(event_log: _EventJournal, transfer_id: str) -> list[str]:
+    """Every ``Obligation`` id already materialized from ``transfer_id`` —
+    every past ``obligation.created`` event whose payload's
+    ``source_transfer_id`` matches, in append order. Empty if none have been
+    materialized yet. See the module docstring's "Materialization is
+    AT-MOST-ONCE per transfer" section.
+    """
+    return [
+        appended.event.object_id
+        for appended in event_log.read_all()
+        if appended.event.event_type == _EVENT_CREATED
+        and appended.event.payload.get("source_transfer_id") == transfer_id
+    ]
+
+
 def _make_subject_to_obligation_edge(
     object_id: str, obligation_id: str, *, actor: str, practice_id: str, now: datetime
 ) -> TypedEdge:
@@ -472,6 +509,15 @@ class ObligationService:
         bound, via one ``subject_to_obligation`` edge per bound object,
         atomically with its own ``obligation.created`` event.
 
+        AT-MOST-ONCE per transfer: calling this a second time for the same
+        ``transfer_id`` raises ``ObligationsAlreadyMaterializedError`` and
+        persists nothing, rather than minting a second, independent
+        Obligation set — see the module docstring's "Materialization is
+        AT-MOST-ONCE per transfer" section. A caller who needs to
+        re-discover downstream binding after materialization calls
+        ``propagate`` (genuinely repeatable) on the already-materialized
+        Obligation ids instead of calling this method again.
+
         Args:
             transfer_id: the ``TransferContract`` to materialize obligations
                 from.
@@ -479,6 +525,9 @@ class ObligationService:
         Raises:
             ObligationSourceTransferNotFoundError: ``transfer_id`` resolves
                 to no stored object at all.
+            ObligationsAlreadyMaterializedError: one or more Obligations have
+                already been materialized from this transfer. Nothing is
+                persisted.
             TransferNotAcceptedError: the transfer's latest event-derived
                 decision (its latest ``transfer.responded`` event's
                 ``decision`` payload, or no decision at all if never
@@ -492,6 +541,10 @@ class ObligationService:
         """
         latest_transfer = self._get_transfer_or_raise(transfer_id)
         contract = TransferContract.model_validate(latest_transfer.body)
+
+        already_materialized = _materialized_obligation_ids_for(self._event_log, transfer_id)
+        if already_materialized:
+            raise ObligationsAlreadyMaterializedError(transfer_id, already_materialized)
 
         decision, responded_event_id = _latest_transfer_decision(self._event_log, transfer_id)
         if decision not in _ACCEPTING_DECISIONS:
@@ -731,12 +784,24 @@ class ObligationService:
     ) -> StoredObject:
         """``open -> resolved``, setting ``resolution_evidence``.
 
+        ``resolution_evidence`` must be non-empty — checked FIRST, before
+        ``obligation_id`` is even looked up (matching
+        ``ClaimService._write_edge``'s identical "a structurally-invalid
+        input never depends on a lookup resolving first" precedent). The
+        ``Obligation`` contract's own ``model_validator`` re-checks the same
+        constraint (``Field(min_length=1)``) as a backstop once the new body
+        is actually built, but this named error is what a caller sees first.
+
         Raises:
+            MissingResolutionEvidenceError: ``resolution_evidence`` is empty.
+                Nothing is looked up or persisted.
             ObligationNotFoundError: ``obligation_id`` resolves to no stored
                 object at all.
             InvalidTransitionError: the Obligation is not currently
                 ``"open"``. Nothing is persisted.
         """
+        if not resolution_evidence:
+            raise MissingResolutionEvidenceError(obligation_id)
         return self._transition(
             obligation_id,
             "resolved",

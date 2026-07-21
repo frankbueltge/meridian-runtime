@@ -1118,3 +1118,57 @@ class ObligationNotFoundError(DomainError):
     def __init__(self, obligation_id: str) -> None:
         self.obligation_id = obligation_id
         super().__init__(f"no Obligation found for id {obligation_id!r}")
+
+
+class ObligationsAlreadyMaterializedError(DomainError):
+    """Raised by ``ObligationService.materialize_from_transfer``
+    (task-packets/E6-T02.yaml) when one or more ``Obligation`` objects have
+    already been materialized from the referenced ``TransferContract`` —
+    detected via a prior ``obligation.created`` event whose payload's
+    ``source_transfer_id`` matches ``transfer_id``.
+
+    ``materialize_from_transfer`` is at-most-once per transfer: a second call
+    for the same ``transfer_id`` must not mint a second, independent
+    Obligation set (each with its own id, bound by its own
+    ``subject_to_obligation`` edges) — that would silently duplicate the
+    transfer's own MRR-FR-083 duty set rather than being a safe no-op.
+    Unlike ``ObligationService.propagate`` (genuinely repeatable/idempotent
+    by design), materialization is a one-time creation step, exactly like
+    every other service's own ``create()``/``record()`` — this guard is
+    checked, and this error raised, BEFORE anything is persisted, so a
+    caught instance always means nothing new was written. Carries
+    ``transfer_id`` and ``obligation_ids`` (the ids already materialized for
+    it, for a caller that wants to inspect or re-``propagate``/``resolve``/
+    ``defer`` them instead of retrying materialization).
+    """
+
+    def __init__(self, transfer_id: str, obligation_ids: list[str]) -> None:
+        self.transfer_id = transfer_id
+        self.obligation_ids = obligation_ids
+        super().__init__(
+            f"TransferContract {transfer_id!r} already has {len(obligation_ids)} "
+            f"Obligation(s) materialized ({obligation_ids!r}) — materialize_from_transfer "
+            "is at-most-once per transfer; nothing persisted"
+        )
+
+
+class MissingResolutionEvidenceError(DomainError):
+    """Raised by ``ObligationService.resolve`` (task-packets/E6-T02.yaml)
+    when ``resolution_evidence`` is empty. MRR-NFR-001 provenance requires
+    that a resolved Obligation actually record what satisfied the duty
+    (docs/spec/02_DOMAIN_MODEL.md section 2.15's own "resolution evidence"
+    field) — an empty string carries none. Checked FIRST, before
+    ``obligation_id`` is even looked up, so a caller passing an empty string
+    fails the same way regardless of whether the Obligation exists; the
+    ``Obligation`` contract's own ``model_validator`` (``resolution_evidence``
+    is ``Field(min_length=1)`` when present) remains as a backstop for any
+    path that reaches body construction without going through this check.
+    Carries ``obligation_id``.
+    """
+
+    def __init__(self, obligation_id: str) -> None:
+        self.obligation_id = obligation_id
+        super().__init__(
+            f"Obligation {obligation_id!r} cannot be resolved: resolution_evidence must be "
+            "non-empty (MRR-NFR-001) — nothing persisted"
+        )
