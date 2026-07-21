@@ -21,6 +21,16 @@ reviewer_resolution: >-
   EvidenceMatrixVerificationStatus vocabulary is accepted as a local,
   versioned vocabulary. (5) issued_by stays distinct from created_by (the
   accountable decider may differ from the writer) — confirmed.
+  Post-implementation resolutions (2026-07-21, PR 47, merged 2ec8b25):
+  (6) the implementer-added required ResearchDecision.rationale field is
+  KEPT — a decision record without a stated rationale would be exactly
+  the unaccountable state this layer exists to prevent; uniformly
+  required, no per-type special-casing. (7) NOTE — this packet's own
+  invariants/acceptance_tests/specification_gaps sections below still
+  describe the PRE-amendment four-edge MethodProtocol lifecycle and list
+  the amended-terminal question as open; they are SUPERSEDED by
+  resolution (1) above and the spec-08 amendment (commit 1d453bf). Read
+  them against the amended five-edge machine.
 derivation: >-
   Derived by a planning session (not yet reviewed) per
   docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
