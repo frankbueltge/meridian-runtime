@@ -54,6 +54,53 @@
           }
         }
       ]
+    },
+    "sensitivityAnalysisResult": {
+      "description": "MRR-MTH-018 (task-packets/K1-T03b.yaml): 'results under each variation MUST be reported'. One entry per (variation_entry_id, applies_to_analysis) pair the executor computed for a declared sensitivity variation.",
+      "type": "object",
+      "required": ["variation_entry_id", "applies_to_analysis", "outcome", "included_source_count", "verified_source_count", "distinct_independent_supporting_family_count", "distinct_independent_contradicting_family_count", "decision_rationale", "matches_base_outcome"],
+      "properties": {
+        "variation_entry_id": {
+          "description": "MRR-MTH-018: the ConceptCharterEntry.entry_id this result executes — one of the governing MethodProtocol's own declared sensitivity_variations values. Not cross-validated against a real ConceptCharter here (service-level, deferred, mirrors sensitivity_variations' own identical disclosed limitation).",
+          "type": "string",
+          "minLength": 1
+        },
+        "applies_to_analysis": {
+          "description": "The same applies_to_analysis key the base run's own analysis used — matches_base_outcome compares this variation's outcome against the base run's outcome for the identical key.",
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "description": "The SAME four-value outcome vocabulary the executor's own base classification uses.",
+          "type": "string",
+          "enum": ["supported", "contested", "unsupported", "insufficient_evidence"]
+        },
+        "included_source_count": {"type": "integer", "minimum": 0},
+        "verified_source_count": {"type": "integer", "minimum": 0},
+        "distinct_independent_supporting_family_count": {"type": "integer", "minimum": 0},
+        "distinct_independent_contradicting_family_count": {"type": "integer", "minimum": 0},
+        "decision_rationale": {
+          "description": "Required non-null exactly when outcome == 'insufficient_evidence' — mirrors evidenceMatrixRow.unverifiable_reason's own identical co-occurrence pattern.",
+          "anyOf": [{"type": "string"}, {"type": "null"}]
+        },
+        "matches_base_outcome": {
+          "description": "Whether this variation's own outcome for applies_to_analysis equals the base run's own outcome for the same key — MTH-018's 'results under each variation MUST be reported' is chiefly for this comparison.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {"outcome": {"const": "insufficient_evidence"}},
+            "required": ["outcome"]
+          },
+          "then": {
+            "required": ["decision_rationale"],
+            "properties": {"decision_rationale": {"type": "string", "minLength": 1}}
+          }
+        }
+      ]
     }
   },
   "allOf": [
@@ -80,6 +127,17 @@
           "description": "Lifecycle status (spec 08 section 3's table: draft -> active -> frozen -> superseded).",
           "type": "string",
           "enum": ["draft", "active", "frozen", "superseded"]
+        },
+        "sensitivity_analysis_results": {
+          "description": "MRR-MTH-018 (task-packets/K1-T03b.yaml): 'results under each variation MUST be reported' — OPTIONAL, NULLABLE. Absent/null on every EvidenceMatrix that declares no sensitivity_variations (every existing example/fixture). uniqueItems catches a fully-duplicated entry at the schema level (mirrors concept-charter.schema.json's own entries); the stronger same-(variation_entry_id, applies_to_analysis)-different-content case is caught only by the Pydantic model_validator, since JSON Schema has no per-subfield uniqueness construct across two keys.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {"$ref": "#/$defs/sensitivityAnalysisResult"},
+              "uniqueItems": true
+            },
+            {"type": "null"}
+          ]
         }
       }
     }

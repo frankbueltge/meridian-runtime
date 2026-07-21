@@ -83,6 +83,7 @@ from mrr.contracts.evidence_matrix import (
     EvidenceMatrixRow,
     EvidenceMatrixStatus,
     EvidenceMatrixVerificationStatus,
+    SensitivityAnalysisResult,
 )
 from mrr.contracts.hypothesis import (
     BRANCH_ROLES,
@@ -275,6 +276,7 @@ __all__ = [
     "RunResourceUsage",
     "RunState",
     "Scope",
+    "SensitivityAnalysisResult",
     "Sha256",
     "Signature",
     "SkepticalChallenge",

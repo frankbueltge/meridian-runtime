@@ -142,7 +142,14 @@ class EvidenceMatrixService:
             correlation_id=correlation_id,
             object_id=matrix.id,
             object_revision=1,
-            payload={"protocol_id": matrix.protocol_id, "row_count": len(matrix.rows)},
+            payload={
+                "protocol_id": matrix.protocol_id,
+                "row_count": len(matrix.rows),
+                # task-packets/K1-T03b.yaml derived_decisions (i), reviewer-
+                # resolution-bounded permission: the ONE additive key this
+                # packet is permitted to add here, nothing else.
+                "sensitivity_variation_count": len(matrix.sensitivity_analysis_results or []),
+            },
         )
         stored, _ = self._record(obj, None, event)
         return stored

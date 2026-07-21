@@ -134,6 +134,33 @@ own required schema fields both anticipate. ``run_local_evidence_loop``
 ``seal()`` still omits all three keywords and still gets ``[]``, byte-
 identical to before.
 
+--- MRR-MTH-018: sensitivity-variation execution (task-packets/K1-T03b.yaml) ---
+
+``run_synthesis_evidence_loop`` gains one new, additive, default-``None``
+keyword parameter, ``sensitivity_variation_parameters`` — when ``None`` or
+empty (every EXISTING caller: ``tests/e2e/test_k1_t03_synthesis_evidence_
+loop.py``'s own direct call, and K1-T04's ``establish_and_run_synthesis``,
+neither of which this packet modifies), this function mints ZERO new
+artifacts, adds ZERO new ``instructions`` keys, and the resolved
+``TaskBundle``/executor input set is byte-for-byte identical to before this
+packet. When non-empty, each variation's own parameters dict is stored via
+the SAME ``artifact_store.put(...)`` pattern already used for the corpus/
+protocol-parameters/method-protocol artifacts, one more ``ArtifactRef`` per
+variation is appended to ``input_artifact_refs`` (so the executor's own
+EXISTING ``missing_artifact_ids`` check covers "declared-but-unresolved" for
+variation artifacts too, with zero new code at that layer), and one new
+``instructions["sensitivity_variation_artifact_ids"]`` key is added. See
+``mrr.services.node_runtime.synthesis_executor``'s own module docstring for
+how the executor itself consumes this. ``_persist_synthesis_output`` is
+extended to fold ``output.get("sensitivity_analysis_results")`` into the
+``EvidenceMatrix`` at CREATE time (as ``None`` when empty, so an existing,
+zero-variation matrix's own persisted body — and therefore its
+``content_hash`` — is byte-identical to a K1-T03-era run) — nothing else in
+that function's own claim/ruling/decision loop changes; a variation NEVER
+mints, modifies, or supersedes a ``Claim``/``MethodRuling``/
+``ResearchDecision`` (that loop reads only ``output["analyses"]``, never
+``output["sensitivity_analysis_results"]``).
+
 --- NodeManifest capability-name pattern conflict (second disclosed gap) ----
 
 A second newly discovered, disclosed specification/implementation conflict
@@ -153,6 +180,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -606,6 +634,7 @@ def run_synthesis_evidence_loop(
     method_protocol_id: Urn,
     corpus_entries: list[dict[str, Any]],
     protocol_parameters: dict[str, Any],
+    sensitivity_variation_parameters: Mapping[str, dict[str, Any]] | None = None,
     actor: Urn | None = None,
     policy_version: str = "policy-mrr-k1-t03-synthesis",
     correlation_id: Urn | None = None,
@@ -644,6 +673,15 @@ def run_synthesis_evidence_loop(
             — ``protocol_id``/``protocol_lock_content_hash`` MUST match the
             resolved ``method_protocol_id`` object's own id/content_hash, or
             the executor fails closed with ``ProtocolLockViolationError``.
+        sensitivity_variation_parameters: MRR-MTH-018 (task-packets/
+            K1-T03b.yaml) — an OPTIONAL mapping of ``variation_entry_id ->``
+            a plain dict shaped per ``mrr.services.node_runtime.
+            synthesis_executor.SensitivityVariationParameters``. ``None`` or
+            empty (the default) is byte-for-byte equivalent to this
+            parameter not existing at all. Every declared key MUST equal one
+            of the resolved ``method_protocol_id`` object's own
+            ``sensitivity_variations`` entries, or the executor fails closed
+            with ``SensitivityVariationDeclarationMismatchError``.
         executor: an explicit override (e.g. one configured with a
             model-assisted ``extraction_callable``) — used exactly as
             supplied, unchanged precedence over the default dispatch-table
@@ -821,12 +859,42 @@ def run_synthesis_evidence_loop(
             classification="PUBLIC",
         ),
     ]
-    instructions = {
+    instructions: dict[str, Any] = {
         "corpus_artifact_id": corpus_artifact_id,
         "protocol_parameters_artifact_id": protocol_parameters_artifact_id,
         "method_protocol_artifact_id": method_protocol_artifact_id,
         "question_id": question_model_id,
     }
+
+    # --- 3b. MRR-MTH-018 (task-packets/K1-T03b.yaml): store one artifact per
+    #         declared sensitivity variation, exactly mirroring the three
+    #         artifacts just above. None/empty (the overwhelming majority of
+    #         calls today) mints ZERO artifacts and adds ZERO instructions
+    #         keys — byte-for-byte equivalent to this parameter not existing.
+    sensitivity_variation_content_hashes: dict[str, str] = {}
+    if sensitivity_variation_parameters:
+        sensitivity_variation_artifact_ids: dict[str, str] = {}
+        for variation_entry_id, variation_params in sensitivity_variation_parameters.items():
+            variation_descriptor = artifact_store.put(
+                canonicalize(variation_params),
+                media_type="application/json",
+                producer_run_id=resolved_correlation_id,
+                classification="PUBLIC",
+                created_at=datetime.now(UTC),
+            )
+            variation_artifact_id = new_urn("artifact")
+            input_artifact_refs.append(
+                ArtifactRef(
+                    artifact_id=variation_artifact_id,
+                    content_hash=variation_descriptor.content_hash,
+                    classification="PUBLIC",
+                )
+            )
+            sensitivity_variation_artifact_ids[variation_entry_id] = variation_artifact_id
+            sensitivity_variation_content_hashes[variation_artifact_id] = (
+                variation_descriptor.content_hash
+            )
+        instructions["sensitivity_variation_artifact_ids"] = sensitivity_variation_artifact_ids
 
     # --- 4. Create + offer + accept the Task Bundle.
     bundle = _build_task_bundle(
@@ -882,6 +950,11 @@ def run_synthesis_evidence_loop(
         ),
         method_protocol_artifact_id: artifact_store.get(method_protocol_descriptor.content_hash),
     }
+    for (
+        variation_artifact_id,
+        variation_content_hash,
+    ) in sensitivity_variation_content_hashes.items():
+        resolved_inputs[variation_artifact_id] = artifact_store.get(variation_content_hash)
     started_at = datetime.now(UTC)
     execution_result = resolved_executor.execute(
         accepted_bundle, resolved_inputs, execution_attempt=execution_attempt
@@ -1171,6 +1244,13 @@ def _persist_synthesis_output(
             )
         )
 
+    # MRR-MTH-018 (task-packets/K1-T03b.yaml derived_decisions (c)/(e)/(j)):
+    # `or None` turns an absent/empty list into `None` so a zero-variation
+    # run's own persisted matrix body omits the key entirely
+    # (exclude_none=True) — byte-identical to a K1-T03-era matrix, no
+    # content_hash change for any run that declares no variations.
+    sensitivity_analysis_results = output.get("sensitivity_analysis_results") or None
+
     matrix_id = new_urn("evidence-matrix")
     matrix = EvidenceMatrix.model_validate(
         {
@@ -1186,6 +1266,7 @@ def _persist_synthesis_output(
             "question_id": question_id,
             "rows": [row.model_dump(mode="json") for row in matrix_rows],
             "status": "draft",
+            "sensitivity_analysis_results": sensitivity_analysis_results,
         }
     )
     matrix = _finalize_content_hash(matrix)
