@@ -54,6 +54,44 @@ reviewer_resolution: >-
   evidence-matrix schema/contract, exceptions.py additively, and the one
   bounded event-payload line) — the sequencing is discipline, not
   necessity.
+
+  AMENDMENT (2026-07-21, after the implementation correctly hit the
+  fail-closed stop_condition): the symmetric coverage check broke the two
+  standing e2e tests in `tests/e2e/test_k1_t04_first_real_run.py` — the
+  real corpus's own `method-protocol.proposal.json` declares
+  `sensitivity_variations: ["model-collapse-mechanism-v1"]`, and those
+  tests re-run the real corpus FRESH on every invocation without
+  supplying variation parameters. The packet's derivation premise ("every
+  protocol in the test suite today except the one real K1-T04 protocol,
+  which this packet never re-executes") conflated the sealed one-time
+  schema (truly never touched) with the corpus FIXTURES (re-executed by
+  e2e on every run) — the implementer's root-cause analysis is accepted
+  as correct. RULING: option (1), the honest route. `tests/e2e/
+  test_k1_t04_first_real_run.py` is ADDED to allowed_paths, bounded to
+  exactly this change: the two affected tests are updated to assert the
+  fail-closed outcome (`run_state == "failed"` with the crate's failures
+  naming `SensitivityVariationDeclarationMismatchError` and the exact
+  missing entry id), MAY be renamed to reflect their new meaning, and
+  MUST carry docstrings stating plainly WHY: the real run's own locked
+  protocol declares a sensitivity analysis whose parameters have never
+  been authored; MRR-MTH-018 enforcement now refuses to silently skip a
+  declared analysis; authoring a genuine alternate operationalization for
+  the model-collapse question remains the separate, named future task
+  (specification_gaps); and the sealed archive `mrr_k1t04_real_run_v2` is
+  unaffected. EXPLICITLY REJECTED: (2) rushing the authoring of a real
+  variation into this packet (research-content work, deliberately open,
+  arguably the practice's/owner's call, and a trivial noop-variation
+  would be exactly the "fabricated demonstration of coverage" derived_
+  decisions (l) warns against) and (3) any grandfather exemption for
+  pre-existing declarations (the silent skip the MUST forbids). NOTED
+  for the record: forward computational reproduction of the archived
+  K1-T04 run via CURRENT code is now gated on that future task — this
+  does not retroactively unmeet K1's exit criteria, which were assessed
+  against the code version the run actually used; the runtime refusing
+  to reproduce a run whose declaration it now knows to be unexecutable
+  is the capability working, not a regression. The e2e happy path over
+  a completing run remains covered by this packet's own new
+  multi-variation fixture test and the existing K1-T03 loop test.
 derivation: >-
   Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5. Closes a
   specific, named gap in the MERGED `systematic_evidence_synthesis` v1
@@ -327,6 +365,11 @@ allowed_paths:
   - tests/property/test_synthesis_executor_sensitivity_variation_properties.py
   - tests/integration/services/cli/test_synthesis_orchestration_sensitivity_variations.py
   - tests/e2e/test_k1_t03b_sensitivity_variation_execution.py
+  - >-
+    tests/e2e/test_k1_t04_first_real_run.py — ADDED BY REVIEWER-RESOLUTION
+    AMENDMENT, bounded: ONLY the two tests broken by the coverage check are
+    updated to assert the fail-closed outcome with honest docstrings
+    (renaming permitted); no other test in the file changes
   - tests/contract/test_evidence_matrix_variants.py
   - tests/contract/fixtures/invalid/evidence-matrix-sensitivity-result-duplicate-pair.json
   - >-
