@@ -300,6 +300,18 @@ def test_headline_corpus_persists_frozen_matrix_claims_rulings_and_governed_by_p
     crate_edges = edge_repository.edges_from(result.evidence_crate_id, "governed_by_protocol")
     assert [e.target_id for e in crate_edges] == [method_protocol_id]
 
+    # Reverse direction, from the protocol's own point of view: every
+    # object this run governed is enumerable by walking edges_to(protocol_id),
+    # not only by walking edges_from each object individually.
+    governed_object_ids = {
+        e.source_id for e in edge_repository.edges_to(method_protocol_id, "governed_by_protocol")
+    }
+    assert governed_object_ids == {
+        result.evidence_matrix_id,
+        result.evidence_crate_id,
+        *result.claim_ids,
+    }
+
     # ruled_by edges: each claim -> its own MethodRuling.
     for claim_id in result.claim_ids:
         ruled_by_edges = edge_repository.edges_from(claim_id, "ruled_by")
