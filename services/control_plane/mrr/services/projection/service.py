@@ -105,6 +105,32 @@ resolves via ``ObjectRepository.get_latest`` at build time (task-packets/
 E3-T07.yaml invariant: "the provenance map only lists edges/objects that
 actually exist"); a dangling edge or a field reference to an id nothing
 ever stored is silently excluded, never represented with a placeholder.
+
+--- MRR-MTH-004 ceiling-gate extension (task-packets/K1-T02.yaml) -----------
+
+``build_claim_table`` additionally resolves, for each discovered claim, its
+own ``ruled_by`` edge(s) via the ALREADY-HELD ``self._edge_repository``, and
+the ``MethodRuling`` -> ``MethodProtocol`` -> ``MethodProfile`` chain behind
+the MOST RECENT one via the ALREADY-HELD ``self._object_repository`` (no new
+constructor dependency) — then passes the resolved ``ruled_ceiling``/
+``profile_max_ceiling`` pair into ``mrr.domain.projection.
+build_claim_table_row``, which reuses ``mrr.domain.claim_ceiling.
+ceiling_violation_reason`` directly (this service never re-implements the
+gate logic). A claim with no ``ruled_by`` edge at all — every claim that
+existed before this task, and any claim never ruled under a profile — omits
+both keyword arguments entirely, so ``build_claim_table_row`` reports
+``ceiling_checked=False``, byte-identical to pre-K1-T02 behavior.
+
+A claim may carry MULTIPLE ``ruled_by`` edges over time (task-packets/
+K1-T02.yaml specification_gaps: neither prevented nor deduplicated
+anywhere). Unlike ``ClaimService._transition``'s own fail-closed "any
+attached ruling reports a violation" re-check (a WRITE-time gate, where
+rejecting is the safe default), this READ-only projection resolves only the
+MOST RECENT ``ruled_by`` edge (``edges_from`` returns oldest-first, so the
+last element) to decide what to DISPLAY — a deliberately simpler, disclosed
+choice for "what is this claim's ceiling status right now," distinct from
+"should a write be rejected." Flagged for reviewer scrutiny alongside
+task-packets/K1-T02.yaml's own identical multi-ruling disclosure.
 """
 
 from __future__ import annotations
@@ -135,6 +161,11 @@ _CORRECTION_RECORDED_EVENT_TYPE = "correction.recorded"
 _CLAIM_KIND = "Claim"
 _CORRECTION_KIND = "CorrectionEvent"
 _EVIDENCE_ANCHOR_KIND = "EvidenceAnchor"
+
+#: The one edge type MRR-MTH-004's ceiling-gate projection extension
+#: resolves — see the module docstring's "MRR-MTH-004 ceiling-gate
+#: extension" section.
+_RULED_BY_EDGE_TYPE = "ruled_by"
 
 #: The two ``EvidenceAnchor`` fields ``_field_reference_hops`` follows — see
 #: the module docstring's "Provenance map" section.
@@ -198,7 +229,19 @@ class ProjectionService:
                 # identical "no stored object / wrong kind -> skip" stance
                 # for an edge endpoint no service can guarantee still exists).
                 continue
-            rows.append(build_claim_table_row(claim_body, corrections))
+            ceiling_chain = self._resolve_latest_ruling_ceiling_chain(claim_id)
+            if ceiling_chain is None:
+                rows.append(build_claim_table_row(claim_body, corrections))
+            else:
+                ruled_ceiling, profile_max_ceiling = ceiling_chain
+                rows.append(
+                    build_claim_table_row(
+                        claim_body,
+                        corrections,
+                        ruled_ceiling=ruled_ceiling,
+                        profile_max_ceiling=profile_max_ceiling,
+                    )
+                )
         return rows
 
     # ------------------------------------------------------------------
@@ -251,6 +294,42 @@ class ProjectionService:
     def _latest_body_or_none(self, object_id: str) -> dict[str, object] | None:
         obj = self._get_object_or_none(object_id)
         return None if obj is None else obj.body
+
+    def _resolve_latest_ruling_ceiling_chain(self, claim_id: str) -> tuple[str, str] | None:
+        """Resolve ``claim_id``'s MOST RECENT ``ruled_by`` edge (if any) to a
+        ``(ruled_ceiling, profile_max_ceiling)`` pair — see the module
+        docstring's "MRR-MTH-004 ceiling-gate extension" section for why the
+        most recent edge, not every attached one. Returns ``None`` whenever
+        no ``ruled_by`` edge exists, or the chain fails to resolve at any
+        hop (dangling reference at any point — a ``MethodRuling``/
+        ``MethodProtocol``/``MethodProfile`` no longer or never resolving),
+        fully in line with this service's own established "fails soft, never
+        raises, on an edge endpoint nothing can guarantee still exists"
+        stance (see ``build_claim_table``'s own identical stance for a
+        dangling claim genesis event).
+        """
+        ruled_by_edges = self._edge_repository.edges_from(claim_id, _RULED_BY_EDGE_TYPE)
+        if not ruled_by_edges:
+            return None
+        latest_edge = ruled_by_edges[-1]
+
+        ruling = self._get_object_or_none(latest_edge.target_id)
+        if ruling is None:
+            return None
+        protocol_id = ruling.body.get("protocol_id")
+        protocol = self._get_object_or_none(str(protocol_id)) if protocol_id else None
+        if protocol is None:
+            return None
+        profile_id = protocol.body.get("profile_id")
+        profile = self._get_object_or_none(str(profile_id)) if profile_id else None
+        if profile is None:
+            return None
+
+        ruled_ceiling = ruling.body.get("ruled_ceiling")
+        profile_max_ceiling = profile.body.get("max_claim_ceiling")
+        if ruled_ceiling is None or profile_max_ceiling is None:
+            return None
+        return str(ruled_ceiling), str(profile_max_ceiling)
 
     def _trace_provenance(self, claim_id: str) -> list[ProvenanceEdge]:
         """Breadth-first, cycle-safe traversal of every outgoing typed edge

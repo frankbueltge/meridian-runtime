@@ -35,7 +35,9 @@ from mrr.domain.repositories import (
 )
 
 #: Verbatim transcription of docs/spec/02_DOMAIN_MODEL.md section 3's
-#: "Minimum vocabulary" list, in the document's own order. Independent of
+#: "Minimum vocabulary" list, in the document's own order, EXTENDED by the
+#: four docs/spec/08_RESEARCH_METHOD_KERNEL.md section 3 method-kernel edges
+#: (task-packets/K1-T02.yaml). Independent of
 #: mrr.domain.repositories.EDGE_VOCABULARY's own source.
 _EXPECTED_EDGE_VOCABULARY = frozenset(
     {
@@ -58,7 +60,19 @@ _EXPECTED_EDGE_VOCABULARY = frozenset(
         "member_of_source_family",
         "subject_to_obligation",
         "projected_into",
+        "operationalizes",
+        "governed_by_protocol",
+        "ruled_by",
+        "decided_by",
     }
+)
+
+#: The four members task-packets/K1-T02.yaml added, transcribed verbatim
+#: from docs/spec/08_RESEARCH_METHOD_KERNEL.md section 3's "Edges" bullet
+#: list — checked as their own subset so a future regression pinpoints
+#: exactly which addition drifted, not merely "the whole set changed".
+_K1_T02_ADDED_EDGE_TYPES = frozenset(
+    {"operationalizes", "governed_by_protocol", "ruled_by", "decided_by"}
 )
 
 
@@ -66,8 +80,12 @@ def test_edge_vocabulary_matches_spec_section_3_exactly() -> None:
     assert EDGE_VOCABULARY == _EXPECTED_EDGE_VOCABULARY
 
 
-def test_edge_vocabulary_has_exactly_nineteen_types() -> None:
-    assert len(EDGE_VOCABULARY) == 19
+def test_edge_vocabulary_has_exactly_twenty_three_types() -> None:
+    assert len(EDGE_VOCABULARY) == 23
+
+
+def test_edge_vocabulary_carries_all_four_k1_t02_method_kernel_edges() -> None:
+    assert _K1_T02_ADDED_EDGE_TYPES.issubset(EDGE_VOCABULARY)
 
 
 # ---------------------------------------------------------------------------

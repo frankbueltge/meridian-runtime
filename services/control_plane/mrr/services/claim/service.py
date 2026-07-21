@@ -123,6 +123,87 @@ Postgres-typed parameters or mypy strict). The same shape is used twice here
 — once for object revisions (``RecordRevisionWithEvent``, identical to
 ``ResearchScoreService``'s own) and once for edges
 (``RecordEdgeWithEvent``, new to this module).
+
+--- K1-T02: the claim-ceiling gate (MRR-MTH-004/005/006) --------------------
+
+``attach_ruling`` is the "at submission" gate and the ONLY place a
+``ruled_by`` edge is ever written. It resolves ``method_ruling_id`` via the
+already-generic ``self._object_repository.get_latest`` (works for ANY object
+kind — no new constructor dependency), then walks
+``ruling.body["protocol_id"]`` -> ``MethodProtocol`` ->
+``protocol.body["profile_id"]`` -> ``MethodProfile``, reading
+``max_claim_ceiling`` from that profile's CURRENT latest revision regardless
+of its own lifecycle status (flagged in the PR body's specification_gaps:
+this does NOT require ``status == "accepted"``). It calls
+``mrr.domain.claim_ceiling.ceiling_violation_reason`` against the resolved
+claim's own ``claim_type``; on a non-``None`` result it raises
+``ClaimCeilingExceededError`` BEFORE writing anything — mirrors
+``to_supported``'s "checked first, nothing persisted on failure" discipline.
+On success it writes the ``ruled_by`` edge via the existing ``_write_edge``
+helper (event_type ``"claim.ruling_attached"``), reusing its already-atomic
+edge-plus-event composition unchanged.
+
+``_transition`` gains a second, independent ceiling re-check: whenever
+``to_status`` is one of ``{"supported", "contested", "contradicted",
+"unsupported"}`` (the four ``CLAIM_LIFECYCLE`` targets that assert some claim
+language), every ``ruled_by`` edge already attached to the claim is
+re-resolved and re-checked. Empty -> skipped entirely (zero behavior change
+for every claim created before this task and for every existing
+``to_supported``/``to_contested``/etc. test that seeds no ``ruled_by`` edge).
+One or more -> ALL are re-checked; ANY violation raises
+``ClaimCeilingExceededError`` and persists nothing (fail-closed: a claim with
+multiple, possibly-conflicting rulings is rejected if ANY attached ruling
+would license a violation).
+
+``apply_kill_condition`` (MRR-MTH-010) reuses the EXISTING ``withdrawn``
+``CLAIM_LIFECYCLE`` state — no new ``Claim`` status is invented; "killed
+branches remain addressable" is exactly ``withdraw()``'s own already-
+documented behavior. It (1) resolves ``research_decision_id`` and calls the
+pure ``mrr.domain.kill_condition.assert_licenses_kill``, raising
+``InvalidKillDecisionError`` BEFORE anything is persisted if the resolved
+object is not a ``ResearchDecision`` with ``decision_type == "kill_branch"``;
+(2) transitions the claim via the EXISTING ``_transition`` helper to
+``"withdrawn"``, but with ``event_type="claim.kill_condition_triggered"`` (a
+NEW, distinctly-named event type, kept separate from the plain
+``"claim.withdrawn"`` a voluntary researcher withdrawal produces) whose
+payload carries ``{"code": "KILL_CONDITION_TRIGGERED", "research_decision_id":
+..., "from_status": ..., "to_status": "withdrawn"}`` — this is how spec 08's
+literal, canonical ``KILL_CONDITION_TRIGGERED`` string becomes a real,
+greppable, directly-assertable fact on the persisted event, without breaking
+this module's own uniform lowercase-dotted ``event_type`` naming convention;
+(3) writes a NEW ``decided_by`` edge, ``claim_id -> research_decision_id``,
+via the EXISTING ``_write_edge`` helper (event_type
+``"claim.kill_decision_recorded"``). These are TWO SEQUENTIAL, each
+independently atomic writes — not one combined multi-table transaction,
+since no persistence primitive in this module's ``allowed_paths`` composes
+an object-revision write AND an edge write atomically together, only each
+with its OWN event (mirrors this module's own "object fields and graph edges
+are two independent writes with one required consistency point" precedent).
+
+--- K1-T02 review follow-up: gating the generic edge writers ----------------
+
+``ruled_by``/``decided_by`` are ordinary ``EDGE_VOCABULARY`` members like
+any other — nothing about the vocabulary itself distinguishes them from
+``supports``/``qualifies``/etc. Without a further restriction, the generic,
+arbitrary-``edge_type`` entry points (``add_evidence_edge``/
+``link_related_claim``) would silently accept either one directly, letting
+a caller write a ``ruled_by`` edge that never passed ``attach_ruling``'s
+ceiling gate, or a ``decided_by`` edge with no corresponding
+``apply_kill_condition`` call (and thus no real ``withdrawn`` transition at
+all) — undermining MRR-MTH-004/005/006 and MRR-MTH-010 respectively, and
+recording misleading event provenance (``claim.evidence_edge_added``/
+``claim.related_claim_linked`` instead of ``claim.ruling_attached``/
+``claim.kill_decision_recorded``) either way.
+
+``GATED_EDGE_TYPES`` (``{"ruled_by", "decided_by"}``) and the
+``_reject_gated_edge_type`` helper close this gap: both generic writers
+raise ``GatedEdgeTypeError`` BEFORE resolving ``claim_id`` or writing
+anything, whenever ``edge_type`` is gated. ``_write_edge`` itself is
+deliberately NOT restricted — ``attach_ruling``/``apply_kill_condition``
+call it directly (after their own dedicated gate has already passed) and
+must remain able to write these two edge types; the restriction sits only
+at the two generic, caller-facing entry points, not at the shared internal
+helper both the generic writers and the gated methods route through.
 """
 
 from __future__ import annotations
@@ -134,8 +215,11 @@ from typing import Any, Protocol
 
 import sqlalchemy as sa
 from mrr.contracts import Claim, ClaimStatus, Urn
+from mrr.domain.claim_ceiling import ceiling_violation_reason
 from mrr.domain.exceptions import (
+    ClaimCeilingExceededError,
     ClaimNotFoundError,
+    GatedEdgeTypeError,
     InvalidTransitionError,
     MissingSupportEdgeError,
     ObjectNotFoundError,
@@ -143,6 +227,7 @@ from mrr.domain.exceptions import (
 )
 from mrr.domain.hashing_policy import compute_content_hash
 from mrr.domain.identity import new_urn
+from mrr.domain.kill_condition import assert_licenses_kill
 from mrr.domain.lifecycles import CLAIM_LIFECYCLE
 from mrr.domain.repositories import (
     EDGE_VOCABULARY,
@@ -163,6 +248,48 @@ from sqlalchemy import Engine
 #: ``ResearchScoreService.create``'s identical ``_NEW_SCORE_SENTINEL_STATE``
 #: for the full rationale. Never a member of ``CLAIM_LIFECYCLE.states``.
 _NEW_CLAIM_SENTINEL_STATE = "<new>"
+
+#: The four CLAIM_LIFECYCLE targets that assert some claim language —
+#: `_transition`'s K1-T02 ceiling re-check runs only for these (MRR-MTH-004).
+#: `unresolved`/`review_required`/`withdrawn`/`superseded` do not, per their
+#: own existing names, and are excluded.
+_CEILING_ASSERTING_STATUSES = frozenset({"supported", "contested", "contradicted", "unsupported"})
+
+#: The one typed-edge kind `attach_ruling` ever writes, and the one
+#: `_transition`'s ceiling re-check reads back (K1-T02).
+_RULED_BY_EDGE_TYPE = "ruled_by"
+
+#: The one typed-edge kind `apply_kill_condition` ever writes (K1-T02,
+#: MRR-MTH-010).
+_DECIDED_BY_EDGE_TYPE = "decided_by"
+
+#: Edge types that may ONLY be written by their own dedicated gated method —
+#: never through a generic, arbitrary-``edge_type`` entry point
+#: (``add_evidence_edge``/``link_related_claim``). ``ruled_by`` is written
+#: exclusively by ``attach_ruling`` (which enforces the K1-T02 ceiling gate,
+#: MRR-MTH-004/005/006, BEFORE writing); ``decided_by`` is written
+#: exclusively by ``apply_kill_condition`` (which enforces the kill-decision
+#: licensing check, MRR-MTH-010, BEFORE writing, and pairs the edge with a
+#: real ``withdrawn`` transition). Both are ordinary ``EDGE_VOCABULARY``
+#: members like any other (K1-T02 added them there), so without this
+#: restriction the two generic writers would silently accept either one
+#: directly — bypassing both gates entirely and recording the wrong event
+#: provenance. See ``GatedEdgeTypeError`` and ``_reject_gated_edge_type``.
+#: The gated methods themselves call the internal ``_write_edge`` helper
+#: directly and are therefore unaffected by this restriction — only the two
+#: generic, caller-facing entry points are restricted.
+GATED_EDGE_TYPES: frozenset[str] = frozenset({_RULED_BY_EDGE_TYPE, _DECIDED_BY_EDGE_TYPE})
+
+
+def _reject_gated_edge_type(edge_type: str) -> None:
+    """Raise ``GatedEdgeTypeError`` iff ``edge_type`` is one of
+    ``GATED_EDGE_TYPES`` — shared by both generic edge-writing entry points
+    (``ClaimService.add_evidence_edge``/``link_related_claim``). Checked
+    before either method resolves ``claim_id`` or writes anything.
+    """
+    if edge_type in GATED_EDGE_TYPES:
+        raise GatedEdgeTypeError(edge_type)
+
 
 #: The callable shape ``mrr.persistence.unit_of_work.record_object_revision_with_event``
 #: takes once its ``engine``/``object_repository``/``event_log`` arguments are
@@ -529,13 +656,21 @@ class ClaimService:
         ``contextualizes``/``derived_from``/``uses_source``/...),
         atomically with a ``claim.evidence_edge_added`` event.
 
+        ``edge_type`` MUST NOT be one of ``GATED_EDGE_TYPES``
+        (``ruled_by``/``decided_by``, K1-T02) — those are written
+        exclusively by ``attach_ruling``/``apply_kill_condition``.
+
         Raises:
+            GatedEdgeTypeError: ``edge_type`` is one of ``GATED_EDGE_TYPES``
+                — checked FIRST, before ``claim_id`` is even resolved, so
+                nothing is persisted.
             UnknownEdgeTypeError: ``edge_type`` is not in
                 ``mrr.domain.repositories.EDGE_VOCABULARY`` (E1-T05's own
                 fail-closed check, reused as-is) — checked before
                 ``claim_id`` is even resolved, so nothing is persisted.
             ClaimNotFoundError: ``claim_id`` resolves to no stored object.
         """
+        _reject_gated_edge_type(edge_type)
         return self._write_edge(
             claim_id,
             target_id,
@@ -611,7 +746,17 @@ class ClaimService:
         them into one object. Neither claim's own object revision is
         touched — the two remain fully separate, independently addressable
         objects; only a new edge (plus its event) is written.
+
+        ``edge_type`` MUST NOT be one of ``GATED_EDGE_TYPES``
+        (``ruled_by``/``decided_by``, K1-T02) — those are written
+        exclusively by ``attach_ruling``/``apply_kill_condition``.
+
+        Raises:
+            GatedEdgeTypeError: ``edge_type`` is one of ``GATED_EDGE_TYPES``
+                — checked FIRST, before ``claim_id`` is even resolved, so
+                nothing is persisted.
         """
+        _reject_gated_edge_type(edge_type)
         return self._write_edge(
             claim_id,
             other_claim_id,
@@ -622,6 +767,139 @@ class ClaimService:
             scope=scope,
             event_type="claim.related_claim_linked",
         )
+
+    # ------------------------------------------------------------------
+    # K1-T02: the claim-ceiling gate (MRR-MTH-004/005/006).
+    # ------------------------------------------------------------------
+
+    def attach_ruling(
+        self,
+        claim_id: Urn,
+        method_ruling_id: Urn,
+        *,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+    ) -> TypedEdge:
+        """The "at submission" ceiling gate (MRR-MTH-004) and the ONLY place
+        a ``ruled_by`` edge is ever written — the generic
+        ``add_evidence_edge``/``link_related_claim`` entry points reject
+        ``ruled_by`` with ``GatedEdgeTypeError`` (``GATED_EDGE_TYPES``). See
+        the module docstring's "K1-T02: the claim-ceiling gate" section for
+        the full rationale.
+
+        Raises:
+            ClaimCeilingExceededError: the resolved ``MethodRuling`` ->
+                ``MethodProtocol`` -> ``MethodProfile`` chain, checked against
+                this claim's own ``claim_type``, reports a violation — either
+                the universal profile-max check or the causal-specific check
+                (``mrr.domain.claim_ceiling.ceiling_violation_reason``).
+                Nothing is persisted.
+            ClaimNotFoundError: ``claim_id`` resolves to no stored object.
+            ObjectNotFoundError: ``method_ruling_id`` (or the
+                ``MethodProtocol``/``MethodProfile`` it references) resolves
+                to no stored object at all.
+        """
+        claim = self._get_latest_or_raise(claim_id)
+        ruled_ceiling, profile_max_ceiling = self._resolve_ruling_ceiling_chain(method_ruling_id)
+
+        reason = ceiling_violation_reason(
+            claim_type=claim.body["claim_type"],
+            ruled_ceiling=ruled_ceiling,
+            profile_max_ceiling=profile_max_ceiling,
+        )
+        if reason is not None:
+            raise ClaimCeilingExceededError(claim_id=claim_id, reason=reason)
+
+        return self._write_edge(
+            claim_id,
+            method_ruling_id,
+            _RULED_BY_EDGE_TYPE,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+            scope=None,
+            event_type="claim.ruling_attached",
+        )
+
+    # ------------------------------------------------------------------
+    # K1-T02: kill-condition transition plumbing (MRR-MTH-010).
+    # ------------------------------------------------------------------
+
+    def apply_kill_condition(
+        self,
+        claim_id: Urn,
+        research_decision_id: Urn,
+        *,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+    ) -> tuple[StoredObject, TypedEdge]:
+        """Kill-condition transition plumbing (MRR-MTH-010): reuses the
+        EXISTING ``withdrawn`` ``CLAIM_LIFECYCLE`` state (no new ``Claim``
+        status is invented) plus a distinctly-typed
+        ``claim.kill_condition_triggered`` event carrying the canonical
+        ``KILL_CONDITION_TRIGGERED`` string in its own payload, plus a new
+        ``decided_by`` edge to the licensing ``ResearchDecision``. See the
+        module docstring's "K1-T02: kill-condition transition plumbing"
+        section for the full rationale, including why this is TWO
+        sequential, independently atomic writes rather than one combined
+        transaction.
+
+        This method implements PLUMBING only — it does not parse or evaluate
+        a ``MethodProtocol.kill_conditions`` free-text entry against real
+        evidence to decide WHETHER a condition is currently satisfied
+        (task-packets/K1-T03.yaml's/K1-T04.yaml's job); it acts on a
+        caller-supplied, already-decided ``research_decision_id``.
+
+        This is also the ONLY place a ``decided_by`` edge is ever written —
+        the generic ``add_evidence_edge``/``link_related_claim`` entry
+        points reject ``decided_by`` with ``GatedEdgeTypeError``
+        (``GATED_EDGE_TYPES``), so a ``decided_by`` edge can never exist
+        without this method's own kill-decision licensing check and real
+        ``withdrawn`` transition having both already run.
+
+        Raises:
+            InvalidKillDecisionError: the object resolved for
+                ``research_decision_id`` is not a ``ResearchDecision`` with
+                ``decision_type == "kill_branch"``. Checked FIRST; nothing is
+                persisted.
+            InvalidTransitionError: the claim's current status has no
+                ``CLAIM_LIFECYCLE`` edge into ``withdrawn`` (e.g. it is
+                already ``withdrawn``/``superseded`` — both terminal).
+                Nothing is persisted.
+            ClaimNotFoundError: ``claim_id`` resolves to no stored object.
+        """
+        decision = self._object_repository.get_latest(research_decision_id)
+        assert_licenses_kill(
+            research_decision_id=research_decision_id,
+            decision_kind=decision.kind,
+            decision_type=decision.body.get("decision_type"),
+        )
+
+        stored = self._transition(
+            claim_id,
+            "withdrawn",
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+            event_type="claim.kill_condition_triggered",
+            extra_payload={
+                "code": "KILL_CONDITION_TRIGGERED",
+                "research_decision_id": research_decision_id,
+            },
+        )
+        edge = self._write_edge(
+            claim_id,
+            research_decision_id,
+            _DECIDED_BY_EDGE_TYPE,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+            scope=None,
+            event_type="claim.kill_decision_recorded",
+        )
+        return stored, edge
 
     # ------------------------------------------------------------------
     # Internal helpers.
@@ -658,10 +936,13 @@ class ClaimService:
         event_type: str,
         evidence_relations: list[Urn] | None = None,
         verification_ids: list[Urn] | None = None,
+        extra_payload: dict[str, Any] | None = None,
     ) -> StoredObject:
         """Shared implementation for every CLAIM_LIFECYCLE edge method: load
         the latest revision, assert the transition is legal (fails closed
-        with ``InvalidTransitionError`` and writes nothing), enforce the
+        with ``InvalidTransitionError`` and writes nothing), re-check the
+        K1-T02 ceiling gate for every attached ``ruled_by`` ruling when
+        transitioning into a language-asserting status, enforce the
         supported-requires-support-edges invariant when transitioning INTO
         ``supported``, then persist the next revision (status changed, plus
         ``evidence_relations``/``verification_ids`` when transitioning to
@@ -671,10 +952,39 @@ class ClaimService:
         transition except ``to_supported`` — asserted non-``None`` in that
         one branch below purely so this shared helper's own typing stays
         honest about the other transitions never needing them.
+
+        ``extra_payload`` (K1-T02) is merged into the event's ``payload``
+        dict on top of the always-present ``from_status``/``to_status``
+        pair — ``None`` (the default) for every pre-K1-T02 caller, so every
+        existing transition method's event payload is byte-identical to
+        before. Only ``apply_kill_condition`` supplies it today, to carry
+        the canonical ``KILL_CONDITION_TRIGGERED`` code and the licensing
+        ``research_decision_id`` on the transition event itself.
         """
         latest = self._get_latest_or_raise(claim_id)
         from_status = latest.body["status"]
         CLAIM_LIFECYCLE.assert_transition(from_status, to_status)
+
+        if to_status in _CEILING_ASSERTING_STATUSES:
+            # K1-T02, MRR-MTH-004 defense-in-depth: re-verify the ceiling
+            # gate for EVERY ruled_by edge already attached to this claim.
+            # Empty -> skipped entirely (zero behavior change for every
+            # claim with no ruled_by edge, i.e. every claim that existed
+            # before this task). One or more -> ALL are re-checked; ANY
+            # violation raises and persists nothing, before the transition
+            # ever touches the claim's own body.
+            claim_type = latest.body["claim_type"]
+            for edge in self._edge_repository.edges_from(claim_id, _RULED_BY_EDGE_TYPE):
+                ruled_ceiling, profile_max_ceiling = self._resolve_ruling_ceiling_chain(
+                    edge.target_id
+                )
+                reason = ceiling_violation_reason(
+                    claim_type=claim_type,
+                    ruled_ceiling=ruled_ceiling,
+                    profile_max_ceiling=profile_max_ceiling,
+                )
+                if reason is not None:
+                    raise ClaimCeilingExceededError(claim_id=claim_id, reason=reason)
 
         new_body = dict(latest.body)
         new_body["status"] = to_status
@@ -726,6 +1036,10 @@ class ClaimService:
             labels=latest.labels,
             body=new_body,
         )
+        payload: dict[str, Any] = {"from_status": from_status, "to_status": to_status}
+        if extra_payload:
+            payload.update(extra_payload)
+
         event = DomainEvent(
             id=new_urn("domain-event"),
             event_type=event_type,
@@ -736,11 +1050,27 @@ class ClaimService:
             correlation_id=correlation_id,
             object_id=claim_id,
             object_revision=new_revision,
-            payload={"from_status": from_status, "to_status": to_status},
+            payload=payload,
         )
 
         stored, _ = self._record(obj, latest.revision, event)
         return stored
+
+    def _resolve_ruling_ceiling_chain(self, method_ruling_id: str) -> tuple[str, str]:
+        """Resolve a ``MethodRuling`` -> ``MethodProtocol`` -> ``MethodProfile``
+        chain to ``(ruled_ceiling, profile_max_ceiling)`` (K1-T02). Reused by
+        both ``attach_ruling`` and ``_transition``'s ceiling re-check so the
+        resolution logic is written exactly once.
+
+        Raises:
+            ObjectNotFoundError: ``method_ruling_id``, or the
+                ``MethodProtocol``/``MethodProfile`` id it references, does
+                not resolve to any stored object.
+        """
+        ruling = self._object_repository.get_latest(method_ruling_id)
+        protocol = self._object_repository.get_latest(ruling.body["protocol_id"])
+        profile = self._object_repository.get_latest(protocol.body["profile_id"])
+        return ruling.body["ruled_ceiling"], profile.body["max_claim_ceiling"]
 
     def _write_edge(
         self,

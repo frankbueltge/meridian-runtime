@@ -20,6 +20,10 @@ Acceptance-test mapping:
   rejected" -> ``test_every_vocabulary_edge_type_round_trips``,
   ``test_invented_edge_type_rejected_in_code`` and
   ``test_invented_edge_type_rejected_by_database_check_constraint``.
+- [K1-T02, migration/EDGE_VOCABULARY] "the migration's downgrade() reverts
+  the CHECK constraint to reject one of the four new types ... proving
+  genuine reversibility" ->
+  ``test_migration_downgrade_reverts_check_constraint_to_reject_a_new_edge_type``.
 """
 
 from __future__ import annotations
@@ -27,9 +31,12 @@ from __future__ import annotations
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
+from alembic import command
+from alembic.config import Config
 from mrr.domain.exceptions import (
     ObjectNotFoundError,
     RevisionConflictError,
@@ -41,6 +48,17 @@ from mrr.persistence.repositories import PostgresEdgeRepository, PostgresObjectR
 from mrr.persistence.tables import edges_table
 from sqlalchemy import Engine, inspect
 from sqlalchemy.exc import IntegrityError
+
+#: Local, duplicated copies of tests/integration/conftest.py's own path
+#: constants — a conftest module is not meant to be imported by test files
+#: (there is no tests/ package __init__.py anywhere in this repository), so
+#: this one small self-contained duplication mirrors this codebase's own
+#: "a local copy, not a shared import" precedent for small test-support
+#: constants (see e.g. mrr.services.claim.service's own
+#: RecordRevisionWithEvent docstring for the identical rationale).
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_ALEMBIC_INI = _REPO_ROOT / "alembic.ini"
+_MIGRATIONS_DIR = _REPO_ROOT / "migrations"
 
 
 def _now() -> datetime:
@@ -267,6 +285,39 @@ def test_invented_edge_type_rejected_by_database_check_constraint(postgres_engin
                 source_id=new_urn("claim"),
                 target_id=new_urn("claim"),
                 edge_type="not-a-real-edge-type",
+                created_at=_now(),
+                created_by=new_urn("agent-role"),
+                practice_id=None,
+                scope=None,
+                status="active",
+            )
+        )
+
+
+def test_migration_downgrade_reverts_check_constraint_to_reject_a_new_edge_type(
+    postgres_engine: Engine,
+) -> None:
+    """[K1-T02, migration/EDGE_VOCABULARY] Confirms the new edges-vocabulary
+    migration's ``downgrade()`` genuinely narrows
+    ``ck_edges_edge_type_vocabulary`` back to the original nineteen-value
+    list — proving reversibility, not merely additivity. ``postgres_engine``
+    is already migrated to head (including this new migration) by the
+    fixture; downgrading by exactly one revision here reverts only THIS
+    migration, back to ``b64f87a758f3``.
+    """
+    database_url = postgres_engine.url.render_as_string(hide_password=False)
+    alembic_cfg = Config(str(_ALEMBIC_INI))
+    alembic_cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
+    alembic_cfg.attributes["sqlalchemy_url"] = database_url
+    command.downgrade(alembic_cfg, "-1")
+
+    with pytest.raises(IntegrityError), postgres_engine.begin() as conn:
+        conn.execute(
+            sa.insert(edges_table).values(
+                id=new_urn("edge"),
+                source_id=new_urn("claim"),
+                target_id=new_urn("method-ruling"),
+                edge_type="ruled_by",
                 created_at=_now(),
                 created_by=new_urn("agent-role"),
                 practice_id=None,
