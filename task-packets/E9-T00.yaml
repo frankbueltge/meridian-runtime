@@ -8,8 +8,58 @@ title: >-
   docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E9 (hardening and
   production operation) — a new first task of that epic, not one of the
   numbered seven.
-status: draft
+status: approved
 epic: E9
+reviewer_resolution: >-
+  Approved 2026-07-21 by the main session as reviewing instance, with both
+  flagged judgment calls decided and one amendment to item 4's reasoning.
+
+  (1) Item 1 event keying: the packet's choice is CONFIRMED —
+  `object_id = notification.notification_id`, `object_revision = 1` (fixed).
+  The event records THIS practice's receipt; the notification is the object
+  this practice actually possesses and has just signature-verified. Keying on
+  the remote `correction_id`/`correction_revision` would point `object_id` at
+  an object that does not exist in the local store and stamp a remote revision
+  number this practice does not own — misleading for any auditor resolving
+  event object references against local state. No information is lost: the
+  payload carries `correction_id`/`correction_revision` explicitly. The
+  keying is also symmetric with the sending side: `correction.
+  notification_sent` keys on the sender's OWN advancing CorrectionEvent;
+  each side keys on what it owns.
+
+  (2) Item 4 (section 5.3 reading): the documentation-only route is APPROVED,
+  with two reviewer amendments. First, precedent argument (d)(i) is noted as
+  WEAKER than the packet states it: `notify_affected_practices`'s
+  remaining-events loop pairs an event with an EXTERNAL `transport.send(...)`
+  — a side effect no shared database transaction could make atomic anyway —
+  whereas `record_retry_attempt`/`mark_exhausted` pair two writes to the SAME
+  Postgres, where a shared connection genuinely could close the window. The
+  precedent therefore does not carry the decision alone; the decision rests
+  on (d)(ii)-(iv): the pending-delivery row is the authoritative operational
+  state and is never left inconsistent; the residual risk is a one-attempt
+  audit-trail gap whose ground truth the row's own `attempt_count` still
+  evidences; and the shared-connection route is a public-signature-and-four-
+  call-sites refactor that belongs in a dedicated reviewed task, not a
+  loose-ends batch. Second, the acceptance is PROVISIONAL, not permanent:
+  the documentation text added for item 4 MUST carry a forward pointer that
+  E9-T01's threat-model review revisits this window explicitly — section
+  5.3's outbox MUST is read here as governing the primary
+  object-revision-plus-event machinery, and the narrower
+  retry-bookkeeping-plus-event pairing is a documented, named, bounded
+  exception pending that review, not a silently settled fact.
+
+  (3) The 512 maxItems bound is accepted as proposed (reviewer independently
+  confirmed `examples/correction-notification.example.json` carries exactly
+  1 entry, so no fixture breaks; first array bound in the repository,
+  rationale in (e) is sound and reviewable). (4) Item 7 stays IN the batch
+  per the packet's own batch-vs-split judgment — additive-only,
+  independently revertible. (5) Reviewer spot-checks against main at
+  approval time confirmed the packet's load-bearing claims: no
+  `notification_received` constant in the correction service; schema
+  `minItems`-only and contract `min_length`-only on `notified_object_ids`;
+  `max_attempts` constructor guard present at repositories.py lines
+  1002-1003 with no test; `_require_record_event` helper present (E6-T06
+  convention, line 2128).
 derivation: >-
   Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from seven small,
   independently-reviewed follow-up items that accumulated across the
