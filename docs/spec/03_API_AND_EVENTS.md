@@ -297,20 +297,43 @@ review.requested
 review.completed
 verification.started
 verification.completed
+transfer.created
 transfer.offered
 transfer.responded
 obligation.created
+obligation.propagated
 obligation.resolved
+obligation.deferred
 correction.opened
 correction.impact_computed
 correction.notification_sent
+correction.notification_received
 correction.response_recorded
+method_profile.proposed
+method_profile.accepted
+method_profile.superseded
+claim.ruling_attached
+claim.kill_condition_triggered
 projection.rendered
 publication.approved
 publication.completed
 policy.decision_recorded
 human_approval.recorded
 ```
+
+Refresh note (2026-07-21): the list above was consolidated after epics E6 and
+K0–K1 landed. `transfer.created`, `obligation.propagated`, `obligation.deferred`,
+`method_profile.*`, `claim.ruling_attached`, and `claim.kill_condition_triggered`
+record implemented behavior (the "floor, not ceiling" readings adopted during
+those epics, now canonical). `correction.notification_received` is DECLARED but
+not yet implemented: today a receiving practice that computes an empty local
+impact set leaves no durable trace of the receipt — implementing this event (so
+an auditor can reconstruct "received and no-op'd" from the log alone) is assigned
+to the E9 pre-hardening batch, together with a `maxItems` bound for
+`CorrectionNotification.notified_object_ids` (currently unbounded; receipt cost
+scales with list size) and a specification decision on re-notification semantics
+when later impact discovery grows the notified set for an already-notified
+recipient (delivery idempotency is currently keyed on the recipient alone).
 
 ### 5.3 Transactional outbox
 

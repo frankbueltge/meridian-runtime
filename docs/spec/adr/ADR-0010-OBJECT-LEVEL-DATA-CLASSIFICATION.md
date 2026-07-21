@@ -33,7 +33,7 @@ A third consumer is coming: the Research Method Kernel's synthetic-fixture isola
 that test fixtures can never become empirical evidence — the same kind of
 object-level classification, one more value.
 
-## Decision (proposed)
+## Decision
 
 Add one **optional** `classification` property to `common.schema.json#/$defs/baseObject`
 (and `BaseObject` in `packages/contracts/mrr/contracts/common.py`), with the §4
