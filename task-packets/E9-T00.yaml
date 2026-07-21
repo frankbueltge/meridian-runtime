@@ -1,0 +1,797 @@
+task_id: E9-T00
+title: >-
+  Pre-hardening batch: review-driven follow-ups from E6/K0/K1 (correction-
+  notification receipt event, maxItems bound, re-notification-semantics
+  decision, delivery-pending-store atomicity decision, a constructor-guard
+  test, a property-strategy widening, and an EvidenceCrateSealer parameter
+  extension). Sits BEFORE the roadmapped E9-T01..T07 in
+  docs/spec/06_IMPLEMENTATION_PLAN.md section 3 Epic E9 (hardening and
+  production operation) — a new first task of that epic, not one of the
+  numbered seven.
+status: draft
+epic: E9
+derivation: >-
+  Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from seven small,
+  independently-reviewed follow-up items that accumulated across the
+  independent reviews of PR #43-#53 and were explicitly deferred rather than
+  fixed in place, plus commit 736b376 ("Spec-Refresh: Section 5.2-Eventliste
+  konsolidiert nach E6/K0/K1", 2026-07-21), which canonicalized
+  docs/spec/03_API_AND_EVENTS.md section 5.2's required-events list and, in
+  its own added "Refresh note (2026-07-21)" paragraph, explicitly assigns
+  three of these seven items (the notification-received event, the maxItems
+  bound, the re-notification-semantics decision) to "the E9 pre-hardening
+  batch" by that exact name — this packet IS that batch. Every item below was
+  independently re-verified against the CURRENT code (not just the review
+  comment) before being included; none was found already fixed.
+
+  Item provenance, each independently confirmed:
+  (1) PR #46 (E6-T03, merged) review comment (`gh pr view 46`, comment
+  `IC_kwDOTcACkc8AAAABK8oAeA`): "Deferred to the consolidated spec refresh
+  (tracked): ... a receiving-side receipt event (currently zero durable trace
+  on an empty local impact set)". Confirmed still true by direct reading of
+  `services/control_plane/mrr/services/correction/service.py`'s
+  `CorrectionImpactService.receive_correction_notification` (lines
+  1065-1195): the method returns a `LocalNotificationImpact` in-process but
+  appends NO domain event of its own in either branch (empty or non-empty
+  `impacted`) - the only possible durable trace is the existing
+  `claim.status_changed`/`claim.review_required` events `_require_review_if_
+  needed` emits, and those fire zero times when `impacted` is empty.
+  (2)/(3) Same PR #46 comment: "maxItems bound for notified_object_ids;
+  re-notification semantics when a growing notified-set genuinely warrants
+  re-notification". Confirmed: `schemas/correction-notification.schema.json`
+  constrains `notified_object_ids` with `minItems: 1` only (no `maxItems`);
+  `packages/contracts/mrr/contracts/correction_notification.py` mirrors this
+  with `Field(min_length=1)` only. The re-notification nuance IS already
+  documented in `_already_sent_recipient_ids`'s own docstring (lines
+  1900-1921, "Reviewer-noted nuance: idempotency is keyed on recipient_
+  practice_id ONLY... a future specification question, not invented here")
+  but NO spec-level note exists anywhere under docs/spec/ making this an
+  explicit, citable decision rather than an open question in a docstring
+  (confirmed by `grep -rn "re-notif" docs/spec/` returning only the section
+  5.2 refresh note itself, which frames it as still-open).
+  (4)/(5) PR #51 (E6-T06, merged) review comment: "M1 - pending-delivery row
+  write and its event append are separate transactions (mirrors the existing
+  per-recipient record_event pattern); decide explicit-documentation vs.
+  shared-connection extension. L1 - one-line ValueError test for the store
+  constructor's max_attempts guard." Confirmed by direct reading of
+  `packages/persistence/mrr/persistence/repositories.py`:
+  `PostgresDeliveryPendingStore.record_retry_attempt`/`mark_exhausted` each
+  open their OWN `with self._engine.begin() as conn:` block (lines
+  1086, 1173), and the caller
+  (`services/control_plane/mrr/services/correction/service.py`'s
+  `retry_pending_delivery_online`/`retry_pending_delivery_offline`/
+  `mark_pending_delivery_delivered`/`mark_pending_delivery_exhausted`)
+  appends the `correction.notification_sent` event via a SEPARATE
+  `self._record_event(event)` call afterward (`_append_delivery_event`,
+  lines 2143-2186) - two independent commits, exactly as flagged. The
+  constructor guard (`if max_attempts < 1: raise ValueError(...)`, line
+  1002-1003) has NO test anywhere in the repository (confirmed by
+  `grep -rn "PostgresDeliveryPendingStore(" tests/`: only two call sites,
+  both `tests/integration/persistence/test_pending_delivery_store.py`'s
+  `_store` helper and `tests/integration/services/correction/
+  test_service.py`, neither ever passing `max_attempts < 1`).
+  (6) PR #50 (E6-T05, merged) review comment: "Test-suite suggestion for a
+  later batch (implementation already proven correct): widen the property
+  strategy beyond the five canonical literals (st.text() or mutated
+  near-misses) so the any-non-PUBLIC-never-unlocks property is pinned over
+  arbitrary strings." Confirmed: `tests/property/
+  test_public_correction_view_properties.py`'s `_ALL_CLASSIFICATIONS`/
+  `_classification_map_strategy` (lines 35-66) sample ONLY the five literal
+  `Classification` values via `st.sampled_from` - no `st.text()`, no
+  case/whitespace near-miss of `"PUBLIC"` is ever generated. The production
+  logic itself (`packages/domain/mrr/domain/public_correction_view.py`,
+  `_all_ids_attested_public`, exact `== "PUBLIC"` string equality) is
+  unaffected and, per the review, already correct - this is a test-only
+  strengthening.
+  (7) PR #52 (K1-T03, merged) review comment: "(2) EvidenceCrateSealer
+  genuinely unchanged - the packet's citation pointed at contract fields,
+  not sealer parameters; nothing lost, every object reachable via
+  governed_by_protocol edges, now tested in BOTH directions after the
+  review-driven addition." Confirmed by direct reading of
+  `services/node_runtime/mrr/services/node_runtime/evidence_crate.py`'s
+  `EvidenceCrateSealer.seal` (lines 278-321): it unconditionally hardcodes
+  `source_records=[]`, `evidence_anchors=[]`, `proposed_claims=[]` in the
+  draft it builds - there is no keyword parameter for any of the three,
+  unlike `artifact_refs`/`failures`/`known_unknowns`, which ARE
+  caller-supplied. `services/control_plane/mrr/services/cli/
+  synthesis_orchestration.py`'s own module docstring (lines 90-118,
+  "EvidenceCrate.source_records/evidence_anchors/proposed_claims stay
+  empty") independently discovered and disclosed this exact gap during
+  K1-T03's implementation, named it "a natural, small follow-up, explicitly
+  left for a future task since this packet may not touch that file at all",
+  and confirmed the run genuinely DOES already collect every id needed
+  (`entry_ids_to_source_record_id`/`entry_ids_to_evidence_anchor_id`
+  dicts and the `claim_ids` list, all populated during the existing loop,
+  lines ~1060-1316) - discoverability today is via the `governed_by_
+  protocol` edge graph only, matching K1's own exit criterion ("a third
+  party can follow one sealed crate ... through recorded objects") but not
+  via the crate's own three array fields, which spec 08 section 5's I/O
+  contract and the crate's own schema (`schemas/evidence-crate.schema.json`,
+  all three REQUIRED) both anticipate being populated.
+
+  Explicitly NOT in this batch (verified, not merely asserted): ADR-0010's
+  staged-adoption step 1 (a real `baseObject.classification` field) -
+  task-packets/K1-T02.yaml's own governance note (commit `cd389b4`) stages
+  this into "its own, separate, not-yet-derived task packet", and
+  task-packets/K1-T03.yaml's derivation independently confirms this split is
+  inherited unchanged; it is a schema/migration-bearing change, categorically
+  larger than this batch's small, additive, already-scoped items, and stays
+  its own packet. The DRY consolidation of the now-five near-identical trust
+  resolvers (manifest_trust/task_trust/crate_trust/transfer_trust/
+  correction_notification) and of the repeated per-service
+  `RecordRevisionWithEvent`/`bind_unit_of_work` local-copy pattern - flagged
+  as a deliberate, deferred future cleanup in task-packets/E5-T00.yaml,
+  E6-T03.yaml, and K1-T03.yaml alike, every time in the same words ("a
+  future, separate, reviewed cleanup") - stays its own reviewed cleanup
+  packet, not folded in here (mixing a behavior-preserving refactor with
+  seven independent behavioral/test changes would make this batch harder to
+  review and roll back piecemeal). K1-T04's fixture-text fix is already
+  handled inside PR #53 itself (still open at the time of this derivation;
+  `gh pr view 53` shows zero review comments yet, so there is nothing further
+  for this batch to pick up).
+objective: >-
+  Land seven small, independently reviewable follow-ups in one batch, ordered
+  by the numbering used throughout this packet (item 1 through item 7).
+  Each item is scoped so it could, in principle, be reverted independently
+  without touching the others' files (see allowed_paths and each item's own
+  derived_decision) - batched together because each is individually too small
+  to be its own task packet, all seven were raised by the same review
+  process, and E9-T01 (threat-model review and adversarial suite) is a more
+  natural, cleaner starting point for the numbered hardening epic once these
+  loose ends are tied off first.
+
+  Item 1 - `correction.notification_received` domain event. Implement the
+  event docs/spec/03_API_AND_EVENTS.md section 5.2 already lists (added by
+  commit 736b376) and its own refresh note marks DECLARED-but-not-yet-
+  implemented. `CorrectionImpactService.receive_correction_notification`
+  MUST emit exactly one `correction.notification_received` event, with full
+  MRR-NFR-001 provenance, on EVERY call that reaches the end of its existing
+  check sequence successfully (envelope validation, notification signature,
+  validity window, and the `already_processed_notification` replay check all
+  pass) - whether the resulting `locally_impacted_object_ids` set is empty or
+  not. It MUST NOT be emitted when any of those existing checks reject the
+  call (an invalid envelope, a bad/tampered signature, an out-of-window
+  notification, or a replayed `notification_id` each still raise exactly as
+  today, before this new event is ever considered).
+
+  Item 2 - maxItems bound for `CorrectionNotification.notified_object_ids`.
+  Add a schema-level `maxItems` and a matching Pydantic `max_length` to bound
+  this attacker-influenced (the notifying practice controls its own
+  contents), currently-unbounded array, with a negative contract fixture
+  proving the bound is enforced, and a documented DoS rationale.
+
+  Item 3 - re-notification semantics: a documentation decision, not new
+  machinery. `notify_affected_practices`'s existing per-recipient idempotency
+  (keyed on `recipient_practice_id` alone, never on the specific `notified_
+  object_ids` a prior call sent) is already correctly implemented and already
+  has a docstring nuance describing it; this item promotes that into an
+  explicit, citable SPECIFICATION decision (docs/spec/03_API_AND_EVENTS.md)
+  plus a tightened docstring, and explicitly defers any actual re-notification
+  MECHANISM (for when a growing notified-set genuinely warrants renotifying an
+  already-notified recipient) to a named future task - no new code path is
+  built.
+
+  Item 4 - pending-delivery atomicity (PR #51 review M1): decide, and
+  document, whether the residual crash window between a
+  `PostgresDeliveryPendingStore` row write and its `correction.
+  notification_sent` event append is (a) closed by threading a shared
+  `Connection` through both writes (mirroring `insert_revision_with_
+  connection`/`record_response_revision_with_edges_and_event`'s existing
+  one-transaction precedent), or (b) accepted as a documented, bounded
+  eventual-consistency window. This packet's own derived_decision (d) makes
+  the call (documentation) and gives the reasoning; a reviewer who disagrees
+  can redirect via stop_conditions before implementation proceeds down the
+  wrong branch.
+
+  Item 5 - one-line `ValueError` test for `PostgresDeliveryPendingStore`'s
+  `max_attempts < 1` constructor guard (PR #51 review L1).
+
+  Item 6 - widen `tests/property/test_public_correction_view_properties.py`'s
+  classification-map strategy beyond the five canonical `Classification`
+  literals to include `st.text()` and explicit case/whitespace near-misses of
+  `"PUBLIC"` (e.g. `"public"`, `"Public"`, `" PUBLIC"`, `"PUBLIC "`,
+  `"PUBLIC\n"`), so the "any non-PUBLIC value never unlocks" property is
+  pinned over a wide input space, not just the five declared levels.
+  Production code is NOT touched (already correct per the PR #50 review).
+
+  Item 7 - extend `EvidenceCrateSealer.seal()` with three new, additive,
+  default-empty keyword parameters (`source_records`, `evidence_anchors`,
+  `proposed_claims` - mirroring `artifact_refs`'s own caller-supplied,
+  default-`()` convention exactly) so a caller that already has these ids in
+  hand (as `run_synthesis_evidence_loop` already does) can populate the
+  sealed crate's own same-named fields instead of them being hardcoded to
+  `[]`. Wire `run_synthesis_evidence_loop` to pass its own already-collected
+  `entry_ids_to_source_record_id.values()`/`entry_ids_to_evidence_anchor_id.
+  values()`/`claim_ids` through. Every EXISTING caller of `.seal()` (in
+  particular `run_local_evidence_loop`, E2E-001) that does not pass these new
+  keywords is byte-for-byte unaffected (same defaults, same behavior) -
+  confirmed additive-only. The `governed_by_protocol` edge-based
+  discoverability `run_synthesis_evidence_loop` already writes stays exactly
+  as-is; this item makes the crate's OWN array fields ALSO carry the same
+  information, redundantly but harmlessly, matching what spec 08 section 5's
+  I/O contract and the crate's own required schema fields already anticipate.
+
+  Batch-vs-split judgment on item 7 (asked for explicitly): keep it IN this
+  batch. Reasoning: (i) it is purely additive - three new keyword parameters,
+  each defaulting to `()`, added to one existing method's signature; no
+  existing call site's behavior changes; (ii) the data it needs already
+  exists in local variables inside `run_synthesis_evidence_loop` with zero
+  new database reads, zero new service calls, and zero new persisted state;
+  (iii) `EvidenceCrateSealer`'s own forbidden internals (signing convention,
+  immutability, the "no update/unseal" invariant, `_crate_to_stored_object`)
+  are untouched - this is the same category of change as adding a new
+  optional constructor parameter with a safe default, not a redesign of the
+  sealer; (iv) it touches E2-T06 machinery, but task-packets/E2-T06.yaml's
+  OWN forbidden_changes never forbade extending the sealer's caller-supplied
+  parameter list (only forbade the sealer itself deriving or computing claim-
+  graph/evidence-anchor content, which this item does not do - the CALLER
+  still computes and supplies the lists); (v) it is exactly as
+  independently revertible as any other item here (one file's signature, one
+  file's call site, plus tests) - reverting it does not entangle any of
+  items 1-6. If a reviewer judges otherwise (e.g. because it is the one item
+  touching a DIFFERENT epic's already-merged deliverable rather than E6/K0/K1
+  code), splitting it into its own one-item packet costs nothing structural
+  - the derived_decision, invariants, and acceptance tests below are already
+  self-contained under item 7's own heading.
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e9--hardening-and-production-operation
+  - docs/spec/03_API_AND_EVENTS.md#5-domain-event-architecture
+  - docs/spec/03_API_AND_EVENTS.md#39-corrections
+  - docs/spec/01_SYSTEM_SPEC.md#49-stage-9--transfer-and-obligations
+  - docs/spec/01_SYSTEM_SPEC.md#410-stage-10--correction-propagation
+  - docs/spec/01_SYSTEM_SPEC.md#46-stage-6--evidence-crate
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md#5-profile-systematic_evidence_synthesis-v1-the-first-profile
+  - docs/design/2026-07-21-research-method-kernel-plan.md
+  - task-packets/E3-T06.yaml
+  - task-packets/E6-T03.yaml
+  - task-packets/E6-T05.yaml
+  - task-packets/E6-T06.yaml
+  - task-packets/E2-T06.yaml
+  - task-packets/K1-T03.yaml
+  - schemas/correction-notification.schema.json
+  - examples/correction-notification.example.json
+  - packages/contracts/mrr/contracts/correction_notification.py
+  - packages/contracts/mrr/contracts/evidence_crate.py
+  - packages/provenance/mrr/provenance/events.py
+  - packages/persistence/mrr/persistence/repositories.py
+  - packages/persistence/mrr/persistence/tables.py
+  - services/control_plane/mrr/services/correction/service.py
+  - services/node_runtime/mrr/services/node_runtime/evidence_crate.py
+  - services/control_plane/mrr/services/cli/synthesis_orchestration.py
+  - tests/property/test_public_correction_view_properties.py
+  - tests/contract/test_correction_notification_variants.py
+  - tests/integration/persistence/test_pending_delivery_store.py
+requirements:
+  - MRR-FR-084
+  - MRR-FR-090
+  - MRR-FR-091
+  - MRR-FR-092
+  - MRR-FR-093
+  - MRR-FR-094
+  - MRR-FR-095
+  - MRR-FR-050
+  - MRR-FR-053
+  - MRR-FR-054
+  - MRR-FR-056
+  - MRR-MTH-011
+  - MRR-MTH-015
+  - MRR-MTH-019
+  - MRR-MTH-020
+  - MRR-NFR-001
+  - MRR-NFR-002
+  - MRR-NFR-005
+  - MRR-NFR-006
+  - MRR-NFR-007
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - schemas/correction-notification.schema.json
+  - packages/contracts/mrr/contracts/correction_notification.py
+  - packages/persistence/mrr/persistence/repositories.py
+  - services/control_plane/mrr/services/correction/service.py
+  - services/node_runtime/mrr/services/node_runtime/evidence_crate.py
+  - services/control_plane/mrr/services/cli/synthesis_orchestration.py
+  - docs/spec/03_API_AND_EVENTS.md
+  - tests/unit/domain/test_correction_notification.py
+  - tests/unit/services/correction/test_service.py
+  - tests/integration/services/correction/test_service.py
+  - tests/contract/test_correction_notification_variants.py
+  - tests/property/test_public_correction_view_properties.py
+  - tests/integration/persistence/test_pending_delivery_store.py
+  - tests/unit/services/node_runtime/test_evidence_crate.py
+  - tests/integration/services/node_runtime/test_evidence_crate.py
+  - tests/e2e/test_k1_t03_synthesis_evidence_loop.py
+forbidden_changes:
+  - >-
+    schemas/correction-event.schema.json and
+    packages/contracts/mrr/contracts/correction_event.py - no field is added
+    (unrelated to every item here; re-stated because E6-T03/E6-T06 both
+    forbade it and nothing in this batch changes that)
+  - >-
+    packages/domain/mrr/domain/lifecycles.py and CORRECTION_LIFECYCLE - no
+    new edge; item 1's new event is NOT a lifecycle transition and MUST NOT
+    be modeled as one (the receiving side still never drives
+    CORRECTION_LIFECYCLE, per E6-T03's own invariant)
+  - >-
+    the four/five existing trust resolvers (manifest_trust, task_trust,
+    crate_trust, transfer_trust, correction_notification) - no DRY
+    refactor in this batch (explicitly excluded, see derivation)
+  - >-
+    any `baseObject.classification` field, ADR-0010 wiring, or
+    SYNTHETIC_FIXTURE_NOT_EVIDENCE machinery - explicitly excluded (see
+    derivation); this batch touches classification only insofar as item 6
+    generates MORE strings against the EXISTING, unchanged
+    `mrr.domain.artifacts.Classification` literal type, never adding a new
+    classification concept
+  - >-
+    `PostgresProcessedIdStore`'s own `grace < timedelta(0)` constructor guard
+    (packages/persistence/mrr/persistence/repositories.py line ~585) has the
+    IDENTICAL missing-test gap as item 5's `PostgresDeliveryPendingStore.
+    max_attempts` guard, confirmed by direct search
+    (`grep -rn "PostgresProcessedIdStore(" tests/` shows no
+    `raises(ValueError)` test either) - NOT fixed here; item 5 is scoped
+    to exactly the one guard PR #51's review named, not a sweep of every
+    sibling constructor guard in this file
+  - >-
+    `EvidenceCrateSealer`'s signing convention (the ADR-0004
+    `exclude_none=True` hash-then-sign sequence), its immutability invariant
+    (still exactly one public method, `seal`, no update/unseal/correct
+    method), `_crate_to_stored_object`, and every field it derives rather
+    than accepts (`task_id`, `run_id`, `run_state`, `environment.*`,
+    `sealed`) - item 7 adds ONLY the three new caller-supplied array
+    parameters; nothing else in this method's body changes
+  - >-
+    `run_local_evidence_loop` (services/control_plane/mrr/services/cli/
+    orchestration.py) - untouched; item 7's new `EvidenceCrateSealer.seal()`
+    keyword parameters all default to `()`, so this existing caller (and
+    tests/e2e/test_e2e_001_single_node_evidence_loop.py) needs no change and
+    MUST be re-run unmodified as a regression check
+  - >-
+    `mrr.domain.correction_impact.compute_impact`/`IMPACT_EDGE_TYPES` and
+    `CorrectionImpactService._gather_local_impact_edges`/
+    `_gather_impact_edges` - reused verbatim by item 1; the new event only
+    OBSERVES their existing, unchanged output, never changes traversal
+    behavior
+  - >-
+    the recipient's own accept/adapt/reject/defer response
+    (`CorrectionImpactService.record_response`, E6-T04) - item 1's new event
+    is about RECEIPT only, never a disposition; it MUST NOT be conflated
+    with, or trigger, any `CorrectionResponse` machinery
+  - >-
+    any durable processed-message-id/processed-notification-id STORE - the
+    `already_processed_notification`/`already_processed_envelope` predicates
+    stay caller-supplied exactly as E6-T03 left them; item 1 adds an
+    OBSERVABLE event, not a new idempotency mechanism, and does not change
+    what `receive_correction_notification` accepts as replay-detection
+    dependencies
+  - HTTP/FastAPI endpoints anywhere
+  - >-
+    any Alembic migration - item 4's decision (documentation, see derived_
+    decisions (d)) needs none; if a reviewer instead directs the
+    shared-connection route, no migration is needed for that either (no
+    table shape changes, only connection-threading through existing methods)
+  - >-
+    K1-T04 (PR #53, still open) - its own fixture-text fix is that PR's
+    concern, not this batch's
+derived_decisions:
+  - >-
+    (a) ITEM 1 - EVENT SHAPE AND EMISSION POINT. The new
+    `_EVENT_NOTIFICATION_RECEIVED = "correction.notification_received"`
+    constant reuses docs/spec/03_API_AND_EVENTS.md section 5.2's own
+    enumerated name verbatim (added by commit 736b376), mirroring how
+    `_EVENT_RESPONSE_RECORDED`/`_EVENT_NOTIFICATION_SENT` already reuse
+    section 5.2's other pre-declared names in this same file. Because
+    `receive_correction_notification` never creates, stores, or mutates any
+    local copy of the remote `CorrectionEvent` (E6-T03's own load-bearing
+    invariant, unchanged here), there is no locally-owned, newly-written
+    object revision for this event to describe via `object_id`/
+    `object_revision` the way `correction.notification_sent`'s `object_id`
+    names the sender's own advancing `CorrectionEvent`. This packet's own
+    decision: `object_id = notification.notification_id` (a real URN this
+    practice legitimately possesses, having just verified its signature) and
+    `object_revision = 1` (fixed - a `CorrectionNotification` is explicitly
+    "not a first-class revisioned domain object" per its own docstring, so
+    exactly one honest, non-arbitrary revision number applies, never a
+    fabricated incrementing one). `payload` carries `correction_id`,
+    `correction_revision`, `notifying_practice_id`, `recipient_practice_id`,
+    `notified_object_ids_count` (`len(notification.notified_object_ids)` -
+    the count, not the full list, to keep the event payload small and
+    independent of item 2's bound), and `locally_impacted_object_ids`
+    (sorted list, explicitly `[]` when empty - MRR-NFR-012, never omitted).
+    An alternative keying (`object_id = notification.correction_id`,
+    `object_revision = notification.correction_revision`, treating the event
+    as "about" the remote correction rather than "about" this practice's own
+    receipt of it) was considered and is flagged in specification_gaps for
+    reviewer confirmation rather than silently preferred over this packet's
+    own choice.
+  - >-
+    (b) ITEM 1 - FAIL-CLOSED DEPENDENCY CHECK, MIRRORING THE E6-T06
+    CONVENTION. Because this event is now MANDATORY on every successful
+    receipt (not an optional convenience), `receive_correction_notification`
+    MUST check that a `record_event` dependency is actually configured
+    BEFORE doing any work - reusing the exact `_require_record_event()`
+    helper already defined in this file for the four E6-T06 methods, called
+    as the very first line of the method, before `validate_inbound_envelope`
+    even runs. A `CorrectionImpactService` constructed without `record_event`
+    therefore now fails closed on ANY call to `receive_correction_notification`
+    (a `ValueError`, matching the existing `_require_record_event`/
+    `_require_delivery_pending_store` wording convention) rather than
+    silently processing a notification with no way to record its own
+    receipt - never mutating a claim, then discovering the required event
+    cannot be appended.
+  - >-
+    (c) ITEM 1 - WHERE THE EVENT APPENDS RELATIVE TO PER-CLAIM TRANSITIONS,
+    AND THE RESIDUAL RACE THIS ACCEPTS. The receipt event appends via
+    `self._record_event(...)` (the same `RecordEventOnly` path
+    `notify_affected_practices`'s own "remaining events" loop already uses)
+    AFTER every `_require_review_if_needed` call for the computed impacted
+    set, so its payload's `locally_impacted_object_ids` can report the REAL
+    computed set. This is deliberately NOT one atomic transaction spanning
+    every claim transition plus the receipt event (each
+    `_require_review_if_needed`/`ClaimService.require_review` call already
+    performs its OWN atomic object-revision-plus-event write per claim) -
+    mirroring this same service's own `notify_affected_practices`, whose
+    first recipient's event is atomic with a revision write but whose
+    remaining recipients' events are separate, already-accepted calls. A
+    crash between the last claim transition committing and the receipt event
+    committing leaves every local claim transition durable (materialized
+    state, per AGENTS.md's own source-of-truth discipline) while the event
+    log momentarily lacks this notification's OWN receipt entry. This does
+    NOT reopen the notification to reprocessing on its own: whether a retried
+    call is even attempted depends entirely on the CALLER's own
+    `already_processed_notification` durable store (caller-supplied
+    infrastructure, out of this service's scope per E6-T03's own forbidden_
+    changes, unchanged here) - if that store already durably recorded this
+    `notification_id` before the crash, no retry happens at all (independent
+    of whether the receipt event made it); if it did not, a retry safely
+    reprocesses (the underlying `compute_impact`/`_require_review_if_needed`
+    calls are already idempotent) and the receipt event is appended on that
+    successful retry instead. No new atomicity guarantee is claimed beyond
+    what already existed.
+  - >-
+    (d) ITEM 4 - DOCUMENT AS ACCEPTED, BOUNDED EVENTUAL CONSISTENCY (not the
+    shared-connection route). Chosen over threading a shared `Connection`
+    through `PostgresDeliveryPendingStore.record_retry_attempt`/
+    `mark_exhausted` plus `PostgresEventLog.append`, for four stated reasons:
+    (i) exact precedent already exists, already reviewed clean, in the SAME
+    service class - `notify_affected_practices`'s own "remaining events"
+    loop (`services/control_plane/mrr/services/correction/service.py` lines
+    1040-1058) appends each event AFTER the recipient's actual
+    `transport.send(...)` delivery attempt via its OWN separate
+    `self._record_event` call, with the identical shape of risk (a crash
+    between a real side effect and its own event append) and PR #46's review
+    raised no blocking finding against it; (ii) the risk is STRICTLY confined
+    to the audit trail, never to materialized state: `record_retry_attempt`/
+    `mark_exhausted` each commit the `pending_deliveries` row FIRST, inside
+    their own transaction, and only the (separate) event append can be lost
+    to a crash - the row itself (attempt_count, status, next_retry_at,
+    resolved_at) is NEVER left inconsistent, and per AGENTS.md's own
+    source-of-truth split ("Database state is authoritative for current
+    materialized state. The append-only domain event log is authoritative
+    for audit history."), the store's row IS the authoritative operational
+    state `list_due_for_retry` reads - a lost event never causes a
+    double-delivery, a stuck retry, or an incorrectly-resolved record, only a
+    momentary audit-trail gap for that one attempt; (iii) building true
+    atomicity would require changing `record_retry_attempt`/`mark_exhausted`'s
+    public signatures (an optional shared-`Connection` parameter, mirroring
+    `insert_revision_with_connection`'s naming precedent) AND every one of
+    the four E6-T06 service call sites AND the `FakeDeliveryPendingStore`
+    test double used throughout tests/unit/services/correction/
+    test_service.py - a larger-blast-radius structural change more in
+    keeping with how this codebase defers such refactors as their own
+    reviewed cleanup (the same reasoning already applied to the trust-
+    resolver DRY exclusion above) than with a "small, well-understood
+    follow-up"; (iv) docs/spec/03_API_AND_EVENTS.md section 5.3's own
+    transactional-outbox MUST is read here as applying to the PRIMARY
+    state-change-plus-event pairing this codebase's `record_object_revision_
+    with_event`/`record_response_revision_with_edges_and_event` machinery
+    already guarantees everywhere it is used (including
+    `PostgresDeliveryPendingStore.open_pending_delivery`'s own single-
+    statement `INSERT ... RETURNING` atomicity) - NOT as extending to every
+    SUBSEQUENT retry-attempt-plus-event pairing on an already-durable row,
+    which is a narrower, lower-stakes case this packet's own reading treats
+    as a documented, bounded exception rather than a violation. This reading
+    is flagged, not asserted as uncontestable, in specification_gaps and
+    guarded by a stop_condition below.
+  - >-
+    (e) ITEM 2 - THE maxItems BOUND, CHOSEN AND JUSTIFIED. 512. No existing
+    schema or Pydantic contract in this repository constrains an array
+    field's length today (confirmed by `grep -rn "maxItems\|max_length="
+    schemas/*.json packages/contracts/mrr/contracts/*.py` returning nothing
+    outside `min_length`/`minItems`) - this is the first such bound, chosen
+    independently rather than mirrored from an existing convention. 512 is
+    sized against the concrete DoS-relevant cost this bound actually caps:
+    `CorrectionImpactService._gather_local_impact_edges` (the receiving
+    side's own local traversal, `services/control_plane/mrr/services/
+    correction/service.py` lines 2084-2112) issues one `EdgeRepository.
+    edges_to()` database query per unique node in its BFS frontier, seeded
+    directly from `set(notification.notified_object_ids)` - an unbounded
+    `notified_object_ids` list from a notifying practice this receiving
+    practice does not control lets that ONE field alone force an unbounded
+    number of seed-level queries before any further graph expansion is even
+    considered (the receipt cost docs/spec/03_API_AND_EVENTS.md section
+    5.2's own refresh note already names: "receipt cost scales with list
+    size"). 512 is a round, generous ceiling for the legitimate case (one
+    notification naming the directly-affected ids relevant to ONE recipient
+    - realistically low tens to low hundreds even for a broad correction;
+    the recipient-side BFS expansion via `IMPACT_EDGE_TYPES` typed edges,
+    which is what can genuinely grow large, is deliberately NOT bounded by
+    this same limit, and stays out of this item's scope exactly as
+    `CorrectionEvent.impact_objects`/`evidence_refs` stay unbounded
+    elsewhere in this codebase) while still capping the attacker-controlled
+    input to a fixed, reviewable number rather than letting it scale
+    unbounded. `CorrectionEvent.affected_objects`/`impact_objects` remain
+    UNCHANGED and unbounded (forbidden_changes) - this bound applies only to
+    the new, narrower, cross-practice `CorrectionNotification` payload.
+  - >-
+    (f) ITEM 3 - THE DECISION, STATED PLAINLY, FOR THE SPEC NOTE AND THE
+    TIGHTENED DOCSTRING. Re-notification idempotency for
+    `notify_affected_practices` is, and remains, keyed on
+    `recipient_practice_id` ALONE for a given `correction_id` - once a
+    recipient is recorded `"sent"` (a `correction.notification_sent` event
+    with `delivery_status == "sent"`), no later call re-notifies that
+    recipient for that correction, regardless of whether the correction's
+    own known impact set has since grown to include object ids that
+    recipient's earlier `notified_object_ids` never covered. This is a
+    DECIDED specification position (to be written into docs/spec/
+    03_API_AND_EVENTS.md, extending the section 5.2 refresh note rather than
+    replacing it), not merely an implementation detail: re-notifying an
+    already-`sent` recipient when impact discovery later grows is left as an
+    explicitly named FUTURE task (not designed, not stubbed, not given a
+    placeholder method here) - AGENTS.md rule 12 forbids TODO-only branches,
+    so this packet adds no speculative hook for it, only the prose decision
+    plus a forward pointer. The existing docstring nuance in
+    `_already_sent_recipient_ids` is tightened from "a future specification
+    question, not invented here" to state the decision plainly and cite the
+    new spec note directly, so the code and the spec agree on wording rather
+    than the code merely flagging a question the spec never actually
+    answered.
+  - >-
+    (g) ITEM 7 - THE THREE NEW PARAMETERS' EXACT SHAPE. `seal()` gains
+    `source_records: Sequence[Urn] = ()`, `evidence_anchors: Sequence[Urn] =
+    ()`, `proposed_claims: Sequence[Urn] = ()` as caller-supplied,
+    keyword-only parameters positioned alongside the existing `artifact_refs`
+    (same `Sequence[...] = ()` shape, same "empty means nothing to report"
+    reading carried over from the module docstring's own "Empty is not a
+    stub... it faithfully records that no claims/anchors exist yet for this
+    run" language - now read as "for THIS run" applying equally to a run that
+    legitimately produces content). The draft `EvidenceCrate` construction
+    replaces its hardcoded `source_records=[]`/`evidence_anchors=[]`/
+    `proposed_claims=[]` with `list(source_records)`/`list(evidence_anchors)`/
+    `list(proposed_claims)`. `run_synthesis_evidence_loop`'s own call to
+    `evidence_crate_sealer.seal(...)` (currently NOT passing any of the
+    three) is extended to pass `source_records=list(entry_ids_to_source_
+    record_id.values())`, `evidence_anchors=list(entry_ids_to_evidence_
+    anchor_id.values())`, `proposed_claims=list(claim_ids)` - all three
+    already fully populated by the existing loop by the time `seal()` is
+    called, zero new reads. The module docstring section "EvidenceCrate.
+    source_records/evidence_anchors/proposed_claims stay empty" (lines
+    90-118) is updated to record that this gap is now closed, rather than
+    left describing a still-open gap once it no longer is one.
+invariants:
+  - >-
+    item 1 - `correction.notification_received` is emitted on every call to
+    `receive_correction_notification` that passes envelope validation,
+    notification-signature verification, the validity-window check, and the
+    `already_processed_notification` check, in BOTH the empty-impact and
+    non-empty-impact case, and is NEVER emitted when any of those checks
+    reject the call - no partial event, no event before validation completes.
+  - >-
+    item 1 - the event carries full MRR-NFR-001 provenance (actor,
+    occurred_at, policy_version, causation_id, correlation_id, object_id,
+    object_revision) and never creates, stores, or mutates any copy of the
+    remote `CorrectionEvent` (E6-T03's own invariant, unchanged).
+  - >-
+    item 2 - a `notified_object_ids` list at exactly 512 entries is accepted;
+    at 513 entries it is rejected at BOTH the JSON Schema tier and the
+    Pydantic tier, before any signature verification or impact computation is
+    attempted.
+  - >-
+    item 3 - `notify_affected_practices`'s idempotency behavior is
+    UNCHANGED (still keyed on recipient_practice_id alone); every existing
+    outbound-idempotency test continues to pass unmodified - this item adds
+    documentation, not a behavior change.
+  - >-
+    item 4 - `PostgresDeliveryPendingStore`'s own row-level state
+    (attempt_count/status/next_retry_at/resolved_at/exhausted_reason) is
+    NEVER left inconsistent by a crash between the row write and the event
+    append (the row write's own transaction is unaffected by this item); the
+    accepted risk is confined to a possible missing `correction.
+    notification_sent` event for one retry attempt, documented as such.
+  - >-
+    item 5 - `PostgresDeliveryPendingStore(engine, max_attempts=0, ...)` and
+    `max_attempts=-1` both raise `ValueError` before any database
+    interaction; `max_attempts=1` (the lowest legal value) does not raise.
+  - >-
+    item 6 - the widened property strategy still asserts, over the enlarged
+    input space, that `row.redacted` is `False` if and only if every
+    contributing id's attested value equals the literal string `"PUBLIC"`
+    exactly - no change to the production predicate itself.
+  - >-
+    item 7 - every EXISTING call to `EvidenceCrateSealer.seal()` that omits
+    the three new keywords behaves identically to before (empty arrays,
+    byte-identical signed/persisted body for the same inputs); the sealer's
+    immutability, signing convention, and derived (non-caller-supplied)
+    fields are unchanged.
+  - both import-linter contracts in pyproject.toml remain KEPT throughout.
+acceptance_tests:
+  - >-
+    item 1 - happy path, empty impact: a validly-signed, in-window, unseen
+    `CorrectionNotification` whose `notified_object_ids` have zero matching
+    local edges yields `locally_impacted_object_ids == frozenset()` AND
+    exactly one `correction.notification_received` event is appended (the
+    "currently zero durable trace" gap this item closes).
+  - >-
+    item 1 - happy path, non-empty impact: same, but with local edges
+    present - exactly one `correction.notification_received` event is
+    appended, its payload's `locally_impacted_object_ids` matches the
+    computed set, IN ADDITION to the existing `claim.status_changed`/
+    `claim.review_required` events for each impacted claim.
+  - >-
+    item 1 - adversarial, tampered/invalid envelope or notification
+    signature: no `correction.notification_received` event is appended (the
+    call raises before reaching that point, exactly as today).
+  - >-
+    item 1 - adversarial, replayed notification (`already_processed_
+    notification` reports true) and adversarial, out-of-window notification:
+    no `correction.notification_received` event is appended in either case.
+  - >-
+    item 1 - misconfiguration: a `CorrectionImpactService` constructed
+    without a `record_event` dependency raises `ValueError` on ANY call to
+    `receive_correction_notification`, before `validate_inbound_envelope`
+    runs (verified by a spy/fake envelope validator never being invoked).
+  - >-
+    item 2 - contract tier: a `CorrectionNotification` document with exactly
+    512 `notified_object_ids` validates; one with 513 is rejected by
+    `CorrectionNotification.model_validate` with a `ValidationError`
+    mentioning the field; the same 513-entry document also fails
+    `schemas/correction-notification.schema.json` validation independently
+    (both tiers checked, not just one).
+  - >-
+    item 3 - regression: every existing `notify_affected_practices`
+    idempotency test in tests/unit/services/correction/test_service.py (and
+    the integration-tier equivalent) continues to pass unmodified after the
+    docstring/spec-note change.
+  - >-
+    item 4 - regression: every existing E6-T06 delivery-tracking test
+    continues to pass unmodified; a new or updated docstring on
+    `record_retry_attempt`/`mark_exhausted` (and on the four
+    `CorrectionImpactService` delivery-tracking methods) states the accepted
+    eventual-consistency window explicitly, grep-verifiable by a stated
+    section heading (e.g. "Accepted eventual consistency:") rather than left
+    implicit.
+  - >-
+    item 5 - `PostgresDeliveryPendingStore(postgres_engine, max_attempts=0,
+    backoff=...)` raises `ValueError` matching `"max_attempts must be >= 1"`;
+    the same for `max_attempts=-1`; `max_attempts=1` does not raise.
+  - >-
+    item 6 - property test - over a strategy including `st.text()` and the
+    explicit near-misses `"public"`, `"Public"`, `" PUBLIC"`, `"PUBLIC "`,
+    `"PUBLIC\n"`, `row.redacted` is `False` if and only if every
+    contributing id's attested classification value equals `"PUBLIC"` via
+    Python `==` exactly - every near-miss and every `st.text()`-generated
+    non-`"PUBLIC"` value redacts, for both `build_public_correction_row` and
+    `build_public_claim_row`.
+  - >-
+    item 7 - unit tier: `EvidenceCrateSealer.seal()` called with non-empty
+    `source_records`/`evidence_anchors`/`proposed_claims` produces a sealed
+    `EvidenceCrate` whose own same-named fields equal exactly the passed-in
+    lists (order preserved); called with none of the three (or explicit
+    `()`), the crate's fields are `[]`, identical to today.
+  - >-
+    item 7 - integration tier: a real-Postgres `EvidenceCrateSealer.seal()`
+    round trip with non-empty lists persists and re-reads correctly via
+    `ObjectRepository.get_latest`.
+  - >-
+    item 7 - e2e regression: `tests/e2e/test_k1_t03_synthesis_evidence_loop.py`
+    passes with the sealed crate's `source_records`/`evidence_anchors`/
+    `proposed_claims` now non-empty and matching the run's own persisted
+    `SourceRecord`/`EvidenceAnchor`/`Claim` ids; `tests/e2e/
+    test_e2e_001_single_node_evidence_loop.py` (E2E-001, `run_local_
+    evidence_loop`, untouched call site) passes UNMODIFIED, still producing
+    empty arrays as before.
+  - all pre-existing suites stay green; both import-linter contracts remain KEPT.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+  - make security-check
+required_output:
+  - implementation summary, organized by item number (1 through 7)
+  - files changed per item, and explicit confirmation that every path under
+    forbidden_changes was NOT touched
+  - the exact `correction.notification_received` payload shape used (item 1),
+    the chosen `object_id`/`object_revision` keying and why (derived_
+    decisions (a)), and the fail-closed `record_event` check added (derived_
+    decisions (b))
+  - the exact maxItems value used and its stated rationale (item 2), quoted
+    from the schema/contract diff
+  - the exact spec-note text added to docs/spec/03_API_AND_EVENTS.md for
+    item 3, and the tightened docstring wording
+  - the exact eventual-consistency documentation added for item 4 (or, if a
+    reviewer redirected via stop_conditions, the shared-connection
+    implementation actually taken instead, and why)
+  - tests added or changed per item, and exact command results (format,
+    lint, typecheck, test, test-contract, test-integration, test-e2e,
+    security-check) proving green
+  - security/privacy implications per item (item 1's new event carries no
+    raw/participant-identifiable data beyond what the notification already
+    carries; item 2's bound is a DoS mitigation; item 4's decision's
+    security/audit-completeness trade-off, stated plainly)
+  - per-item verdict confirming none of the seven was found already fixed at
+    implementation time (re-verify against `main` at implementation start,
+    since this packet's own derivation verified against a specific commit)
+  - open specification questions exactly as listed under specification_gaps
+stop_conditions:
+  - >-
+    a reviewer determines docs/spec/03_API_AND_EVENTS.md section 5.3's
+    transactional-outbox MUST requires closing item 4's crash window with a
+    shared-connection fix rather than documenting it as accepted - stop
+    before implementing item 4 as documentation-only, report the conflict,
+    and switch to the shared-connection route (derived_decisions (d)'s
+    "considered and rejected" alternative) instead of silently proceeding
+    with this packet's own preferred reading.
+  - >-
+    a reviewer determines item 1's event should key `object_id`/
+    `object_revision` on the remote `notification.correction_id`/
+    `correction_revision` rather than the notification's own id/fixed
+    revision-1 (derived_decisions (a)'s flagged alternative) - stop and
+    request a ruling rather than guessing which the reviewer prefers once
+    work has already started down one path.
+  - >-
+    a reviewer determines item 7 belongs in its own separate packet rather
+    than this batch (contra this packet's own batch-vs-split judgment in the
+    objective) - stop item 7 specifically and re-derive it standalone; items
+    1-6 are unaffected and may proceed independently.
+  - >-
+    implementing item 1's fail-closed `record_event` check is found to break
+    any EXISTING caller of `receive_correction_notification` that today
+    relies on the method succeeding without a `record_event` dependency
+    configured - stop and report exactly which caller, rather than silently
+    loosening the check to accommodate it.
+  - >-
+    the 512 maxItems bound (item 2) is found to break the committed
+    `examples/correction-notification.example.json` fixture or any existing
+    test's fixture data - stop and report the exact fixture size discovered,
+    rather than raising the bound to fit.
+  - >-
+    extending `EvidenceCrateSealer.seal()`'s signature (item 7) is found to
+    require touching `_crate_to_stored_object`, the signing/hashing
+    sequence, or any DERIVED (non-caller-supplied) field - stop and report;
+    this item is scoped to an additive parameter list only.
+specification_gaps:
+  - >-
+    item 1 - whether `correction.notification_received`'s `object_id`/
+    `object_revision` should key on the notification's own identity (this
+    packet's choice, derived_decisions (a)) or on the remote correction's
+    own `correction_id`/`correction_revision` is a genuine judgment call the
+    specification does not settle (section 5.2 only names the event, not its
+    envelope-field mapping) - flagged for explicit reviewer confirmation,
+    not silently decided as uncontestable.
+  - >-
+    item 4 - whether docs/spec/03_API_AND_EVENTS.md section 5.3's
+    transactional-outbox MUST is correctly read as NOT extending to a
+    retry-attempt-plus-event pairing on an already-durable row (this
+    packet's reading, derived_decisions (d)) is a genuine specification
+    interpretation question, not a settled fact - flagged for reviewer
+    sign-off; see the matching stop_condition.
+  - >-
+    item 3 - the future re-notification MECHANISM itself (triggering a fresh
+    notification to an already-`sent` recipient when the known impact set
+    grows) is named but deliberately not designed here; a future task must
+    decide whether it is caller-driven (the caller re-invokes with an
+    explicit "force" flag), automatic (propagate_impact itself detects
+    growth and re-arms `_already_sent_recipient_ids`), or something else -
+    left genuinely open, not pre-judged.
+  - >-
+    item 2 - 512 is this packet's own chosen bound, not derived from any
+    stated specification number (none exists) - flagged in case a reviewer
+    wants a different value; the DoS-cost reasoning in derived_decisions (e)
+    is intended to make that judgment call reviewable, not to foreclose it.
