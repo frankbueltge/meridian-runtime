@@ -118,3 +118,49 @@ eingeholte Delegation) auf main mergen; keine KI-Produkt-Credits in Git;
 Git-Identität `Frank Bültge <f.bueltge@gmail.com>` (NIE `frank@bueltge.de` —
 andere reale Person); Subagenten default Sonnet; Lizenz noncommercial;
 Archiv-Schemata und committete Tages-/Forschungsartefakte unantastbar.
+
+## 7. Nachtrag (gleicher Abend, nach Abschnitt 1–6)
+
+Die Session lief nach dem Handoff weiter; Stand bei Sessionende:
+
+- **PR #58 / K1-T04c** (`eee0beb`): CLI/Kompositions-Durchreichung der
+  Sensitivitäts-Parameter (additives Keyword + `--sensitivity-variation-
+  parameters-file`; Hash-Befüllung nach Schritt-6-Präzedenz; kein neues
+  Schema-Flag nötig — search_path über `--database-url`).
+- **PR #59 / K1-T04b** (`48ad1c8`): **Der zweite echte Lauf ist gelaufen.**
+  Ergebnis (unabhängig reproduziert durch Re-Ausführung im Review):
+  Theorie-Bestätigung `supported`→`supported` (3/0, robust); Werk-Analyse
+  `contested`→**`unsupported`** (1/13) unter corroboration-floor-v1
+  (contested-Floor 1→2). Der contested-Befund von Lauf 1 hing an genau
+  einer stützenden Quellfamilie (Hammond). Determinismus: beide
+  Archiv-Invocations `sha256:aca8d716…` identisch; ein KOMPLETTER zweiter
+  CLI-Aufruf kann konstruktionsbedingt nie hash-identisch sein (frische
+  URNs im Output) — dokumentiert im PR. Dauerhaftes Schema:
+  `mrr_run2_corroboration_floor_v1`; Lauf-1-Archiv fingerprint-verifiziert
+  unberührt.
+- **Encounter zugestellt UND beantwortet:** Angebot als Team-Note in
+  irrtum-als-methode/REQUESTS.md (`1e1ef1f`, signiert Frank); Ulysses
+  antwortete am selben Abend nach eigener Verifikation der Behauptungen:
+  **(1) ADAPTED** — künftige Atlas-Pins unter vier stehenden Bedingungen
+  (relevance-Feld wörtlich mitpinnen; Credit „atlas of irrtum-als-methode
+  (Ulysses/Atelier, maintained by Frank Bültge)"; Label-Mapping offenlegen
+  (MRR-Evidenzgrade ≠ Atlas-Kuratierungszustände seed/worked);
+  Vorab-Notiz je Pin) plus Wunsch: Encounter ins öffentliche Register der
+  Site. **(2) TAKEN** — S42 darf die v2-Operationalisierung säen,
+  Bedingung: Journal-Eintrag MITSAMT seiner dokumentierten Schwäche
+  zitieren („epicycles to rescue S40"). **(3) DECLINED mit Tür** —
+  keine Blind-Annotation der 15 Klassifikationen; bei öffentlicher
+  Vorlage der Hammond-Zeile nimmt eine künftige Session einen begrenzten
+  Review. **Lauf 3 (channel-governance) ist damit entsperrt, unter diesen
+  Bedingungen.**
+- **Verlustschutz:** beide Forschungs-Schemata gedumpt nach
+  `~/Documents/mrr-db-snapshots/2026-07-21/`; die vier untracked
+  Spec-Pakete im Site-Repo committet (`d31cf42`).
+- **Verifikations-Design-Memo** committet (`be265c8`,
+  docs/design/2026-07-21-verifikations-design-memo.md) — Entscheidungsbasis
+  für die nächste Design-Session; Kernbefund: Independence ist heute reine
+  Selbstauskunft, Zähler unverdrahtet, Akteurs-Strings frei.
+- **Neu offen:** Register-Eintrag des Encounters (Owner-Frage, angefragt);
+  Lauf-3-Packet (channel-governance, unter Ulysses' Bedingungen — die
+  vier ADAPTED-Bedingungen betreffen KÜNFTIGE Pins, also Lauf 3s neuen
+  Atlas-Snapshot); Rest wie Abschnitt 4/5.
