@@ -1,6 +1,6 @@
 task_id: E6-T03
 title: Cross-practice correction notification — a signed, replay-protected CorrectionNotification payload (reusing the E5-T03 envelope transport unchanged), the sending practice's NOTIFYING/AWAITING_RESPONSES/DELIVERY_PENDING lifecycle drive, and the receiving practice's LOCAL-ONLY impact re-computation on receipt
-status: draft
+status: approved
 derivation: >
   Derived by a planning session (not yet reviewed) per
   docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
