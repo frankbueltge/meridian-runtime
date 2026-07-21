@@ -186,11 +186,18 @@ and never deciding accept/adapt/reject/defer (E6-T04). Returns a
 :class:`LocalNotificationImpact` — the computed locally-impacted set,
 explicit even when empty (MRR-NFR-012: an id with zero matching local edges
 is a legitimate, explicit empty result, never a crash and never silently
-dropped) — never a new event type of its own (section 5.2's required-events
-enumeration has no name for the receiving side's own act of processing a
-notification; the only observable trace remains the EXISTING
+dropped). Since task-packets/E9-T00.yaml item 1, this method ALSO appends
+exactly one ``correction.notification_received`` event (section 5.2's own
+enumerated name, DECLARED by commit 736b376 and implemented here) on every
+call that reaches this point — the durable trace of "received and no-op'd"
+an empty impact set previously left none of, per the existing
 ``claim.status_changed``-shaped events ``ClaimService.require_review``
-already emits).
+already emits remaining the only trace for a NON-empty impact set. See
+``receive_correction_notification``'s own docstring for the exact payload
+shape and keying (``object_id=notification.notification_id``,
+``object_revision=1`` — this method still never creates, stores, or
+mutates any copy of the remote ``CorrectionEvent``, so there is no
+locally-owned revision for the event to key on instead).
 
 Deliberately deferred (task-packets/E6-T03.yaml forbidden_changes/
 specification_gaps): resolving WHICH practices/nodes to notify (and which
@@ -646,6 +653,14 @@ _EVENT_RESPONSE_RECORDED = "correction.response_recorded"
 #: new event type string absent from that enumeration.
 _EVENT_NOTIFICATION_SENT = "correction.notification_sent"
 
+#: docs/spec/03_API_AND_EVENTS.md section 5.2's own enumerated event name
+#: (added by commit 736b376, "Spec-Refresh: Section 5.2-Eventliste
+#: konsolidiert nach E6/K0/K1"; DECLARED but, until task-packets/E9-T00.yaml
+#: item 1, not yet implemented). Emitted by ``receive_correction_notification``
+#: — see that method's own docstring and the module docstring's "E6-T03
+#: additions" section for the emission point and payload shape.
+_EVENT_NOTIFICATION_RECEIVED = "correction.notification_received"
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class NotificationRecipient:
@@ -1088,6 +1103,25 @@ class CorrectionImpactService:
         unchanged ``ClaimService.require_review`` transition on a claim
         already resolvable in THIS practice's own object repository.
 
+        Since task-packets/E9-T00.yaml item 1: on every call that reaches
+        the end of the check sequence below successfully — whether the
+        resulting ``locally_impacted_object_ids`` set is empty or not —
+        this method appends exactly one ``correction.notification_received``
+        event (docs/spec/03_API_AND_EVENTS.md section 5.2's own enumerated
+        name) via the ``record_event`` dependency, AFTER every
+        ``_require_review_if_needed`` call for the computed impacted set so
+        its payload can report the REAL computed set. Keyed
+        ``object_id=notification.notification_id``,
+        ``object_revision=1`` (fixed — a ``CorrectionNotification`` is not
+        a first-class revisioned domain object, so no other honest revision
+        number applies; see derived_decisions (a) for the alternative
+        keying considered and flagged in specification_gaps). Payload:
+        ``correction_id``, ``correction_revision``, ``notifying_practice_id``,
+        ``recipient_practice_id``, ``notified_object_ids_count`` (the count,
+        not the full list), and ``locally_impacted_object_ids`` (sorted,
+        explicitly ``[]`` when empty — MRR-NFR-012). The event is NEVER
+        appended when any check below rejects the call — no partial event.
+
         Args:
             envelope: the received, not-yet-trusted ``NodeMessageEnvelope``
                 whose payload is expected to be a ``CorrectionNotification``.
@@ -1105,15 +1139,17 @@ class CorrectionImpactService:
                 predicate — a SEPARATE namespace, keyed on the
                 notification's own ``notification_id``.
             actor: MRR-NFR-001 provenance for any resulting
-                ``ClaimService.require_review`` transition.
+                ``ClaimService.require_review`` transition AND for the new
+                ``correction.notification_received`` event.
             policy_version: MRR-NFR-001 provenance.
             correlation_id: MRR-NFR-001 provenance.
             at: the evaluation instant for every window/validity check in
                 this call (the envelope's own, the notification's own
                 signature-key validity, and the notification's own
                 validity window) — computed ONCE and shared across all of
-                them so they can never disagree by a few microseconds.
-                Defaults to ``datetime.now(UTC)``.
+                them so they can never disagree by a few microseconds. Also
+                used as the new event's own ``occurred_at``. Defaults to
+                ``datetime.now(UTC)``.
 
         Returns:
             A :class:`LocalNotificationImpact` naming the notification's own
@@ -1121,6 +1157,10 @@ class CorrectionImpactService:
             empty — MRR-NFR-012).
 
         Raises:
+            ValueError: this service was constructed without a
+                ``record_event`` dependency — checked as the very first
+                line of this method, BEFORE ``validate_inbound_envelope``
+                even runs (see ``_require_record_event``'s own docstring).
             (from ``validate_inbound_envelope``, UNCHANGED) any of its own
                 typed failures — the envelope is rejected before its
                 payload is ever parsed as a ``CorrectionNotification``.
@@ -1142,8 +1182,11 @@ class CorrectionImpactService:
                 ``already_processed_notification`` reports the
                 notification's own ``notification_id`` as already seen.
 
-        None of these leave any local claim touched.
+        None of these (other than the fail-closed ``record_event`` check,
+        which touches nothing) leave any local claim touched, and none
+        appends the new ``correction.notification_received`` event.
         """
+        record_event = self._require_record_event()
         evaluation_instant = at if at is not None else datetime.now(UTC)
 
         validate_inbound_envelope(
@@ -1188,6 +1231,34 @@ class CorrectionImpactService:
             self._require_review_if_needed(
                 object_id, actor=actor, policy_version=policy_version, correlation_id=correlation_id
             )
+
+        # task-packets/E9-T00.yaml item 1: exactly one durable receipt
+        # event, appended AFTER every claim transition above so its own
+        # payload reports the REAL computed impacted set — mirrors
+        # notify_affected_practices's own "remaining events" RecordEventOnly
+        # path (derived_decisions (c)). Never a lifecycle transition and
+        # never a copy/mutation of the remote CorrectionEvent.
+        record_event(
+            DomainEvent(
+                id=new_urn("domain-event"),
+                event_type=_EVENT_NOTIFICATION_RECEIVED,
+                occurred_at=evaluation_instant,
+                actor=actor,
+                policy_version=policy_version,
+                causation_id=self._last_event_id_for(notification.notification_id),
+                correlation_id=correlation_id,
+                object_id=notification.notification_id,
+                object_revision=1,
+                payload={
+                    "correction_id": notification.correction_id,
+                    "correction_revision": notification.correction_revision,
+                    "notifying_practice_id": notification.notifying_practice_id,
+                    "recipient_practice_id": notification.recipient_practice_id,
+                    "notified_object_ids_count": len(notification.notified_object_ids),
+                    "locally_impacted_object_ids": sorted(impacted),
+                },
+            )
+        )
 
         return LocalNotificationImpact(
             notification_id=notification.notification_id,
@@ -1511,6 +1582,13 @@ class CorrectionImpactService:
         or ``"exhausted"`` depending on the resulting record's own
         ``status``; ``channel="online"``).
 
+        Accepted eventual consistency: ``store.record_retry_attempt`` commits
+        the pending-delivery row in its own transaction, separate from this
+        method's own subsequent event append below — see that method's own
+        docstring section of the same name (task-packets/E9-T00.yaml item
+        4) for the full reasoning. PROVISIONAL, not permanent: E9-T01's
+        threat-model review revisits this window explicitly.
+
         Raises:
             CorrectionNotFoundError: ``correction_id`` resolves to no stored
                 object at all.
@@ -1603,6 +1681,13 @@ class CorrectionImpactService:
         ``status`` — never ``"delivered"``, since this channel never
         self-reports that outcome).
 
+        Accepted eventual consistency: ``store.record_retry_attempt`` commits
+        the pending-delivery row in its own transaction, separate from this
+        method's own subsequent event append below — see that method's own
+        docstring section of the same name (task-packets/E9-T00.yaml item
+        4) for the full reasoning. PROVISIONAL, not permanent: E9-T01's
+        threat-model review revisits this window explicitly.
+
         Returns:
             The freshly built ``OfflineBundle`` and the updated
             ``DeliveryPendingRecord``.
@@ -1672,6 +1757,13 @@ class CorrectionImpactService:
         Always appends a ``correction.notification_sent`` event
         (``delivery_status="delivered"``).
 
+        Accepted eventual consistency: ``store.record_retry_attempt`` commits
+        the pending-delivery row in its own transaction, separate from this
+        method's own subsequent event append below — see that method's own
+        docstring section of the same name (task-packets/E9-T00.yaml item
+        4) for the full reasoning. PROVISIONAL, not permanent: E9-T01's
+        threat-model review revisits this window explicitly.
+
         Raises:
             CorrectionNotFoundError, PendingDeliveryNotFoundError,
             InvalidTransitionError: see
@@ -1725,6 +1817,13 @@ class CorrectionImpactService:
         (``delivery_status="exhausted"``) — exhaustion is an explicit
         recorded outcome, never a silent give-up (task-packets/E6-T06.yaml
         invariant).
+
+        Accepted eventual consistency: ``store.mark_exhausted`` commits the
+        pending-delivery row in its own transaction, separate from this
+        method's own subsequent event append below — see that method's own
+        docstring section of the same name (task-packets/E9-T00.yaml item
+        4) for the full reasoning. PROVISIONAL, not permanent: E9-T01's
+        threat-model review revisits this window explicitly.
 
         Raises:
             CorrectionNotFoundError: ``correction_id`` resolves to no stored
@@ -1906,19 +2005,23 @@ class CorrectionImpactService:
         "the append-only domain event log is authoritative for audit
         history"). No separate persisted state is built for this.
 
-        Reviewer-noted nuance: idempotency is keyed on ``recipient_practice_
-        id`` ONLY, never on the specific ``notified_object_ids`` a prior
-        call actually sent. A recipient once recorded ``"sent"`` for THIS
-        correction is therefore never re-notified by a later
-        ``notify_affected_practices`` call, even if that later call passes
-        a different (or larger) ``notified_object_ids`` set for the same
-        recipient — e.g. because ``propagate_impact`` discovered additional
-        downstream impact after the first notification round already went
-        out. Whether/how a recipient should be re-notified when the
-        correction's own known impact set grows after their first
-        acknowledged delivery is a future specification question, not
-        invented here (mirrors this task's own stance on E6-T06's deferred
-        retry/redelivery machinery).
+        DECIDED specification position (task-packets/E9-T00.yaml item 3;
+        docs/spec/03_API_AND_EVENTS.md section 5.2's own "Re-notification
+        semantics" note, extending the 2026-07-21 refresh note): idempotency
+        is keyed on ``recipient_practice_id`` ONLY, and remains so, never on
+        the specific ``notified_object_ids`` a prior call actually sent. A
+        recipient once recorded ``"sent"`` for THIS correction is therefore
+        never re-notified by a later ``notify_affected_practices`` call,
+        even if that later call passes a different (or larger)
+        ``notified_object_ids`` set for the same recipient — e.g. because
+        ``propagate_impact`` discovered additional downstream impact after
+        the first notification round already went out. Re-notifying an
+        already-``sent`` recipient when the correction's own known impact
+        set grows after their first acknowledged delivery is left as an
+        explicitly named FUTURE task — not designed, not stubbed, no
+        speculative hook here — see the spec note for the open mechanism
+        question (caller-driven "force" flag vs. automatic re-arming vs.
+        something else).
         """
         return {
             appended.event.payload["recipient_practice_id"]
@@ -2130,13 +2233,21 @@ class CorrectionImpactService:
         delivery-pending store — a misconfigured service (``delivery_
         pending_store`` wired but ``record_event`` is not) fails closed
         before any write, rather than mutating the store and only then
-        discovering the event cannot be appended.
+        discovering the event cannot be appended. Since task-packets/
+        E9-T00.yaml item 1, also checked as the very first line of
+        ``receive_correction_notification`` — that method's own
+        ``correction.notification_received`` event is now MANDATORY on
+        every successful receipt, so a service missing this dependency
+        fails closed before ``validate_inbound_envelope`` even runs, rather
+        than processing an inbound notification with no way to record its
+        own receipt.
         """
         if self._record_event is None:
             raise ValueError(
                 "CorrectionImpactService was constructed without a record_event dependency "
-                "(bind_event_unit_of_work), required to append a correction.notification_sent "
-                "event for a delivery-tracking outcome"
+                "(bind_event_unit_of_work), required to append this service's own mandatory "
+                "domain event — a correction.notification_sent event for a delivery-tracking "
+                "outcome, or a correction.notification_received event on notification receipt"
             )
         return self._record_event
 

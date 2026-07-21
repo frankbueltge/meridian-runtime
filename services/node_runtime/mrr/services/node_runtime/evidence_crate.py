@@ -9,13 +9,19 @@ executes approved work, seals outputs, and signs result crates").
 Scope, precisely: this module builds and seals the crate's OWN fields. It
 does NOT:
 
-- populate ``source_records``/``evidence_anchors``/``proposed_claims`` with
-  anything beyond an empty array -- the claim graph and evidence anchors are
-  E3's responsibility (task-packets/E2-T06.yaml ``forbidden_changes``), and
-  inventing their shape here would be exactly what AGENTS.md rule 3 forbids.
-  Empty is not a stub for the deterministic reference run this task's own
-  executor produces: it faithfully records that no claims/anchors exist yet
-  for this run, not a placeholder awaiting removal;
+- itself COMPUTE or DERIVE the contents of ``source_records``/
+  ``evidence_anchors``/``proposed_claims`` -- the claim graph and evidence
+  anchors are E3's responsibility (task-packets/E2-T06.yaml
+  ``forbidden_changes``), and inventing their shape here would be exactly
+  what AGENTS.md rule 3 forbids. Since task-packets/E9-T00.yaml item 7,
+  ``seal`` accepts all three as caller-supplied, additive, keyword-only
+  ``Sequence[Urn] = ()`` parameters -- mirroring ``artifact_refs``'s own
+  identical "caller already has the ids in hand" convention exactly (see
+  "``artifact_refs`` are caller-supplied" below). A caller that omits them
+  (every caller that predates this item) gets byte-identical ``[]`` fields,
+  same as before: empty is still not a stub, it faithfully records that no
+  claims/anchors/source-records were SUPPLIED for this run, never a
+  placeholder awaiting removal;
 - export RO-Crate/PROV (MRR-FR-055 is E8);
 - invoke a model/LLM or interpret ``run_manifest.model_invocations`` (E4);
 - expose HTTP/FastAPI;
@@ -290,6 +296,9 @@ class EvidenceCrateSealer:
         correlation_id: Urn,
         failures: Sequence[FailureEntry] = (),
         known_unknowns: Sequence[str] = (),
+        source_records: Sequence[Urn] = (),
+        evidence_anchors: Sequence[Urn] = (),
+        proposed_claims: Sequence[Urn] = (),
     ) -> StoredObject:
         """Build a schema-valid ``EvidenceCrate`` from ``run_manifest``/
         ``execution_result``/``task_bundle``, seal it (node-sign the
@@ -316,17 +325,24 @@ class EvidenceCrateSealer:
         - ``environment.model_profiles`` is always ``[]`` -- the
           deterministic reference run this task's own executor produces
           never invokes a model (E4 scope).
-        - ``source_records``/``evidence_anchors``/``proposed_claims`` are
-          always ``[]`` (E3 scope; a faithful empty, not a stub).
         - ``sealed`` is always ``True``.
 
         Everything else is caller-supplied: ``artifact_refs``/``failures``/
         ``known_unknowns`` (all default to "nothing to report" -- ``()``
         -- see the module docstring for why these are not auto-derived),
-        ``node_signing_key``/``node_key_id``/``signer_practice_id`` (the
-        signing node's identity -- key management itself is E5, out of
-        this task's scope), and ``actor``/``policy_version``/
-        ``correlation_id`` (MRR-NFR-001 provenance for the recorded event).
+        ``source_records``/``evidence_anchors``/``proposed_claims`` (since
+        task-packets/E9-T00.yaml item 7, ALSO caller-supplied, ALSO
+        defaulting to ``()`` -- this module still never computes/derives
+        their CONTENTS itself, E3 scope; a caller that already has these
+        ids in hand -- as ``mrr.services.cli.synthesis_orchestration.
+        run_synthesis_evidence_loop`` does -- passes them through so the
+        sealed crate's own fields carry them, redundantly but harmlessly
+        with the ``governed_by_protocol`` edge graph that same caller
+        already writes), ``node_signing_key``/``node_key_id``/
+        ``signer_practice_id`` (the signing node's identity -- key
+        management itself is E5, out of this task's scope), and
+        ``actor``/``policy_version``/``correlation_id`` (MRR-NFR-001
+        provenance for the recorded event).
 
         Raises:
             ValueError: ``execution_result.task_id``/``.task_revision``,
@@ -407,9 +423,9 @@ class EvidenceCrateSealer:
             run_id=run_manifest.id,
             run_state=execution_result.outcome,
             artifacts=list(artifact_refs),
-            source_records=[],
-            evidence_anchors=[],
-            proposed_claims=[],
+            source_records=list(source_records),
+            evidence_anchors=list(evidence_anchors),
+            proposed_claims=list(proposed_claims),
             failures=list(failures),
             known_unknowns=list(known_unknowns),
             environment=environment,

@@ -495,7 +495,9 @@ def test_outbound_then_inbound_correction_notification_flow(postgres_engine: Eng
     sharing the same physical schema — see this module's own docstring)
     then processes it via receive_correction_notification, producing
     claim.status_changed-shaped events with full provenance for the correct
-    LOCAL claim only. The receiving side never touches the sender's own
+    LOCAL claim only, plus (task-packets/E9-T00.yaml item 1) exactly one
+    correction.notification_received event carrying the computed
+    locally-impacted set. The receiving side never touches the sender's own
     CorrectionEvent object at all.
     """
     actor = new_urn("agent-role")
@@ -561,8 +563,12 @@ def test_outbound_then_inbound_correction_notification_flow(postgres_engine: Eng
     # this test actually verifies is that receive_correction_notification's
     # OWN code path never writes anything referencing the sender's
     # CorrectionEvent id (checked below via its unchanged revision list). --
+    # _services_for_notification (not the plain _services_for): item 1's new
+    # correction.notification_received event is now MANDATORY, so the
+    # receiving service must have record_event wired or the call below
+    # fails closed before validate_inbound_envelope even runs.
     receiver_service, receiver_claims, receiver_objects, receiver_edges, receiver_events = (
-        _services_for(postgres_engine)
+        _services_for_notification(postgres_engine)
     )
 
     local_dependent = _claim(status="draft")
@@ -621,6 +627,39 @@ def test_outbound_then_inbound_correction_notification_flow(postgres_engine: Eng
         assert event.actor == actor
         assert event.policy_version == _POLICY_VERSION
         assert event.occurred_at.tzinfo is not None
+
+    # task-packets/E9-T00.yaml item 1: exactly one correction.
+    # notification_received event, keyed on the notification's own id (NOT
+    # the sender's CorrectionEvent id), with full MRR-NFR-001 provenance and
+    # a payload matching the computed locally-impacted set.
+    notification_id = envelope.payload["notification_id"]
+    received_events = [
+        appended.event
+        for appended in receiver_events.read_all()
+        if appended.event.event_type == "correction.notification_received"
+    ]
+    assert len(received_events) == 1
+    received_event = received_events[0]
+    assert received_event.object_id == notification_id
+    assert received_event.object_revision == 1
+    assert received_event.actor == actor
+    assert received_event.policy_version == _POLICY_VERSION
+    assert received_event.correlation_id == correlation_id
+    assert received_event.occurred_at.tzinfo is not None
+    assert received_event.payload["correction_id"] == envelope.payload["correction_id"]
+    assert received_event.payload["correction_revision"] == envelope.payload["correction_revision"]
+    assert (
+        received_event.payload["notifying_practice_id"] == envelope.payload["notifying_practice_id"]
+    )
+    assert (
+        received_event.payload["recipient_practice_id"] == envelope.payload["recipient_practice_id"]
+    )
+    assert received_event.payload["notified_object_ids_count"] == len(
+        envelope.payload["notified_object_ids"]
+    )
+    assert received_event.payload["locally_impacted_object_ids"] == sorted(
+        impact.locally_impacted_object_ids
+    )
 
     # receive_correction_notification never created, stored, or mutated any
     # copy of the remote CorrectionEvent — its own revision history is

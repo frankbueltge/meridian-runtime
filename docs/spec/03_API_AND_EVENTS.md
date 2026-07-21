@@ -335,6 +335,22 @@ scales with list size) and a specification decision on re-notification semantics
 when later impact discovery grows the notified set for an already-notified
 recipient (delivery idempotency is currently keyed on the recipient alone).
 
+Re-notification semantics (2026-07-21, E9-T00 item 3, DECIDED): per-recipient
+notification idempotency in `notify_affected_practices` is, and remains, keyed
+on `recipient_practice_id` ALONE for a given `correction_id` — once a recipient
+is recorded `"sent"` (a `correction.notification_sent` event with
+`delivery_status == "sent"`), no later call re-notifies that recipient for
+that correction, regardless of whether the correction's own known
+`impact_objects` set has since grown to include object ids that recipient's
+earlier `notified_object_ids` never covered. This is a settled specification
+position, not an open implementation detail. Re-notifying an already-`sent`
+recipient when impact discovery later grows the notified set is left as an
+explicitly named FUTURE task: whether it is caller-driven (the caller
+re-invokes with an explicit "force" flag), automatic (`propagate_impact`
+itself detects growth and re-arms the per-recipient "sent" tracking), or
+something else is left genuinely open, not pre-judged — no speculative hook
+for it exists in the current implementation.
+
 ### 5.3 Transactional outbox
 
 State changes and event publication MUST use a transactional outbox so that committed domain changes cannot silently lose their corresponding event. Consumers MUST be idempotent.

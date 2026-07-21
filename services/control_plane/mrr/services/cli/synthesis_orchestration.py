@@ -87,35 +87,52 @@ reaches — still gets a ``MethodRuling`` (``create`` + ``issue``) and a
 ``ruled_by`` edge via ``ClaimService.attach_ruling`` (which is NOT gated on
 claim status at all), per derived_decisions (f).
 
---- EvidenceCrate.source_records/evidence_anchors/proposed_claims stay empty --
+--- EvidenceCrate.source_records/evidence_anchors/proposed_claims: CLOSED ----
+--- (task-packets/E9-T00.yaml item 7, 2026-07-21) -----------------------------
 
-A newly discovered, disclosed specification/implementation gap
-(required_output): task-packets/K1-T03.yaml's own derived_decisions (i)
-assumes ``EvidenceCrateSealer.seal()`` already accepts caller-supplied
-``source_records``/``evidence_anchors``/``proposed_claims`` lists, citing
-"evidence_crate.py lines 62-73" — those line numbers are actually
-``mrr.contracts.evidence_crate.EvidenceCrate``'s own CONTRACT field
-declarations, not ``EvidenceCrateSealer.seal()``'s parameter list. Direct
-reading of the ACTUAL, merged
+Originally a newly discovered, disclosed specification/implementation gap
+(K1-T03's own required_output): task-packets/K1-T03.yaml's own
+derived_decisions (i) assumed ``EvidenceCrateSealer.seal()`` already
+accepted caller-supplied ``source_records``/``evidence_anchors``/
+``proposed_claims`` lists, citing "evidence_crate.py lines 62-73" — those
+line numbers were actually ``mrr.contracts.evidence_crate.EvidenceCrate``'s
+own CONTRACT field declarations, not ``EvidenceCrateSealer.seal()``'s
+parameter list. Direct reading of the ACTUAL, merged
 ``mrr.services.node_runtime.evidence_crate.EvidenceCrateSealer.seal``
 (confirmed unchanged since E2-T06, ``c55d491``, plus the E5-T00 ADR-0004
-signing-convention commit) shows it hardcodes all three to ``[]``
-unconditionally in the draft it builds — there is no keyword parameter for
-any of them, unlike ``artifact_refs``/``failures``/``known_unknowns``. This
-packet's own ``forbidden_changes``/``allowed_paths`` both bar modifying
-``evidence_crate.py`` at all, so this run calls ``seal()`` EXACTLY as
-``run_local_evidence_loop`` already does (unchanged, per forbidden_changes)
-— meaning the SEALED CRATE's own ``source_records``/``evidence_anchors``/
-``proposed_claims`` fields are empty, even though this run genuinely DOES
-create real ``SourceRecord``/``EvidenceAnchor``/``Claim`` objects, all
-independently resolvable via the ``governed_by_protocol`` edge graph this
-run also writes (matching K1's own stated exit criterion — "a third party
-can follow one sealed crate from question to claim landscape entirely
-through recorded objects" — via edges, not via the crate's own three array
-fields). Extending ``EvidenceCrateSealer.seal()`` to accept these three
-lists (mirroring how it already accepts ``artifact_refs``) is a natural,
-small follow-up, explicitly left for a future task since this packet may
-not touch that file at all.
+signing-convention commit) showed it hardcoded all three to ``[]``
+unconditionally in the draft it built — no keyword parameter for any of
+them, unlike ``artifact_refs``/``failures``/``known_unknowns``. K1-T03's own
+``forbidden_changes``/``allowed_paths`` both barred modifying
+``evidence_crate.py`` at all, so that run called ``seal()`` EXACTLY as
+``run_local_evidence_loop`` already did — meaning the SEALED CRATE's own
+``source_records``/``evidence_anchors``/``proposed_claims`` fields were
+empty, even though this run genuinely DOES create real
+``SourceRecord``/``EvidenceAnchor``/``Claim`` objects, all independently
+resolvable via the ``governed_by_protocol`` edge graph this run also writes
+(matching K1's own stated exit criterion — "a third party can follow one
+sealed crate from question to claim landscape entirely through recorded
+objects" — via edges, not via the crate's own three array fields).
+K1-T03's own docstring named extending ``EvidenceCrateSealer.seal()`` to
+accept these three lists (mirroring how it already accepted
+``artifact_refs``) "a natural, small follow-up, explicitly left for a
+future task".
+
+That future task is task-packets/E9-T00.yaml item 7: ``seal()`` now accepts
+``source_records``/``evidence_anchors``/``proposed_claims`` as additive,
+default-``()`` keyword parameters (see
+``mrr.services.node_runtime.evidence_crate``'s own module docstring), and
+this function passes its own already-collected
+``entry_ids_to_source_record_id.values()``/``entry_ids_to_evidence_anchor_
+id.values()``/``claim_ids`` through (via ``_persist_synthesis_output``'s
+now-widened return tuple — zero new reads, zero new persisted state). The
+sealed crate's own three array fields now carry the same information the
+``governed_by_protocol`` edge graph already did, redundantly but
+harmlessly, matching what spec 08 section 5's I/O contract and the crate's
+own required schema fields both anticipate. ``run_local_evidence_loop``
+(a DIFFERENT caller, forbidden_changes) is untouched — its own call to
+``seal()`` still omits all three keywords and still gets ``[]``, byte-
+identical to before.
 
 --- NodeManifest capability-name pattern conflict (second disclosed gap) ----
 
@@ -878,6 +895,8 @@ def run_synthesis_evidence_loop(
     claim_ids: list[Urn] = []
     method_ruling_ids: list[Urn] = []
     research_decision_ids: list[Urn] = []
+    source_record_ids: list[Urn] = []
+    evidence_anchor_ids: list[Urn] = []
 
     if execution_result.outcome == "completed" and execution_result.output is not None:
         output = json.loads(execution_result.output.decode("utf-8"))
@@ -886,6 +905,8 @@ def run_synthesis_evidence_loop(
             claim_ids,
             method_ruling_ids,
             research_decision_ids,
+            source_record_ids,
+            evidence_anchor_ids,
         ) = _persist_synthesis_output(
             output,
             engine=engine,
@@ -920,11 +941,12 @@ def run_synthesis_evidence_loop(
     )
     run_manifest = RunManifest.model_validate(run_manifest_stored.body)
 
-    # --- 8. Seal the Evidence Crate (unchanged, MTH-020) — see the module
-    #        docstring's disclosed gap: source_records/evidence_anchors/
-    #        proposed_claims stay empty on the SEALED CRATE itself, since
-    #        EvidenceCrateSealer.seal() hardcodes them and this packet may
-    #        not modify that file.
+    # --- 8. Seal the Evidence Crate (MTH-020). Since task-packets/
+    #        E9-T00.yaml item 7, source_records/evidence_anchors/
+    #        proposed_claims are passed through from the already-collected
+    #        ids above — see the module docstring's now-closed disclosed
+    #        gap ("EvidenceCrate.source_records/evidence_anchors/
+    #        proposed_claims stay empty").
     artifact_refs: list[ArtifactRef] = list(input_artifact_refs)
     if execution_result.output is not None:
         output_descriptor = artifact_store.put(
@@ -968,6 +990,9 @@ def run_synthesis_evidence_loop(
         policy_version=policy_version,
         correlation_id=resolved_correlation_id,
         failures=failures,
+        source_records=source_record_ids,
+        evidence_anchors=evidence_anchor_ids,
+        proposed_claims=claim_ids,
     )
     crate = EvidenceCrate.model_validate(crate_stored.body)
 
@@ -1039,10 +1064,20 @@ def _persist_synthesis_output(
     actor: Urn,
     policy_version: str,
     correlation_id: Urn,
-) -> tuple[Urn, list[Urn], list[Urn], list[Urn]]:
+) -> tuple[Urn, list[Urn], list[Urn], list[Urn], list[Urn], list[Urn]]:
     """Deserialize ``SystematicEvidenceSynthesisExecutor``'s own canonical
     JSON output into real, persisted objects. See the module docstring for
     the full choreography this implements.
+
+    Returns ``(matrix_id, claim_ids, method_ruling_ids,
+    research_decision_ids, source_record_ids, evidence_anchor_ids)`` — the
+    last two (task-packets/E9-T00.yaml item 7 wiring) are
+    ``list(entry_ids_to_source_record_id.values())``/``list(entry_ids_to_
+    evidence_anchor_id.values())``, the same ids this function already
+    mints and persists for the frozen ``EvidenceMatrix``'s own rows, now
+    ALSO surfaced to the caller so ``run_synthesis_evidence_loop`` can pass
+    them through to ``EvidenceCrateSealer.seal()`` — zero new reads, zero
+    new persisted state.
     """
     protocol_id = output["protocol_id"]
     question_id = output["question_id"]
@@ -1320,4 +1355,11 @@ def _persist_synthesis_output(
         matrix_id, actor=actor, policy_version=policy_version, correlation_id=correlation_id
     )
 
-    return matrix_id, claim_ids, method_ruling_ids, research_decision_ids
+    return (
+        matrix_id,
+        claim_ids,
+        method_ruling_ids,
+        research_decision_ids,
+        list(entry_ids_to_source_record_id.values()),
+        list(entry_ids_to_evidence_anchor_id.values()),
+    )
