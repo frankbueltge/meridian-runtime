@@ -60,6 +60,25 @@ reviewer_resolution: >-
   `max_attempts` constructor guard present at repositories.py lines
   1002-1003 with no test; `_require_record_event` helper present (E6-T06
   convention, line 2128).
+
+  (6) AMENDMENT, same day, after the implementation agent correctly hit the
+  fail-closed stop_condition: item 1's `_require_record_event()` first-line
+  check breaks three pre-existing property tests in `tests/property/
+  test_correction_notification_impact_properties.py`, whose `_service_for`
+  helper constructs `CorrectionImpactService` WITHOUT `record_event` — a
+  caller the packet's own derivation missed (it checked only the unit and
+  integration tiers for callers). No production code constructs the service
+  anywhere (verified by the implementation agent), so this is purely a
+  test-fixture gap, exactly the situation the stop_condition existed to
+  surface. RESOLUTION: `allowed_paths` is extended by exactly this one file;
+  the fix is the mechanical one already applied in the other affected
+  fixtures of this same batch (supply a `RecordEventOnly` fake in
+  `_service_for`, then assert the receipt event's presence where the
+  property tests' semantics warrant it, or at minimum leave the fake
+  observable). The fail-closed check itself is NOT loosened — the event is
+  mandatory on every successful receipt, and a test helper that could not
+  record events was relying on behavior the spec (03_API_AND_EVENTS.md
+  §5.2) has since declared incomplete.
 derivation: >-
   Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from seven small,
   independently-reviewed follow-up items that accumulated across the
@@ -350,6 +369,7 @@ allowed_paths:
   - tests/integration/services/correction/test_service.py
   - tests/contract/test_correction_notification_variants.py
   - tests/property/test_public_correction_view_properties.py
+  - tests/property/test_correction_notification_impact_properties.py
   - tests/integration/persistence/test_pending_delivery_store.py
   - tests/unit/services/node_runtime/test_evidence_crate.py
   - tests/integration/services/node_runtime/test_evidence_crate.py
