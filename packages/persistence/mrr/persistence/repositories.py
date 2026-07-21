@@ -9,7 +9,11 @@ at-least-once reference outbox dispatcher) — ``PostgresProcessedIdStore``
 offline_bundle.BundleAlreadyProcessed`` (see that class's own docstring), and
 ``PostgresKeyRevocationStore`` (task-packets/E5-T07b.yaml), the durable,
 append-only key-revocation-fact store backing ``mrr.domain.trust_revocation.
-trust_revoked_after_creation``. See that class's own docstring.
+trust_revoked_after_creation``, and ``PostgresDeliveryPendingStore``
+(task-packets/E6-T06.yaml), the durable, per-recipient offline
+delivery-tracking store backing ``mrr.domain.delivery_retry``'s narrow
+``pending``/``delivered``/``exhausted`` machine. See each class's own
+docstring.
 
 Optimistic concurrency (``PostgresObjectRepository.insert_revision``) is
 belt-and-braces:
@@ -58,8 +62,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
+from mrr.domain.delivery_retry import (
+    DELIVERY_RETRY_LIFECYCLE,
+    Backoff,
+    DeliveryOutcome,
+    DeliveryPendingRecord,
+    is_retry_exhausted,
+    next_retry_at,
+)
 from mrr.domain.exceptions import (
+    InvalidTransitionError,
     ObjectNotFoundError,
+    PendingDeliveryNotFoundError,
     RevisionConflictError,
     UnknownEdgeTypeError,
 )
@@ -72,6 +86,7 @@ from mrr.persistence.tables import (
     key_revocations_table,
     objects_table,
     outbox_table,
+    pending_deliveries_table,
     processed_ids_table,
 )
 from mrr.provenance.events import DomainEvent, compute_event_hash
@@ -921,3 +936,293 @@ class PostgresKeyRevocationStore:
             revoked_at=row.revoked_at,
             reason=row.reason,
         )
+
+
+def _row_to_delivery_pending_record(row: Any) -> DeliveryPendingRecord:
+    return DeliveryPendingRecord(
+        recipient_node_id=row.recipient_node_id,
+        notification_id=row.notification_id,
+        correction_id=row.correction_id,
+        status=row.status,
+        attempt_count=row.attempt_count,
+        opened_at=row.opened_at,
+        last_attempted_at=row.last_attempted_at,
+        next_retry_at=row.next_retry_at,
+        notification_expires_at=row.notification_expires_at,
+        resolved_at=row.resolved_at,
+        exhausted_reason=row.exhausted_reason,
+    )
+
+
+def _delivery_exhaustion_reason(
+    *, attempt_count: int, max_attempts: int, expires_at: datetime, at: datetime
+) -> str:
+    """Compose the auto-generated ``exhausted_reason`` for a
+    ``PostgresDeliveryPendingStore.record_retry_attempt`` transition to
+    ``status="exhausted"`` — mirrors ``mrr.domain.delivery_retry.
+    is_retry_exhausted``'s own "whichever comes first" pair of independent
+    triggers: both are named explicitly when both hold (task-packets/
+    E6-T06.yaml invariant "this holds regardless of ordering between the two
+    triggers"), so the recorded reason never hides which trigger(s) actually
+    fired.
+    """
+    reasons: list[str] = []
+    if attempt_count >= max_attempts:
+        reasons.append(f"max_attempts ({max_attempts}) reached at attempt_count={attempt_count}")
+    if at >= expires_at:
+        reasons.append(
+            f"notification validity window closed at {expires_at.isoformat()} "
+            f"(evaluated at {at.isoformat()})"
+        )
+    return "; ".join(reasons)
+
+
+class PostgresDeliveryPendingStore:
+    """Durable, per-recipient offline delivery-tracking store (task-packets/
+    E6-T06.yaml) against ``mrr.persistence.tables.pending_deliveries_table``
+    — the concrete implementation of ``mrr.domain.delivery_retry.
+    DeliveryPendingStore``, the "durable pending-delivery record" half of
+    MRR-FR-094 that task-packets/E6-T03.yaml's own ``notify_affected_
+    practices`` explicitly deferred.
+
+    Keyed by ``(recipient_node_id, notification_id)`` — see
+    ``pending_deliveries_table``'s own docstring.
+
+    ``max_attempts``/``backoff`` (task-packets/E6-T06.yaml: "the concrete
+    max_attempts value and the retry backoff curve ... are not fixed by this
+    task ... left to a caller/deployment policy choice") are bound once at
+    construction and applied by every ``open_pending_delivery``/
+    ``record_retry_attempt`` call via the pure ``mrr.domain.delivery_retry.
+    next_retry_at``/``is_retry_exhausted`` — mirrors
+    ``PostgresProcessedIdStore``'s own identical ``grace``-bound-at-
+    construction precedent.
+    """
+
+    def __init__(self, engine: Engine, *, max_attempts: int, backoff: Backoff) -> None:
+        if max_attempts < 1:
+            raise ValueError(f"max_attempts must be >= 1, got {max_attempts!r}")
+        self._engine = engine
+        self._max_attempts = max_attempts
+        self._backoff = backoff
+
+    def open_pending_delivery(
+        self,
+        recipient_node_id: str,
+        notification_id: str,
+        *,
+        correction_id: str,
+        notification_expires_at: datetime,
+        at: datetime,
+    ) -> bool:
+        """Idempotently open a NEW pending-delivery record at
+        ``status="pending"``, ``attempt_count=1``. See ``mrr.domain.
+        delivery_retry.DeliveryPendingStore.open_pending_delivery``'s own
+        docstring for the full contract.
+
+        ``INSERT ... ON CONFLICT (recipient_node_id, notification_id) DO
+        NOTHING`` is the entire idempotency mechanism — mirrors
+        ``PostgresProcessedIdStore.record_processed``'s identical shape,
+        including the ``RETURNING``-not-``rowcount`` discipline (see that
+        method's own docstring for why).
+        """
+        scheduled_next_retry_at = next_retry_at(
+            last_attempted_at=at,
+            attempt_count=1,
+            backoff=self._backoff,
+            expires_at=notification_expires_at,
+        )
+        stmt = (
+            pg_insert(pending_deliveries_table)
+            .values(
+                recipient_node_id=recipient_node_id,
+                notification_id=notification_id,
+                correction_id=correction_id,
+                status="pending",
+                attempt_count=1,
+                opened_at=at,
+                last_attempted_at=at,
+                next_retry_at=scheduled_next_retry_at,
+                notification_expires_at=notification_expires_at,
+                resolved_at=None,
+                exhausted_reason=None,
+            )
+            .on_conflict_do_nothing(index_elements=["recipient_node_id", "notification_id"])
+            .returning(pending_deliveries_table.c.recipient_node_id)
+        )
+        with self._engine.begin() as conn:
+            return conn.execute(stmt).first() is not None
+
+    def _locked_row(self, conn: Connection, recipient_node_id: str, notification_id: str) -> Any:
+        return conn.execute(
+            sa.select(pending_deliveries_table)
+            .where(
+                pending_deliveries_table.c.recipient_node_id == recipient_node_id,
+                pending_deliveries_table.c.notification_id == notification_id,
+            )
+            .with_for_update()
+        ).first()
+
+    def record_retry_attempt(
+        self,
+        recipient_node_id: str,
+        notification_id: str,
+        *,
+        outcome: DeliveryOutcome,
+        at: datetime,
+    ) -> DeliveryPendingRecord:
+        """Record one further retry attempt's outcome. See ``mrr.domain.
+        delivery_retry.DeliveryPendingStore.record_retry_attempt``'s own
+        docstring for the full contract (delivered/exhausted/still-pending
+        branches, fail-closed against an already-terminal row).
+
+        Reads the row ``FOR UPDATE`` and decides the target state BEFORE
+        issuing any write — an already-``delivered``/``exhausted`` row is
+        rejected via ``DELIVERY_RETRY_LIFECYCLE.assert_transition`` (or, for
+        the "stays pending" branch, an explicit equivalent check) before any
+        ``UPDATE`` statement is even constructed, so a rejected call leaves
+        the row completely unchanged — the whole transaction never issues a
+        write.
+        """
+        with self._engine.begin() as conn:
+            row = self._locked_row(conn, recipient_node_id, notification_id)
+            if row is None:
+                raise PendingDeliveryNotFoundError(recipient_node_id, notification_id)
+
+            new_attempt_count = row.attempt_count + 1
+            update_values: dict[str, Any]
+
+            if outcome == "delivered":
+                DELIVERY_RETRY_LIFECYCLE.assert_transition(row.status, "delivered")
+                update_values = {
+                    "attempt_count": new_attempt_count,
+                    "last_attempted_at": at,
+                    "next_retry_at": None,
+                    "resolved_at": at,
+                    "status": "delivered",
+                }
+            else:
+                exhausted = is_retry_exhausted(
+                    attempt_count=new_attempt_count,
+                    max_attempts=self._max_attempts,
+                    expires_at=row.notification_expires_at,
+                    at=at,
+                )
+                if exhausted:
+                    DELIVERY_RETRY_LIFECYCLE.assert_transition(row.status, "exhausted")
+                    reason = _delivery_exhaustion_reason(
+                        attempt_count=new_attempt_count,
+                        max_attempts=self._max_attempts,
+                        expires_at=row.notification_expires_at,
+                        at=at,
+                    )
+                    update_values = {
+                        "attempt_count": new_attempt_count,
+                        "last_attempted_at": at,
+                        "next_retry_at": None,
+                        "resolved_at": at,
+                        "status": "exhausted",
+                        "exhausted_reason": reason,
+                    }
+                else:
+                    if row.status != "pending":
+                        raise InvalidTransitionError(
+                            DELIVERY_RETRY_LIFECYCLE.name, row.status, "pending"
+                        )
+                    scheduled_next_retry_at = next_retry_at(
+                        last_attempted_at=at,
+                        attempt_count=new_attempt_count,
+                        backoff=self._backoff,
+                        expires_at=row.notification_expires_at,
+                    )
+                    update_values = {
+                        "attempt_count": new_attempt_count,
+                        "last_attempted_at": at,
+                        "next_retry_at": scheduled_next_retry_at,
+                    }
+
+            updated = conn.execute(
+                sa.update(pending_deliveries_table)
+                .where(
+                    pending_deliveries_table.c.recipient_node_id == recipient_node_id,
+                    pending_deliveries_table.c.notification_id == notification_id,
+                )
+                .values(**update_values)
+                .returning(*pending_deliveries_table.c)
+            ).first()
+            if updated is None:
+                raise RuntimeError(
+                    "pending_deliveries row disappeared inside its own write transaction"
+                )
+            return _row_to_delivery_pending_record(updated)
+
+    def mark_exhausted(
+        self,
+        recipient_node_id: str,
+        notification_id: str,
+        *,
+        reason: str,
+        at: datetime,
+    ) -> DeliveryPendingRecord:
+        """Explicitly transition an existing ``status="pending"`` record to
+        ``status="exhausted"``. See ``mrr.domain.delivery_retry.
+        DeliveryPendingStore.mark_exhausted``'s own docstring for the full
+        contract.
+        """
+        if not reason:
+            raise ValueError("reason must not be empty")
+        with self._engine.begin() as conn:
+            row = self._locked_row(conn, recipient_node_id, notification_id)
+            if row is None:
+                raise PendingDeliveryNotFoundError(recipient_node_id, notification_id)
+            DELIVERY_RETRY_LIFECYCLE.assert_transition(row.status, "exhausted")
+
+            updated = conn.execute(
+                sa.update(pending_deliveries_table)
+                .where(
+                    pending_deliveries_table.c.recipient_node_id == recipient_node_id,
+                    pending_deliveries_table.c.notification_id == notification_id,
+                )
+                .values(
+                    status="exhausted",
+                    resolved_at=at,
+                    next_retry_at=None,
+                    exhausted_reason=reason,
+                )
+                .returning(*pending_deliveries_table.c)
+            ).first()
+            if updated is None:
+                raise RuntimeError(
+                    "pending_deliveries row disappeared inside its own write transaction"
+                )
+            return _row_to_delivery_pending_record(updated)
+
+    def get_pending_delivery(
+        self, recipient_node_id: str, notification_id: str
+    ) -> DeliveryPendingRecord | None:
+        """Return the record for ``(recipient_node_id, notification_id)``, or
+        ``None`` if it has never been opened."""
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                sa.select(pending_deliveries_table).where(
+                    pending_deliveries_table.c.recipient_node_id == recipient_node_id,
+                    pending_deliveries_table.c.notification_id == notification_id,
+                )
+            ).first()
+        if row is None:
+            return None
+        return _row_to_delivery_pending_record(row)
+
+    def list_due_for_retry(self, now: datetime) -> list[DeliveryPendingRecord]:
+        """Return every record with ``status == "pending"`` AND
+        ``next_retry_at <= now`` — a plain callable query; no scheduler,
+        cron, or queue is built to invoke it on any cadence (mirrors
+        task-packets/E5-T07.yaml's own identical ``prune_expired`` stance).
+        """
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                sa.select(pending_deliveries_table).where(
+                    pending_deliveries_table.c.status == "pending",
+                    pending_deliveries_table.c.next_retry_at <= now,
+                )
+            ).all()
+        return [_row_to_delivery_pending_record(row) for row in rows]

@@ -264,6 +264,90 @@ undriven by this or any other task in the current six-task E6 epic); no
 response is ever transported back to the notifying practice (a future task
 or spec amendment must design that mechanism); and no further Claim
 transition beyond what E6-T03's own receipt handling already applied.
+
+--- E6-T06 additions: offline recipient delivery tracking -------------------
+
+``open_pending_delivery``, ``retry_pending_delivery_online``,
+``retry_pending_delivery_offline``, ``mark_pending_delivery_delivered``, and
+``mark_pending_delivery_exhausted`` are further ADDITIVE methods on this same
+service (task-packets/E6-T06.yaml) — every E3-T06/E6-T03/E6-T04 method/helper
+above is reused verbatim, unmodified, including ``notify_affected_
+practices``'s own one-synchronous-attempt-then-stop behavior (its own
+forbidden_changes: "it does not build or call ``mrr.domain.offline_bundle.
+build_outbox_bundle``, does not enqueue anything, and does not retry" — this
+task is that deferred scope). They provide the durable, per-recipient
+tracking layer MRR-FR-094's "pending-delivery record" half requires once a
+recipient's synchronous online delivery attempt has already failed (the
+moment ``notify_affected_practices`` chains ``CORRECTION_LIFECYCLE`` through
+the already-drawn ``AWAITING_RESPONSES -> DELIVERY_PENDING`` edge for that
+recipient), composed with the EXISTING, unmodified E5-T06 ``OfflineBundle``
+export as one legitimate retry channel — never a new transport of its own.
+
+The persistent tracking record itself is INTERNAL NODE STATE (task-packets/
+E6-T06.yaml derived_decisions (a), mirroring task-packets/E5-T07.yaml's own
+``processed_ids``/``PostgresProcessedIdStore`` precedent exactly) — a new
+``mrr.persistence.repositories.PostgresDeliveryPendingStore`` keyed by
+``(recipient_node_id, notification_id)``, injected here through the new,
+OPTIONAL ``delivery_pending_store`` constructor parameter (default ``None``,
+mirroring ``record_event``/``record_revision_with_edges``'s identical
+"additive, does not break existing construction call sites" shape). A caller
+invoking any of these five new methods without configuring it gets a clear
+``ValueError`` rather than a silent no-op. It gets no ``schemas/*.
+schema.json``, no ``mrr.contracts`` model, and no ``scripts/
+check_contracts.py`` entry — see ``mrr.domain.delivery_retry``'s own module
+docstring for the full "why internal state, not a cross-practice object"
+reasoning.
+
+``open_pending_delivery``: opens the tracking record the FIRST time a
+recipient's synchronous attempt reports ``"failed"`` (idempotent — a second
+call for the same ``(recipient_node_id, notification_id)`` is a no-op, no
+duplicate event). ``retry_pending_delivery_online``: a FURTHER synchronous
+``EnvelopeTransport.send`` attempt with the SAME already-signed
+``NodeMessageEnvelope`` passed in by the caller (never re-signed, never
+re-minted — task-packets/E6-T06.yaml derived_decisions (e)).
+``retry_pending_delivery_offline``: wraps that SAME envelope into a FRESH
+single-entry ``OfflineBundle`` via the UNCHANGED ``build_outbox_bundle`` —
+proving the online and offline retry channels compose without modifying
+either. Because the offline channel has no in-repo acknowledgement mechanism
+(docs/spec/03_API_AND_EVENTS.md section 4.2's "optional acknowledgement
+request" field was never added to ``NodeMessageEnvelope`` — flagged, not
+built, in specification_gaps), an offline retry always records outcome
+``"failed"`` (not yet confirmed) against the tracking store; a caller with an
+out-of-band delivery signal calls ``mark_pending_delivery_delivered``
+instead. ``mark_pending_delivery_exhausted`` is for a caller-decided EARLY
+exhaustion (e.g. a permanently gone endpoint) rather than one discovered as a
+side effect of a retry attempt.
+
+Every one of these five methods appends its own ``correction.
+notification_sent`` event (the only correction-delivery event name docs/spec/
+03_API_AND_EVENTS.md section 5.2 actually enumerates) via the EXISTING,
+unmodified ``record_event`` (:func:`bind_event_unit_of_work`) dependency —
+never a new ``CorrectionEvent`` revision, since none of these methods ever
+reads or writes ``CorrectionEvent.status``/``CORRECTION_LIFECYCLE`` (see
+below). The event payload extends task-packets/E6-T03.yaml's own
+``"sent"``/``"pending"`` ``delivery_status`` values with ``"delivered"``/
+``"exhausted"`` and adds ``attempt_number``/``channel`` (task-packets/
+E6-T06.yaml derived_decisions (g)) — a richer, SEPARATE event from whatever
+``notify_affected_practices`` itself already recorded for the initial failed
+attempt, not a replacement for it.
+
+Deliberately NOT done here (task-packets/E6-T06.yaml forbidden_changes/
+specification_gaps): ``CorrectionEvent.status``/``CORRECTION_LIFECYCLE`` is
+NEVER transitioned by any of these five methods, even once every
+per-recipient record for a correction resolves to ``delivered``/
+``exhausted`` — no edge is drawn out of ``DELIVERY_PENDING`` anywhere in
+docs/spec/01_SYSTEM_SPEC.md section 6.4 or ``mrr.domain.lifecycles``'s own
+``_CORRECTION_TRANSITIONS`` (that module stays byte-for-byte unchanged), so a
+correction whose every recipient is fully resolved remains permanently at
+``DELIVERY_PENDING`` at the aggregate level under this implementation — an
+open question for a future ADR or spec amendment, not resolved here. No
+scheduler, cron job, or message queue is built to invoke the retry-due query
+(``PostgresDeliveryPendingStore.list_due_for_retry``) on any cadence. No real
+network, mTLS, or encryption/KMS is built — both retry channels operate on
+already-in-memory values exactly like ``notify_affected_practices`` itself.
+Whether an ``exhausted`` record should cause a fresh E6-T03 notification (a
+new ``notification_id``/``expires_at``) is left an open workflow question,
+not resolved unilaterally here.
 """
 
 from __future__ import annotations
@@ -287,8 +371,10 @@ from mrr.contracts import (
     Urn,
 )
 from mrr.contracts.node_message_envelope import NodeMessageEnvelope
+from mrr.contracts.offline_bundle import BundleEncryption, OfflineBundle
 from mrr.domain.correction_impact import IMPACT_EDGE_TYPES, compute_impact
 from mrr.domain.correction_notification import resolve_trusted_correction_notification_key
+from mrr.domain.delivery_retry import DeliveryChannel, DeliveryPendingRecord, DeliveryPendingStore
 from mrr.domain.envelope_transport import EnvelopeDeliveryRequest, EnvelopeTransport
 from mrr.domain.envelope_validation import AlreadyProcessed, validate_inbound_envelope
 from mrr.domain.exceptions import (
@@ -304,6 +390,7 @@ from mrr.domain.hashing_policy import compute_content_hash, sign_object
 from mrr.domain.identity import new_urn
 from mrr.domain.key_management import KeyRing
 from mrr.domain.lifecycles import CORRECTION_LIFECYCLE
+from mrr.domain.offline_bundle import build_outbox_bundle
 from mrr.domain.repositories import (
     EDGE_VOCABULARY,
     EdgeRepository,
@@ -550,6 +637,15 @@ _CORRECTS_EDGE_TYPE = "corrects"
 #: add non-literal event names).
 _EVENT_RESPONSE_RECORDED = "correction.response_recorded"
 
+#: docs/spec/03_API_AND_EVENTS.md section 5.2's own enumerated event name,
+#: reused verbatim for every E6-T06 delivery-tracking outcome (opened,
+#: retried, delivered, exhausted) — the same name task-packets/E6-T03.yaml's
+#: own ``notify_affected_practices`` already emits for its own initial
+#: attempt, extended here with ``attempt_number``/``channel`` payload keys
+#: (task-packets/E6-T06.yaml derived_decisions (g)) rather than inventing a
+#: new event type string absent from that enumeration.
+_EVENT_NOTIFICATION_SENT = "correction.notification_sent"
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class NotificationRecipient:
@@ -623,6 +719,7 @@ class CorrectionImpactService:
         record: RecordRevisionWithEvent,
         record_event: RecordEventOnly | None = None,
         record_revision_with_edges: RecordRevisionWithEdgesAndEvent | None = None,
+        delivery_pending_store: DeliveryPendingStore | None = None,
     ) -> None:
         self._object_repository = object_repository
         self._edge_repository = edge_repository
@@ -641,6 +738,11 @@ class CorrectionImpactService:
         # record_response keep working unmodified. See the module
         # docstring's "E6-T04 addition" section.
         self._record_revision_with_edges = record_revision_with_edges
+        # E6-T06 addition. OPTIONAL (default None) for the identical reason
+        # — existing construction call sites that never call any of the five
+        # new delivery-tracking methods keep working unmodified. See the
+        # module docstring's "E6-T06 additions" section.
+        self._delivery_pending_store = delivery_pending_store
 
     # ------------------------------------------------------------------
     # Recording (MRR-FR-090): one-time creation, revision 1.
@@ -1298,6 +1400,364 @@ class CorrectionImpactService:
         return stored
 
     # ------------------------------------------------------------------
+    # Offline recipient delivery tracking (MRR-FR-094, E6-T06) — the durable
+    # pending-delivery record task-packets/E6-T03.yaml's own
+    # notify_affected_practices explicitly deferred. See the module
+    # docstring's "E6-T06 additions" section for the full design.
+    # ------------------------------------------------------------------
+
+    def open_pending_delivery(
+        self,
+        correction_id: Urn,
+        *,
+        notification_id: Urn,
+        recipient_node_id: str,
+        notification_expires_at: datetime,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> bool:
+        """Idempotently open a durable pending-delivery record the FIRST
+        time ``recipient_node_id``'s synchronous online attempt at
+        delivering ``notification_id`` reports ``"failed"`` (the moment
+        ``notify_affected_practices`` chains ``CORRECTION_LIFECYCLE``
+        through its already-drawn ``AWAITING_RESPONSES -> DELIVERY_PENDING``
+        edge for that recipient).
+
+        Appends a ``correction.notification_sent`` event
+        (``delivery_status="pending"``, ``attempt_number=1``,
+        ``channel="online"``) ONLY when this call newly opens the record —
+        a repeated call for the SAME ``(recipient_node_id, notification_id)``
+        is a complete no-op: no duplicate row, no duplicate event.
+
+        Args:
+            correction_id: the correction this notification concerns —
+                resolved via ``ObjectRepository.get_latest`` (raises
+                ``CorrectionNotFoundError`` if absent) so the appended
+                event's own ``object_revision`` is always the correction's
+                REAL current revision, never a caller-guessed value.
+            notification_id: the addressed ``CorrectionNotification``'s own
+                stable id.
+            recipient_node_id: the recipient node this record tracks.
+            notification_expires_at: the addressed notification's own
+                ``expires_at`` — copied onto the durable record so retry
+                scheduling/exhaustion can be evaluated later without
+                re-fetching the notification.
+            actor: MRR-NFR-001 provenance.
+            policy_version: MRR-NFR-001 provenance.
+            correlation_id: MRR-NFR-001 provenance.
+            at: the instant this call is made. Defaults to
+                ``datetime.now(UTC)``.
+
+        Returns:
+            ``True`` if this call newly opened the record, ``False`` for the
+            idempotent no-op case.
+
+        Raises:
+            CorrectionNotFoundError: ``correction_id`` resolves to no stored
+                object at all.
+            ValueError: this service was constructed without a
+                ``delivery_pending_store`` dependency.
+        """
+        store = self._require_delivery_pending_store()
+        self._require_record_event()
+        latest = self._get_latest_correction_or_raise(correction_id)
+        evaluation_instant = at if at is not None else datetime.now(UTC)
+
+        newly_opened = store.open_pending_delivery(
+            recipient_node_id,
+            notification_id,
+            correction_id=correction_id,
+            notification_expires_at=notification_expires_at,
+            at=evaluation_instant,
+        )
+        if newly_opened:
+            self._append_delivery_event(
+                correction=latest,
+                notification_id=notification_id,
+                recipient_node_id=recipient_node_id,
+                attempt_number=1,
+                delivery_status="pending",
+                channel="online",
+                occurred_at=evaluation_instant,
+                actor=actor,
+                policy_version=policy_version,
+                correlation_id=correlation_id,
+            )
+        return newly_opened
+
+    def retry_pending_delivery_online(
+        self,
+        correction_id: Urn,
+        *,
+        notification_id: Urn,
+        recipient_node_id: str,
+        envelope: NodeMessageEnvelope,
+        transport: EnvelopeTransport,
+        recipient_endpoint: str,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> DeliveryPendingRecord:
+        """Retry an open pending-delivery record by a FURTHER synchronous
+        ``EnvelopeTransport.send`` attempt with the SAME already-signed
+        ``envelope`` (never re-signed, never re-minted — task-packets/
+        E6-T06.yaml derived_decisions (e)).
+
+        Always appends a ``correction.notification_sent`` event recording
+        the outcome (``delivery_status`` is ``"delivered"``, ``"pending"``,
+        or ``"exhausted"`` depending on the resulting record's own
+        ``status``; ``channel="online"``).
+
+        Raises:
+            CorrectionNotFoundError: ``correction_id`` resolves to no stored
+                object at all.
+            mrr.domain.exceptions.PendingDeliveryNotFoundError: no pending
+                record exists for ``(recipient_node_id, notification_id)``
+                (``open_pending_delivery`` was never called, or the caller
+                passed the wrong pair) — no event is appended.
+            mrr.domain.exceptions.InvalidTransitionError: the record is
+                already ``delivered``/``exhausted`` — no event is appended.
+                This method does not pre-check the record's status before
+                attempting delivery (the transport attempt below already
+                happened); a caller that only ever retries records returned
+                by ``PostgresDeliveryPendingStore.list_due_for_retry`` never
+                hits this in practice.
+            ValueError: this service was constructed without a
+                ``delivery_pending_store`` dependency.
+        """
+        store = self._require_delivery_pending_store()
+        self._require_record_event()
+        latest = self._get_latest_correction_or_raise(correction_id)
+        evaluation_instant = at if at is not None else datetime.now(UTC)
+
+        outcome = transport.send(
+            EnvelopeDeliveryRequest(envelope=envelope, recipient_endpoint=recipient_endpoint)
+        )
+        record = store.record_retry_attempt(
+            recipient_node_id, notification_id, outcome=outcome.status, at=evaluation_instant
+        )
+        self._append_delivery_event(
+            correction=latest,
+            notification_id=notification_id,
+            recipient_node_id=recipient_node_id,
+            attempt_number=record.attempt_count,
+            delivery_status=record.status,
+            channel="online",
+            occurred_at=evaluation_instant,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+        )
+        return record
+
+    def retry_pending_delivery_offline(
+        self,
+        correction_id: Urn,
+        *,
+        notification_id: Urn,
+        recipient_node_id: str,
+        envelope: NodeMessageEnvelope,
+        bundle_id: str,
+        bundle_nonce: str,
+        sender_node_id: Urn,
+        sender_practice_id: Urn,
+        bundle_created_at: datetime,
+        bundle_expires_at: datetime,
+        signing_key: Ed25519PrivateKey,
+        signing_key_id: str,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        encryption: BundleEncryption | None = None,
+        at: datetime | None = None,
+    ) -> tuple[OfflineBundle, DeliveryPendingRecord]:
+        """Retry an open pending-delivery record by wrapping the SAME
+        already-signed ``envelope`` into a FRESH single-entry
+        ``OfflineBundle`` via the UNCHANGED ``mrr.domain.offline_bundle.
+        build_outbox_bundle`` — proving the online and offline retry
+        channels compose without modifying either (task-packets/E6-T06.yaml
+        invariant: "composition with the E5-T06 offline bundle export is
+        REUSE, not reimplementation").
+
+        The built bundle gets its OWN new ``bundle_id``/``bundle_nonce`` (so
+        it is never itself mistaken for a bundle replay) while carrying the
+        SAME unchanged envelope inside it. This method does NOT transmit the
+        bundle anywhere — no physical air-gap/file/USB transport medium is
+        built here (out of scope, exactly like every prior E5/E6 packet's
+        identical deferral); the caller owns actual transmission.
+
+        Because the offline channel has no in-repo delivery-acknowledgement
+        mechanism (specification_gaps: no "optional acknowledgement request"
+        field exists on ``NodeMessageEnvelope``), this always records
+        outcome ``"failed"`` against the tracking store (i.e. "attempted,
+        not yet confirmed delivered") — a caller with an out-of-band
+        delivery signal calls :meth:`mark_pending_delivery_delivered`
+        instead.
+
+        Always appends a ``correction.notification_sent`` event
+        (``channel="offline_bundle"``; ``delivery_status`` is ``"pending"``
+        or ``"exhausted"`` depending on the resulting record's own
+        ``status`` — never ``"delivered"``, since this channel never
+        self-reports that outcome).
+
+        Returns:
+            The freshly built ``OfflineBundle`` and the updated
+            ``DeliveryPendingRecord``.
+
+        Raises:
+            CorrectionNotFoundError, PendingDeliveryNotFoundError,
+            InvalidTransitionError: see
+                :meth:`retry_pending_delivery_online` — identical semantics,
+                over the offline channel.
+            ValueError: this service was constructed without a
+                ``delivery_pending_store`` dependency.
+        """
+        store = self._require_delivery_pending_store()
+        self._require_record_event()
+        latest = self._get_latest_correction_or_raise(correction_id)
+        evaluation_instant = at if at is not None else datetime.now(UTC)
+
+        bundle = build_outbox_bundle(
+            [envelope],
+            bundle_id=bundle_id,
+            bundle_nonce=bundle_nonce,
+            sender_node_id=sender_node_id,
+            sender_practice_id=sender_practice_id,
+            recipient_node_id=recipient_node_id,
+            created_at=bundle_created_at,
+            expires_at=bundle_expires_at,
+            signing_key=signing_key,
+            key_id=signing_key_id,
+            encryption=encryption,
+        )
+        record = store.record_retry_attempt(
+            recipient_node_id, notification_id, outcome="failed", at=evaluation_instant
+        )
+        self._append_delivery_event(
+            correction=latest,
+            notification_id=notification_id,
+            recipient_node_id=recipient_node_id,
+            attempt_number=record.attempt_count,
+            delivery_status=record.status,
+            channel="offline_bundle",
+            occurred_at=evaluation_instant,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+        )
+        return bundle, record
+
+    def mark_pending_delivery_delivered(
+        self,
+        correction_id: Urn,
+        *,
+        notification_id: Urn,
+        recipient_node_id: str,
+        channel: DeliveryChannel,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> DeliveryPendingRecord:
+        """Resolve an open pending-delivery record to ``delivered`` from a
+        caller-supplied out-of-band delivery signal — the only way an
+        OFFLINE retry (which never self-reports delivery) can ever resolve
+        (specification_gaps: no in-repo acknowledgement channel exists).
+        Also usable for an online retry the caller confirmed delivered by
+        some other means.
+
+        Always appends a ``correction.notification_sent`` event
+        (``delivery_status="delivered"``).
+
+        Raises:
+            CorrectionNotFoundError, PendingDeliveryNotFoundError,
+            InvalidTransitionError: see
+                :meth:`retry_pending_delivery_online`.
+            ValueError: this service was constructed without a
+                ``delivery_pending_store`` dependency.
+        """
+        store = self._require_delivery_pending_store()
+        self._require_record_event()
+        latest = self._get_latest_correction_or_raise(correction_id)
+        evaluation_instant = at if at is not None else datetime.now(UTC)
+
+        record = store.record_retry_attempt(
+            recipient_node_id, notification_id, outcome="delivered", at=evaluation_instant
+        )
+        self._append_delivery_event(
+            correction=latest,
+            notification_id=notification_id,
+            recipient_node_id=recipient_node_id,
+            attempt_number=record.attempt_count,
+            delivery_status="delivered",
+            channel=channel,
+            occurred_at=evaluation_instant,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+        )
+        return record
+
+    def mark_pending_delivery_exhausted(
+        self,
+        correction_id: Urn,
+        *,
+        notification_id: Urn,
+        recipient_node_id: str,
+        reason: str,
+        channel: DeliveryChannel,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> DeliveryPendingRecord:
+        """Explicitly resolve an open pending-delivery record to
+        ``exhausted`` for a caller-decided reason (e.g. the recipient
+        endpoint is known permanently gone) rather than one discovered as a
+        side effect of a retry attempt — mirrors ``mrr.domain.
+        delivery_retry.DeliveryPendingStore.mark_exhausted``'s own
+        "explicit, caller-decided" framing.
+
+        Always appends a ``correction.notification_sent`` event
+        (``delivery_status="exhausted"``) — exhaustion is an explicit
+        recorded outcome, never a silent give-up (task-packets/E6-T06.yaml
+        invariant).
+
+        Raises:
+            CorrectionNotFoundError: ``correction_id`` resolves to no stored
+                object at all.
+            ValueError: ``reason`` is empty, or this service was constructed
+                without a ``delivery_pending_store`` dependency.
+            mrr.domain.exceptions.PendingDeliveryNotFoundError,
+            mrr.domain.exceptions.InvalidTransitionError: see
+                :meth:`retry_pending_delivery_online`.
+        """
+        store = self._require_delivery_pending_store()
+        self._require_record_event()
+        latest = self._get_latest_correction_or_raise(correction_id)
+        evaluation_instant = at if at is not None else datetime.now(UTC)
+
+        record = store.mark_exhausted(
+            recipient_node_id, notification_id, reason=reason, at=evaluation_instant
+        )
+        self._append_delivery_event(
+            correction=latest,
+            notification_id=notification_id,
+            recipient_node_id=recipient_node_id,
+            attempt_number=record.attempt_count,
+            delivery_status="exhausted",
+            channel=channel,
+            occurred_at=evaluation_instant,
+            actor=actor,
+            policy_version=policy_version,
+            correlation_id=correlation_id,
+        )
+        return record
+
+    # ------------------------------------------------------------------
     # Internal helpers.
     # ------------------------------------------------------------------
 
@@ -1650,3 +2110,78 @@ class CorrectionImpactService:
                         next_frontier.add(edge.source_id)
             frontier = next_frontier
         return collected
+
+    # ------------------------------------------------------------------
+    # E6-T06 internal helpers.
+    # ------------------------------------------------------------------
+
+    def _require_delivery_pending_store(self) -> DeliveryPendingStore:
+        if self._delivery_pending_store is None:
+            raise ValueError(
+                "CorrectionImpactService was constructed without a delivery_pending_store "
+                "dependency, required for delivery-tracking methods (open_pending_delivery, "
+                "retry_pending_delivery_online, retry_pending_delivery_offline, "
+                "mark_pending_delivery_delivered, mark_pending_delivery_exhausted)"
+            )
+        return self._delivery_pending_store
+
+    def _require_record_event(self) -> RecordEventOnly:
+        """Checked BEFORE any of the five E6-T06 methods mutates the
+        delivery-pending store — a misconfigured service (``delivery_
+        pending_store`` wired but ``record_event`` is not) fails closed
+        before any write, rather than mutating the store and only then
+        discovering the event cannot be appended.
+        """
+        if self._record_event is None:
+            raise ValueError(
+                "CorrectionImpactService was constructed without a record_event dependency "
+                "(bind_event_unit_of_work), required to append a correction.notification_sent "
+                "event for a delivery-tracking outcome"
+            )
+        return self._record_event
+
+    def _append_delivery_event(
+        self,
+        *,
+        correction: StoredObject,
+        notification_id: str,
+        recipient_node_id: str,
+        attempt_number: int,
+        delivery_status: str,
+        channel: str,
+        occurred_at: datetime,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+    ) -> None:
+        """Append one ``correction.notification_sent`` event via the
+        EXISTING, unmodified ``record_event`` (ADR-0007 event-only path,
+        :func:`bind_event_unit_of_work`) — never a new ``CorrectionEvent``
+        revision, since none of the five E6-T06 methods above ever writes
+        ``CorrectionEvent.status``/drives ``CORRECTION_LIFECYCLE``.
+        """
+        if self._record_event is None:
+            raise ValueError(
+                "CorrectionImpactService was constructed without a record_event dependency "
+                "(bind_event_unit_of_work), required to append a correction.notification_sent "
+                "event for a delivery-tracking outcome"
+            )
+        event = DomainEvent(
+            id=new_urn("domain-event"),
+            event_type=_EVENT_NOTIFICATION_SENT,
+            occurred_at=occurred_at,
+            actor=actor,
+            policy_version=policy_version,
+            causation_id=self._last_event_id_for(correction.id),
+            correlation_id=correlation_id,
+            object_id=correction.id,
+            object_revision=correction.revision,
+            payload={
+                "notification_id": notification_id,
+                "recipient_node_id": recipient_node_id,
+                "attempt_number": attempt_number,
+                "delivery_status": delivery_status,
+                "channel": channel,
+            },
+        )
+        self._record_event(event)

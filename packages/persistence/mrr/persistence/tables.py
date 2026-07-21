@@ -2,8 +2,9 @@
 (task-packets/E1-T05.yaml derived_decisions: "one generic revisioned objects
 table plus one typed edges table, not per-entity tables"), the
 ``domain_events``/``outbox`` tables (task-packets/E1-T06.yaml), the
-``processed_ids`` table (task-packets/E5-T07.yaml), and the
-``key_revocations`` table (task-packets/E5-T07b.yaml).
+``processed_ids`` table (task-packets/E5-T07.yaml), the ``key_revocations``
+table (task-packets/E5-T07b.yaml), and the ``pending_deliveries`` table
+(task-packets/E6-T06.yaml).
 
 Core ``Table`` objects are used deliberately instead of the ORM's declarative
 classes — less magic under mypy strict, and these tables are accessed only
@@ -20,6 +21,7 @@ it.
 from __future__ import annotations
 
 import sqlalchemy as sa
+from mrr.domain.delivery_retry import DELIVERY_RECORD_STATUSES
 from mrr.domain.replay_retention import PROCESSED_ID_KINDS
 from mrr.domain.repositories import EDGE_VOCABULARY
 from mrr.provenance.log import OUTBOX_STATUSES
@@ -224,4 +226,82 @@ key_revocations_table = sa.Table(
     sa.Column("revoked_at", sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column("reason", sa.Text(), nullable=True),
     sa.PrimaryKeyConstraint("kid", name="pk_key_revocations"),
+)
+
+#: The IN-list clause for the ``pending_deliveries.status`` CHECK constraint,
+#: built from the single source of truth
+#: (``mrr.domain.delivery_retry.DELIVERY_RECORD_STATUSES``) — mirrors
+#: ``_EDGE_TYPE_CHECK_CLAUSE``/``_OUTBOX_STATUS_CHECK_CLAUSE``/
+#: ``_PROCESSED_ID_KIND_CHECK_CLAUSE`` above.
+_DELIVERY_RECORD_STATUS_LIST = ", ".join(f"'{s}'" for s in DELIVERY_RECORD_STATUSES)
+_DELIVERY_RECORD_STATUS_CHECK_CLAUSE = f"status IN ({_DELIVERY_RECORD_STATUS_LIST})"
+
+#: The durable, per-recipient offline delivery-tracking store (task-packets/
+#: E6-T06.yaml) backing ``mrr.persistence.repositories.
+#: PostgresDeliveryPendingStore`` and the pure ``mrr.domain.delivery_retry``
+#: narrow ``pending``/``delivered``/``exhausted`` machine — the "durable
+#: pending-delivery record" half of MRR-FR-094. This is INTERNAL node state,
+#: not a first-class, schema-validated cross-practice object (mirrors
+#: ``processed_ids_table``'s own identical precedent, task-packets/
+#: E5-T07.yaml: "a processed-id row is INTERNAL node state ... it gets NO
+#: schema/contract/example").
+#:
+#: Keyed by ``(recipient_node_id, notification_id)``, NOT ``notification_id``
+#: alone — mirrors ``processed_ids_table``'s own ``(recipient_node_id, id)``
+#: shape exactly, substituting the correction notification's own stable
+#: ``notification_id`` (independent of whichever envelope/bundle most
+#: recently wrapped it) for the envelope/bundle id. That pair is this
+#: table's primary key, which is also its UNIQUE constraint and the sole
+#: idempotency anchor ``mrr.persistence.repositories.
+#: PostgresDeliveryPendingStore.open_pending_delivery`` relies on
+#: (``INSERT ... ON CONFLICT DO NOTHING`` targets exactly this constraint).
+#:
+#: Unlike ``processed_ids_table`` (append-then-prune-only), this table DOES
+#: have an UPDATE path: ``record_retry_attempt``/``mark_exhausted`` mutate
+#: ``status``/``attempt_count``/``last_attempted_at``/``next_retry_at``/
+#: ``resolved_at``/``exhausted_reason`` in place on the SAME row — this
+#: record genuinely needs controlled mutation, which is exactly why it is a
+#: SEPARATE table from ``processed_ids_table`` rather than piggybacked onto
+#: it (task-packets/E6-T06.yaml forbidden_changes). There is still no DELETE
+#: path anywhere in ``PostgresDeliveryPendingStore`` — a resolved
+#: (``delivered``/``exhausted``) record is never pruned, because the record
+#: itself IS the durable audit fact MRR-FR-094 requires (task-packets/
+#: E6-T06.yaml derived_decisions (c)).
+#:
+#: ``next_retry_at`` is indexed alongside ``status`` to support the
+#: retry-due query's ``status = 'pending' AND next_retry_at <= now``
+#: predicate. ``notification_expires_at`` is the wrapped notification's own
+#: expiry, copied at ``open_pending_delivery`` time so
+#: ``mrr.domain.delivery_retry.next_retry_at``/``is_retry_exhausted`` can be
+#: evaluated per row without re-fetching the original notification — mirrors
+#: ``processed_ids_table.expires_at``'s identical reasoning. The CHECK
+#: constraint below additionally enforces, at the database level, that an
+#: ``exhausted`` row always carries a non-null ``exhausted_reason`` — a
+#: second, independent guard alongside ``PostgresDeliveryPendingStore.
+#: mark_exhausted``'s own in-code "reason must be non-empty" check
+#: (task-packets/E6-T06.yaml invariant: "delivery exhaustion is an explicit
+#: recorded outcome, never a silent give-up").
+pending_deliveries_table = sa.Table(
+    "pending_deliveries",
+    metadata,
+    sa.Column("recipient_node_id", sa.Text(), nullable=False),
+    sa.Column("notification_id", sa.Text(), nullable=False),
+    sa.Column("correction_id", sa.Text(), nullable=False),
+    sa.Column("status", sa.Text(), nullable=False),
+    sa.Column("attempt_count", sa.Integer(), nullable=False),
+    sa.Column("opened_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("last_attempted_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("next_retry_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column("notification_expires_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("resolved_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column("exhausted_reason", sa.Text(), nullable=True),
+    sa.PrimaryKeyConstraint("recipient_node_id", "notification_id", name="pk_pending_deliveries"),
+    sa.CheckConstraint(
+        _DELIVERY_RECORD_STATUS_CHECK_CLAUSE, name="ck_pending_deliveries_status_vocabulary"
+    ),
+    sa.CheckConstraint(
+        "status != 'exhausted' OR exhausted_reason IS NOT NULL",
+        name="ck_pending_deliveries_exhausted_has_reason",
+    ),
+    sa.Index("ix_pending_deliveries_status_next_retry_at", "status", "next_retry_at"),
 )

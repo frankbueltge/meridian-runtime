@@ -57,6 +57,7 @@ Acceptance-test mapping (task-packets/E6-T04.yaml, unit tier — ``record_respon
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -69,7 +70,15 @@ from mrr.contracts.node_message_envelope import NodeMessageEnvelope
 from mrr.contracts.practice import Practice
 from mrr.crypto.exceptions import SignatureVerificationError
 from mrr.crypto.keys import derive_key_id, encode_public_key, generate_ed25519_keypair
+from mrr.domain.delivery_retry import (
+    DELIVERY_RETRY_LIFECYCLE,
+    Backoff,
+    DeliveryPendingRecord,
+    is_retry_exhausted,
+    next_retry_at,
+)
 from mrr.domain.envelope_transport import EnvelopeDeliveryOutcome, EnvelopeDeliveryRequest
+from mrr.domain.envelope_validation import validate_inbound_envelope
 from mrr.domain.exceptions import (
     CorrectionNotFoundError,
     CorrectionNotificationAlreadyProcessedError,
@@ -78,6 +87,7 @@ from mrr.domain.exceptions import (
     EnvelopeAlreadyProcessedError,
     InvalidTransitionError,
     ObjectNotFoundError,
+    PendingDeliveryNotFoundError,
     RevisionConflictError,
     UnknownEdgeTypeError,
 )
@@ -85,6 +95,7 @@ from mrr.domain.hashing_policy import sign_object
 from mrr.domain.identity import new_urn
 from mrr.domain.lifecycles import CORRECTION_LIFECYCLE
 from mrr.domain.manifest_trust import practice_key_ring
+from mrr.domain.offline_bundle import validate_inbound_bundle
 from mrr.domain.repositories import EDGE_VOCABULARY, StoredObject, TypedEdge
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
@@ -328,6 +339,232 @@ def _services_with_response() -> tuple[
         ),
     )
     return correction_service, claim_service, object_repository, edge_repository, event_log
+
+
+@dataclass
+class _MutableDeliveryRow:
+    recipient_node_id: str
+    notification_id: str
+    correction_id: str
+    status: str
+    attempt_count: int
+    opened_at: datetime
+    last_attempted_at: datetime
+    next_retry_at: datetime | None
+    notification_expires_at: datetime
+    resolved_at: datetime | None
+    exhausted_reason: str | None
+
+
+class FakeDeliveryPendingStore:
+    """DB-free fake of ``mrr.domain.delivery_retry.DeliveryPendingStore``
+    (task-packets/E6-T06.yaml) — reuses the SAME pure ``mrr.domain.
+    delivery_retry.next_retry_at``/``is_retry_exhausted``/
+    ``DELIVERY_RETRY_LIFECYCLE`` the real ``PostgresDeliveryPendingStore``
+    uses internally, so this fake enforces the IDENTICAL business rules;
+    only the storage medium (a plain dict, not SQL) differs — mirrors this
+    test module's own ``FakeObjectRepository``/``FakeEdgeRepository``
+    precedent of a documented, business-rule-faithful in-memory double.
+    """
+
+    def __init__(self, *, max_attempts: int, backoff: Backoff) -> None:
+        self._max_attempts = max_attempts
+        self._backoff = backoff
+        self._rows: dict[tuple[str, str], _MutableDeliveryRow] = {}
+
+    def open_pending_delivery(
+        self,
+        recipient_node_id: str,
+        notification_id: str,
+        *,
+        correction_id: str,
+        notification_expires_at: datetime,
+        at: datetime,
+    ) -> bool:
+        key = (recipient_node_id, notification_id)
+        if key in self._rows:
+            return False
+        scheduled = next_retry_at(
+            last_attempted_at=at,
+            attempt_count=1,
+            backoff=self._backoff,
+            expires_at=notification_expires_at,
+        )
+        self._rows[key] = _MutableDeliveryRow(
+            recipient_node_id=recipient_node_id,
+            notification_id=notification_id,
+            correction_id=correction_id,
+            status="pending",
+            attempt_count=1,
+            opened_at=at,
+            last_attempted_at=at,
+            next_retry_at=scheduled,
+            notification_expires_at=notification_expires_at,
+            resolved_at=None,
+            exhausted_reason=None,
+        )
+        return True
+
+    def record_retry_attempt(
+        self,
+        recipient_node_id: str,
+        notification_id: str,
+        *,
+        outcome: str,
+        at: datetime,
+    ) -> DeliveryPendingRecord:
+        row = self._rows.get((recipient_node_id, notification_id))
+        if row is None:
+            raise PendingDeliveryNotFoundError(recipient_node_id, notification_id)
+
+        new_attempt_count = row.attempt_count + 1
+        if outcome == "delivered":
+            DELIVERY_RETRY_LIFECYCLE.assert_transition(row.status, "delivered")
+            row.status = "delivered"
+            row.attempt_count = new_attempt_count
+            row.last_attempted_at = at
+            row.next_retry_at = None
+            row.resolved_at = at
+        else:
+            exhausted = is_retry_exhausted(
+                attempt_count=new_attempt_count,
+                max_attempts=self._max_attempts,
+                expires_at=row.notification_expires_at,
+                at=at,
+            )
+            if exhausted:
+                DELIVERY_RETRY_LIFECYCLE.assert_transition(row.status, "exhausted")
+                row.status = "exhausted"
+                row.attempt_count = new_attempt_count
+                row.last_attempted_at = at
+                row.next_retry_at = None
+                row.resolved_at = at
+                row.exhausted_reason = "fixture: exhausted (see real store for a real reason)"
+            else:
+                if row.status != "pending":
+                    raise InvalidTransitionError(
+                        DELIVERY_RETRY_LIFECYCLE.name, row.status, "pending"
+                    )
+                row.attempt_count = new_attempt_count
+                row.last_attempted_at = at
+                row.next_retry_at = next_retry_at(
+                    last_attempted_at=at,
+                    attempt_count=new_attempt_count,
+                    backoff=self._backoff,
+                    expires_at=row.notification_expires_at,
+                )
+        return self._to_record(row)
+
+    def mark_exhausted(
+        self,
+        recipient_node_id: str,
+        notification_id: str,
+        *,
+        reason: str,
+        at: datetime,
+    ) -> DeliveryPendingRecord:
+        if not reason:
+            raise ValueError("reason must not be empty")
+        row = self._rows.get((recipient_node_id, notification_id))
+        if row is None:
+            raise PendingDeliveryNotFoundError(recipient_node_id, notification_id)
+        DELIVERY_RETRY_LIFECYCLE.assert_transition(row.status, "exhausted")
+        row.status = "exhausted"
+        row.resolved_at = at
+        row.next_retry_at = None
+        row.exhausted_reason = reason
+        return self._to_record(row)
+
+    def get_pending_delivery(
+        self, recipient_node_id: str, notification_id: str
+    ) -> DeliveryPendingRecord | None:
+        row = self._rows.get((recipient_node_id, notification_id))
+        return None if row is None else self._to_record(row)
+
+    def list_due_for_retry(self, now: datetime) -> list[DeliveryPendingRecord]:
+        return [
+            self._to_record(row)
+            for row in self._rows.values()
+            if row.status == "pending"
+            and row.next_retry_at is not None
+            and row.next_retry_at <= now
+        ]
+
+    def _to_record(self, row: _MutableDeliveryRow) -> DeliveryPendingRecord:
+        return DeliveryPendingRecord(
+            recipient_node_id=row.recipient_node_id,
+            notification_id=row.notification_id,
+            correction_id=row.correction_id,
+            status=row.status,  # type: ignore[arg-type]
+            attempt_count=row.attempt_count,
+            opened_at=row.opened_at,
+            last_attempted_at=row.last_attempted_at,
+            next_retry_at=row.next_retry_at,
+            notification_expires_at=row.notification_expires_at,
+            resolved_at=row.resolved_at,
+            exhausted_reason=row.exhausted_reason,
+        )
+
+
+def _linear_backoff(attempt_number: int) -> timedelta:
+    """A trivial, deterministic backoff policy for tests: 1 minute per
+    attempt number. Any caller-supplied ``Backoff`` would do — this is the
+    test suite's own arbitrary policy choice, not a value this module fixes
+    (task-packets/E6-T06.yaml derived_decisions (d)).
+    """
+    return timedelta(minutes=attempt_number)
+
+
+def _services_with_delivery_tracking(
+    *, max_attempts: int = 3
+) -> tuple[
+    CorrectionImpactService,
+    ClaimService,
+    FakeObjectRepository,
+    FakeEdgeRepository,
+    FakeEventLog,
+    FakeDeliveryPendingStore,
+]:
+    """Identical to :func:`_services_with_notification` but additionally
+    wires the OPTIONAL ``delivery_pending_store`` dependency (task-packets/
+    E6-T06.yaml) needed by ``open_pending_delivery``/
+    ``retry_pending_delivery_online``/``retry_pending_delivery_offline``/
+    ``mark_pending_delivery_delivered``/``mark_pending_delivery_exhausted``.
+    """
+    object_repository = FakeObjectRepository()
+    event_log = FakeEventLog()
+    edge_repository = FakeEdgeRepository()
+    claim_service = ClaimService(
+        object_repository,
+        event_log,
+        edge_repository,
+        _fake_record(object_repository, event_log),
+        _fake_record_edge(edge_repository, event_log),
+    )
+
+    def _record_event_only(event: DomainEvent) -> AppendedEvent:
+        return event_log.append_for_test(event)
+
+    delivery_pending_store = FakeDeliveryPendingStore(
+        max_attempts=max_attempts, backoff=_linear_backoff
+    )
+    correction_service = CorrectionImpactService(
+        object_repository,
+        edge_repository,
+        claim_service,
+        event_log,
+        _fake_record(object_repository, event_log),
+        _record_event_only,
+        delivery_pending_store=delivery_pending_store,
+    )
+    return (
+        correction_service,
+        claim_service,
+        object_repository,
+        edge_repository,
+        event_log,
+        delivery_pending_store,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1768,3 +2005,874 @@ def test_record_response_without_record_revision_with_edges_dependency_raises_va
         service.record_response(**_response_kwargs(decision="accept"))
 
     assert event_log.read_all() == []
+
+
+# ---------------------------------------------------------------------------
+# E6-T06: offline recipient delivery tracking.
+#
+# Acceptance-test mapping (task-packets/E6-T06.yaml, unit tier):
+#
+# - "open_pending_delivery creates exactly one row ... idempotent" (the
+#   DB-free half; the real-PostgreSQL half is
+#   tests/integration/persistence/test_pending_delivery_store.py) ->
+#   ``test_open_pending_delivery_creates_record_and_event``,
+#   ``test_open_pending_delivery_idempotent_no_duplicate_event``.
+# - "record_retry_attempt reporting pending/delivered ..." ->
+#   ``test_retry_pending_delivery_online_delivered_resolves_and_events``,
+#   ``test_retry_pending_delivery_online_still_failed_stays_pending_and_reschedules``.
+# - exhaustion via max_attempts ->
+#   ``test_retry_pending_delivery_online_exhausts_after_max_attempts``.
+# - "adversarial ... raises InvalidTransitionError and leaves the row
+#   completely unchanged" ->
+#   ``test_retry_pending_delivery_online_already_delivered_raises_invalid_transition``.
+# - "composition (no Postgres) ... wrapped ... into a single-entry
+#   OfflineBundle ... passes the UNCHANGED validate_inbound_bundle" ->
+#   ``test_retry_pending_delivery_offline_composes_build_outbox_bundle_and_validates``.
+# - "resolve a record once a caller-supplied delivered signal arrives" ->
+#   ``test_mark_pending_delivery_delivered_resolves_offline_retry``.
+# - "delivery exhaustion is an explicit recorded outcome" ->
+#   ``test_mark_pending_delivery_exhausted_records_reason_and_event``.
+# - "idempotent-redelivery demonstration (no Postgres) ..." ->
+#   ``test_same_envelope_fed_twice_through_validate_inbound_envelope_is_idempotent``.
+# - missing dependency guards ->
+#   ``test_open_pending_delivery_without_store_raises_valueerror`` and
+#   siblings, ``test_open_pending_delivery_without_record_event_dependency_raises_valueerror``.
+# - never touches CORRECTION_LIFECYCLE ->
+#   ``test_delivery_tracking_methods_never_invoke_correction_lifecycle``.
+# ---------------------------------------------------------------------------
+
+
+def _delivery_fixture_envelope(
+    *, recipient_node_id: str | None = None
+) -> tuple[NodeMessageEnvelope, Practice, Ed25519PrivateKey, str]:
+    """A single already-signed ``NodeMessageEnvelope``/``CorrectionNotification``
+    pair — exactly the shape a real (deferred) ``notify_affected_practices``
+    "failed" delivery attempt would have produced. Reused, never re-signed,
+    by every test below that needs an envelope to retry.
+    """
+    practice, private_key, key_id = _notifying_practice_fixture()
+    notification = _build_signed_notification(
+        notifying_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_practice_id=new_urn("practice"),
+        notified_object_ids=[new_urn("claim")],
+    )
+    envelope = _build_signed_envelope(
+        notification,
+        sender_practice_id=practice.id,
+        key_id=key_id,
+        private_key=private_key,
+        recipient_node_id=recipient_node_id or new_urn("node"),
+    )
+    return envelope, practice, private_key, key_id
+
+
+def test_open_pending_delivery_creates_record_and_event() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    recipient_node_id = new_urn("node")
+    notification_id = new_urn("correction-notification")
+
+    newly_opened = service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=_NOTIFICATION_EXPIRES_AT,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+
+    assert newly_opened is True
+    record = store.get_pending_delivery(recipient_node_id, notification_id)
+    assert record is not None
+    assert record.status == "pending"
+    assert record.attempt_count == 1
+    assert record.next_retry_at is not None
+    assert record.next_retry_at <= _NOTIFICATION_EXPIRES_AT
+
+    sent_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.event_type == "correction.notification_sent"
+    ]
+    assert len(sent_events) == 1
+    assert sent_events[0].payload["notification_id"] == notification_id
+    assert sent_events[0].payload["recipient_node_id"] == recipient_node_id
+    assert sent_events[0].payload["delivery_status"] == "pending"
+    assert sent_events[0].payload["attempt_number"] == 1
+    assert sent_events[0].payload["channel"] == "online"
+    assert sent_events[0].object_id == correction.id
+
+
+def test_open_pending_delivery_idempotent_no_duplicate_event() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    recipient_node_id = new_urn("node")
+    notification_id = new_urn("correction-notification")
+    kwargs: dict[str, Any] = {
+        "notification_id": notification_id,
+        "recipient_node_id": recipient_node_id,
+        "notification_expires_at": _NOTIFICATION_EXPIRES_AT,
+        "actor": _ACTOR,
+        "policy_version": _POLICY_VERSION,
+        "at": _NOTIFICATION_SENT_AT,
+    }
+
+    first = service.open_pending_delivery(correction.id, correlation_id=_correlation_id(), **kwargs)
+    second = service.open_pending_delivery(
+        correction.id, correlation_id=_correlation_id(), **kwargs
+    )
+
+    assert first is True
+    assert second is False
+    sent_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.event_type == "correction.notification_sent"
+    ]
+    assert len(sent_events) == 1
+    record = store.get_pending_delivery(recipient_node_id, notification_id)
+    assert record is not None
+    assert record.attempt_count == 1
+
+
+def test_retry_pending_delivery_online_delivered_resolves_and_events() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, *_rest = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+
+    transport = FakeEnvelopeTransport({"endpoint-a": "delivered"})
+    record = service.retry_pending_delivery_online(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        envelope=envelope,
+        transport=transport,
+        recipient_endpoint="endpoint-a",
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT + timedelta(minutes=1),
+    )
+
+    assert record.status == "delivered"
+    assert record.attempt_count == 2
+    assert record.resolved_at is not None
+    assert record.next_retry_at is None
+    assert len(transport.sent_requests) == 1
+    # The SAME envelope object was sent — never re-signed, never re-minted.
+    assert transport.sent_requests[0].envelope is envelope
+
+    delivered_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.payload.get("delivery_status") == "delivered"
+    ]
+    assert len(delivered_events) == 1
+    assert delivered_events[0].payload["channel"] == "online"
+    assert delivered_events[0].payload["attempt_number"] == 2
+
+
+def test_retry_pending_delivery_online_still_failed_stays_pending_and_reschedules() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking(max_attempts=5)
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, *_rest = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+    transport = FakeEnvelopeTransport({"endpoint-a": "failed"})
+
+    record = service.retry_pending_delivery_online(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        envelope=envelope,
+        transport=transport,
+        recipient_endpoint="endpoint-a",
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT + timedelta(minutes=1),
+    )
+
+    assert record.status == "pending"
+    assert record.attempt_count == 2
+    assert record.next_retry_at is not None
+    assert record.next_retry_at <= envelope.expires_at
+    pending_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.payload.get("delivery_status") == "pending"
+    ]
+    assert len(pending_events) == 2  # the initial open + this retry
+
+
+def test_retry_pending_delivery_online_exhausts_after_max_attempts() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking(max_attempts=2)
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, *_rest = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )  # attempt_count == 1
+    transport = FakeEnvelopeTransport({"endpoint-a": "failed"})
+
+    record = service.retry_pending_delivery_online(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        envelope=envelope,
+        transport=transport,
+        recipient_endpoint="endpoint-a",
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT + timedelta(minutes=1),
+    )  # attempt_count == 2 == max_attempts -> exhausted
+
+    assert record.status == "exhausted"
+    assert record.exhausted_reason
+    assert record.next_retry_at is None
+    assert record.resolved_at is not None
+    exhausted_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.payload.get("delivery_status") == "exhausted"
+    ]
+    assert len(exhausted_events) == 1
+    assert exhausted_events[0].payload["channel"] == "online"
+
+
+def test_retry_pending_delivery_offline_composes_build_outbox_bundle_and_validates() -> None:
+    """The acceptance test: a failed-delivery ``NodeMessageEnvelope`` is
+    wrapped, via the UNCHANGED ``build_outbox_bundle``, into a single-entry
+    ``OfflineBundle`` as a retry attempt; the SAME envelope object (identical
+    ``message_id`` and content) is carried, proving no re-signing or
+    re-minting occurred, and the resulting bundle passes the UNCHANGED
+    ``validate_inbound_bundle`` exactly as any independently-built bundle
+    would.
+    """
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, practice, private_key, key_id = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+
+    bundle_created_at = _NOTIFICATION_SENT_AT + timedelta(minutes=1)
+    bundle_expires_at = bundle_created_at + timedelta(days=1)
+    bundle, record = service.retry_pending_delivery_offline(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        envelope=envelope,
+        bundle_id=new_urn("offline-bundle"),
+        bundle_nonce="n" * 16,
+        sender_node_id=new_urn("node"),
+        sender_practice_id=practice.id,
+        bundle_created_at=bundle_created_at,
+        bundle_expires_at=bundle_expires_at,
+        signing_key=private_key,
+        signing_key_id=key_id,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=bundle_created_at,
+    )
+
+    # The SAME envelope object is carried — never re-signed, never re-minted.
+    assert bundle.envelopes == [envelope]
+    assert bundle.entries[0].message_id == envelope.message_id
+
+    ring = practice_key_ring(practice)
+    validated_envelopes = validate_inbound_bundle(
+        bundle,
+        this_node_id=recipient_node_id,
+        trusted_sender_practice_id=practice.id,
+        ring=ring,
+        already_processed=lambda _bundle_id: False,
+        at=bundle_created_at,
+    )
+    assert validated_envelopes == [envelope]
+
+    # No offline delivery-acknowledgement channel exists in this codebase
+    # (specification_gaps) — the outcome is recorded as "attempted, not yet
+    # confirmed delivered", never "delivered".
+    assert record.status == "pending"
+    assert record.attempt_count == 2
+
+    offline_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.payload.get("channel") == "offline_bundle"
+    ]
+    assert len(offline_events) == 1
+    assert offline_events[0].payload["delivery_status"] == "pending"
+
+
+def test_mark_pending_delivery_delivered_resolves_offline_retry() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, *_rest = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+
+    record = service.mark_pending_delivery_delivered(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        channel="offline_bundle",
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT + timedelta(hours=1),
+    )
+
+    assert record.status == "delivered"
+    delivered_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.payload.get("delivery_status") == "delivered"
+    ]
+    assert len(delivered_events) == 1
+    assert delivered_events[0].payload["channel"] == "offline_bundle"
+    assert store.get_pending_delivery(recipient_node_id, notification_id) == record
+
+
+def test_mark_pending_delivery_exhausted_records_reason_and_event() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, *_rest = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+
+    record = service.mark_pending_delivery_exhausted(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        reason="recipient endpoint permanently decommissioned",
+        channel="online",
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT + timedelta(hours=1),
+    )
+
+    assert record.status == "exhausted"
+    assert record.exhausted_reason == "recipient endpoint permanently decommissioned"
+    exhausted_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.payload.get("delivery_status") == "exhausted"
+    ]
+    assert len(exhausted_events) == 1
+
+
+def test_mark_pending_delivery_exhausted_requires_non_empty_reason() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, *_rest = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+
+    with pytest.raises(ValueError, match="reason"):
+        service.mark_pending_delivery_exhausted(
+            correction.id,
+            notification_id=notification_id,
+            recipient_node_id=recipient_node_id,
+            reason="",
+            channel="online",
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_SENT_AT + timedelta(hours=1),
+        )
+    assert store.get_pending_delivery(recipient_node_id, notification_id).status == "pending"  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Adversarial: an already-terminal record fails closed, no event appended.
+# ---------------------------------------------------------------------------
+
+
+def test_retry_pending_delivery_online_missing_record_raises_and_appends_no_event() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, *_rest = _delivery_fixture_envelope()
+    transport = FakeEnvelopeTransport({"endpoint-a": "failed"})
+
+    with pytest.raises(PendingDeliveryNotFoundError):
+        service.retry_pending_delivery_online(
+            correction.id,
+            notification_id=new_urn("correction-notification"),
+            recipient_node_id=envelope.recipient_node_id,
+            envelope=envelope,
+            transport=transport,
+            recipient_endpoint="endpoint-a",
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_SENT_AT,
+        )
+    # No correction.notification_sent event was appended (the earlier
+    # correction.recorded event from service.record() above is unrelated and
+    # expected).
+    assert [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.event_type == "correction.notification_sent"
+    ] == []
+
+
+def test_retry_pending_delivery_online_already_delivered_raises_invalid_transition() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, *_rest = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+    service.mark_pending_delivery_delivered(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        channel="online",
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT + timedelta(minutes=1),
+    )
+    events_before = list(event_log.read_all())
+    record_before = store.get_pending_delivery(recipient_node_id, notification_id)
+
+    transport = FakeEnvelopeTransport({"endpoint-a": "failed"})
+    with pytest.raises(InvalidTransitionError):
+        service.retry_pending_delivery_online(
+            correction.id,
+            notification_id=notification_id,
+            recipient_node_id=recipient_node_id,
+            envelope=envelope,
+            transport=transport,
+            recipient_endpoint="endpoint-a",
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_SENT_AT + timedelta(minutes=2),
+        )
+
+    # No new event appended, and the persisted record is byte-identical to
+    # before the rejected call — the persistence layer left the row
+    # completely unchanged (the transport attempt itself already happened;
+    # see retry_pending_delivery_online's own docstring for this disclosed
+    # ordering).
+    assert list(event_log.read_all()) == events_before
+    assert store.get_pending_delivery(recipient_node_id, notification_id) == record_before
+
+
+def test_mark_pending_delivery_exhausted_already_exhausted_raises_invalid_transition() -> None:
+    service, _, _, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    envelope, *_rest = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+    service.mark_pending_delivery_exhausted(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        reason="first exhaustion",
+        channel="online",
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT + timedelta(minutes=1),
+    )
+    events_before = list(event_log.read_all())
+    record_before = store.get_pending_delivery(recipient_node_id, notification_id)
+
+    with pytest.raises(InvalidTransitionError):
+        service.mark_pending_delivery_exhausted(
+            correction.id,
+            notification_id=notification_id,
+            recipient_node_id=recipient_node_id,
+            reason="second exhaustion attempt",
+            channel="online",
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_SENT_AT + timedelta(minutes=2),
+        )
+
+    assert list(event_log.read_all()) == events_before
+    assert store.get_pending_delivery(recipient_node_id, notification_id) == record_before
+
+
+# ---------------------------------------------------------------------------
+# Missing-dependency guards.
+# ---------------------------------------------------------------------------
+
+
+def test_open_pending_delivery_without_store_raises_valueerror() -> None:
+    service, _, _, _, _ = _services()
+    with pytest.raises(ValueError, match="delivery_pending_store"):
+        service.open_pending_delivery(
+            new_urn("correction"),
+            notification_id=new_urn("correction-notification"),
+            recipient_node_id=new_urn("node"),
+            notification_expires_at=_NOTIFICATION_EXPIRES_AT,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+
+
+def test_retry_pending_delivery_online_without_store_raises_valueerror() -> None:
+    service, _, _, _, _ = _services()
+    envelope, *_rest = _delivery_fixture_envelope()
+    with pytest.raises(ValueError, match="delivery_pending_store"):
+        service.retry_pending_delivery_online(
+            new_urn("correction"),
+            notification_id=new_urn("correction-notification"),
+            recipient_node_id=envelope.recipient_node_id,
+            envelope=envelope,
+            transport=FakeEnvelopeTransport({}),
+            recipient_endpoint="endpoint-a",
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+
+
+def test_retry_pending_delivery_offline_without_store_raises_valueerror() -> None:
+    service, _, _, _, _ = _services()
+    envelope, practice, private_key, key_id = _delivery_fixture_envelope()
+    with pytest.raises(ValueError, match="delivery_pending_store"):
+        service.retry_pending_delivery_offline(
+            new_urn("correction"),
+            notification_id=new_urn("correction-notification"),
+            recipient_node_id=envelope.recipient_node_id,
+            envelope=envelope,
+            bundle_id=new_urn("offline-bundle"),
+            bundle_nonce="n" * 16,
+            sender_node_id=new_urn("node"),
+            sender_practice_id=practice.id,
+            bundle_created_at=_NOTIFICATION_SENT_AT,
+            bundle_expires_at=_NOTIFICATION_SENT_AT + timedelta(days=1),
+            signing_key=private_key,
+            signing_key_id=key_id,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+
+
+def test_mark_pending_delivery_delivered_without_store_raises_valueerror() -> None:
+    service, _, _, _, _ = _services()
+    with pytest.raises(ValueError, match="delivery_pending_store"):
+        service.mark_pending_delivery_delivered(
+            new_urn("correction"),
+            notification_id=new_urn("correction-notification"),
+            recipient_node_id=new_urn("node"),
+            channel="online",
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+
+
+def test_mark_pending_delivery_exhausted_without_store_raises_valueerror() -> None:
+    service, _, _, _, _ = _services()
+    with pytest.raises(ValueError, match="delivery_pending_store"):
+        service.mark_pending_delivery_exhausted(
+            new_urn("correction"),
+            notification_id=new_urn("correction-notification"),
+            recipient_node_id=new_urn("node"),
+            reason="fixture reason",
+            channel="online",
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+        )
+
+
+def test_open_pending_delivery_without_record_event_dependency_raises_valueerror() -> None:
+    """``delivery_pending_store`` wired but ``record_event`` is NOT — fails
+    closed BEFORE any store mutation (see ``_require_record_event``'s own
+    docstring), so the store never gains a row nobody can now find an event
+    for.
+    """
+    object_repository = FakeObjectRepository()
+    event_log = FakeEventLog()
+    edge_repository = FakeEdgeRepository()
+    claim_service = ClaimService(
+        object_repository,
+        event_log,
+        edge_repository,
+        _fake_record(object_repository, event_log),
+        _fake_record_edge(edge_repository, event_log),
+    )
+    store = FakeDeliveryPendingStore(max_attempts=3, backoff=_linear_backoff)
+    service = CorrectionImpactService(
+        object_repository,
+        edge_repository,
+        claim_service,
+        event_log,
+        _fake_record(object_repository, event_log),
+        delivery_pending_store=store,  # record_event NOT wired
+    )
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    recipient_node_id = new_urn("node")
+    notification_id = new_urn("correction-notification")
+
+    with pytest.raises(ValueError, match="record_event"):
+        service.open_pending_delivery(
+            correction.id,
+            notification_id=notification_id,
+            recipient_node_id=recipient_node_id,
+            notification_expires_at=_NOTIFICATION_EXPIRES_AT,
+            actor=_ACTOR,
+            policy_version=_POLICY_VERSION,
+            correlation_id=_correlation_id(),
+            at=_NOTIFICATION_SENT_AT,
+        )
+    # Failed closed BEFORE any store mutation.
+    assert store.get_pending_delivery(recipient_node_id, notification_id) is None
+
+
+# ---------------------------------------------------------------------------
+# Never touches CORRECTION_LIFECYCLE / the CorrectionEvent object itself.
+# ---------------------------------------------------------------------------
+
+
+def test_delivery_tracking_methods_never_mutate_the_correction_object() -> None:
+    """CorrectionEvent.status/CORRECTION_LIFECYCLE is never transitioned by
+    any of the five E6-T06 methods (task-packets/E6-T06.yaml invariant),
+    verified DIRECTLY against the object store: the correction's own
+    revision history is byte-identical before and after every
+    delivery-tracking call, and its ``status`` stays ``OPEN``.
+
+    This does NOT monkeypatch ``mrr.domain.lifecycles.StateMachine``'s
+    shared class the way ``test_record_response_never_invokes_correction_
+    lifecycle`` does, because that would ALSO intercept ``mrr.domain.
+    delivery_retry.DELIVERY_RETRY_LIFECYCLE`` — a DIFFERENT instance of the
+    SAME ``StateMachine`` class — which this task's own methods legitimately
+    (and correctly) call ``assert_transition`` on. The direct, structural
+    check below is the one that actually distinguishes "CorrectionEvent was
+    transitioned" from "the new, narrow DeliveryRetry machine was
+    transitioned", which is the invariant this task actually needs to prove.
+    """
+    service, _, object_repository, _, event_log, store = _services_with_delivery_tracking()
+    correction = _correction(affected_object_ids=[new_urn("claim")])
+    service.record(
+        correction, actor=_ACTOR, policy_version=_POLICY_VERSION, correlation_id=_correlation_id()
+    )
+    revisions_before = object_repository.list_revisions(correction.id)
+
+    envelope, *_rest = _delivery_fixture_envelope()
+    notification_id = new_urn("correction-notification")
+    recipient_node_id = envelope.recipient_node_id
+
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT,
+    )
+    transport = FakeEnvelopeTransport({"endpoint-a": "delivered"})
+    record = service.retry_pending_delivery_online(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        envelope=envelope,
+        transport=transport,
+        recipient_endpoint="endpoint-a",
+        actor=_ACTOR,
+        policy_version=_POLICY_VERSION,
+        correlation_id=_correlation_id(),
+        at=_NOTIFICATION_SENT_AT + timedelta(minutes=1),
+    )
+
+    assert record.status == "delivered"
+    # The correction itself is untouched at the aggregate level — it remains
+    # at revision 1, status OPEN, forever (task-packets/E6-T06.yaml
+    # derived_decisions (f)).
+    assert object_repository.list_revisions(correction.id) == revisions_before
+    assert object_repository.get_latest(correction.id).body["status"] == "OPEN"
+
+
+# ---------------------------------------------------------------------------
+# Idempotent-redelivery demonstration (no Postgres) — task-packets/
+# E6-T06.yaml acceptance test: retrying with the IDENTICAL already-signed
+# envelope is safe against a genuinely-received-but-unacknowledged prior
+# delivery, without this task inventing any deduplication logic of its own.
+# ---------------------------------------------------------------------------
+
+
+def test_same_envelope_fed_twice_through_validate_inbound_envelope_is_idempotent() -> None:
+    envelope, practice, _private_key, _key_id = _delivery_fixture_envelope()
+    ring = practice_key_ring(practice)
+    processed_message_ids: set[str] = set()
+
+    def _already_processed(message_id: str) -> bool:
+        return message_id in processed_message_ids
+
+    # First submission: accepted.
+    validate_inbound_envelope(
+        envelope,
+        this_node_id=envelope.recipient_node_id,
+        trusted_sender_practice_id=practice.id,
+        ring=ring,
+        already_processed=_already_processed,
+        at=_NOTIFICATION_SENT_AT,
+    )
+    processed_message_ids.add(envelope.message_id)
+
+    # A retry with the SAME envelope object (as retry_pending_delivery_online
+    # sends) is rejected the second time — the recipient's own, unchanged
+    # replay defense treats it as an idempotent duplicate, never double
+    # processing it.
+    with pytest.raises(EnvelopeAlreadyProcessedError) as excinfo:
+        validate_inbound_envelope(
+            envelope,
+            this_node_id=envelope.recipient_node_id,
+            trusted_sender_practice_id=practice.id,
+            ring=ring,
+            already_processed=_already_processed,
+            at=_NOTIFICATION_SENT_AT,
+        )
+    assert excinfo.value.message_id == envelope.message_id
