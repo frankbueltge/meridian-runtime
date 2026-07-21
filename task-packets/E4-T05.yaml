@@ -136,7 +136,8 @@ acceptance_tests:
     Recommendation "pass"; mismatch -> matches_claimed_value=False and "fail";
     recomputation impossible (unknown operation / missing input) -> impossible_reason
     set and "inconclusive"
-  - MB-NUM cases recompute deterministically and classify correctly: a
+  - >-
+    MB-NUM cases recompute deterministically and classify correctly: a
     numerator/denominator swap and a percentage-vs-percentage-point confusion
     each yield a mismatch; a correct unit conversion yields a match
   - source anchor resolving against locally available artifact content ->

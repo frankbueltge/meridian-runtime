@@ -136,14 +136,16 @@ derived_decisions: >
   this task fills the seam they were built with. No intake service, no run-linkage,
   and no revocation annotation are built here (see forbidden_changes / scope_note).
 invariants:
-  - recording a processed id is idempotent: record_processed(id) twice for the same
+  - >-
+    recording a processed id is idempotent: record_processed(id) twice for the same
     (recipient_node_id, id) yields exactly one row, no error, and a stable
     already_processed(id) == True; the UNIQUE constraint, not application logic, is
     the idempotency anchor
   - already_processed(id) is True if and only if a row for (recipient_node_id, id)
     exists and has not been pruned; for any id never recorded (or pruned only after
     its retention horizon) it is False
-  - retention never reopens a replay window: prune_expired(now) deletes a row only
+  - >-
+    retention never reopens a replay window: prune_expired(now) deletes a row only
     when now is at or past processed_id_retention_horizon(row.expires_at), which is
     at or after the object's own expiry — so no still-valid envelope/bundle's id is
     ever pruned
@@ -152,34 +154,42 @@ invariants:
     (bundle_id) with NO change to either function; a resubmitted, already-recorded
     object is rejected fail closed (EnvelopeAlreadyProcessedError /
     BundleAlreadyProcessedError)
-  - the store is internal node state: it adds no contract/schema/example, imports
+  - >-
+    the store is internal node state: it adds no contract/schema/example, imports
     no provider SDK beyond SQLAlchemy (persistence layer), and both import-linter
     contracts stay KEPT (core packages still import no framework); the E1-T06
     tables and repositories are unchanged
-  - a processed-id row is append-then-prune only: it is never mutated in place, and
+  - >-
+    a processed-id row is append-then-prune only: it is never mutated in place, and
     prune is the only deletion (docs/spec/04 section 8.2 retention)
 acceptance_tests:
-  - integration (Postgres, CI): record_processed then already_processed returns
+  - >-
+    integration (Postgres, CI): record_processed then already_processed returns
     True; an id never recorded returns False; recording the SAME (node, id) twice
     leaves exactly one row and no error (idempotency); two different recipient nodes
     recording the same id do not shadow each other
-  - integration: the store's already_processed wired verbatim as the predicate makes
+  - >-
+    integration: the store's already_processed wired verbatim as the predicate makes
     validate_inbound_envelope reject a resubmitted envelope
     (EnvelopeAlreadyProcessedError) and validate_inbound_bundle reject a resubmitted
     bundle (BundleAlreadyProcessedError), while first submission passes — durable
     replay fail-closed end to end (E5 exit criterion)
-  - integration: prune_expired removes rows at/after their retention horizon and
+  - >-
+    integration: prune_expired removes rows at/after their retention horizon and
     returns the count; a row whose object is still within its validity window is
     NOT pruned (assert already_processed stays True across a prune that predates the
     horizon); after a legitimate prune past the horizon, already_processed returns
     False
-  - unit (no Postgres): processed_id_retention_horizon is at/after expires_at for
+  - >-
+    unit (no Postgres): processed_id_retention_horizon is at/after expires_at for
     any non-negative grace, is monotonic in expires_at, and its boundary (now ==
     horizon) is prunable — proving retention can never precede object expiry
-  - property (no Postgres): for arbitrary expires_at and grace >= 0,
+  - >-
+    property (no Postgres): for arbitrary expires_at and grace >= 0,
     processed_id_retention_horizon(expires_at, grace) >= expires_at (retention never
     reopens a replay window)
-  - integration: idempotent record under a UnitOfWork rollback leaves no row (the
+  - >-
+    integration: idempotent record under a UnitOfWork rollback leaves no row (the
     record participates in the caller transaction, not a side channel)
   - all existing suites stay green; both import-linter contracts remain KEPT; the
     integration tier skips VISIBLY when MRR_TEST_DATABASE_URL is unset locally and

@@ -82,11 +82,13 @@ forbidden_changes:
     E5-T01 is additive (introduces Practice + key primitives); wiring key
     descriptors/kids into manifest verification or a registry is E5-T02
   - any network egress, mTLS, transport, or online-node protocol (E5-T02/E5-T03)
-  - revocation/replay/expiry ENFORCEMENT and idempotency hardening (E5-T07):
+  - >-
+    revocation/replay/expiry ENFORCEMENT and idempotency hardening (E5-T07):
     represent key STATE (active/rotated/revoked) and answer "valid at time T",
     but do NOT build the runtime fail-closed wiring that rejects post-revocation
     objects across services
-  - a certificate/PKI/trust-chain implementation: the Practice/signature schema
+  - >-
+    a certificate/PKI/trust-chain implementation: the Practice/signature schema
     MAY carry an OPTIONAL trust-chain reference field (docs/spec/02 section 1.3),
     but building chain validation is out of scope
   - the crypto sign/verify/hash primitives' behavior and the domain
@@ -130,7 +132,8 @@ invariants:
   - Practice, PublicKeyDescriptor, the KeyRing, and the key primitives import NO
     provider SDK and NO web/workflow framework; both import-linter contracts stay
     KEPT and the core stays framework-free (MRR-NFR-004)
-  - a kid is derived only from the public key's raw bytes: identical public key
+  - >-
+    a kid is derived only from the public key's raw bytes: identical public key
     -> identical kid; different public key -> different kid; the kid never
     changes when any mutable label/name changes (docs/spec/02 section 1.1)
   - NO private key material is present in any contract, example, persisted shape,
@@ -153,17 +156,20 @@ acceptance_tests:
   - Practice validates against schemas/practice.schema.json and round-trips
     losslessly (Pydantic <-> JSON); the committed example validates and
     tests/contract cross-validates schema <-> model <-> example
-  - kid derivation is deterministic and collision-sensitive: the same public key
+  - >-
+    kid derivation is deterministic and collision-sensitive: the same public key
     yields the same kid across calls; two independently generated keys yield
     different kids; renaming/relabelling a Practice does not change any kid
     (property tests)
   - generate_ed25519_keypair returns a usable private key to the caller and a
     public descriptor that contains only public material; a test asserts no
     private-key bytes appear in the descriptor, the Practice model, or its JSON
-  - KeyRing resolves a kid to its descriptor and is_valid_at is true for an
+  - >-
+    KeyRing resolves a kid to its descriptor and is_valid_at is true for an
     active in-window key and false for each of: revoked, rotated, before
     valid_from, at/after valid_until, and an unknown kid (fail closed)
-  - rotation: after rotating kid A to a successor kid B, the ring returns B as
+  - >-
+    rotation: after rotating kid A to a successor kid B, the ring returns B as
     active and still resolves A (state rotated, supersedes/relation recorded);
     A is no longer valid_at now, B is
   - a Practice built with a real Ed25519 signing key carries a content_hash equal

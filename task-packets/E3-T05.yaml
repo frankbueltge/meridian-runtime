@@ -87,7 +87,7 @@ commands:
   - make lint
   - make typecheck
   - make test
-  required_output_note: no integration tier needed (pure logic, no DB)
+required_output_note: no integration tier needed (pure logic, no DB)
 required_output:
   - implementation summary
   - the exact independence rule derived from FR-071/FR-076/domain 2.13, and

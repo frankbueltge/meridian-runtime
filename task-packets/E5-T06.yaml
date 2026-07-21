@@ -184,33 +184,41 @@ invariants:
   - both import-linter contracts stay KEPT; the module imports no provider SDK,
     opens no network or file, and builds no persisted state
 acceptance_tests:
-  - happy path: build_outbox_bundle assembles a bundle of two already-signed
+  - >-
+    happy path: build_outbox_bundle assembles a bundle of two already-signed
     envelopes for a recipient node with an active in-window sender key; the
     recipient resolves the sender key via the sender practice's ring, the bundle
     signature verifies, every entry hash matches, and the verified envelopes are
     returned in order
-  - round-trip determinism: building the same bundle from the same envelopes and
+  - >-
+    round-trip determinism: building the same bundle from the same envelopes and
     metadata yields a byte-identical canonical exclude_none form and the same
     bundle content hash (property test)
-  - fail-closed matrix, each a distinct typed error: recipient_node_id != this
+  - >-
+    fail-closed matrix, each a distinct typed error: recipient_node_id != this
     node; evaluation instant outside [created_at, expires_at); bundle_id reported
     already-seen by the predicate; signer_practice_id != the trusted sender
     practice; kid does not resolve in the ring; resolved key revoked / rotated /
     expired / not-yet-valid at the instant; a tampered bundle whose signature no
     longer verifies; an entry whose declared envelope_content_hash != the carried
     envelope's actual hash
-  - batch-tamper matrix: adding, dropping, reordering, or retargeting an entry
+  - >-
+    batch-tamper matrix: adding, dropping, reordering, or retargeting an entry
     after signing is rejected because the bundle signature no longer verifies over
     the mutated exclude_none form
-  - replay: a bundle whose bundle_id the caller predicate reports as already-seen
+  - >-
+    replay: a bundle whose bundle_id the caller predicate reports as already-seen
     is rejected (BundleAlreadyProcessedError); the durable processed-id store is
     deferred to E5-T07
-  - revocation at the instant: a bundle signed by a key valid at creation but
+  - >-
+    revocation at the instant: a bundle signed by a key valid at creation but
     REVOKED in the ring by the evaluation instant is rejected (docs/spec/04
     section 8.4), while the revoked descriptor stays resolvable
-  - key-substitution attack: a bundle signed by an attacker key but claiming a
+  - >-
+    key-substitution attack: a bundle signed by an attacker key but claiming a
     trusted kid fails closed (SignatureVerificationError)
-  - end-to-end offline chain: a sealed EvidenceCrate wrapped in an E5-T03
+  - >-
+    end-to-end offline chain: a sealed EvidenceCrate wrapped in an E5-T03
     NodeMessageEnvelope, carried inside an OfflineBundle, survives import —
     validate_inbound_bundle verifies the batch, then each carried envelope passes
     validate_inbound_envelope, then the carried crate verifies via

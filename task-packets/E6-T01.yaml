@@ -317,41 +317,49 @@ invariants:
     edges of type `adapted_from` are accepted by the existing schema exactly
     as-is
 acceptance_tests:
-  - happy path, accepted: create (sender-signed, PUBLIC-classified
+  - >-
+    happy path, accepted: create (sender-signed, PUBLIC-classified
     transferred object, an active in-window sender key) -> offer -> respond
     "accepted"; the sender's signature resolves via the ring and both events
     (transfer.offered, transfer.responded) are appended with no new object
     revision after creation
-  - happy path, adapted: respond "adapted" with a pre-existing local object
+  - >-
+    happy path, adapted: respond "adapted" with a pre-existing local object
     id records an `adapted_from` edge (source=adapted object, target=the
     transferred object) atomically with `transfer.responded`; the edge is
     queryable via EdgeRepository.edges_from(adapted_object_id, "adapted_from")
   - rejected / deferred / unresolved paths each record `transfer.responded`
     with the matching `decision` payload value and no edge
-  - illegal-transition matrix, each fails closed with no event appended:
+  - >-
+    illegal-transition matrix, each fails closed with no event appended:
     respond before offer; a second respond after a terminal outcome already
     recorded; offer called twice
   - a create referencing an object classified PARTICIPANT_IDENTIFIABLE is
     rejected with a distinct typed error; nothing is persisted
-  - signature fail-closed matrix at `respond`, each a distinct typed error:
+  - >-
+    signature fail-closed matrix at `respond`, each a distinct typed error:
     signer_practice_id != the trusted sender practice; kid does not resolve
     in the ring; resolved key revoked/rotated/expired/not-yet-valid at the
     evaluation instant; a tampered content record whose signature no longer
     verifies — mirrors the E5-T05 crate-verification matrix exactly
   - adaptation with a nonexistent adapted object id is rejected; no edge and
     no `transfer.responded` event are persisted (adversarial)
-  - hash-pinning property test: for any sequence of create -> offer ->
+  - >-
+    hash-pinning property test: for any sequence of create -> offer ->
     respond, the stored content record's `transferred_objects` content
     hashes are byte-identical to what `create` was called with — never
     rewritten
-  - property test: random invalid TRANSFER_LIFECYCLE transition sequences
+  - >-
+    property test: random invalid TRANSFER_LIFECYCLE transition sequences
     never succeed (mirrors the Claim lifecycle property test's own
     discipline)
-  - contract tier: the new schema is valid Draft 2020-12; the new example
+  - >-
+    contract tier: the new schema is valid Draft 2020-12; the new example
     validates against both the JSON Schema and the Pydantic model and
     round-trips (the nineteenth entity, via scripts/check_contracts.py's
     ENTITY_MODELS)
-  - integration test (real PostgreSQL): create -> offer -> respond persist
+  - >-
+    integration test (real PostgreSQL): create -> offer -> respond persist
     atomically with their events; querying the generic objects/edges tables
     directly confirms no migration was needed (kind="TransferContract" rows
     exist; the adapted_from edge satisfies the existing CHECK constraint)

@@ -53,7 +53,8 @@ derived_decisions: >
   them (adjusting effective evidence weight, never deleting sources) is
   E3-T05.
 invariants:
-  - a SourceFamily never removes or deletes a member source - it only records
+  - >-
+    a SourceFamily never removes or deletes a member source - it only records
     dependence; representation is additive (domain 2.10: family confidence is
     not used to silently delete sources)
   - the relationship type is one of the domain-2.10 values (copy, syndication,

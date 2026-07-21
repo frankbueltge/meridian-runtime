@@ -128,27 +128,32 @@ invariants:
   - the distinct failure reasons (signer-mismatch / unknown-kid / key-not-valid /
     bad-signature) are DISTINCT typed errors, never collapsed into one generic
     failure; on any failure nothing is decided and no state is written
-  - the resolver is symmetric: the same function authenticates an origin-signed
+  - >-
+    the resolver is symmetric: the same function authenticates an origin-signed
     task (trust the origin practice) and a node-signed modification (trust the node
     practice), per MRR-FR-023's round trip
   - E2-T03's decision transitions, authority checks (MRR-FR-022), refusal events
     (MRR-FR-024), and modification-as-signed-revision (MRR-FR-023) are UNCHANGED
     and still green; both import-linter contracts stay KEPT; no network/new store
 acceptance_tests:
-  - happy path, node side: an origin practice signs a TaskBundle with an active
+  - >-
+    happy path, node side: an origin practice signs a TaskBundle with an active
     in-window key; the node resolves the trusted key via the origin practice's
     ring and a decision (accept) proceeds using that resolved key
-  - happy path, origin side (MRR-FR-023): a node proposes a modification as a new
+  - >-
+    happy path, origin side (MRR-FR-023): a node proposes a modification as a new
     signed revision; the origin resolves the trusted key via the NODE practice's
     ring and accept_modification proceeds using that resolved key
-  - fail-closed matrix, each a distinct typed error, nothing decided/written:
+  - >-
+    fail-closed matrix, each a distinct typed error, nothing decided/written:
     signer_practice_id != the trusted practice; kid does not resolve in the ring;
     resolved key revoked / rotated / expired / not-yet-valid at the instant; and a
     tampered bundle whose signature no longer verifies
   - a bundle signed by a key valid at signing but REVOKED in the counterparty ring
     by the evaluation instant is rejected (docs/spec/04 section 8.4), while the
     revoked descriptor stays resolvable in the ring
-  - verification uses the ring's key: a bundle signed by an attacker key but
+  - >-
+    verification uses the ring's key: a bundle signed by an attacker key but
     claiming a trusted kid fails closed (SignatureVerificationError)
   - all existing E2-T03 task_bundle suites stay green; both import-linter contracts
     remain KEPT and the resolver imports no provider SDK / opens no network

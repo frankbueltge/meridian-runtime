@@ -65,7 +65,8 @@ forbidden_changes:
     RECORDS a waiver reason when a role is absent and preserves every produced
     branch with its priority rationale, but the selection/scoring logic is
     orchestration, out of scope
-  - any verification / authoritative state - a Hypothesis is NOT a claim of
+  - >-
+    any verification / authoritative state - a Hypothesis is NOT a claim of
     result (docs/spec/02_DOMAIN_MODEL.md 2.4; MRR-FR-014): it MUST have no
     verified/supported/result/authoritative field and its status enum MUST have
     no "verified" value; the planner cannot mark its own hypothesis verified

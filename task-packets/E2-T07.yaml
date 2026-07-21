@@ -68,7 +68,8 @@ invariants:
   - every object the flow produces resolves by hash - the crate's run_id
     resolves to the recorded RunManifest, artifact hashes recompute to stored
     bytes, and the sealed crate's node signature verifies
-  - deterministic replay: running the same approved score + task bundle twice
+  - >-
+    deterministic replay: running the same approved score + task bundle twice
     yields the same executor output hash (the deterministic-replay gate)
   - the policy-denied and timed-out paths each surface as an explicit terminal
     outcome and a sealed (failure) crate, never a silent success or a generic
@@ -78,17 +79,20 @@ invariants:
   - the CLI composes services only; it introduces no new domain behavior and
     no core package imports it (layering contract holds)
 acceptance_tests:
-  - E2E-001 (E2 scope): approve score -> register node -> create/offer/accept
+  - >-
+    E2E-001 (E2 scope): approve score -> register node -> create/offer/accept
     task -> execute -> record run manifest -> seal crate, end to end, with no
     LLM, asserting the sealed crate exists and references the run and task,
     all hashes resolve, and the node signature verifies (integration/e2e,
     real PostgreSQL)
-  - deterministic replay: the loop run twice produces the same output hash
+  - >-
+    deterministic replay: the loop run twice produces the same output hash
   - an unapproved score aborts the run at the gate with the deterministic
     typed error
   - a policy-denied run and a timed-out run each seal an explicit failure
     crate carrying that terminal state
-  - `mrr` console script is invocable and drives the flow (a smoke
+  - >-
+    `mrr` console script is invocable and drives the flow (a smoke
     invocation, e.g. --help and a dry sub-command, works)
   - the services layering and core import contracts still hold
 commands:

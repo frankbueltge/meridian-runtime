@@ -48,14 +48,16 @@ derived_decisions: >
   content hash. No PostgreSQL and no migration: this task stores bytes, not
   metadata rows, so it needs no database and is fully testable locally.
 invariants:
-  - the store key is the artifact's SHA-256 content hash; identical bytes map
+  - >-
+    the store key is the artifact's SHA-256 content hash; identical bytes map
     to one blob, and distinct bytes cannot share a key (02 section 2.7:
     "byte changes change identity")
   - storing is idempotent - putting identical bytes twice yields the same
     descriptor and one stored blob, never a second copy or an error
   - stored bytes are immutable - the public interface offers no update or
     delete, and a key can never be rebound to different bytes
-  - reads verify integrity - if a stored blob's bytes no longer hash to its
+  - >-
+    reads verify integrity - if a stored blob's bytes no longer hash to its
     key (corruption or tampering), get fails closed with a typed error rather
     than returning wrong bytes (acceptance: "recomputing a sealed artifact
     hash yields the stored value")
@@ -68,7 +70,8 @@ invariants:
     framework code
 acceptance_tests:
   - put then get returns the original bytes exactly
-  - put computes a sha256: hash equal to mrr.crypto.hashing over the bytes
+  - >-
+    put computes a sha256: hash equal to mrr.crypto.hashing over the bytes
   - put is idempotent - identical content twice gives one blob and an equal
     descriptor
   - get on an unknown hash raises a typed not-found error

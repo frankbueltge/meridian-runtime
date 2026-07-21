@@ -56,7 +56,8 @@ invariants:
   - a manifest whose validity window does not include the evaluation instant
     is expired/not-yet-valid and is never returned by lookup or match, though
     it remains stored and historically addressable
-  - the registry never returns an authorization decision - find/match answer
+  - >-
+    the registry never returns an authorization decision - find/match answer
     "which nodes declare capability X and are currently valid", not "is X
     allowed" (section 7.3: "It does not grant permission")
   - re-registering a node_id creates a new revision; prior manifests stay

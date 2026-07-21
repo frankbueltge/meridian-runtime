@@ -37,7 +37,8 @@ forbidden_changes:
     export (MRR-FR-101..104 are Epic E8)
   - cross-practice transfer and recipient response (E6; the E2E-003 steps
     about transfer/recipients are out of E3 scope)
-  - any NEW authoritative state - a projection is DERIVED and re-buildable,
+  - >-
+    any NEW authoritative state - a projection is DERIVED and re-buildable,
     NEVER the primary record (AGENTS.md: "Narrative reports are projections
     and are never the primary research record")
   - schema semantics; model/LLM; HTTP/FastAPI endpoints
@@ -76,7 +77,8 @@ acceptance_tests:
     once the correction is resolved it is no longer shown as unresolved
   - rebuilding the projection from the same graph state yields an identical
     result (re-derivable, no hidden state)
-  - E2E-003 (E3 scope, real PostgreSQL): a supported claim with downstream
+  - >-
+    E2E-003 (E3 scope, real PostgreSQL): a supported claim with downstream
     dependents has its source invalidated by a critical correction; impact
     propagation flags every dependent (review_required); the projection shows
     the unresolved correction and the flagged claims - every dependency is

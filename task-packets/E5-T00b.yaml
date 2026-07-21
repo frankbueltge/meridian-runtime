@@ -85,9 +85,11 @@ invariants:
     `labels` absent), `content_hash == compute_content_hash(json.loads(
     score.model_dump_json(exclude_none=True)))` - content_hash equals the hash of
     the persisted body
-  - `compute_content_hash` and the `prepare_for_*` policy are unchanged; no
+  - >-
+    `compute_content_hash` and the `prepare_for_*` policy are unchanged; no
     signature path is touched; both import-linter contracts stay KEPT
-  - existing create/approve/revise behavior is preserved: the research_score
+  - >-
+    existing create/approve/revise behavior is preserved: the research_score
     service still persists the exclude_none body and (on revise) recomputes over
     exclude_none - now consistent with the initial object's hash
 acceptance_tests:

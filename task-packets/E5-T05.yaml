@@ -115,19 +115,23 @@ invariants:
   - both import-linter contracts stay KEPT; the resolver imports no provider SDK /
     opens no network / builds no persisted state
 acceptance_tests:
-  - happy path: an executing node seals+signs an EvidenceCrate (via the real
+  - >-
+    happy path: an executing node seals+signs an EvidenceCrate (via the real
     EvidenceCrateSealer) with an active in-window key; the origin resolves the
     trusted key via the node practice's ring and verification succeeds
-  - fail-closed matrix, each a distinct typed error: signer_practice_id != the
+  - >-
+    fail-closed matrix, each a distinct typed error: signer_practice_id != the
     trusted node practice; kid does not resolve in the ring; resolved key revoked /
     rotated / expired / not-yet-valid at the instant; a tampered crate whose
     signature no longer verifies
   - a crate signed by a key valid at sealing but REVOKED in the ring by the
     evaluation instant is rejected (docs/spec/04 section 8.4), while the revoked
     descriptor stays resolvable
-  - the key-substitution attack: a crate signed by an attacker key but claiming a
+  - >-
+    the key-substitution attack: a crate signed by an attacker key but claiming a
     trusted kid fails closed (SignatureVerificationError)
-  - end-to-end inbound path: a sealed crate wrapped in an E5-T03 NodeMessageEnvelope
+  - >-
+    end-to-end inbound path: a sealed crate wrapped in an E5-T03 NodeMessageEnvelope
     is accepted by validate_inbound_envelope AND its carried crate verifies via
     resolve_trusted_crate_key — proving the payload's own signature is checked, not
     just payload_content_hash

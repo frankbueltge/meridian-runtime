@@ -104,7 +104,8 @@ invariants:
   - ModelProfile, ModelInvocation, and the ModelAdapter port import NO provider
     SDK and NO web/workflow framework; `provider` is an opaque string label, not
     a vendor type - BOTH import-linter contracts stay KEPT
-  - the operation kind is explicit and required: a deterministic and a
+  - >-
+    the operation kind is explicit and required: a deterministic and a
     stochastic invocation are both representable and DISTINCT; a missing or
     self-contradictory kind (e.g. deterministic while declaring nonzero sampling)
     is rejected, not silently defaulted (MRR-FR-044)
@@ -132,7 +133,8 @@ acceptance_tests:
   - a ModelInvocation built under the DEFAULT redaction policy contains only the
     prompt/response HASHES and no raw prompt/response text; retaining raw text
     requires the policy to explicitly permit it
-  - operation kind is required and validated: deterministic and stochastic
+  - >-
+    operation kind is required and validated: deterministic and stochastic
     invocations are both constructible and distinct; a missing kind and a
     self-contradictory kind are both rejected
   - the terminal statuses completed / refused / error / timed_out remain

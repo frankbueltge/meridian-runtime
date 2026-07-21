@@ -143,7 +143,8 @@ acceptance_tests:
     metrics report; the harness reports agent and baseline side by side
   - a boundary metric exactly at its target (e.g. numeric accuracy == 0.95)
     passes; false support exactly at 0.02 passes
-  - `make benchmark` runs the populated tier green; meridianbench is removed from
+  - >-
+    `make benchmark` runs the populated tier green; meridianbench is removed from
     tests/EMPTY_TIERS.txt; both import-linter contracts remain KEPT
 commands:
   - make format

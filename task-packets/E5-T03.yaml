@@ -143,7 +143,8 @@ invariants:
     generic one, persisting/echoing only a coarse reason category
   - replay is a CHECK via a caller-supplied predicate; NO durable processed-id
     store is built (E5-T07), and NO real transport/mTLS is built (infra-dependent)
-  - the transport port is abstract: it opens no network, and only an in-test fake
+  - >-
+    the transport port is abstract: it opens no network, and only an in-test fake
     implements it; no secret or private key is recorded anywhere
   - E5-T03 adds only new modules; NodeManifest/TaskBundle/EvidenceCrate/Signature/
     Practice and the E5-T02 resolver are unchanged
@@ -155,7 +156,8 @@ acceptance_tests:
     whose carried payload's content_hash matches payload_content_hash, whose
     message id is unseen, and whose transport signature verifies under the sender's
     valid trusted key, is ACCEPTED
-  - fail-closed matrix, each a distinct typed error and a coarse reason, nothing
+  - >-
+    fail-closed matrix, each a distinct typed error and a coarse reason, nothing
     accepted: wrong recipient; before sent_at / at-or-after expires_at; payload
     content_hash != payload_content_hash (payload tampered); message id reported
     already-processed by the predicate; sender signature invalid / signer-practice

@@ -65,7 +65,8 @@ forbidden_changes:
     field-selection policy in packages/domain/mrr/domain/hashing_policy.py - the
     flip is ONLY about which dict is fed to sign/verify (the exclude_none body),
     never about the field-exclusion rule or the canonicalization/hash algorithm
-  - the content-hash computation: `compute_content_hash` already canonicalizes
+  - >-
+    the content-hash computation: `compute_content_hash` already canonicalizes
     the `exclude_none=True` body and MUST stay exactly as is; this task makes
     SIGNING match it, it does not change hashing
   - any NEW signed object, entity, JSON Schema, Pydantic contract, or example
@@ -116,13 +117,16 @@ invariants:
     bytes the signature covers EQUAL the bytes the persisted `body` canonicalizes
     to with the `signature` field removed - one byte-definition of "the object"
     for hashing, signing, and persistence (ADR-0004 gap 2 closed)
-  - `compute_content_hash` and the `prepare_for_hash` / `prepare_for_signature`
+  - >-
+    `compute_content_hash` and the `prepare_for_hash` / `prepare_for_signature`
     field-selection policy are unchanged; content hashing already used the
     exclude_none form and still does
-  - signer and verifier for each object remain mutually consistent: a correctly
+  - >-
+    signer and verifier for each object remain mutually consistent: a correctly
     signed object round-trips (verify succeeds); the content_hash still travels
     under the signature (prepare_for_signature keeps it)
-  - fail-closed is preserved: a tampered payload, a tampered signature value, and
+  - >-
+    fail-closed is preserved: a tampered payload, a tampered signature value, and
     a non-Ed25519 algorithm each still raise (SignatureVerificationError /
     UnsupportedAlgorithmError) before any object is persisted; no boolean form
   - an object signed over the OLD null-including form no longer verifies under
@@ -131,24 +135,29 @@ invariants:
   - committed examples/*.json are untouched (placeholder signatures; contract
     tests remain schema-shape-only) and both import-linter contracts stay KEPT
 acceptance_tests:
-  - NodeManifest round trip: build a manifest with at least one optional field
+  - >-
+    NodeManifest round trip: build a manifest with at least one optional field
     unset (e.g. data_residency or labels), sign over the exclude_none body, and
     the capability registry verifies it; tampering any signed field fails closed;
     tampering the signature value fails closed; a non-Ed25519 algorithm is
     rejected (all pre-existing capability-registry tests stay green on the new form)
-  - TaskBundle round trip: sign a bundle over the exclude_none body, the
+  - >-
+    TaskBundle round trip: sign a bundle over the exclude_none body, the
     task-bundle service verifies it against the persisted body; a post-signing
     content mutation and a tampered signature each fail closed (existing
     task-bundle signature tests stay green on the new form)
-  - EvidenceCrate: the node-runtime builder signs a crate over the exclude_none
+  - >-
+    EvidenceCrate: the node-runtime builder signs a crate over the exclude_none
     body and the resulting signature verifies with verify_object_signature over
     the same exclude_none body (a local check in the test; no verify path is
     wired into production code - that is E5-T05)
-  - property test (the ADR-0004 gap-2 proof): for each signed object type, with
+  - >-
+    property test (the ADR-0004 gap-2 proof): for each signed object type, with
     at least one optional field None, the canonical bytes of the signed payload
     equal the canonical bytes of the persisted body with `signature` removed, and
     contain no `null` for the absent optional; and the object still verifies
-  - regression/break test: a signature produced over the OLD `model_dump(mode=
+  - >-
+    regression/break test: a signature produced over the OLD `model_dump(mode=
     "json")` (null-including) form does NOT verify under the new verify path
   - make test and make test-contract are green locally; make test-integration
     and make test-e2e (which need PostgreSQL) are green in CI

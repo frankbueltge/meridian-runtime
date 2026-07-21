@@ -127,7 +127,8 @@ acceptance_tests:
     silent empty/None)
   - the content hash equals the SHA-256 of the exact committed template bytes,
     recomputed independently
-  - render fills declared variables deterministically: identical (template,
+  - >-
+    render fills declared variables deterministically: identical (template,
     variables) yields identical rendered text and hash; a missing declared
     variable raises an explicit error; an unknown extra variable raises an
     explicit error; no placeholder is left silently unfilled

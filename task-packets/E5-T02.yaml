@@ -124,7 +124,8 @@ derived_decisions: >
   reused verbatim, and on any failure nothing is persisted (verification precedes
   every write, exactly as register already orders it).
 invariants:
-  - a received NodeManifest is accepted ONLY when ALL hold: signer_practice_id ==
+  - >-
+    a received NodeManifest is accepted ONLY when ALL hold: signer_practice_id ==
     the trusted sender practice id; its kid resolves in that practice's KeyRing;
     the resolved descriptor is valid at the evaluation instant (active + window);
     the descriptor's public key is among manifest.public_keys; and the Ed25519
@@ -144,11 +145,13 @@ invariants:
   - no network is opened; the resolver imports no provider SDK or web framework;
     both import-linter contracts stay KEPT
 acceptance_tests:
-  - happy path: a Practice with an active in-window key signs a NodeManifest with
+  - >-
+    happy path: a Practice with an active in-window key signs a NodeManifest with
     that key's kid; receive() with that Practice trust-anchors, verifies, and
     registers it (the stored revision and registered event match register's own
     behavior)
-  - fail-closed matrix, each rejected with its own typed error, nothing persisted,
+  - >-
+    fail-closed matrix, each rejected with its own typed error, nothing persisted,
     a rejected event with a coarse reason recorded: unknown kid; revoked kid;
     rotated (superseded) kid; expired / not-yet-valid key at the evaluation
     instant; signer_practice_id != the trusted practice id; kid resolves but its
@@ -160,7 +163,8 @@ acceptance_tests:
     attributability, from E5-T01)
   - the Practice->KeyRing helper builds a ring whose kids and descriptors match
     the practice's keys and round-trips through is_valid_at correctly
-  - property/unit: the resolver never returns a key for any failing precondition
+  - >-
+    property/unit: the resolver never returns a key for any failing precondition
     (returns only on all-hold); existing register(verifying_key=) tests stay green
   - both import-linter contracts remain KEPT and the resolver imports no provider
     SDK / opens no network

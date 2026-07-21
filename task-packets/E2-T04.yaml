@@ -63,7 +63,8 @@ invariants:
   - execution is idempotent for a given (task_id, revision, execution_attempt)
     tuple - re-running the same tuple returns the same outcome and does not
     double-execute side effects (MRR-FR-035)
-  - the reference task is deterministic: identical inputs yield an identical
+  - >-
+    the reference task is deterministic: identical inputs yield an identical
     output and output hash across runs and machines (replayable), and the
     result is marked as a deterministic transformation, not a stochastic one
     (MRR-FR-044)
@@ -99,7 +100,8 @@ required_output:
     boundary and what the reference executor does and does not guarantee
   - open specification questions
 stop_conditions:
-  - a bounded, deterministic reference execution cannot be provided without a
+  - >-
+    a bounded, deterministic reference execution cannot be provided without a
     container runtime (it can: pure computation with a wall-clock bound)
   - enforcing a terminal-outcome for every path requires schema changes
   - implementation requires changes outside allowed paths
