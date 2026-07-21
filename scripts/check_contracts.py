@@ -12,13 +12,14 @@ E5-T03; extended to an eighteenth entity, OfflineBundle, by E5-T06;
 extended to a nineteenth entity, TransferContract, by E6-T01; extended to
 a twentieth entity, Obligation, by E6-T02; extended to a twenty-first
 entity, MethodProfile, by K0-T01; extended to a twenty-second entity,
-CorrectionNotification, by E6-T03; extended to a twenty-third through
-twenty-eighth entity — QuestionModel, ConceptCharter, MethodProtocol,
+CorrectionNotification, by E6-T03; extended to a twenty-third entity,
+CorrectionResponse, by E6-T04; extended to a twenty-fourth through
+twenty-ninth entity — QuestionModel, ConceptCharter, MethodProtocol,
 EvidenceMatrix, MethodRuling, ResearchDecision — by K1-T01. Per
 task-packets/K1-T01.yaml derived_decisions, this ordinal count is
 documentation color only, never a functional dependency: ENTITY_MODELS is
 a plain dict keyed by entity name, so sequencing among K0-T01/E6-T03/
-K1-T01 is an ordinary textual merge at worst.
+E6-T04/K1-T01 is an ordinary textual merge at worst.
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -64,6 +65,7 @@ from mrr.contracts import (
     ConceptCharter,
     CorrectionEvent,
     CorrectionNotification,
+    CorrectionResponse,
     EvidenceAnchor,
     EvidenceCrate,
     EvidenceMatrix,
@@ -107,6 +109,7 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "evidence-crate": EvidenceCrate,
     "correction-event": CorrectionEvent,
     "correction-notification": CorrectionNotification,
+    "correction-response": CorrectionResponse,
     "run-manifest": RunManifest,
     "source-record": SourceRecord,
     "evidence-anchor": EvidenceAnchor,

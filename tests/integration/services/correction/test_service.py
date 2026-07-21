@@ -32,6 +32,19 @@ Acceptance-test mapping (task-packets/E6-T03.yaml, integration tier):
   ``CorrectionEvent`` object at all — only the signed
   ``CorrectionNotification``/``NodeMessageEnvelope`` pair the transport
   fake actually carried crosses the simulated practice boundary.
+
+Acceptance-test mapping (task-packets/E6-T04.yaml, integration tier):
+
+- "an adapt record_response call persists the CorrectionResponse revision,
+  every corrects edge, and the correction.response_recorded event
+  atomically; ... querying the generic objects/edges tables directly
+  confirms no migration was needed" ->
+  ``test_record_response_adapt_persists_response_edges_and_event_atomically``.
+- "a fault injected after the edges but before the event commit ... leaves
+  none of the three rows behind" ->
+  ``test_record_response_fault_injected_after_edges_leaves_nothing_persisted``.
+- duplicate response against a real Postgres-backed event log ->
+  ``test_record_response_duplicate_raises_and_persists_nothing_against_real_postgres``.
 """
 
 from __future__ import annotations
@@ -39,18 +52,26 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
+import sqlalchemy as sa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.contracts import Claim, CorrectionEvent
+from mrr.contracts.correction_response import CorrectionResponse, CorrectionResponseAdaptation
 from mrr.contracts.practice import Practice
 from mrr.crypto.keys import derive_key_id, encode_public_key, generate_ed25519_keypair
 from mrr.domain.envelope_transport import EnvelopeDeliveryOutcome, EnvelopeDeliveryRequest
+from mrr.domain.exceptions import CorrectionResponseAlreadyRecordedError, ObjectNotFoundError
+from mrr.domain.hashing_policy import compute_content_hash
 from mrr.domain.identity import new_urn
 from mrr.domain.manifest_trust import practice_key_ring
+from mrr.domain.repositories import StoredObject, TypedEdge
 from mrr.persistence.repositories import (
     PostgresEdgeRepository,
     PostgresEventLog,
     PostgresObjectRepository,
 )
+from mrr.persistence.tables import domain_events_table, edges_table, objects_table
+from mrr.provenance.events import DomainEvent
 from mrr.services.claim.service import ClaimService
 from mrr.services.claim.service import bind_edge_unit_of_work as bind_claim_edge_unit_of_work
 from mrr.services.claim.service import bind_unit_of_work as bind_claim_unit_of_work
@@ -58,7 +79,9 @@ from mrr.services.correction.service import (
     CorrectionImpactService,
     NotificationRecipient,
     bind_event_unit_of_work,
+    bind_revision_with_edges_unit_of_work,
     bind_unit_of_work,
+    record_response_revision_with_edges_and_event,
 )
 from sqlalchemy import Engine
 
@@ -182,6 +205,43 @@ def _services_for_notification(
         event_log,
         bind_unit_of_work(engine, object_repository, event_log),
         bind_event_unit_of_work(engine, event_log),
+    )
+    return correction_service, claim_service, object_repository, edge_repository, event_log
+
+
+def _services_for_response(
+    engine: Engine,
+) -> tuple[
+    CorrectionImpactService,
+    ClaimService,
+    PostgresObjectRepository,
+    PostgresEdgeRepository,
+    PostgresEventLog,
+]:
+    """Identical to :func:`_services_for` but additionally wires the
+    OPTIONAL ``record_revision_with_edges`` dependency (task-packets/
+    E6-T04.yaml) via ``bind_revision_with_edges_unit_of_work`` — the real
+    Postgres object-revision+edges+event path, needed by ``record_response``.
+    """
+    object_repository = PostgresObjectRepository(engine)
+    edge_repository = PostgresEdgeRepository(engine)
+    event_log = PostgresEventLog(engine)
+    claim_service = ClaimService(
+        object_repository,
+        event_log,
+        edge_repository,
+        bind_claim_unit_of_work(engine, object_repository, event_log),
+        bind_claim_edge_unit_of_work(engine, event_log),
+    )
+    correction_service = CorrectionImpactService(
+        object_repository,
+        edge_repository,
+        claim_service,
+        event_log,
+        bind_unit_of_work(engine, object_repository, event_log),
+        record_revision_with_edges=bind_revision_with_edges_unit_of_work(
+            engine, object_repository, event_log
+        ),
     )
     return correction_service, claim_service, object_repository, edge_repository, event_log
 
@@ -492,3 +552,277 @@ def test_outbound_then_inbound_correction_notification_flow(postgres_engine: Eng
     # exactly what the SENDING side alone produced, untouched by the
     # receiving call.
     assert sender_objects.list_revisions(correction.id) == correction_revisions_before_receive
+
+
+# ---------------------------------------------------------------------------
+# record_response() (task-packets/E6-T04.yaml), against real PostgreSQL.
+# ---------------------------------------------------------------------------
+
+
+def _never_responded(_correction_notification_id: str) -> bool:
+    return False
+
+
+def test_record_response_adapt_persists_response_edges_and_event_atomically(
+    postgres_engine: Engine,
+) -> None:
+    """An adapt ``record_response`` call persists the CorrectionResponse
+    revision, every ``corrects`` edge, and the ``correction.response_
+    recorded`` event atomically; direct raw-SQL queries against the generic
+    ``objects``/``edges`` tables confirm no migration was needed
+    (task-packets/E6-T04.yaml forbidden_changes: `corrects` is already a
+    declared EDGE_VOCABULARY member).
+    """
+    service, claim_service, object_repository, edge_repository, event_log = _services_for_response(
+        postgres_engine
+    )
+    actor = new_urn("agent-role")
+    correlation_id = new_urn("correction-run")
+    responding_practice_id = new_urn("practice")
+
+    adapted_one = _claim(status="draft")
+    adapted_two = _claim(status="draft")
+    claim_service.create(
+        adapted_one, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    claim_service.create(
+        adapted_two, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    notified_one = new_urn("claim")
+    notified_two = new_urn("claim")
+
+    stored = service.record_response(
+        correction_notification_id=new_urn("correction-notification"),
+        notifying_practice_id=new_urn("practice"),
+        origin_correction_event_id=new_urn("correction"),
+        origin_correction_event_revision=1,
+        notified_object_ids=[notified_one, notified_two],
+        responding_practice_id=responding_practice_id,
+        decision="adapt",
+        adaptations=[
+            CorrectionResponseAdaptation(
+                adapted_object_id=adapted_one.id, notified_object_id=notified_one
+            ),
+            CorrectionResponseAdaptation(
+                adapted_object_id=adapted_two.id, notified_object_id=notified_two
+            ),
+        ],
+        already_responded=_never_responded,
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+    )
+
+    assert stored.revision == 1
+    assert stored.kind == "CorrectionResponse"
+    assert object_repository.get_latest(stored.id).body["decision"] == "adapt"
+
+    edges_one = edge_repository.edges_from(adapted_one.id, "corrects")
+    edges_two = edge_repository.edges_from(adapted_two.id, "corrects")
+    assert len(edges_one) == 1 and edges_one[0].target_id == notified_one
+    assert len(edges_two) == 1 and edges_two[0].target_id == notified_two
+
+    events = [
+        appended.event for appended in event_log.read_all() if appended.event.object_id == stored.id
+    ]
+    assert [e.event_type for e in events] == ["correction.response_recorded"]
+    assert events[0].actor == actor
+    assert events[0].policy_version == _POLICY_VERSION
+    assert events[0].correlation_id == correlation_id
+
+    # Direct raw SQL against the generic objects/edges tables (bypassing
+    # every repository) confirms no migration was needed: kind=
+    # "CorrectionResponse" and edge_type="corrects" are already accepted by
+    # the existing schema/CHECK constraint.
+    with postgres_engine.connect() as conn:
+        kind_row = conn.execute(
+            sa.select(objects_table.c.kind).where(objects_table.c.id == stored.id)
+        ).one()
+        assert kind_row.kind == "CorrectionResponse"
+
+        edge_type_rows = conn.execute(
+            sa.select(edges_table.c.edge_type).where(
+                edges_table.c.source_id.in_([adapted_one.id, adapted_two.id])
+            )
+        ).all()
+        assert {row.edge_type for row in edge_type_rows} == {"corrects"}
+
+        event_count = conn.execute(
+            sa.select(sa.func.count())
+            .select_from(domain_events_table)
+            .where(domain_events_table.c.object_id == stored.id)
+        ).scalar_one()
+        assert event_count == 1
+
+
+def test_record_response_fault_injected_after_edges_leaves_nothing_persisted(
+    postgres_engine: Engine,
+) -> None:
+    """A fault injected after every `corrects` edge is inserted but before
+    the `correction.response_recorded` event is appended (still inside the
+    one open transaction) leaves none of the three rows behind — mirroring
+    the existing `_after_append` seam
+    (tests/integration/persistence/test_event_log_and_outbox.py's own
+    `test_injected_failure_after_append_leaves_nothing_persisted`), calling
+    :func:`record_response_revision_with_edges_and_event` directly (the same
+    way that test calls `record_object_revision_with_event` directly) rather
+    than through `record_response` itself.
+    """
+    object_repository = PostgresObjectRepository(postgres_engine)
+    edge_repository = PostgresEdgeRepository(postgres_engine)
+    event_log = PostgresEventLog(postgres_engine)
+    claim_service = ClaimService(
+        object_repository,
+        event_log,
+        edge_repository,
+        bind_claim_unit_of_work(postgres_engine, object_repository, event_log),
+        bind_claim_edge_unit_of_work(postgres_engine, event_log),
+    )
+    actor = new_urn("agent-role")
+    correlation_id = new_urn("correction-run")
+
+    adapted = _claim(status="draft")
+    claim_service.create(
+        adapted, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    notified_object_id = new_urn("claim")
+    response_id = new_urn("correction-response")
+    now = datetime.now(UTC)
+
+    body: dict[str, Any] = {
+        "id": response_id,
+        "api_version": "mrr/v1alpha1",
+        "kind": "CorrectionResponse",
+        "practice_id": new_urn("practice"),
+        "revision": 1,
+        "created_at": now.isoformat(),
+        "created_by": actor,
+        "content_hash": "sha256:" + "0" * 64,
+        "correction_notification_id": new_urn("correction-notification"),
+        "notifying_practice_id": new_urn("practice"),
+        "origin_correction_event_id": new_urn("correction"),
+        "origin_correction_event_revision": 1,
+        "notified_object_ids": [notified_object_id],
+        "decision": "adapt",
+        "adaptations": [
+            {"adapted_object_id": adapted.id, "notified_object_id": notified_object_id}
+        ],
+    }
+    body["content_hash"] = compute_content_hash(body)
+    CorrectionResponse.model_validate(body)  # sanity: a genuinely valid body
+
+    obj = StoredObject(
+        id=response_id,
+        api_version="mrr/v1alpha1",
+        kind="CorrectionResponse",
+        practice_id=body["practice_id"],
+        revision=1,
+        created_at=now,
+        created_by=actor,
+        content_hash=body["content_hash"],
+        supersedes=None,
+        labels=None,
+        body=body,
+    )
+    edge = TypedEdge(
+        id=new_urn("edge"),
+        source_id=adapted.id,
+        target_id=notified_object_id,
+        edge_type="corrects",
+        created_at=now,
+        created_by=actor,
+        scope=None,
+        status="active",
+        practice_id=body["practice_id"],
+    )
+    event = DomainEvent(
+        id=new_urn("domain-event"),
+        event_type="correction.response_recorded",
+        occurred_at=now,
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        causation_id=None,
+        correlation_id=correlation_id,
+        object_id=response_id,
+        object_revision=1,
+        payload={"decision": "adapt"},
+    )
+
+    def _inject_failure() -> None:
+        raise RuntimeError("injected failure after edges, before event append")
+
+    with pytest.raises(RuntimeError, match="injected failure"):
+        record_response_revision_with_edges_and_event(
+            postgres_engine,
+            object_repository,
+            event_log,
+            obj,
+            None,
+            [edge],
+            event,
+            _after_edges=_inject_failure,
+        )
+
+    # Neither the CorrectionResponse revision...
+    with pytest.raises(ObjectNotFoundError):
+        object_repository.get_latest(response_id)
+
+    # ...nor the corrects edge...
+    assert edge_repository.edges_from(adapted.id, "corrects") == []
+
+    # ...nor the event survive.
+    assert [
+        appended for appended in event_log.read_all() if appended.event.object_id == response_id
+    ] == []
+
+
+def test_record_response_duplicate_raises_and_persists_nothing_against_real_postgres(
+    postgres_engine: Engine,
+) -> None:
+    """A second `record_response` call for a `correction_notification_id`
+    the caller-supplied `already_responded` predicate reports as already-seen
+    raises `CorrectionResponseAlreadyRecordedError` before any write, against
+    a real Postgres-backed object repository/event log; a call for a
+    DIFFERENT `correction_notification_id` is unaffected.
+    """
+    service, _claim_service, _object_repository, _edge_repository, event_log = (
+        _services_for_response(postgres_engine)
+    )
+    actor = new_urn("agent-role")
+    correlation_id = new_urn("correction-run")
+    notification_id = new_urn("correction-notification")
+    other_notification_id = new_urn("correction-notification")
+
+    def _already_responded(candidate_id: str) -> bool:
+        return candidate_id == notification_id
+
+    with pytest.raises(CorrectionResponseAlreadyRecordedError):
+        service.record_response(
+            correction_notification_id=notification_id,
+            notifying_practice_id=new_urn("practice"),
+            origin_correction_event_id=new_urn("correction"),
+            origin_correction_event_revision=1,
+            notified_object_ids=[new_urn("claim")],
+            responding_practice_id=new_urn("practice"),
+            decision="accept",
+            already_responded=_already_responded,
+            actor=actor,
+            policy_version=_POLICY_VERSION,
+            correlation_id=correlation_id,
+        )
+    assert event_log.read_all() == []
+
+    stored = service.record_response(
+        correction_notification_id=other_notification_id,
+        notifying_practice_id=new_urn("practice"),
+        origin_correction_event_id=new_urn("correction"),
+        origin_correction_event_revision=1,
+        notified_object_ids=[new_urn("claim")],
+        responding_practice_id=new_urn("practice"),
+        decision="accept",
+        already_responded=_already_responded,
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+    )
+    assert stored.body["correction_notification_id"] == other_notification_id

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/correction-response.schema.json",
+  "title": "MRR CorrectionResponse",
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": ["kind", "correction_notification_id", "notifying_practice_id", "origin_correction_event_id", "origin_correction_event_revision", "notified_object_ids", "decision", "adaptations"],
+      "properties": {
+        "kind": {"const": "CorrectionResponse"},
+        "correction_notification_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "notifying_practice_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "origin_correction_event_id": {"$ref": "common.schema.json#/$defs/urn"},
+        "origin_correction_event_revision": {"type": "integer", "minimum": 1},
+        "notified_object_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "common.schema.json#/$defs/urn"}
+        },
+        "decision": {"type": "string", "enum": ["accept", "adapt", "reject", "defer"]},
+        "reason": {"type": "string", "minLength": 1},
+        "adaptations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["adapted_object_id", "notified_object_id"],
+            "properties": {
+              "adapted_object_id": {"$ref": "common.schema.json#/$defs/urn"},
+              "notified_object_id": {"$ref": "common.schema.json#/$defs/urn"}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"decision": {"enum": ["reject", "defer"]}}, "required": ["decision"]},
+          "then": {"required": ["reason"]}
+        },
+        {
+          "if": {"properties": {"decision": {"const": "adapt"}}, "required": ["decision"]},
+          "then": {"required": ["adaptations"], "properties": {"adaptations": {"minItems": 1}}}
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

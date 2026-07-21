@@ -31,6 +31,27 @@ Acceptance-test mapping (task-packets/E3-T06.yaml, unit tier):
   ``test_record_persists_revision_1_and_recorded_event``.
 - a missing correction -> ``test_propagate_impact_on_missing_correction_raises``.
 - event provenance -> ``test_impact_computed_event_carries_complete_provenance``.
+
+Acceptance-test mapping (task-packets/E6-T04.yaml, unit tier — ``record_response``):
+
+- happy path accept/reject/defer ->
+  ``test_record_response_happy_path_accept_records_response_and_event_no_edge``,
+  ``test_record_response_happy_path_reject_or_defer_records_response_and_event_no_edge``.
+- happy path adapt, single/multiple adaptations ->
+  ``test_record_response_happy_path_adapt_single_adaptation_records_one_corrects_edge``,
+  ``test_record_response_happy_path_adapt_multiple_adaptations_records_n_corrects_edges``.
+- adversarial: a missing ``adapted_object_id`` aborts the whole call, even
+  alongside a valid entry ->
+  ``test_record_response_adversarial_missing_adapted_object_id_raises_and_persists_nothing``.
+- adversarial: an ``adaptations[].notified_object_id`` not a member of
+  ``notified_object_ids`` ->
+  ``test_record_response_adversarial_adaptation_not_a_member_of_notified_object_ids_raises``.
+- adversarial: duplicate response ->
+  ``test_record_response_adversarial_duplicate_response_raises_before_any_write``.
+- never mutates/consults the sender's CORRECTION_LIFECYCLE ->
+  ``test_record_response_never_invokes_correction_lifecycle``.
+- missing dependency guard ->
+  ``test_record_response_without_record_revision_with_edges_dependency_raises_valueerror``.
 """
 
 from __future__ import annotations
@@ -43,6 +64,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.contracts import Claim, CorrectionEvent
 from mrr.contracts.correction_notification import CorrectionNotification
+from mrr.contracts.correction_response import CorrectionResponseAdaptation
 from mrr.contracts.node_message_envelope import NodeMessageEnvelope
 from mrr.contracts.practice import Practice
 from mrr.crypto.exceptions import SignatureVerificationError
@@ -52,6 +74,7 @@ from mrr.domain.exceptions import (
     CorrectionNotFoundError,
     CorrectionNotificationAlreadyProcessedError,
     CorrectionNotificationNotWithinValidityWindowError,
+    CorrectionResponseAlreadyRecordedError,
     EnvelopeAlreadyProcessedError,
     InvalidTransitionError,
     ObjectNotFoundError,
@@ -67,6 +90,7 @@ from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from mrr.services.claim.service import ClaimService
 from mrr.services.correction.service import CorrectionImpactService, NotificationRecipient
+from pydantic import ValidationError
 
 # ---------------------------------------------------------------------------
 # In-memory fakes — identical in spirit to
@@ -179,6 +203,33 @@ def _fake_record_edge(edge_repository: FakeEdgeRepository, event_log: FakeEventL
     return _record_edge
 
 
+def _fake_record_revision_with_edges(
+    object_repository: FakeObjectRepository,
+    edge_repository: FakeEdgeRepository,
+    event_log: FakeEventLog,
+) -> Any:
+    """DB-free fake of the E6-T04 ``bind_revision_with_edges_unit_of_work``
+    shape: insert the object revision, every edge, and append the event —
+    composed here without a real transaction (a DB-free fake has nothing to
+    roll back), mirroring ``_fake_record``/``_fake_record_edge``'s own
+    identical "compose the fakes in the same order the real bound closure
+    would" convention.
+    """
+
+    def _record(
+        obj: StoredObject,
+        expected_current_revision: int | None,
+        edges: list[TypedEdge],
+        event: DomainEvent,
+    ) -> tuple[StoredObject, list[TypedEdge], AppendedEvent]:
+        stored = object_repository.insert_revision(obj, expected_current_revision)
+        stored_edges = [edge_repository.add_edge(edge) for edge in edges]
+        appended = event_log.append_for_test(event)
+        return stored, stored_edges, appended
+
+    return _record
+
+
 def _services() -> tuple[
     CorrectionImpactService,
     ClaimService,
@@ -241,6 +292,40 @@ def _services_with_notification() -> tuple[
         event_log,
         _fake_record(object_repository, event_log),
         _record_event_only,
+    )
+    return correction_service, claim_service, object_repository, edge_repository, event_log
+
+
+def _services_with_response() -> tuple[
+    CorrectionImpactService,
+    ClaimService,
+    FakeObjectRepository,
+    FakeEdgeRepository,
+    FakeEventLog,
+]:
+    """Identical to :func:`_services` but additionally wires the OPTIONAL
+    ``record_revision_with_edges`` dependency (task-packets/E6-T04.yaml) —
+    needed by ``record_response``.
+    """
+    object_repository = FakeObjectRepository()
+    event_log = FakeEventLog()
+    edge_repository = FakeEdgeRepository()
+    claim_service = ClaimService(
+        object_repository,
+        event_log,
+        edge_repository,
+        _fake_record(object_repository, event_log),
+        _fake_record_edge(edge_repository, event_log),
+    )
+    correction_service = CorrectionImpactService(
+        object_repository,
+        edge_repository,
+        claim_service,
+        event_log,
+        _fake_record(object_repository, event_log),
+        record_revision_with_edges=_fake_record_revision_with_edges(
+            object_repository, edge_repository, event_log
+        ),
     )
     return correction_service, claim_service, object_repository, edge_repository, event_log
 
@@ -1426,3 +1511,260 @@ def test_receive_adversarial_notification_about_unknown_object_yields_empty_impa
     )
 
     assert impact.locally_impacted_object_ids == frozenset()
+
+
+# ---------------------------------------------------------------------------
+# record_response() (task-packets/E6-T04.yaml): the RECEIVING practice's own
+# local accept/adapt/reject/defer disposition toward an already-received
+# CorrectionNotification.
+# ---------------------------------------------------------------------------
+
+
+def _never_responded(_correction_notification_id: str) -> bool:
+    return False
+
+
+def _response_kwargs(**overrides: Any) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "correction_notification_id": new_urn("correction-notification"),
+        "notifying_practice_id": new_urn("practice"),
+        "origin_correction_event_id": new_urn("correction"),
+        "origin_correction_event_revision": 1,
+        "notified_object_ids": [new_urn("claim")],
+        "responding_practice_id": new_urn("practice"),
+        "decision": "accept",
+        "already_responded": _never_responded,
+        "actor": _ACTOR,
+        "policy_version": _POLICY_VERSION,
+        "correlation_id": _correlation_id(),
+    }
+    data.update(overrides)
+    return data
+
+
+def test_record_response_happy_path_accept_records_response_and_event_no_edge() -> None:
+    service, _, object_repository, edge_repository, event_log = _services_with_response()
+
+    stored = service.record_response(**_response_kwargs(decision="accept"))
+
+    assert stored.revision == 1
+    assert stored.body["decision"] == "accept"
+    assert "reason" not in stored.body or stored.body["reason"] is None
+    assert object_repository.get_latest(stored.id).body["kind"] == "CorrectionResponse"
+    assert edge_repository.edges_from(stored.id) == []
+
+    events = [e.event for e in event_log.read_all() if e.event.object_id == stored.id]
+    assert [e.event_type for e in events] == ["correction.response_recorded"]
+    assert events[0].causation_id is None
+
+
+@pytest.mark.parametrize("decision", ["reject", "defer"])
+def test_record_response_happy_path_reject_or_defer_records_response_and_event_no_edge(
+    decision: str,
+) -> None:
+    service, _, object_repository, edge_repository, event_log = _services_with_response()
+
+    stored = service.record_response(
+        **_response_kwargs(decision=decision, reason="Fixture reason for rejecting/deferring.")
+    )
+
+    assert stored.revision == 1
+    assert stored.body["decision"] == decision
+    assert stored.body["reason"] == "Fixture reason for rejecting/deferring."
+    assert edge_repository.edges_from(stored.id) == []
+    events = [e.event for e in event_log.read_all() if e.event.object_id == stored.id]
+    assert [e.event_type for e in events] == ["correction.response_recorded"]
+
+
+def test_record_response_happy_path_adapt_single_adaptation_records_one_corrects_edge() -> None:
+    service, _, object_repository, edge_repository, event_log = _services_with_response()
+    adapted = _claim()
+    _seed(object_repository, adapted)
+    notified_object_id = new_urn("claim")
+
+    stored = service.record_response(
+        **_response_kwargs(
+            decision="adapt",
+            notified_object_ids=[notified_object_id],
+            adaptations=[
+                CorrectionResponseAdaptation(
+                    adapted_object_id=adapted.id, notified_object_id=notified_object_id
+                )
+            ],
+        )
+    )
+
+    assert stored.revision == 1
+    assert stored.body["decision"] == "adapt"
+    edges = edge_repository.edges_from(adapted.id, "corrects")
+    assert len(edges) == 1
+    assert edges[0].target_id == notified_object_id
+    assert edges[0].edge_type == "corrects"
+
+    events = [e.event for e in event_log.read_all() if e.event.object_id == stored.id]
+    assert [e.event_type for e in events] == ["correction.response_recorded"]
+
+
+def test_record_response_happy_path_adapt_multiple_adaptations_records_n_corrects_edges() -> None:
+    service, _, object_repository, edge_repository, event_log = _services_with_response()
+    adapted_one = _claim()
+    adapted_two = _claim()
+    _seed(object_repository, adapted_one)
+    _seed(object_repository, adapted_two)
+    notified_one = new_urn("claim")
+    notified_two = new_urn("claim")
+
+    stored = service.record_response(
+        **_response_kwargs(
+            decision="adapt",
+            notified_object_ids=[notified_one, notified_two],
+            adaptations=[
+                CorrectionResponseAdaptation(
+                    adapted_object_id=adapted_one.id, notified_object_id=notified_one
+                ),
+                CorrectionResponseAdaptation(
+                    adapted_object_id=adapted_two.id, notified_object_id=notified_two
+                ),
+            ],
+        )
+    )
+
+    assert stored.revision == 1
+    assert len(edge_repository.edges_from(adapted_one.id, "corrects")) == 1
+    assert len(edge_repository.edges_from(adapted_two.id, "corrects")) == 1
+    events = [
+        e.event
+        for e in event_log.read_all()
+        if e.event.event_type == "correction.response_recorded"
+    ]
+    assert len(events) == 1
+
+
+def test_record_response_adversarial_missing_adapted_object_id_raises_and_persists_nothing() -> (
+    None
+):
+    """A missing adapted_object_id aborts the whole call — no
+    CorrectionResponse, no edge, and no event are persisted — even when
+    another entry in the same adaptations list references a valid object.
+    """
+    service, _, object_repository, edge_repository, event_log = _services_with_response()
+    valid_adapted = _claim()
+    _seed(object_repository, valid_adapted)
+    missing_adapted_id = new_urn("claim")  # never seeded
+    notified_one = new_urn("claim")
+    notified_two = new_urn("claim")
+
+    with pytest.raises(ObjectNotFoundError):
+        service.record_response(
+            **_response_kwargs(
+                decision="adapt",
+                notified_object_ids=[notified_one, notified_two],
+                adaptations=[
+                    CorrectionResponseAdaptation(
+                        adapted_object_id=valid_adapted.id, notified_object_id=notified_one
+                    ),
+                    CorrectionResponseAdaptation(
+                        adapted_object_id=missing_adapted_id, notified_object_id=notified_two
+                    ),
+                ],
+            )
+        )
+
+    assert edge_repository.edges_from(valid_adapted.id, "corrects") == []
+    assert event_log.read_all() == []
+
+
+def test_record_response_adversarial_adaptation_not_a_member_of_notified_object_ids_raises() -> (
+    None
+):
+    service, _, object_repository, edge_repository, event_log = _services_with_response()
+    adapted = _claim()
+    _seed(object_repository, adapted)
+    notified_object_id = new_urn("claim")
+    unrelated_object_id = new_urn("claim")  # NOT in notified_object_ids
+
+    with pytest.raises(ValidationError):
+        service.record_response(
+            **_response_kwargs(
+                decision="adapt",
+                notified_object_ids=[notified_object_id],
+                adaptations=[
+                    CorrectionResponseAdaptation(
+                        adapted_object_id=adapted.id, notified_object_id=unrelated_object_id
+                    )
+                ],
+            )
+        )
+
+    assert edge_repository.edges_from(adapted.id, "corrects") == []
+    assert event_log.read_all() == []
+
+
+def test_record_response_adversarial_duplicate_response_raises_before_any_write() -> None:
+    service, _, object_repository, edge_repository, event_log = _services_with_response()
+    notification_id = new_urn("correction-notification")
+    other_notification_id = new_urn("correction-notification")
+
+    def _already_responded(candidate_id: str) -> bool:
+        return candidate_id == notification_id
+
+    with pytest.raises(CorrectionResponseAlreadyRecordedError) as excinfo:
+        service.record_response(
+            **_response_kwargs(
+                correction_notification_id=notification_id,
+                decision="accept",
+                already_responded=_already_responded,
+            )
+        )
+    assert excinfo.value.correction_notification_id == notification_id
+    assert event_log.read_all() == []
+
+    # A call for a DIFFERENT correction_notification_id is unaffected.
+    stored = service.record_response(
+        **_response_kwargs(
+            correction_notification_id=other_notification_id,
+            decision="accept",
+            already_responded=_already_responded,
+        )
+    )
+    assert stored.body["correction_notification_id"] == other_notification_id
+
+
+def test_record_response_never_invokes_correction_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After any ``record_response`` call, no ``CorrectionEvent`` object
+    anywhere in the local object store changes revision (there is none to
+    change — the receiving practice never stores one), and
+    ``CORRECTION_LIFECYCLE.can_transition``/``assert_transition`` is never
+    invoked by this task's own code path — verified here by monkeypatching
+    both to raise if called at all, since there is no CorrectionEvent
+    instance locally to assert a revision count against.
+    """
+    service, _, object_repository, _, _ = _services_with_response()
+
+    def _must_not_be_called(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("CORRECTION_LIFECYCLE must not be consulted by record_response")
+
+    # CORRECTION_LIFECYCLE is a frozen, slotted dataclass instance — patch
+    # the shared StateMachine CLASS's methods (reverted automatically at the
+    # end of this test) rather than the instance, which has no per-instance
+    # __dict__/slot to override a method through.
+    monkeypatch.setattr(type(CORRECTION_LIFECYCLE), "can_transition", _must_not_be_called)
+    monkeypatch.setattr(type(CORRECTION_LIFECYCLE), "assert_transition", _must_not_be_called)
+
+    stored = service.record_response(**_response_kwargs(decision="accept"))
+
+    assert stored.revision == 1
+    # No CorrectionEvent was ever created, read, or mutated by this call.
+    with pytest.raises(ObjectNotFoundError):
+        object_repository.get_latest(new_urn("correction"))
+
+
+def test_record_response_without_record_revision_with_edges_dependency_raises_valueerror() -> None:
+    service, _, _, _, event_log = _services()  # no record_revision_with_edges wired
+
+    with pytest.raises(ValueError, match="record_revision_with_edges"):
+        service.record_response(**_response_kwargs(decision="accept"))
+
+    assert event_log.read_all() == []

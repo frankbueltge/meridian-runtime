@@ -205,6 +205,65 @@ it does not call ``mrr.domain.offline_bundle.build_outbox_bundle`` or
 enqueue anything); and the now-five near-identical trust resolvers
 (manifest_trust/task_trust/crate_trust/transfer_trust/this task's own
 correction_notification) are NOT refactored into one shared function.
+
+--- E6-T04 addition: local accept/adapt/reject/defer response --------------
+
+``record_response`` is a further ADDITIVE method on this same service
+(task-packets/E6-T04.yaml) — every E3-T06/E6-T03 method/helper above is
+reused verbatim, unmodified. It records this RECEIVING practice's own,
+LOCAL-ONLY disposition (accept/adapt/reject/defer) toward one already
+-received ``CorrectionNotification`` (E6-T03's ``receive_correction_
+notification``, called separately, BEFORE ``record_response`` — no
+signature is re-verified here; ``record_response`` trusts its caller to have
+already run that method's own trust checks once per notification). It never
+creates, stores, or mutates any copy of the sender's remote
+``CorrectionEvent`` — E6-T03's own invariant that the receiving practice
+never holds one — so the response is minted as a brand-new, standalone,
+UNSIGNED, single-revision ``mrr.contracts.correction_response.
+CorrectionResponse`` object instead (MRR-FR-084: "A receiving practice MAY
+reject a correction, but MUST record that it was notified and why it
+rejected or deferred it").
+
+``record_response`` mints the ``CorrectionResponse`` at revision 1, verifies
+every ``adaptations[].adapted_object_id`` already exists locally
+(``ObjectRepository.get_latest``, ``ObjectNotFoundError`` if absent —
+aborting the whole call with nothing persisted, mirroring E6-T01's own
+identical adapted-decision verification), records one ``corrects`` edge per
+adaptation entry (source=``adapted_object_id``, target=``notified_object_
+id`` — the declared-but-unused-since-E3-T06 ``corrects`` edge type,
+deliberately distinct from ``adapted_from``), and appends the
+section-5.2-enumerated ``correction.response_recorded`` event — object
+revision, edges, and event all written atomically in ONE new local
+unit-of-work helper, :func:`bind_revision_with_edges_unit_of_work`,
+mirroring ``mrr.services.obligation.service.
+bind_revision_with_edges_unit_of_work``'s own identical "object revision +
+N edges + one event" atomic composition (task-packets/E6-T02.yaml) — NOT
+imported from that sibling service module (out of this task's
+``allowed_paths``; the Obligation service is forbidden to modify), so it is
+duplicated here rather than shared, exactly as ``_gather_impact_edges``'s
+own shape is duplicated into ``ObligationService._gather_binding_edges``
+for the identical reason. This local helper additionally exposes a private,
+test-only ``_after_edges`` fault-injection seam (firing after every edge row
+is inserted but before the event is appended, still inside the one open
+transaction) — the same seam shape as ``mrr.persistence.unit_of_work.
+record_object_revision_with_event``'s own ``_after_append``, which the
+sibling Obligation helper does not itself expose.
+
+A caller-supplied ``already_responded`` predicate (keyed by
+``correction_notification_id``, mirroring E6-T03's own ``already_processed_
+notification``) is checked FIRST, before anything else, and raises the new
+``CorrectionResponseAlreadyRecordedError`` for a duplicate response — no
+durable processed-notification-id store is built here, matching E6-T03's
+own identical caller-supplied-predicate stance.
+
+Deliberately NOT done here (task-packets/E6-T04.yaml forbidden_changes/
+specification_gaps): no ``CORRECTION_LIFECYCLE`` transition is read or
+written (the sending practice's own AWAITING_RESPONSES -> RESOLVED/
+PARTIALLY_RESOLVED/REJECTED_BY_RECIPIENT aggregation remains entirely
+undriven by this or any other task in the current six-task E6 epic); no
+response is ever transported back to the notifying practice (a future task
+or spec amendment must design that mechanism); and no further Claim
+transition beyond what E6-T03's own receipt handling already applied.
 """
 
 from __future__ import annotations
@@ -216,8 +275,17 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+import sqlalchemy as sa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from mrr.contracts import CorrectionEvent, CorrectionNotification, Signature, Urn
+from mrr.contracts import (
+    CorrectionEvent,
+    CorrectionNotification,
+    CorrectionResponse,
+    CorrectionResponseAdaptation,
+    CorrectionResponseDecision,
+    Signature,
+    Urn,
+)
 from mrr.contracts.node_message_envelope import NodeMessageEnvelope
 from mrr.domain.correction_impact import IMPACT_EDGE_TYPES, compute_impact
 from mrr.domain.correction_notification import resolve_trusted_correction_notification_key
@@ -227,15 +295,24 @@ from mrr.domain.exceptions import (
     CorrectionNotFoundError,
     CorrectionNotificationAlreadyProcessedError,
     CorrectionNotificationNotWithinValidityWindowError,
+    CorrectionResponseAlreadyRecordedError,
     InvalidTransitionError,
     ObjectNotFoundError,
+    UnknownEdgeTypeError,
 )
 from mrr.domain.hashing_policy import compute_content_hash, sign_object
 from mrr.domain.identity import new_urn
 from mrr.domain.key_management import KeyRing
 from mrr.domain.lifecycles import CORRECTION_LIFECYCLE
-from mrr.domain.repositories import EdgeRepository, ObjectRepository, StoredObject, TypedEdge
+from mrr.domain.repositories import (
+    EDGE_VOCABULARY,
+    EdgeRepository,
+    ObjectRepository,
+    StoredObject,
+    TypedEdge,
+)
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
+from mrr.persistence.tables import edges_table
 from mrr.persistence.unit_of_work import record_event, record_object_revision_with_event
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
@@ -326,6 +403,115 @@ def bind_event_unit_of_work(engine: Engine, event_log: PostgresEventLog) -> Reco
     return _record_event
 
 
+#: The callable shape :func:`bind_revision_with_edges_unit_of_work` below
+#: produces: insert an object revision, ANY NUMBER of typed edges, and
+#: append exactly ONE domain event, all atomically. See the module
+#: docstring's "E6-T04 addition" section.
+RecordRevisionWithEdgesAndEvent = Callable[
+    [StoredObject, int | None, list[TypedEdge], DomainEvent],
+    tuple[StoredObject, list[TypedEdge], AppendedEvent],
+]
+
+
+def record_response_revision_with_edges_and_event(
+    engine: Engine,
+    object_repository: PostgresObjectRepository,
+    event_log: PostgresEventLog,
+    obj: StoredObject,
+    expected_current_revision: int | None,
+    edges: list[TypedEdge],
+    event: DomainEvent,
+    *,
+    _after_edges: Callable[[], None] | None = None,
+) -> tuple[StoredObject, list[TypedEdge], AppendedEvent]:
+    """Compose an object-revision insert, ANY NUMBER of ``edges`` table
+    inserts, and ONE domain-event append into a SINGLE database
+    transaction — the E6-T04 counterpart to ``mrr.services.obligation.
+    service.bind_revision_with_edges_unit_of_work``'s identical composition
+    (task-packets/E6-T02.yaml), duplicated here (NOT imported from that
+    sibling service module — out of this task's ``allowed_paths``, and the
+    Obligation service is a forbidden-to-modify path) rather than shared,
+    exactly as ``CorrectionImpactService._gather_impact_edges``'s own shape
+    is duplicated into ``ObligationService._gather_binding_edges`` for the
+    identical reason. Same columns, same values, same ``EDGE_VOCABULARY``/
+    ``UnknownEdgeTypeError`` check as ``mrr.persistence.repositories.
+    PostgresEdgeRepository.add_edge`` and every other service module's own
+    ``bind_edge_unit_of_work`` — not a second, divergent implementation of
+    "how an edge is inserted".
+
+    Every edge's ``edge_type`` is validated against ``EDGE_VOCABULARY``
+    BEFORE the transaction opens — an unknown type in ANY entry aborts the
+    whole call with no partial insert and no object revision write either.
+
+    Directly callable (mirrors ``mrr.persistence.unit_of_work.
+    record_object_revision_with_event``'s own directly-callable shape, rather
+    than existing only behind a bound closure) so an integration test can
+    inject ``_after_edges`` — firing after every edge row is inserted but
+    BEFORE the event is appended, still inside the one open transaction — the
+    same fault-injection seam shape as ``tests/integration/persistence/
+    test_event_log_and_outbox.py``'s own ``_after_append``, which the
+    sibling Obligation helper does not itself expose. A failure raised there
+    leaves the object revision, every edge, AND the event unpersisted — the
+    whole transaction rolls back together.
+    """
+    for edge in edges:
+        if edge.edge_type not in EDGE_VOCABULARY:
+            raise UnknownEdgeTypeError(edge.edge_type)
+    hook = _after_edges or (lambda: None)
+    with engine.begin() as conn:
+        stored = object_repository.insert_revision_with_connection(
+            conn, obj, expected_current_revision
+        )
+        for edge in edges:
+            conn.execute(
+                sa.insert(edges_table).values(
+                    id=edge.id,
+                    source_id=edge.source_id,
+                    target_id=edge.target_id,
+                    edge_type=edge.edge_type,
+                    created_at=edge.created_at,
+                    created_by=edge.created_by,
+                    practice_id=edge.practice_id,
+                    scope=edge.scope,
+                    status=edge.status,
+                )
+            )
+        hook()
+        appended = event_log.append(conn, event)
+        return stored, edges, appended
+
+
+def bind_revision_with_edges_unit_of_work(
+    engine: Engine,
+    object_repository: PostgresObjectRepository,
+    event_log: PostgresEventLog,
+) -> RecordRevisionWithEdgesAndEvent:
+    """Bind :func:`record_response_revision_with_edges_and_event` to a
+    concrete ``sqlalchemy.Engine``/``PostgresObjectRepository``/
+    ``PostgresEventLog`` triple — identical in shape and purpose to every
+    other service module's own ``bind_unit_of_work``/``bind_edge_unit_of_
+    work``. Production wiring and integration tests call this once; DB-free
+    unit tests pass their own trivial callable of the same
+    ``RecordRevisionWithEdgesAndEvent`` shape, backed by in-memory fakes,
+    instead. The returned closure never exposes ``_after_edges`` — a test
+    that needs the fault-injection seam calls
+    :func:`record_response_revision_with_edges_and_event` directly instead,
+    mirroring ``record_object_revision_with_event``'s identical precedent.
+    """
+
+    def _record(
+        obj: StoredObject,
+        expected_current_revision: int | None,
+        edges: list[TypedEdge],
+        event: DomainEvent,
+    ) -> tuple[StoredObject, list[TypedEdge], AppendedEvent]:
+        return record_response_revision_with_edges_and_event(
+            engine, object_repository, event_log, obj, expected_current_revision, edges, event
+        )
+
+    return _record
+
+
 #: ``NodeMessageEnvelope.payload_kind`` tag this service mints/expects for a
 #: ``CorrectionNotification`` payload — a free-form string per that model's
 #: own docstring; this is this task's own chosen spelling, checked by
@@ -342,6 +528,27 @@ _CORRECTION_NOTIFICATION_PAYLOAD_KIND = "CorrectionNotification"
 #: strips the entire ``signature`` field before signing, so this placeholder
 #: never leaks into what gets hashed or signed.
 _PLACEHOLDER_SIGNATURE_VALUE = "0" * 44
+
+#: A syntactically valid ``$defs.sha256``-shaped placeholder, overwritten by
+#: the real ``compute_content_hash`` result before persisting — mirrors
+#: ``mrr.services.obligation.service._PLACEHOLDER_CONTENT_HASH``'s identical
+#: rationale: ``compute_content_hash`` excludes the ``content_hash`` key from
+#: what it hashes regardless of what is stored there, so this placeholder
+#: never leaks into any persisted hash.
+_PLACEHOLDER_CORRECTION_RESPONSE_CONTENT_HASH = "sha256:" + "0" * 64
+
+#: The section-3 edge vocabulary type this module records for an ``adapt``
+#: ``CorrectionResponse`` (task-packets/E6-T04.yaml derived_decisions (d)) —
+#: already declared in ``EDGE_VOCABULARY``, left entirely unused since
+#: E3-T06, deliberately distinct from ``adapted_from`` (E6-T01's own
+#: TRANSFER-adaptation edge type).
+_CORRECTS_EDGE_TYPE = "corrects"
+
+#: docs/spec/03_API_AND_EVENTS.md section 5.2's own enumerated event name for
+#: this task — used verbatim, the one E6-T04-relevant event name that
+#: section already names (unlike every other E6 task so far, which had to
+#: add non-literal event names).
+_EVENT_RESPONSE_RECORDED = "correction.response_recorded"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -415,6 +622,7 @@ class CorrectionImpactService:
         event_log: _EventJournal,
         record: RecordRevisionWithEvent,
         record_event: RecordEventOnly | None = None,
+        record_revision_with_edges: RecordRevisionWithEdgesAndEvent | None = None,
     ) -> None:
         self._object_repository = object_repository
         self._edge_repository = edge_repository
@@ -428,6 +636,11 @@ class CorrectionImpactService:
         # which ever calls notify_affected_practices) keep working
         # unmodified. See the module docstring's "E6-T03 additions" section.
         self._record_event = record_event
+        # E6-T04 addition. OPTIONAL (default None) for the identical reason
+        # — existing construction call sites that never call
+        # record_response keep working unmodified. See the module
+        # docstring's "E6-T04 addition" section.
+        self._record_revision_with_edges = record_revision_with_edges
 
     # ------------------------------------------------------------------
     # Recording (MRR-FR-090): one-time creation, revision 1.
@@ -878,6 +1091,211 @@ class CorrectionImpactService:
             notification_id=notification.notification_id,
             locally_impacted_object_ids=frozenset(impacted),
         )
+
+    # ------------------------------------------------------------------
+    # Cross-practice correction notification (MRR-FR-084, E6-T04) — the
+    # RECEIVING practice's own local accept/adapt/reject/defer response.
+    # ------------------------------------------------------------------
+
+    def record_response(
+        self,
+        *,
+        correction_notification_id: Urn,
+        notifying_practice_id: Urn,
+        origin_correction_event_id: Urn,
+        origin_correction_event_revision: int,
+        notified_object_ids: Sequence[Urn],
+        responding_practice_id: Urn,
+        decision: CorrectionResponseDecision,
+        reason: str | None = None,
+        adaptations: Sequence[CorrectionResponseAdaptation] | None = None,
+        already_responded: Callable[[str], bool],
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+    ) -> StoredObject:
+        """Record THIS receiving practice's own local disposition toward one
+        already-received ``CorrectionNotification`` (E6-T03's own
+        ``receive_correction_notification``, called separately and BEFORE
+        this method — its trust checks are trusted, not re-run here; no
+        signature is verified by this method at all).
+
+        Mints a brand-new, standalone, UNSIGNED, single-revision
+        :class:`mrr.contracts.correction_response.CorrectionResponse` at
+        revision 1 — never a copy or mutation of the sender's remote
+        ``CorrectionEvent``, which this practice never stores (E6-T03's own
+        invariant). ``correction_notification_id``,
+        ``notifying_practice_id``, ``origin_correction_event_id``,
+        ``origin_correction_event_revision``, and ``notified_object_ids`` are
+        plain scalar fields the caller copies from the already-validated
+        ``CorrectionNotification`` — never a nested reference to that
+        contract (task-packets/E6-T04.yaml derived_decisions (g)).
+
+        For ``decision == "adapt"``, every ``adaptations[].adapted_object_id``
+        MUST already exist locally — verified via ``ObjectRepository.
+        get_latest`` BEFORE anything is built or persisted — and records one
+        ``corrects`` edge per adaptation entry (source=``adapted_object_id``,
+        target=``notified_object_id``), written atomically with the
+        ``CorrectionResponse`` revision and the ``correction.response_
+        recorded`` event via :func:`bind_revision_with_edges_unit_of_work`.
+
+        Args:
+            correction_notification_id: the addressed notification's own id
+                (this method's own idempotency key, via
+                ``already_responded``).
+            notifying_practice_id: copied from the notification.
+            origin_correction_event_id: copied from the notification.
+            origin_correction_event_revision: copied from the notification.
+            notified_object_ids: copied from the notification — this
+                response's own ``notified_object_ids``, and the membership
+                set every ``adaptations[].notified_object_id`` is checked
+                against (contract-level, ``CorrectionResponse``'s own
+                ``model_validator``).
+            responding_practice_id: THIS practice's own id — the
+                ``CorrectionResponse``'s own ``BaseObject.practice_id``.
+            decision: exactly one of accept/adapt/reject/defer.
+            reason: REQUIRED (non-empty) iff ``decision`` is reject/defer,
+                and must be omitted otherwise (MRR-FR-084; enforced by the
+                ``CorrectionResponse`` contract's own ``model_validator`` —
+                not re-checked here beyond what construction already does).
+            adaptations: REQUIRED (non-empty) iff ``decision`` is adapt, and
+                must be empty otherwise (contract-enforced, as above).
+            already_responded: caller-supplied idempotency predicate, keyed
+                by ``correction_notification_id`` — mirrors E6-T03's own
+                ``already_processed_notification``. No durable
+                processed-notification-id store is built here.
+            actor: MRR-NFR-001 provenance.
+            policy_version: MRR-NFR-001 provenance.
+            correlation_id: MRR-NFR-001 provenance.
+
+        Returns:
+            The newly persisted ``CorrectionResponse`` revision-1
+            ``StoredObject``.
+
+        Raises:
+            CorrectionResponseAlreadyRecordedError:
+                ``already_responded(correction_notification_id)`` is
+                ``True``. Checked FIRST; nothing is persisted.
+            ObjectNotFoundError: an ``adaptations[].adapted_object_id`` does
+                not resolve to any locally stored object — checked for
+                EVERY entry before anything is built or persisted, so a
+                later valid entry never masks an earlier missing one.
+            pydantic.ValidationError: the constructed ``CorrectionResponse``
+                is not valid (e.g. ``decision`` outside
+                accept/adapt/reject/defer, ``reason``/``adaptations``
+                inconsistent with ``decision``, or an
+                ``adaptations[].notified_object_id`` not a member of
+                ``notified_object_ids``). Nothing is persisted.
+            ValueError: this service was constructed without a
+                ``record_revision_with_edges`` dependency
+                (:func:`bind_revision_with_edges_unit_of_work`).
+
+        None of these leave anything persisted.
+        """
+        if already_responded(correction_notification_id):
+            raise CorrectionResponseAlreadyRecordedError(correction_notification_id)
+
+        adaptation_entries = list(adaptations) if adaptations else []
+
+        # Every adapted_object_id must already exist locally — checked for
+        # EVERY entry, before anything is built or persisted, so a missing
+        # id aborts the whole call even when other entries in the same list
+        # reference valid objects (mirrors E6-T01's own identical
+        # adapted-decision verification).
+        for adaptation in adaptation_entries:
+            self._object_repository.get_latest(adaptation.adapted_object_id)
+
+        if self._record_revision_with_edges is None:
+            raise ValueError(
+                "CorrectionImpactService was constructed without a "
+                "record_revision_with_edges dependency "
+                "(bind_revision_with_edges_unit_of_work), required by record_response"
+            )
+
+        response_id = new_urn("correction-response")
+        now = datetime.now(UTC)
+        body: dict[str, Any] = {
+            "id": response_id,
+            "api_version": "mrr/v1alpha1",
+            "kind": "CorrectionResponse",
+            "practice_id": responding_practice_id,
+            "revision": 1,
+            "created_at": now.isoformat(),
+            "created_by": actor,
+            "content_hash": _PLACEHOLDER_CORRECTION_RESPONSE_CONTENT_HASH,
+            "correction_notification_id": correction_notification_id,
+            "notifying_practice_id": notifying_practice_id,
+            "origin_correction_event_id": origin_correction_event_id,
+            "origin_correction_event_revision": origin_correction_event_revision,
+            "notified_object_ids": list(notified_object_ids),
+            "decision": decision,
+            "adaptations": [
+                {
+                    "adapted_object_id": adaptation.adapted_object_id,
+                    "notified_object_id": adaptation.notified_object_id,
+                }
+                for adaptation in adaptation_entries
+            ],
+        }
+        if reason is not None:
+            body["reason"] = reason
+
+        content_hash = compute_content_hash(body)
+        body["content_hash"] = content_hash
+
+        # Re-run the CorrectionResponse contract's own validation against
+        # the EXACT body about to be persisted — matches every other
+        # service's own "re-check before persisting" stance. This is what
+        # actually enforces decision/reason/adaptations consistency and the
+        # adaptations[].notified_object_id membership check.
+        CorrectionResponse.model_validate(body)
+
+        obj = StoredObject(
+            id=response_id,
+            api_version="mrr/v1alpha1",
+            kind="CorrectionResponse",
+            practice_id=responding_practice_id,
+            revision=1,
+            created_at=now,
+            created_by=actor,
+            content_hash=content_hash,
+            supersedes=None,
+            labels=None,
+            body=body,
+        )
+        edges = [
+            TypedEdge(
+                id=new_urn("edge"),
+                source_id=adaptation.adapted_object_id,
+                target_id=adaptation.notified_object_id,
+                edge_type=_CORRECTS_EDGE_TYPE,
+                created_at=now,
+                created_by=actor,
+                scope=None,
+                status="active",
+                practice_id=responding_practice_id,
+            )
+            for adaptation in adaptation_entries
+        ]
+        event = DomainEvent(
+            id=new_urn("domain-event"),
+            event_type=_EVENT_RESPONSE_RECORDED,
+            occurred_at=now,
+            actor=actor,
+            policy_version=policy_version,
+            causation_id=None,
+            correlation_id=correlation_id,
+            object_id=response_id,
+            object_revision=1,
+            payload={
+                "correction_notification_id": correction_notification_id,
+                "decision": decision,
+                "adaptation_count": len(adaptation_entries),
+            },
+        )
+
+        stored, _edges, _appended = self._record_revision_with_edges(obj, None, edges, event)
+        return stored
 
     # ------------------------------------------------------------------
     # Internal helpers.
