@@ -82,6 +82,29 @@ canonical ``error_code``. A unit test calling the internal helper directly
 proves the typed raise; a unit test calling ``execute()`` proves the
 resulting terminal outcome. Both are pinned, satisfying the acceptance
 test's own wording without violating the Protocol's "never raise" contract.
+
+--- MTH-018: sensitivity variations are executed here (task-packets/K1-T03b.yaml) ---
+
+Where a locked protocol declares ``sensitivity_variations`` (MRR-MTH-018),
+each declared entry is executed by RE-RUNNING ONLY the four deterministic
+classification stages (``_passes_inclusion_filter``,
+``_group_included_rows_by_analysis``, independence counting via the
+UNCHANGED ``mrr.domain.source_independence``, and ``_classify_analysis``)
+against the SAME already-parsed, already-extracted ``rows`` the base run
+already computed — the extraction step is NEVER re-invoked per variation
+(``_resolve_variation_rows`` copies each row's own ``extraction`` dict
+verbatim). A new per-variation sidecar, ``SensitivityVariationParameters``,
+mirrors ``ProtocolParameters``' own precedent exactly; a new fail-closed
+precondition check, ``_check_sensitivity_variation_coverage``, runs right
+after ``_check_protocol_lock`` and raises
+``mrr.domain.exceptions.SensitivityVariationDeclarationMismatchError`` — the
+SAME "precondition, not a finding" framing as MTH-007 above — when the
+protocol's own declared set and the caller's own supplied artifact-id set
+disagree in EITHER direction. Results land as one more key,
+``"sensitivity_analysis_results"``, in the SAME canonicalized output dict —
+see ``_run_sensitivity_variations``'s own docstring for the full design,
+including why a variation-emptied group is never fed to ``_classify_analysis``
+(the empty-``group_rows`` guard).
 """
 
 from __future__ import annotations
@@ -96,7 +119,11 @@ from typing import Any, ClassVar, Literal, Self
 from mrr.contracts import TaskBundle, Urn
 from mrr.crypto.canonical import canonicalize
 from mrr.crypto.hashing import content_hash
-from mrr.domain.exceptions import ProtocolLockViolationError, ProtocolNotLockedError
+from mrr.domain.exceptions import (
+    ProtocolLockViolationError,
+    ProtocolNotLockedError,
+    SensitivityVariationDeclarationMismatchError,
+)
 from mrr.domain.model_adapter import ModelAdapter, ModelInvocationRequest
 from mrr.domain.source_independence import distinct_independent_source_family_count
 from mrr.services.node_runtime.executor import (
@@ -118,6 +145,7 @@ __all__ = [
     "ExtractionOutcome",
     "ProtocolParameters",
     "RULED_CEILING",
+    "SensitivityVariationParameters",
     "SystematicEvidenceSynthesisExecutor",
     "build_model_assisted_extraction_callable",
 ]
@@ -146,6 +174,14 @@ _INSTRUCTIONS_CORPUS_KEY = "corpus_artifact_id"
 _INSTRUCTIONS_PROTOCOL_PARAMETERS_KEY = "protocol_parameters_artifact_id"
 _INSTRUCTIONS_METHOD_PROTOCOL_KEY = "method_protocol_artifact_id"
 _INSTRUCTIONS_QUESTION_ID_KEY = "question_id"
+
+#: task-packets/K1-T03b.yaml derived_decisions (b): one more optional
+#: instructions key, mirroring the four keys above exactly —
+#: ``variation_entry_id -> artifact_id`` for every declared
+#: ``MethodProtocol.sensitivity_variations`` entry a caller supplies a
+#: sidecar for. Absent/empty is the overwhelmingly common case (every
+#: existing ``sensitivity_variations: []`` protocol).
+_INSTRUCTIONS_SENSITIVITY_VARIATION_ARTIFACT_IDS_KEY = "sensitivity_variation_artifact_ids"
 
 #: MethodProtocol.status values MRR-MTH-007 treats as "locked enough" for
 #: confirmatory work — derived_decisions (g): status "locked" itself, plus
@@ -317,6 +353,57 @@ class ProtocolParameters(BaseModel):
         return self
 
 
+class SensitivityVariationParameters(BaseModel):
+    """The per-variation sidecar (task-packets/K1-T03b.yaml derived_decisions
+    (b)): one instance per declared ``MethodProtocol.sensitivity_variations``
+    entry, mirroring ``ProtocolParameters``' own precedent exactly —
+    ``sensitivity_variations`` is, like every other
+    ``MethodProtocol.list[str]`` field, free human prose with no
+    machine-executable content of its own (MRR-MTH-018).
+
+    ``protocol_id``/``protocol_lock_content_hash`` are checked against the
+    resolved protocol via the SAME, UNCHANGED ``_check_protocol_lock`` every
+    base run already uses (a stale or mismatched variation sidecar fails
+    exactly like a stale base-run sidecar does today, the same typed errors,
+    ``ProtocolNotLockedError``/``ProtocolLockViolationError``).
+    ``variation_entry_id`` is self-describing and checked against the
+    instructions key it is resolved under (``_run_sensitivity_variations``).
+
+    ``inclusion_filter``/``eligibility_rules``/``kill_conditions`` reuse
+    ``ProtocolParameters``' own nested Pydantic classes BY REFERENCE (zero
+    duplication) — a variation may vary any or all of the three. The one
+    genuinely NEW field beyond ``ProtocolParameters``' own shape,
+    ``source_family_overrides``, is the concrete mechanism derived_decisions
+    (a) names for varying "party families"/"cluster taxonomies": an
+    ``entry_id -> alternate source_family_id`` mapping, applied per corpus
+    row before independence counting (``source_independence.family_key``
+    reads only ``row.source_family_id``, so overriding that one field per
+    entry is a minimal, already-supported lever requiring zero change to
+    ``mrr.domain.source_independence`` itself).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    protocol_id: str = Field(min_length=1)
+    protocol_lock_content_hash: str = Field(min_length=1)
+    variation_entry_id: str = Field(min_length=1)
+    inclusion_filter: dict[str, _InclusionFieldPredicate] = Field(default_factory=dict)
+    eligibility_rules: dict[str, _EligibilityRule]
+    kill_conditions: _KillConditions
+    source_family_overrides: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _requires_supported_and_contested_rules(self) -> Self:
+        missing = {"supported", "contested"} - set(self.eligibility_rules)
+        if missing:
+            raise ValueError(
+                f"sensitivity-variation-parameters sidecar eligibility_rules is missing "
+                f"required key(s) {sorted(missing)!r} (this module's eligibility algorithm "
+                "requires both 'supported' and 'contested')"
+            )
+        return self
+
+
 # ---------------------------------------------------------------------------
 # Model-assisted extraction (derived_decisions (m)) — injected, OPTIONAL,
 # never required for v1's own model-free acceptance path.
@@ -441,6 +528,42 @@ def _check_protocol_lock(protocol_body: Mapping[str, Any], params: ProtocolParam
             declared_content_hash=params.protocol_lock_content_hash,
             actual_content_hash=actual_content_hash,
         )
+
+
+def _check_sensitivity_variation_coverage(
+    protocol_body: Mapping[str, Any], instructions: Mapping[str, Any]
+) -> dict[str, str]:
+    """MRR-MTH-018, task-packets/K1-T03b.yaml derived_decisions (b) — a
+    SYMMETRIC fail-closed precondition check, called immediately after
+    ``_check_protocol_lock`` (i.e. before the corpus is even parsed — a
+    precondition check, not a research finding, exactly mirroring
+    ``_check_protocol_lock``'s own placement and rationale).
+
+    The locked protocol's own declared ``sensitivity_variations`` set MUST
+    exactly equal the set of ``variation_entry_id`` keys the caller supplied
+    via ``instructions[_INSTRUCTIONS_SENSITIVITY_VARIATION_ARTIFACT_IDS_KEY]``
+    — a declared-but-uncovered variation fails closed (the MUST this whole
+    packet exists to satisfy would otherwise be silently unfulfilled), and a
+    supplied-but-undeclared variation artifact ALSO fails closed. Trivially
+    passes with an empty mapping when both sets are empty — the
+    overwhelmingly common case today, ZERO behavior change for every
+    existing ``sensitivity_variations: []`` protocol.
+
+    Returns the resolved ``variation_entry_id -> artifact_id`` mapping (never
+    ``None``/absent — an empty ``dict`` when there is nothing to run).
+    """
+    protocol_id = str(protocol_body.get("id", ""))
+    declared = frozenset(
+        str(entry_id) for entry_id in protocol_body.get("sensitivity_variations", [])
+    )
+    raw_supplied = instructions.get(_INSTRUCTIONS_SENSITIVITY_VARIATION_ARTIFACT_IDS_KEY, {})
+    supplied_map = {str(key): str(value) for key, value in raw_supplied.items()}
+    supplied = frozenset(supplied_map)
+    if declared != supplied:
+        raise SensitivityVariationDeclarationMismatchError(
+            protocol_id, declared=declared, supplied=supplied
+        )
+    return supplied_map
 
 
 def _passes_inclusion_filter(
@@ -643,6 +766,166 @@ def _classify_analysis(
     )
 
 
+# ---------------------------------------------------------------------------
+# Sensitivity-variation execution (task-packets/K1-T03b.yaml, MRR-MTH-018).
+# Re-runs ONLY the four classification stages above — never re-invokes
+# extraction, never re-fetches the corpus — see derived_decisions (a).
+# ---------------------------------------------------------------------------
+
+
+def _resolve_variation_rows(
+    base_rows: Sequence[_CorpusRowResult], variation_params: SensitivityVariationParameters
+) -> list[_CorpusRowResult]:
+    """Re-run ONLY the inclusion-filter stage over the SAME already-parsed,
+    already-extracted base rows (derived_decisions (a)) — ``extraction`` is
+    copied verbatim from ``base_row``, never recomputed.
+    ``source_family_overrides`` is applied via a per-row COPY of the entry
+    (``CorpusEntry.model_copy``), never mutating the base run's own shared
+    ``CorpusEntry`` instance that the base run and every other variation
+    still read.
+    """
+    variation_rows: list[_CorpusRowResult] = []
+    for base_row in base_rows:
+        override = variation_params.source_family_overrides.get(base_row.entry.entry_id)
+        entry = (
+            base_row.entry
+            if override is None
+            else base_row.entry.model_copy(update={"source_family_id": override})
+        )
+        included, exclusion_reason = _passes_inclusion_filter(
+            entry, variation_params.inclusion_filter
+        )
+        variation_rows.append(
+            _CorpusRowResult(
+                entry=entry,
+                included=included,
+                exclusion_reason=exclusion_reason,
+                extraction=base_row.extraction,
+            )
+        )
+    return variation_rows
+
+
+def _sensitivity_result_to_dict(
+    variation_entry_id: str, result: _AnalysisResult, base_outcome: str
+) -> dict[str, Any]:
+    return {
+        "variation_entry_id": variation_entry_id,
+        "applies_to_analysis": result.applies_to_analysis,
+        "outcome": result.outcome,
+        "included_source_count": result.included_source_count,
+        "verified_source_count": result.verified_source_count,
+        "distinct_independent_supporting_family_count": (
+            result.distinct_independent_supporting_family_count
+        ),
+        "distinct_independent_contradicting_family_count": (
+            result.distinct_independent_contradicting_family_count
+        ),
+        "decision_rationale": (
+            result.decision_rationale if result.outcome == "insufficient_evidence" else None
+        ),
+        "matches_base_outcome": result.outcome == base_outcome,
+    }
+
+
+def _empty_group_sensitivity_result(
+    variation_entry_id: str, applies_to_analysis: str, base_outcome: str
+) -> dict[str, Any]:
+    """derived_decisions (g): a variation whose own ``inclusion_filter``
+    empties a base-run-non-empty group NEVER calls ``_classify_analysis``
+    with an empty ``group_rows`` list (that would ``IndexError`` at
+    ``_classify_analysis``'s own unsafe ``group_rows[0]`` access whenever a
+    variation's own ``kill_conditions.stop_insufficient_evidence.
+    min_included_sources`` happens to be ``0`` — a legal value). The
+    ``"insufficient_evidence"`` result is synthesized directly here instead,
+    with an explicit rationale naming the variation and the zero count.
+    """
+    rationale = (
+        f"sensitivity variation {variation_entry_id!r}: 0 included source(s) for analysis "
+        f"{applies_to_analysis!r} under this variation's own inclusion_filter"
+    )
+    return {
+        "variation_entry_id": variation_entry_id,
+        "applies_to_analysis": applies_to_analysis,
+        "outcome": "insufficient_evidence",
+        "included_source_count": 0,
+        "verified_source_count": 0,
+        "distinct_independent_supporting_family_count": 0,
+        "distinct_independent_contradicting_family_count": 0,
+        "decision_rationale": rationale,
+        "matches_base_outcome": base_outcome == "insufficient_evidence",
+    }
+
+
+def _run_sensitivity_variations(
+    protocol_body: Mapping[str, Any],
+    base_rows: Sequence[_CorpusRowResult],
+    base_outcome_by_analysis: Mapping[str, str],
+    base_params: ProtocolParameters,
+    variation_artifact_ids: Mapping[str, str],
+    inputs: Mapping[str, bytes],
+) -> list[dict[str, Any]]:
+    """Execute every declared sensitivity variation (derived_decisions (a))
+    against the SAME already-parsed, already-extracted base rows — never
+    re-invoking extraction, never touching the base run's own claim-minting
+    output (``output["analyses"]``, untouched by this function).
+
+    For every ``applies_to_analysis`` key present in the BASE run's own
+    analyses (the set of groups worth a variation comparison — derived_
+    decisions (g)), and only those, one ``SensitivityAnalysisResult``-shaped
+    dict is appended per declared variation, sorted by
+    ``(variation_entry_id, applies_to_analysis)`` for determinism (derived_
+    decisions (d) — this output feeds the SAME ``canonicalize()`` call the
+    base ``analyses`` list does; array element order is significant to
+    canonical JSON, unlike object key order).
+    """
+    results: list[dict[str, Any]] = []
+    for variation_entry_id, artifact_id in sorted(variation_artifact_ids.items()):
+        variation_params = SensitivityVariationParameters.model_validate_json(inputs[artifact_id])
+        if variation_params.variation_entry_id != variation_entry_id:
+            raise ValueError(
+                f"sensitivity-variation-parameters artifact declared under instructions key "
+                f"{variation_entry_id!r} carries its own variation_entry_id "
+                f"{variation_params.variation_entry_id!r} instead — the two must match"
+            )
+
+        # protocol_lock_content_hash is checked via the UNCHANGED
+        # _check_protocol_lock, against THIS variation's own declared
+        # protocol_id/hash (derived_decisions (b)) — a real ProtocolParameters
+        # instance built from the base sidecar's own fields plus this
+        # variation's own overrides, so _check_protocol_lock's own signature
+        # and behavior are exercised completely unmodified.
+        effective_params = base_params.model_copy(
+            update={
+                "protocol_id": variation_params.protocol_id,
+                "protocol_lock_content_hash": variation_params.protocol_lock_content_hash,
+                "inclusion_filter": variation_params.inclusion_filter,
+                "eligibility_rules": variation_params.eligibility_rules,
+                "kill_conditions": variation_params.kill_conditions,
+            }
+        )
+        _check_protocol_lock(protocol_body, effective_params)
+
+        variation_rows = _resolve_variation_rows(base_rows, variation_params)
+        variation_groups = _group_included_rows_by_analysis(variation_rows)
+
+        for applies_to_analysis in sorted(base_outcome_by_analysis):
+            base_outcome = base_outcome_by_analysis[applies_to_analysis]
+            group_rows = variation_groups.get(applies_to_analysis, [])
+            if group_rows:
+                result = _classify_analysis(applies_to_analysis, group_rows, effective_params)
+                results.append(
+                    _sensitivity_result_to_dict(variation_entry_id, result, base_outcome)
+                )
+            else:
+                results.append(
+                    _empty_group_sensitivity_result(
+                        variation_entry_id, applies_to_analysis, base_outcome
+                    )
+                )
+    return results
+
+
 def _build_assertion(result: _AnalysisResult, corpus_by_id: Mapping[str, CorpusEntry]) -> str:
     parts = [f"Analysis {result.applies_to_analysis!r}."]
     if result.supporting_entry_ids:
@@ -681,6 +964,7 @@ def _run_pipeline(
     params = ProtocolParameters.model_validate_json(inputs[protocol_parameters_artifact_id])
     protocol_body: dict[str, Any] = _load_json(inputs[method_protocol_artifact_id])
     _check_protocol_lock(protocol_body, params)
+    variation_artifact_ids = _check_sensitivity_variation_coverage(protocol_body, instructions)
 
     raw_entries = _load_json(inputs[corpus_artifact_id])
     entries = [CorpusEntry.model_validate(raw_entry) for raw_entry in raw_entries]
@@ -698,11 +982,23 @@ def _run_pipeline(
 
     corpus_rows_out = [_corpus_row_to_dict(row) for row in rows]
 
+    # MRR-MTH-018 (task-packets/K1-T03b.yaml): re-run ONLY the four
+    # classification stages above, once per declared variation, against the
+    # SAME already-parsed, already-extracted `rows` — see
+    # `_run_sensitivity_variations`'s own docstring.
+    base_outcome_by_analysis = {
+        analysis["applies_to_analysis"]: analysis["outcome"] for analysis in analyses
+    }
+    sensitivity_analysis_results = _run_sensitivity_variations(
+        protocol_body, rows, base_outcome_by_analysis, params, variation_artifact_ids, inputs
+    )
+
     output: dict[str, Any] = {
         "protocol_id": params.protocol_id,
         "question_id": question_id,
         "corpus_rows": corpus_rows_out,
         "analyses": analyses,
+        "sensitivity_analysis_results": sensitivity_analysis_results,
     }
     return canonicalize(output)
 

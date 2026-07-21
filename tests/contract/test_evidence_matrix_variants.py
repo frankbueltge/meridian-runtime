@@ -22,6 +22,27 @@ Acceptance-test mapping (task-packets/K1-T01.yaml):
 - "a row with verification_status: 'unverifiable' and a non-empty
   unverifiable_reason is accepted" ->
   ``test_unverifiable_row_with_reason_is_accepted``.
+
+Acceptance-test mapping (task-packets/K1-T03b.yaml, MRR-MTH-018 sensitivity
+variations — [contract tier]):
+
+- "an EvidenceMatrix document with a non-empty, valid
+  sensitivity_analysis_results array validates against BOTH the schema and
+  Pydantic" -> ``test_valid_sensitivity_analysis_results_are_accepted``.
+- "the SAME document with two entries sharing an identical
+  (variation_entry_id, applies_to_analysis) pair is REJECTED at the Pydantic
+  tier" -> the duplicate-pair fixture
+  tests/contract/fixtures/invalid/evidence-matrix-sensitivity-result-duplicate-pair.json,
+  picked up by tests/contract/test_negative_fixtures.py's own glob-based
+  discovery (that fixture's two entries are fully byte-identical, so — like
+  ConceptCharter.entries' own precedent, unlike EvidenceMatrixRow.row_id's —
+  it is ALSO rejected by the schema's own `uniqueItems: true`, not only by
+  the Pydantic model_validator).
+- an outcome of 'insufficient_evidence' with a null decision_rationale is
+  rejected -> ``test_sensitivity_result_insufficient_evidence_without_rationale_is_rejected``.
+- distinct (variation_entry_id, applies_to_analysis) pairs (same
+  variation_entry_id, different applies_to_analysis) are accepted ->
+  ``test_sensitivity_results_with_distinct_pairs_are_accepted``.
 """
 
 from __future__ import annotations
@@ -132,3 +153,117 @@ def test_two_rows_with_distinct_row_ids_are_accepted() -> None:
     matrix = EvidenceMatrix.model_validate(document)
 
     assert [row.row_id for row in matrix.rows] == ["row-001", "row-002"]
+
+
+# ---------------------------------------------------------------------------
+# task-packets/K1-T03b.yaml (MRR-MTH-018 sensitivity variations).
+# ---------------------------------------------------------------------------
+
+
+def _sensitivity_result(**overrides: Any) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "variation_entry_id": "variant-a",
+        "applies_to_analysis": "candidate-x",
+        "outcome": "supported",
+        "included_source_count": 2,
+        "verified_source_count": 2,
+        "distinct_independent_supporting_family_count": 2,
+        "distinct_independent_contradicting_family_count": 0,
+        "decision_rationale": None,
+        "matches_base_outcome": True,
+    }
+    result.update(overrides)
+    return result
+
+
+def test_valid_sensitivity_analysis_results_are_accepted() -> None:
+    document = _base_document(rows=[], sensitivity_analysis_results=[_sensitivity_result()])
+
+    _validate_against_schema(document)
+    matrix = EvidenceMatrix.model_validate(document)
+
+    assert matrix.sensitivity_analysis_results is not None
+    assert len(matrix.sensitivity_analysis_results) == 1
+    assert matrix.sensitivity_analysis_results[0].variation_entry_id == "variant-a"
+
+
+def test_absent_sensitivity_analysis_results_defaults_to_none() -> None:
+    document = _base_document(rows=[])
+
+    _validate_against_schema(document)
+    matrix = EvidenceMatrix.model_validate(document)
+
+    assert matrix.sensitivity_analysis_results is None
+
+
+def test_sensitivity_result_insufficient_evidence_without_rationale_is_rejected() -> None:
+    document = _base_document(
+        rows=[],
+        sensitivity_analysis_results=[
+            _sensitivity_result(outcome="insufficient_evidence", decision_rationale=None)
+        ],
+    )
+
+    with pytest.raises(ValidationError, match="decision_rationale"):
+        EvidenceMatrix.model_validate(document)
+
+
+def test_sensitivity_result_insufficient_evidence_with_rationale_is_accepted() -> None:
+    document = _base_document(
+        rows=[],
+        sensitivity_analysis_results=[
+            _sensitivity_result(
+                outcome="insufficient_evidence",
+                decision_rationale="0 included sources under this variation.",
+                distinct_independent_supporting_family_count=0,
+                distinct_independent_contradicting_family_count=0,
+                included_source_count=0,
+                verified_source_count=0,
+            )
+        ],
+    )
+
+    _validate_against_schema(document)
+    matrix = EvidenceMatrix.model_validate(document)
+
+    assert matrix.sensitivity_analysis_results is not None
+    assert matrix.sensitivity_analysis_results[0].outcome == "insufficient_evidence"
+
+
+def test_sensitivity_results_with_distinct_pairs_are_accepted() -> None:
+    document = _base_document(
+        rows=[],
+        sensitivity_analysis_results=[
+            _sensitivity_result(applies_to_analysis="candidate-x"),
+            _sensitivity_result(applies_to_analysis="candidate-y"),
+            _sensitivity_result(variation_entry_id="variant-b", applies_to_analysis="candidate-x"),
+        ],
+    )
+
+    _validate_against_schema(document)
+    matrix = EvidenceMatrix.model_validate(document)
+
+    assert matrix.sensitivity_analysis_results is not None
+    assert len(matrix.sensitivity_analysis_results) == 3
+
+
+def test_sensitivity_results_with_duplicate_pair_rejected_by_pydantic() -> None:
+    """Same (variation_entry_id, applies_to_analysis) pair, differing
+    outcome — the stronger same-pair-different-content case a JSON Schema
+    `uniqueItems` check would NOT catch (the two items are not deeply
+    equal), mirroring `test_duplicate_row_id_with_differing_content_
+    rejected_by_pydantic`'s own identical rationale above. The fully
+    byte-identical duplicate case is separately covered by the committed
+    fixture tests/contract/fixtures/invalid/evidence-matrix-sensitivity-
+    result-duplicate-pair.json via test_negative_fixtures.py.
+    """
+    document = _base_document(
+        rows=[],
+        sensitivity_analysis_results=[
+            _sensitivity_result(outcome="supported"),
+            _sensitivity_result(outcome="contested"),
+        ],
+    )
+
+    with pytest.raises(ValidationError, match="duplicate SensitivityAnalysisResult pair"):
+        EvidenceMatrix.model_validate(document)

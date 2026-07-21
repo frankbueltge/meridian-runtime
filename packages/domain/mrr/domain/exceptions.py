@@ -1612,6 +1612,58 @@ class ProtocolLockViolationError(DomainError):
         )
 
 
+class SensitivityVariationDeclarationMismatchError(DomainError):
+    """Raised by ``mrr.services.node_runtime.synthesis_executor.
+    _check_sensitivity_variation_coverage`` (task-packets/K1-T03b.yaml
+    derived_decisions (b)/(h), MRR-MTH-018: "Where a protocol declares
+    sensitivity analyses over classifications ... the varied classifications
+    MUST be versioned charter entries, and results under each variation MUST
+    be reported") when a locked ``MethodProtocol``'s own declared
+    ``sensitivity_variations`` set does not exactly equal the set of
+    ``variation_entry_id`` keys the caller supplied via
+    ``TaskBundle.instructions["sensitivity_variation_artifact_ids"]``.
+
+    Checked SYMMETRICALLY: a declared-but-uncovered variation fails closed
+    (the MUST this error exists to enforce would otherwise be silently
+    unfulfilled), and a supplied-but-undeclared variation artifact ALSO
+    fails closed (extending AGENTS.md's fail-closed discipline symmetrically,
+    rather than silently ignoring an extra, undeclared input).
+
+    Raised from a pure, in-memory set comparison, caught by
+    ``SystematicEvidenceSynthesisExecutor.execute()``'s own outer exception
+    handling and reported as a ``failed`` ``ExecutionResult`` — mirrors
+    ``ProtocolNotLockedError``'s/``ProtocolLockViolationError``'s identical
+    framing for why this fails closed rather than becoming a domain finding.
+
+    Carries NO canonical ``error_code`` ClassVar — spec 08 section 3's own
+    error-code list is closed and does not name MTH-018, mirroring
+    ``EvidenceMatrixNotFoundError``'s/``MethodRulingNotFoundError``'s/
+    ``QuestionModelNotFoundError``'s own identical "plain ``DomainError``
+    subclass, no canonical code" precedent (the majority pattern in this
+    file), not ``ProtocolNotLockedError``'s minority "carries a
+    spec-08-declared code" pattern. Carries ``protocol_id``, ``declared``
+    (the protocol's own ``sensitivity_variations`` set), and ``supplied``
+    (the caller's own ``sensitivity_variation_artifact_ids`` key set), so a
+    caller can tell the two apart — and derive the missing/undeclared
+    difference sets — without parsing the message string.
+    """
+
+    def __init__(
+        self, protocol_id: str, *, declared: frozenset[str], supplied: frozenset[str]
+    ) -> None:
+        self.protocol_id = protocol_id
+        self.declared = declared
+        self.supplied = supplied
+        missing = sorted(declared - supplied)
+        undeclared = sorted(supplied - declared)
+        super().__init__(
+            f"MethodProtocol {protocol_id!r}: declared sensitivity_variations "
+            f"{sorted(declared)!r} does not match supplied "
+            f"sensitivity_variation_artifact_ids keys {sorted(supplied)!r} (MRR-MTH-018) — "
+            f"missing coverage for {missing!r}, undeclared/extra {undeclared!r}"
+        )
+
+
 class EvidenceMatrixNotFoundError(DomainError):
     """Raised by ``mrr.services.evidence_matrix.service.EvidenceMatrixService``
     (task-packets/K1-T03.yaml) when a referenced ``EvidenceMatrix`` id
