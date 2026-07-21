@@ -28,7 +28,11 @@
         "created_by": {"$ref": "#/$defs/urn"},
         "content_hash": {"$ref": "#/$defs/sha256"},
         "supersedes": {"anyOf": [{"$ref": "#/$defs/urn"}, {"type": "null"}]},
-        "labels": {"type": "object", "additionalProperties": {"type": "string"}}
+        "labels": {"type": "object", "additionalProperties": {"type": "string"}},
+        "classification": {
+          "type": "string",
+          "enum": ["PUBLIC", "INTERNAL", "RESTRICTED", "SENSITIVE", "PARTICIPANT_IDENTIFIABLE", "SYNTHETIC_TEST_FIXTURE"]
+        }
       }
     },
     "signature": {

@@ -52,6 +52,31 @@ Classification = Literal[
     "PARTICIPANT_IDENTIFIABLE",
 ]
 
+#: Mirrors `$defs.baseObject.properties.classification`
+#: (docs/spec/adr/ADR-0010-OBJECT-LEVEL-DATA-CLASSIFICATION.md,
+#: task-packets/E1-T03b.yaml). A NEW, separate six-value ``Literal`` —
+#: deliberately NOT a widening of ``Classification`` above. ``Classification``
+#: is reused verbatim by ``TaskBundle.classification`` (required, five
+#: values) and ``ResearchScore.data_classes``; if it grew a sixth value here,
+#: a hand-constructed ``TaskBundle`` document with
+#: ``classification="SYNTHETIC_TEST_FIXTURE"`` would validate at the
+#: Pydantic tier (the shared type now accepts it) while
+#: ``schemas/task-bundle.schema.json``'s own unchanged five-value inline
+#: ``enum`` would still reject the identical document — a schema/Pydantic
+#: drift this repository's contract checks do not universally catch.
+#: Keeping this Literal separate avoids that drift by construction: adding
+#: the new value here can never affect ``TaskBundle``'s own, independently
+#: declared ``classification`` field (ADR-0010's Decision text names only
+#: ``baseObject``/``BaseObject`` as the target of the new value).
+BaseObjectClassification = Literal[
+    "PUBLIC",
+    "INTERNAL",
+    "RESTRICTED",
+    "SENSITIVE",
+    "PARTICIPANT_IDENTIFIABLE",
+    "SYNTHETIC_TEST_FIXTURE",
+]
+
 #: Mirrors the repeated autonomy-ceiling enum (used inline by
 #: research-score.schema.json `autonomy` and node-manifest.schema.json
 #: `capabilities[].max_autonomy`).
@@ -135,11 +160,17 @@ class Budget(MRRModel):
 class BaseObject(MRRModel):
     """Mirrors schemas/common.schema.json `$defs.baseObject`
     (docs/spec/02_DOMAIN_MODEL.md section 1: the eight fields every
-    first-class object MUST contain, plus the two optional ones).
+    first-class object MUST contain, plus the three optional ones —
+    ``supersedes``, ``labels``, and ``classification`` (ADR-0010,
+    task-packets/E1-T03b.yaml; absent means unclassified, and unclassified
+    MUST NOT satisfy any classification-gated check)).
 
     Entity modules subclass this and narrow ``kind`` to a ``Literal`` of the
     entity's own name (schemas do the equivalent with a JSON Schema
-    ``const``).
+    ``const``); ``TaskBundle`` similarly narrows ``classification`` to its
+    own required, five-value ``Classification`` field (see
+    ``BaseObjectClassification``'s own docstring for why the two Literals
+    stay separate).
     """
 
     id: Urn
@@ -152,3 +183,4 @@ class BaseObject(MRRModel):
     content_hash: Sha256
     supersedes: Urn | None = None
     labels: dict[str, str] | None = None
+    classification: BaseObjectClassification | None = None

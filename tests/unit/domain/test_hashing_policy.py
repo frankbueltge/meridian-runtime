@@ -3,12 +3,20 @@
 Acceptance-test mapping: "hashing_policy exclusions (signature field never in
 signed payload; content_hash not in hashed payload but in signed payload)"
 (task-packets/E1-T02.yaml).
+
+Also covers task-packets/E1-T03b.yaml's (ADR-0010) "hash/back-compat, direct
+proof" acceptance test ->
+``test_compute_content_hash_is_unaffected_by_the_new_optional_classification_field``.
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from mrr.contracts.practice import Practice
 from mrr.crypto.canonical import JSONValue
 from mrr.crypto.exceptions import SignatureVerificationError
 from mrr.domain.hashing_policy import (
@@ -125,3 +133,36 @@ def test_verify_object_signature_rejects_tampered_content_hash() -> None:
 
     with pytest.raises(SignatureVerificationError):
         verify_object_signature(public_key, tampered, signature_value, algorithm="Ed25519")
+
+
+def test_compute_content_hash_is_unaffected_by_the_new_optional_classification_field() -> None:
+    """Hash/back-compat direct proof for task-packets/E1-T03b.yaml
+    (ADR-0010): hashing examples/practice.example.json's own body directly
+    (the OLD field set -- no ``classification`` key, exactly as committed
+    before this task) yields the SAME ``compute_content_hash`` value as
+    hashing the SAME document after round-tripping it through the now-
+    ``classification``-aware ``Practice`` model
+    (``model_validate(...).model_dump(exclude_none=True)``). Since the
+    example never sets ``classification``, the field defaults to ``None``
+    and ``exclude_none=True`` drops it from the dump exactly as it always
+    dropped every other unset optional field -- so no existing object's
+    ``content_hash`` changes as a result of this field's addition
+    (invariants; ADR-0010's own "no migration, no re-signing" promise).
+    """
+    example_path = Path(__file__).resolve().parents[3] / "examples" / "practice.example.json"
+    original_document: dict[str, JSONValue] = json.loads(example_path.read_text())
+    assert "classification" not in original_document
+
+    hash_before = compute_content_hash(original_document)
+
+    # ``model_dump_json(exclude_none=True)`` then re-parse, exactly mirroring
+    # scripts/check_contracts.py's own round-trip convention (rather than
+    # ``model_dump(mode="json")``, which is not otherwise used in this
+    # repository's contract round-trip checks).
+    dumped_json = Practice.model_validate(original_document).model_dump_json(exclude_none=True)
+    round_tripped_document = json.loads(dumped_json)
+    assert "classification" not in round_tripped_document
+
+    hash_after = compute_content_hash(round_tripped_document)
+
+    assert hash_before == hash_after
