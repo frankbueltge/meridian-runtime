@@ -6,23 +6,59 @@ and a real, tmp-path-backed ``LocalFilesystemArtifactStore``, using the REAL,
 committed atlas-derived fixtures at ``corpora/model-collapse/`` — the
 runtime's FIRST REAL research output.
 
+--- AMENDMENT (task-packets/K1-T03b.yaml, reviewer_resolution, commit 72d2d37) ---
+
+``corpora/model-collapse/method-protocol.proposal.json`` declares
+``sensitivity_variations: ["model-collapse-mechanism-v1"]`` — a real,
+non-empty MRR-MTH-018 declaration that has existed since K1-T01, but whose
+EXECUTION was never wired into the runtime until K1-T03b. No
+``SensitivityVariationParameters`` sidecar for that declared entry has ever
+been authored (K1-T03b's own derivation (4): the declared entry_id
+operationalizes the question's own core term, not a second, alternate
+classification a meaningful comparison could run against — authoring a
+genuine alternate operationalization is a separate, named future task,
+K1-T03b specification_gaps, not designed or stubbed here). Once K1-T03b
+actually ENFORCES MRR-MTH-018 (a declared-but-uncovered sensitivity
+variation now fails closed, symmetrically, rather than being silently
+skipped), the two tests below that re-run this real corpus FRESH on every
+invocation necessarily start reporting ``run_state == "failed"`` instead of
+``"completed"`` — an HONEST exposure of a real gap the corpus's own
+declaration always had, not a regression in this test suite. This does NOT
+retroactively unmeet K1's own exit criteria (assessed against the code
+version the ORIGINAL run actually used) and does NOT touch the sealed
+archive schema ``mrr_k1t04_real_run_v2`` in any way — these two tests
+always run against their own fresh, throwaway PostgreSQL schema, never that
+one. The e2e happy path over a genuinely completing, multi-variation run is
+covered by K1-T03b's own new fixture test
+(``tests/e2e/test_k1_t03b_sensitivity_variation_execution.py``) and by the
+existing, unmodified K1-T03 loop test
+(``tests/e2e/test_k1_t03_synthesis_evidence_loop.py``).
+
 Acceptance-test mapping (task-packets/K1-T04.yaml):
 
 - "[headline real run, e2e tier]" ->
-  ``test_headline_real_run_over_the_pinned_atlas_corpus``.
-- "[CLI reproduction]" -> ``test_cli_reproduces_the_real_run``.
+  ``test_headline_real_run_fails_closed_on_the_unexecuted_sensitivity_declaration``
+  (renamed from ``test_headline_real_run_over_the_pinned_atlas_corpus`` by
+  the K1-T03b amendment above).
+- "[CLI reproduction]" ->
+  ``test_cli_fails_closed_on_the_unexecuted_sensitivity_declaration``
+  (renamed from ``test_cli_reproduces_the_real_run`` by the K1-T03b
+  amendment above).
 - "[regression]" -> covered by the SAME ``make test-e2e`` run also
   collecting ``test_e2e_001_single_node_evidence_loop.py``,
   ``test_k0_t02_capability_dispatch.py``, and
   ``test_k1_t03_synthesis_evidence_loop.py`` unmodified — not duplicated
   here.
 - "MRR-FR-004, --deny-score-approval's own CLI plumbing" ->
-  ``test_cli_deny_score_approval_flag_gates_the_run_via_mrr_fr_004`` (review
-  follow-up: ``mrr run``'s own identical flag has never had a CLI-level
-  test either — ``run_local_evidence_loop`` is only exercised directly, per
+  ``test_cli_deny_score_approval_flag_gates_the_run_via_mrr_fr_004``
+  (UNCHANGED by the K1-T03b amendment — this flag aborts before the run
+  ever reaches Task Bundle negotiation/execution, so it never reaches the
+  new MRR-MTH-018 coverage check either; review follow-up: ``mrr run``'s
+  own identical flag has never had a CLI-level test either —
+  ``run_local_evidence_loop`` is only exercised directly, per
   ``tests/e2e/test_e2e_001_single_node_evidence_loop.py``'s own
-  ``test_unapproved_score_aborts_at_the_gate`` — so this is this packet's
-  own new coverage, not a regression fix).
+  ``test_unapproved_score_aborts_at_the_gate`` — so this is K1-T04's own
+  new coverage, not a regression fix).
 """
 
 from __future__ import annotations
@@ -42,7 +78,6 @@ from alembic.config import Config
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
 from mrr.persistence.repositories import (
-    PostgresEdgeRepository,
     PostgresEventLog,
     PostgresObjectRepository,
 )
@@ -122,14 +157,31 @@ def _load_json(name: str) -> Any:
     return json.loads((_CORPUS_DIR / name).read_text(encoding="utf-8"))
 
 
-def test_headline_real_run_over_the_pinned_atlas_corpus(
+def test_headline_real_run_fails_closed_on_the_unexecuted_sensitivity_declaration(
     postgres_engine: Engine, tmp_path: Path
 ) -> None:
+    """The pinned atlas corpus's own locked MethodProtocol
+    (``corpora/model-collapse/method-protocol.proposal.json``) declares
+    ``sensitivity_variations: ["model-collapse-mechanism-v1"]`` — but no
+    ``SensitivityVariationParameters`` sidecar for that declared entry has
+    ever been authored. MRR-MTH-018 enforcement (task-packets/
+    K1-T03b.yaml) now refuses to silently skip a declared-but-uncovered
+    sensitivity analysis, so this run fails closed with
+    ``SensitivityVariationDeclarationMismatchError``. Authoring a genuine
+    alternate operationalization for the model-collapse question, so this
+    capability could eventually run a meaningful comparison on the real
+    corpus, remains a separate, explicitly named future task
+    (task-packets/K1-T03b.yaml specification_gaps) — not designed or
+    stubbed here. This test always runs the corpus fixture files fresh,
+    against its own throwaway PostgreSQL schema; the sealed archive schema
+    ``mrr_k1t04_real_run_v2`` (the ORIGINAL run, already reviewed and
+    accepted under K1's own exit criteria, assessed against the code
+    version it actually ran under) is entirely unaffected.
+    """
     store = _artifact_store(tmp_path)
     origin_key = Ed25519PrivateKey.generate()
     node_key = Ed25519PrivateKey.generate()
     object_repository = PostgresObjectRepository(postgres_engine)
-    edge_repository = PostgresEdgeRepository(postgres_engine)
 
     result = establish_and_run_synthesis(
         engine=postgres_engine,
@@ -144,118 +196,58 @@ def test_headline_real_run_over_the_pinned_atlas_corpus(
         code_revision=_TEST_CODE_REVISION,
     )
 
-    # The run completed — a "not enough evidence" finding would STILL be
-    # "completed" (MRR-MTH-011); only a genuine execution failure is not.
-    assert result.run_state == "completed"
+    assert result.run_state == "failed"
     assert result.is_deterministic is True
 
-    # A frozen EvidenceMatrix with every included row (all 18: the
-    # inclusion_filter excludes nothing from this corpus).
-    assert result.evidence_matrix_id is not None
-    matrix = object_repository.get_latest(result.evidence_matrix_id)
-    assert matrix.body["status"] == "frozen"
-    assert len(matrix.body["rows"]) == 18
+    # No research object is ever minted from a failed run (MRR-MTH-013:
+    # executor output never becomes authoritative state on its own).
+    assert result.evidence_matrix_id is None
+    assert result.claim_ids == ()
+    assert result.method_ruling_ids == ()
+    assert result.research_decision_ids == ()
 
-    # [MRR-MTH-015 / derived_decisions (k) property 2] >= 1 row whose
-    # verification_status != "verified" — the naturally-occurring UBERMORGEN
-    # "toVerify"/"pending" row, never dropped.
-    non_verified_rows = [r for r in matrix.body["rows"] if r["verification_status"] != "verified"]
-    assert len(non_verified_rows) >= 1
-    for row in non_verified_rows:
-        assert row["verification_status"] == "pending"
-
-    # [derived_decisions (k) property 1] >= 2 distinct applies_to_analysis
-    # outcomes — a landscape, not one monolithic claim. Read generically from
-    # whichever real objects this run actually produced (rulings and/or
-    # decisions), never assuming which one is which.
-    analysis_names: set[str] = set()
-    for ruling_id in result.method_ruling_ids:
-        ruling = object_repository.get_latest(ruling_id)
-        analysis_names.add(ruling.body["applies_to_analysis"])
-    for decision_id in result.research_decision_ids:
-        decision = object_repository.get_latest(decision_id)
-        analysis_names.add(decision.body["applies_to_analysis"])
-    assert len(analysis_names) >= 2
-
-    # [derived_decisions (k) property 4 / the plan's own mandatory acceptance
-    # criterion] the run's own SET of outcomes is NOT uniformly
-    # supported/positive-only — checked as a property over whichever
-    # outcomes the real classification actually produced, never as
-    # "claim X has status Y". Under the binding reviewer_resolution
-    # (synthesis_orchestration's own module docstring), a "supported"-track
-    # finding mints a Claim left at status "draft" (never promoted further by
-    # this run); only a "contested"/"unsupported" finding is driven to that
-    # same-named Claim.status. A uniformly-supported landscape would
-    # therefore show up here as every claim staying "draft" AND no
-    # ResearchDecision at all.
-    claim_statuses = {
-        object_repository.get_latest(claim_id).body["status"] for claim_id in result.claim_ids
-    }
-    decision_types = {
-        object_repository.get_latest(decision_id).body["decision_type"]
-        for decision_id in result.research_decision_ids
-    }
-    uniformly_supported_track_only = claim_statuses <= {"draft"} and not decision_types
-    assert not uniformly_supported_track_only, (
-        "STOP CONDITION: the real, honest classification of the pinned atlas corpus produced a "
-        "uniformly supported landscape (claim_statuses="
-        f"{claim_statuses!r}, decision_types={decision_types!r}) — per the plan's own words, "
-        "'a run that can only produce supported claims fails the packet'; revise the "
-        "ConceptCharter's own operationalization or inclusion criteria rather than silently "
-        "loosening what 'supported' means"
-    )
-    # At least one claim MUST be capable of ending contested/unsupported, or
-    # the run must produce a stop_insufficient_evidence decision (spec 08's
-    # own acceptance criterion, MRR-MTH-011).
-    assert claim_statuses & {"contested", "unsupported"} or "stop_insufficient_evidence" in (
-        decision_types
-    )
-
-    # [MRR-MTH-017 / derived_decisions (k) property 3] every persisted Claim
-    # carries a ruled_by edge to a MethodRuling whose scope_of_validity /
-    # non_applicability_conditions are non-empty.
-    assert len(result.claim_ids) == len(result.method_ruling_ids)
-    for claim_id in result.claim_ids:
-        ruled_by_edges = edge_repository.edges_from(claim_id, "ruled_by")
-        assert len(ruled_by_edges) == 1
-        ruling = object_repository.get_latest(ruled_by_edges[0].target_id)
-        assert ruling.body["status"] == "issued"
-        assert ruling.body["non_applicability_conditions"]
-        assert ruling.body["scope_of_validity"]
-
-    # [MRR-MTH-011] every claim/decision this run produces carries a ruling
-    # or a decision, never silently omitted.
-    assert len(result.claim_ids) + len(result.research_decision_ids) == len(analysis_names)
-
-    # [K1's own stated exit criterion] the sealed EvidenceCrate is
-    # independently traceable via governed_by_protocol/ruled_by/
-    # operationalizes edges back through the MethodProtocol to the
-    # QuestionModel/ConceptCharter.
-    crate_edges = edge_repository.edges_from(result.evidence_crate_id, "governed_by_protocol")
-    assert [e.target_id for e in crate_edges] == [result.method_protocol_id]
-    operationalizes_edges = edge_repository.edges_from(result.concept_charter_id, "operationalizes")
-    assert [e.target_id for e in operationalizes_edges] == [result.question_model_id]
-
+    # The governance objects establish_and_run_synthesis creates BEFORE
+    # ever calling run_synthesis_evidence_loop still exist and are still
+    # real — only the SYNTHESIS EXECUTION itself fails closed, confirming
+    # the declaration this whole story is about.
     protocol = object_repository.get_latest(result.method_protocol_id)
     assert protocol.body["status"] == "locked"
-    assert protocol.body["profile_id"] == result.method_profile_id
-    question_model = object_repository.get_latest(result.question_model_id)
-    assert question_model.body["status"] == "accepted"
-    concept_charter = object_repository.get_latest(result.concept_charter_id)
-    assert concept_charter.body["status"] == "accepted"
+    assert protocol.body["sensitivity_variations"] == ["model-collapse-mechanism-v1"]
 
+    # The sealed EvidenceCrate still exists (RunManifest/EvidenceCrate
+    # sealing is unconditional, MTH-020) and honestly names the exact typed
+    # error and the exact missing entry id — never a silent skip.
     crate = object_repository.get_latest(result.evidence_crate_id)
     assert crate.body["sealed"] is True
-    assert crate.body["run_state"] == "completed"
+    assert crate.body["run_state"] == "failed"
+    failure_messages = " ".join(entry["message"] for entry in crate.body["failures"])
+    assert "SensitivityVariationDeclarationMismatchError" in failure_messages
+    assert "model-collapse-mechanism-v1" in failure_messages
 
 
-def test_cli_reproduces_the_real_run(
+def test_cli_fails_closed_on_the_unexecuted_sensitivity_declaration(
     postgres_url: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """``mrr synthesis run --database-url ... --artifact-root ...`` (no
     further flags — the five new fixture flags default to the committed
-    ``corpora/model-collapse/*.json`` paths) exits 0 and prints an
-    ``evidence_crate_id`` resolvable via the same test database.
+    ``corpora/model-collapse/*.json`` paths) exits 0 (a reported outcome,
+    not a CLI usage error — ``SystematicEvidenceSynthesisExecutor`` never
+    raises for a task-level outcome) and prints ``"run_state": "failed"``:
+    the real corpus's own locked protocol declares
+    ``sensitivity_variations: ["model-collapse-mechanism-v1"]``, and no
+    ``SensitivityVariationParameters`` sidecar for that entry has ever been
+    authored. MRR-MTH-018 enforcement (task-packets/K1-T03b.yaml) now
+    refuses to silently skip a declared-but-uncovered sensitivity analysis
+    — an honest exposure of a real, previously-latent gap in the real
+    run's own declaration, not a CLI regression. Authoring a genuine
+    alternate operationalization for the model-collapse question so this
+    capability could eventually run a meaningful comparison on the real
+    corpus remains a separate, explicitly named future task
+    (task-packets/K1-T03b.yaml specification_gaps) — not designed or
+    stubbed here. This test always runs against its own fresh, throwaway
+    PostgreSQL schema; the sealed archive schema ``mrr_k1t04_real_run_v2``
+    (the ORIGINAL run, already reviewed and accepted under K1's own exit
+    criteria) is entirely unaffected.
     """
     exit_code = mrr_main(
         [
@@ -273,7 +265,7 @@ def test_cli_reproduces_the_real_run(
 
     assert exit_code == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["run_state"] == "completed"
+    assert out["run_state"] == "failed"
     assert out["evidence_crate_id"]
 
     engine = sa.create_engine(postgres_url)
@@ -281,6 +273,10 @@ def test_cli_reproduces_the_real_run(
         object_repository = PostgresObjectRepository(engine)
         crate = object_repository.get_latest(out["evidence_crate_id"])
         assert crate.body["sealed"] is True
+        assert crate.body["run_state"] == "failed"
+        failure_messages = " ".join(entry["message"] for entry in crate.body["failures"])
+        assert "SensitivityVariationDeclarationMismatchError" in failure_messages
+        assert "model-collapse-mechanism-v1" in failure_messages
     finally:
         engine.dispose()
 
