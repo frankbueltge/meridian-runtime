@@ -1508,3 +1508,27 @@ class GatedEdgeTypeError(DomainError):
             "dedicated method (attach_ruling for 'ruled_by', apply_kill_condition for "
             "'decided_by'), never through a generic edge-writing entry point"
         )
+
+
+class PendingDeliveryNotFoundError(DomainError):
+    """Raised by ``mrr.persistence.repositories.PostgresDeliveryPendingStore.
+    record_retry_attempt``/``mark_exhausted`` (task-packets/E6-T06.yaml) when
+    no pending-delivery row exists for ``(recipient_node_id,
+    notification_id)`` — mirrors ``ObjectNotFoundError``'s own "no such
+    record" precedent (task-packets/E6-T06.yaml derived_decisions (b): "a
+    ``PendingDeliveryNotFoundError`` is still new, for the 'no such record'
+    case, mirroring ``ObjectNotFoundError``'s own precedent").
+
+    Carries ``recipient_node_id`` and ``notification_id`` — the record's own
+    two-column primary key, mirroring ``mrr.persistence.tables.
+    pending_deliveries_table``'s own ``(recipient_node_id, notification_id)``
+    primary key.
+    """
+
+    def __init__(self, recipient_node_id: str, notification_id: str) -> None:
+        self.recipient_node_id = recipient_node_id
+        self.notification_id = notification_id
+        super().__init__(
+            "no pending-delivery record found for recipient_node_id "
+            f"{recipient_node_id!r}, notification_id {notification_id!r}"
+        )

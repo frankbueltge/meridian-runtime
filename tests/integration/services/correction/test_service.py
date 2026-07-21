@@ -60,12 +60,19 @@ from mrr.contracts.correction_response import CorrectionResponse, CorrectionResp
 from mrr.contracts.practice import Practice
 from mrr.crypto.keys import derive_key_id, encode_public_key, generate_ed25519_keypair
 from mrr.domain.envelope_transport import EnvelopeDeliveryOutcome, EnvelopeDeliveryRequest
-from mrr.domain.exceptions import CorrectionResponseAlreadyRecordedError, ObjectNotFoundError
+from mrr.domain.exceptions import (
+    CorrectionResponseAlreadyRecordedError,
+    InvalidTransitionError,
+    ObjectNotFoundError,
+    PendingDeliveryNotFoundError,
+)
 from mrr.domain.hashing_policy import compute_content_hash
 from mrr.domain.identity import new_urn
 from mrr.domain.manifest_trust import practice_key_ring
+from mrr.domain.offline_bundle import validate_inbound_bundle
 from mrr.domain.repositories import StoredObject, TypedEdge
 from mrr.persistence.repositories import (
+    PostgresDeliveryPendingStore,
     PostgresEdgeRepository,
     PostgresEventLog,
     PostgresObjectRepository,
@@ -207,6 +214,55 @@ def _services_for_notification(
         bind_event_unit_of_work(engine, event_log),
     )
     return correction_service, claim_service, object_repository, edge_repository, event_log
+
+
+def _services_for_delivery_tracking(
+    engine: Engine, *, max_attempts: int = 3
+) -> tuple[
+    CorrectionImpactService,
+    ClaimService,
+    PostgresObjectRepository,
+    PostgresEdgeRepository,
+    PostgresEventLog,
+    PostgresDeliveryPendingStore,
+]:
+    """Identical to :func:`_services_for_notification` but additionally
+    wires the OPTIONAL ``delivery_pending_store`` dependency (task-packets/
+    E6-T06.yaml) via a real, Postgres-backed ``PostgresDeliveryPendingStore``
+    — needed by ``open_pending_delivery``/``retry_pending_delivery_online``/
+    ``retry_pending_delivery_offline``/``mark_pending_delivery_delivered``/
+    ``mark_pending_delivery_exhausted``.
+    """
+    object_repository = PostgresObjectRepository(engine)
+    edge_repository = PostgresEdgeRepository(engine)
+    event_log = PostgresEventLog(engine)
+    claim_service = ClaimService(
+        object_repository,
+        event_log,
+        edge_repository,
+        bind_claim_unit_of_work(engine, object_repository, event_log),
+        bind_claim_edge_unit_of_work(engine, event_log),
+    )
+    delivery_pending_store = PostgresDeliveryPendingStore(
+        engine, max_attempts=max_attempts, backoff=lambda n: timedelta(minutes=n)
+    )
+    correction_service = CorrectionImpactService(
+        object_repository,
+        edge_repository,
+        claim_service,
+        event_log,
+        bind_unit_of_work(engine, object_repository, event_log),
+        bind_event_unit_of_work(engine, event_log),
+        delivery_pending_store=delivery_pending_store,
+    )
+    return (
+        correction_service,
+        claim_service,
+        object_repository,
+        edge_repository,
+        event_log,
+        delivery_pending_store,
+    )
 
 
 def _services_for_response(
@@ -372,6 +428,25 @@ class _FakeEnvelopeTransport:
     def send(self, request: EnvelopeDeliveryRequest) -> EnvelopeDeliveryOutcome:
         self.sent_requests.append(request)
         return EnvelopeDeliveryOutcome(status="delivered", message_id=request.envelope.message_id)
+
+
+class _ConfigurableEnvelopeTransport:
+    """Like ``_FakeEnvelopeTransport`` above, but reports a caller-fixed
+    ``status`` per instance instead of always ``"delivered"`` — needed by
+    the E6-T06 tests below to first drive a recipient to ``DELIVERY_PENDING``
+    (a "failed" first attempt) and then, separately, retry it. A distinct
+    class rather than monkeypatching ``_FakeEnvelopeTransport.send``, so
+    ``sent_requests`` tracking (used by several tests above) is never
+    bypassed.
+    """
+
+    def __init__(self, status: str) -> None:
+        self._status = status
+        self.sent_requests: list[EnvelopeDeliveryRequest] = []
+
+    def send(self, request: EnvelopeDeliveryRequest) -> EnvelopeDeliveryOutcome:
+        self.sent_requests.append(request)
+        return EnvelopeDeliveryOutcome(status=self._status, message_id=request.envelope.message_id)  # type: ignore[arg-type]
 
 
 def _notifying_practice_fixture() -> tuple[Practice, Ed25519PrivateKey, str]:
@@ -826,3 +901,252 @@ def test_record_response_duplicate_raises_and_persists_nothing_against_real_post
         correlation_id=correlation_id,
     )
     assert stored.body["correction_notification_id"] == other_notification_id
+
+
+# ---------------------------------------------------------------------------
+# E6-T06: offline recipient delivery tracking, against a real
+# PostgresDeliveryPendingStore.
+# ---------------------------------------------------------------------------
+
+
+def test_full_online_delivery_retry_flow_against_real_postgres(postgres_engine: Engine) -> None:
+    """record -> propagate_impact -> notify_affected_practices (one
+    recipient's synchronous attempt reports "failed", driving
+    CORRECTION_LIFECYCLE to DELIVERY_PENDING, unchanged E6-T03 behavior) ->
+    open_pending_delivery persists a real row -> a FURTHER
+    retry_pending_delivery_online attempt with the SAME already-signed
+    envelope, now "delivered", resolves the record — all against a real
+    PostgresDeliveryPendingStore/PostgresEventLog, and the CorrectionEvent
+    object itself is never touched by any of the delivery-tracking calls.
+    """
+    actor = new_urn("agent-role")
+    correlation_id = new_urn("e6-t06-run")
+    service, _, object_repository, _, event_log, store = _services_for_delivery_tracking(
+        postgres_engine
+    )
+    notifying_practice, signing_key, key_id = _notifying_practice_fixture()
+
+    corrected_object_id = new_urn("claim")
+    correction = _correction(affected_object_ids=[corrected_object_id])
+    service.record(
+        correction, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    service.propagate_impact(
+        correction.id, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+
+    recipient_practice_id = new_urn("practice")
+    recipient_node_id = new_urn("node")
+    failing_transport = _ConfigurableEnvelopeTransport("failed")
+
+    stored_correction = service.notify_affected_practices(
+        correction.id,
+        recipients=[
+            NotificationRecipient(
+                recipient_practice_id=recipient_practice_id,
+                recipient_node_id=recipient_node_id,
+                recipient_endpoint="endpoint-a",
+                notified_object_ids=[corrected_object_id],
+            )
+        ],
+        transport=failing_transport,
+        sender_node_id=new_urn("node"),
+        notifying_practice_id=notifying_practice.id,
+        signing_key=signing_key,
+        signing_key_id=key_id,
+        sent_at=_NOTIFICATION_SENT_AT,
+        expires_at=_NOTIFICATION_EXPIRES_AT,
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+    )
+    assert stored_correction.body["status"] == "DELIVERY_PENDING"
+    correction_revisions_after_notify = object_repository.list_revisions(correction.id)
+
+    envelope = failing_transport.sent_requests[0].envelope
+    notification_id = envelope.payload["notification_id"]
+
+    newly_opened = service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+        at=_NOTIFICATION_SENT_AT + timedelta(seconds=1),
+    )
+    assert newly_opened is True
+    opened_record = store.get_pending_delivery(recipient_node_id, notification_id)
+    assert opened_record is not None
+    assert opened_record.status == "pending"
+    assert opened_record.attempt_count == 1
+
+    delivering_transport = _FakeEnvelopeTransport()
+    record = service.retry_pending_delivery_online(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        envelope=envelope,
+        transport=delivering_transport,
+        recipient_endpoint="endpoint-a",
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+        at=_NOTIFICATION_SENT_AT + timedelta(seconds=2),
+    )
+
+    assert record.status == "delivered"
+    assert record.attempt_count == 2
+    assert delivering_transport.sent_requests[0].envelope is envelope
+
+    delivery_events = [
+        appended.event
+        for appended in event_log.read_all()
+        if appended.event.event_type == "correction.notification_sent"
+        and appended.event.payload.get("notification_id") == notification_id
+    ]
+    delivery_statuses = [event.payload["delivery_status"] for event in delivery_events]
+    assert "pending" in delivery_statuses  # the open_pending_delivery event
+    assert "delivered" in delivery_statuses  # the retry_pending_delivery_online event
+
+    # The CorrectionEvent object itself was never touched by ANY of the
+    # delivery-tracking calls — still DELIVERY_PENDING at revision 1 hop
+    # from before (task-packets/E6-T06.yaml derived_decisions (f)).
+    assert object_repository.list_revisions(correction.id) == correction_revisions_after_notify
+
+
+def test_full_offline_delivery_retry_composes_and_validates_against_real_postgres(
+    postgres_engine: Engine,
+) -> None:
+    """The same shape as the online flow above, but the retry channel is
+    the offline one: the SAME already-signed envelope is wrapped, via the
+    UNCHANGED ``build_outbox_bundle``, into a fresh ``OfflineBundle`` that
+    passes the UNCHANGED ``validate_inbound_bundle`` — against a real
+    Postgres-backed ``PostgresDeliveryPendingStore``. Because the offline
+    channel has no acknowledgement mechanism, the record stays "pending"
+    until an explicit ``mark_pending_delivery_delivered`` out-of-band signal
+    arrives.
+    """
+    actor = new_urn("agent-role")
+    correlation_id = new_urn("e6-t06-run")
+    service, _, object_repository, _, event_log, store = _services_for_delivery_tracking(
+        postgres_engine
+    )
+    notifying_practice, signing_key, key_id = _notifying_practice_fixture()
+
+    corrected_object_id = new_urn("claim")
+    correction = _correction(affected_object_ids=[corrected_object_id])
+    service.record(
+        correction, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+    service.propagate_impact(
+        correction.id, actor=actor, policy_version=_POLICY_VERSION, correlation_id=correlation_id
+    )
+
+    recipient_practice_id = new_urn("practice")
+    recipient_node_id = new_urn("node")
+    failing_transport = _ConfigurableEnvelopeTransport("failed")
+
+    service.notify_affected_practices(
+        correction.id,
+        recipients=[
+            NotificationRecipient(
+                recipient_practice_id=recipient_practice_id,
+                recipient_node_id=recipient_node_id,
+                recipient_endpoint="endpoint-a",
+                notified_object_ids=[corrected_object_id],
+            )
+        ],
+        transport=failing_transport,
+        sender_node_id=new_urn("node"),
+        notifying_practice_id=notifying_practice.id,
+        signing_key=signing_key,
+        signing_key_id=key_id,
+        sent_at=_NOTIFICATION_SENT_AT,
+        expires_at=_NOTIFICATION_EXPIRES_AT,
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+    )
+    envelope = failing_transport.sent_requests[0].envelope
+    notification_id = envelope.payload["notification_id"]
+
+    service.open_pending_delivery(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        notification_expires_at=envelope.expires_at,
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+        at=_NOTIFICATION_SENT_AT + timedelta(seconds=1),
+    )
+
+    bundle_created_at = _NOTIFICATION_SENT_AT + timedelta(seconds=2)
+    bundle_expires_at = bundle_created_at + timedelta(days=1)
+    bundle, record = service.retry_pending_delivery_offline(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        envelope=envelope,
+        bundle_id=new_urn("offline-bundle"),
+        bundle_nonce="n" * 16,
+        sender_node_id=new_urn("node"),
+        sender_practice_id=notifying_practice.id,
+        bundle_created_at=bundle_created_at,
+        bundle_expires_at=bundle_expires_at,
+        signing_key=signing_key,
+        signing_key_id=key_id,
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+        at=bundle_created_at,
+    )
+
+    assert bundle.envelopes == [envelope]
+    ring = practice_key_ring(notifying_practice)
+    validated_envelopes = validate_inbound_bundle(
+        bundle,
+        this_node_id=recipient_node_id,
+        trusted_sender_practice_id=notifying_practice.id,
+        ring=ring,
+        already_processed=lambda _bundle_id: False,
+        at=bundle_created_at,
+    )
+    assert validated_envelopes == [envelope]
+    assert record.status == "pending"  # no ack channel; not yet "delivered"
+
+    # An out-of-band delivery signal (e.g. the recipient later confirms via
+    # some external channel) resolves it.
+    delivered_record = service.mark_pending_delivery_delivered(
+        correction.id,
+        notification_id=notification_id,
+        recipient_node_id=recipient_node_id,
+        channel="offline_bundle",
+        actor=actor,
+        policy_version=_POLICY_VERSION,
+        correlation_id=correlation_id,
+        at=bundle_created_at + timedelta(hours=1),
+    )
+    assert delivered_record.status == "delivered"
+
+    with pytest.raises(PendingDeliveryNotFoundError):
+        store.record_retry_attempt(
+            new_urn("node"),  # a never-opened recipient
+            notification_id,
+            outcome="failed",
+            at=bundle_created_at,
+        )
+    with pytest.raises(InvalidTransitionError):
+        service.mark_pending_delivery_exhausted(
+            correction.id,
+            notification_id=notification_id,
+            recipient_node_id=recipient_node_id,
+            reason="attempted after already delivered",
+            channel="offline_bundle",
+            actor=actor,
+            policy_version=_POLICY_VERSION,
+            correlation_id=correlation_id,
+            at=bundle_created_at + timedelta(hours=2),
+        )

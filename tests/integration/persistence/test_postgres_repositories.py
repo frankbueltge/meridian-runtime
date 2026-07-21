@@ -297,19 +297,24 @@ def test_invented_edge_type_rejected_by_database_check_constraint(postgres_engin
 def test_migration_downgrade_reverts_check_constraint_to_reject_a_new_edge_type(
     postgres_engine: Engine,
 ) -> None:
-    """[K1-T02, migration/EDGE_VOCABULARY] Confirms the new edges-vocabulary
-    migration's ``downgrade()`` genuinely narrows
+    """[K1-T02, migration/EDGE_VOCABULARY] Confirms the edges-vocabulary
+    migration's (``aa2adabee4de``) ``downgrade()`` genuinely narrows
     ``ck_edges_edge_type_vocabulary`` back to the original nineteen-value
     list — proving reversibility, not merely additivity. ``postgres_engine``
-    is already migrated to head (including this new migration) by the
-    fixture; downgrading by exactly one revision here reverts only THIS
-    migration, back to ``b64f87a758f3``.
+    is already migrated to head by the fixture; downgrading to the ABSOLUTE
+    revision ``b64f87a758f3`` (aa2adabee4de's own ``down_revision`` — the
+    state immediately BEFORE it) here, rather than a relative ``"-1"`` hop,
+    so this test keeps exercising aa2adabee4de's own downgrade() regardless
+    of how many later migrations (e.g. task-packets/E6-T06.yaml's
+    ``cbef83b8ef50_pending_deliveries_table.py``) have since chained on top
+    of it — a relative single-step hop would instead revert only the
+    NEWEST migration once one exists.
     """
     database_url = postgres_engine.url.render_as_string(hide_password=False)
     alembic_cfg = Config(str(_ALEMBIC_INI))
     alembic_cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
     alembic_cfg.attributes["sqlalchemy_url"] = database_url
-    command.downgrade(alembic_cfg, "-1")
+    command.downgrade(alembic_cfg, "b64f87a758f3")
 
     with pytest.raises(IntegrityError), postgres_engine.begin() as conn:
         conn.execute(
