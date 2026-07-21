@@ -216,6 +216,8 @@ def test_event_log_append_failure_propagates_without_a_result() -> None:
     with pytest.raises(RuntimeError, match="injected failure inside append"):
         record_event(engine, event_log, event)
 
+    assert event_log.read_all() == []
+
 
 # ---------------------------------------------------------------------------
 # bind_unit_of_work (task-packets/E9-T00b.yaml): the shared binder every one
