@@ -1,6 +1,6 @@
 task_id: E6-T04
 title: Local accept/adapt/reject/defer response to a correction notification — a new receiving-practice-only CorrectionResponse record with mandatory reason for reject/defer and a `corrects` edge for adapt, never mutating the sender's CorrectionEvent
-status: draft
+status: approved
 depends_on: [E6-T03]
 derivation: >
   Derived by a planning session (not yet reviewed) per
