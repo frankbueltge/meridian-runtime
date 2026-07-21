@@ -1,0 +1,808 @@
+task_id: E1-T03b
+title: >-
+  ADR-0010 staged-adoption step 1 — optional `classification` field on
+  `baseObject`/`BaseObject` (schema + Pydantic contract only; no migration,
+  no consumer wiring, no creating-service change)
+status: approved
+epic: E1
+reviewer_resolution: >-
+  Approved 2026-07-21 by the main session as reviewing instance, under the
+  owner's same-day merge delegation (see the approval commit's own message).
+  All four primary choices are CONFIRMED as derived: (1) task id `E1-T03b`
+  per the established b-suffix convention; (2) the NEW, separate six-value
+  `BaseObjectClassification` Literal rather than widening the shared
+  `Classification` — the TaskBundle schema/Pydantic drift argument in
+  derived_decisions (a) is decisive; (3) no Alembic migration, proven by the
+  round-trip acceptance test rather than asserted (derived_decisions (b));
+  (4) full deferral of creating-service wiring (derived_decisions (c)) —
+  wiring a setter before steps 2/3 provide any reader would add surface
+  with no consumer; and the section-4 prose footnote rather than a seventh
+  table row (derived_decisions (d)) — SYNTHETIC_TEST_FIXTURE is a
+  "not-empirical" marker, not a sixth rung of the disclosure ladder.
+
+  Two reviewer annotations, both binding on implementation and on the
+  future follow-up tasks: (i) specification_gaps' fifth entry suggests
+  `mrr.domain.synthetic_fixture` could "now import
+  `BaseObjectClassification` from `mrr.contracts.common`" — reviewer
+  verification shows that import would be ILLEGAL, not merely deferred:
+  the established layering direction is contracts -> domain
+  (`mrr.contracts.common` already imports `URN_PATTERN` from
+  `mrr.domain.identity`, common.py line 29), so domain importing contracts
+  would create exactly the package cycle `mrr.domain.artifacts`'s own
+  docstring warns about. The deferral is therefore structurally required;
+  the future wiring task must resolve the constant question by another
+  route (e.g. hosting the vocabulary in `mrr.domain` with contracts
+  importing it, mirroring the URN_PATTERN precedent, or keeping the local
+  literal) — decided THEN, not now. (ii) A prose-consistency nit, not a
+  design change: derived_decisions (a)'s "27 of the 29" parenthetical and
+  the invariants' "every one of the 29 entities except `TaskBundle`" imply
+  slightly different counts; the OPERATIVE rule is the invariant's — every
+  `baseObject`-derived entity except `TaskBundle` gains the optional field
+  via inheritance — and the implementation should verify the actual entity
+  count empirically in its own test rather than trusting either number.
+derivation: >-
+  Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
+  docs/spec/adr/ADR-0010-OBJECT-LEVEL-DATA-CLASSIFICATION.md (Status:
+  ACCEPTED 2026-07-21, `docs/spec/adr/ADR-0010-OBJECT-LEVEL-DATA-CLASSIFICATION.md`
+  line 3), whose own "Decision" section commits to exactly this scope: "Add
+  one **optional** `classification` property to
+  `common.schema.json#/$defs/baseObject` ... (and `BaseObject` in
+  `packages/contracts/mrr/contracts/common.py`), with the §4 vocabulary plus
+  one new value" (`PUBLIC | INTERNAL | RESTRICTED | SENSITIVE |
+  PARTICIPANT_IDENTIFIABLE | SYNTHETIC_TEST_FIXTURE`), and whose own "Staged
+  adoption" list names step 1 as "Schema/contract addition (additive; all
+  existing examples/fixtures stay valid)", explicitly distinct from step 2
+  ("E6-T05's projection consumes the stored field"), step 3 ("a follow-up
+  task hardens `TransferService.create()`") and step 4 ("K1-T02 uses
+  `SYNTHETIC_TEST_FIXTURE` for the kernel's fixture-isolation gate" — already
+  landed as the pure, unwired function this task's own forbidden_changes
+  protects, see below).
+
+  This task packet is the one the governance commit `cd389b40eed2`
+  ("Governance: ADR-0010 ACCEPTED + K1-T02 approved") itself anticipated
+  when it wrote: "Feld bleibt optional und fail-closed, Einfuehrung gestuft,
+  Schritt 1 wird ein eigenes Task-Packet" ("the field stays optional and
+  fail-closed, introduction is staged, step 1 becomes its own task packet").
+  `task-packets/K1-T02.yaml`'s own `derived_decisions` ("ADR-0010
+  dependency") states this even more explicitly: "a small follow-up slice
+  (either a K1-T02 continuation or a new micro-task) wires the
+  already-built, already-tested pure function against real
+  `SourceRecord.classification`/... — no new design work required at that
+  point, only wiring" — but that same section is unambiguous that step 1
+  (the field's existence) is a PRECONDITION for that follow-up, not part of
+  it, and `task-packets/K1-T03.yaml`'s own derivation independently
+  re-confirms the exact same split is inherited unchanged ("K1-T02's own
+  governance note ... stages this into 'ein eigenes Task-Packet' ... NOT
+  K1-T02 itself and NOT this packet"). `task-packets/E9-T00.yaml`'s own
+  derivation, in its "Explicitly NOT in this batch" paragraph, independently
+  verified the identical split a third time and explicitly excluded it from
+  E9's pre-hardening batch: "ADR-0010's staged-adoption step 1 (a real
+  `baseObject.classification` field) ... is a schema/migration-bearing
+  change, categorically larger than this batch's small, additive,
+  already-scoped items, and stays its own packet" — this task packet is
+  that packet, and (per the migration-question evidence below) the
+  "migration-bearing" characterization in that sentence turns out, once
+  actually investigated against this codebase's persistence layer, to be
+  not quite accurate: no migration is in fact required (see derived_decisions
+  (b)). `docs/design/2026-07-21-session-handoff-first-real-run.md` section 4
+  ("Nächste Arbeit, in empfohlener Reihenfolge") lists, as item 3 of the
+  recommended next-work order (after PR #53 and E9-T00): "**ADR-0010
+  Schritt 1** (eigenes Packet ableiten): optionales `classification`-Feld
+  auf baseObject + Contract; danach Schritt 2/3 ... und MTH-012-Gate-
+  Verdrahtung" — this is the literal instruction this packet answers.
+
+  Task-id and epic placement, decided and justified (the repository has no
+  standing convention that names this exact case, so this packet reasons
+  from the two precedents it DOES have): `docs/spec/06_IMPLEMENTATION_PLAN.md`
+  section 3 assigns `common.schema.json`/`packages/contracts/**` to Epic E1
+  ("E1 — Contracts and domain kernel"), specifically task "E1-T03 JSON
+  Schemas and Pydantic models" (`task-packets/E1-T03.yaml`, `allowed_paths:
+  packages/contracts/**, schemas/**, examples/**, tests/contract/**,
+  scripts/check_contracts.py, pyproject.toml` — an exact superset of what
+  this task also needs). E1-T03 is long since merged, so this is not a
+  continuation of open work but a small, additive completeness follow-up to
+  an already-closed task — exactly the shape this repository already has a
+  named convention for: `task-packets/E5-T00b.yaml` ("completeness follow-up
+  to E5-T00"), `task-packets/E5-T02b.yaml` ("completeness follow-up to
+  E5-T02"), and `task-packets/E5-T07b.yaml` ("Derived ... from exactly what
+  task-packets/E5-T07.yaml's own scope_note deferred ... mirrors this repo's
+  own E5-T00/E5-T00b and E5-T02/E5-T02b splits") all use a `b`-suffix on the
+  originating task's own id for a small, later, independently-reviewable
+  addition to that SAME task's own deliverable, never claiming a fresh
+  epic-numbered slot. Two alternatives were considered and rejected: (1)
+  `K1-T05` — rejected because `docs/design/2026-07-21-research-method-kernel-plan.md`
+  line 35 titles K1 explicitly "`systematic_evidence_synthesis` v1 on the
+  atlases (4 tasks)", a closed, already-fully-delivered count (K1-T01..T04,
+  all merged per `git log --oneline -5` showing `9afcbd5 K1-T04: first real
+  run` and `d49cb7d`/later commits with no further K1 task); this packet is
+  cross-cutting contracts infrastructure, not part of that specific
+  synthesis-pipeline deliverable, and both K1-T02 and K1-T03 explicitly
+  disclaim ownership of it in their own text (quoted above). (2) `E9-T00b`
+  — rejected because `task-packets/E9-T00.yaml`'s own derivation explicitly
+  and by name excludes this exact work from E9's pre-hardening batch
+  (quoted above), so folding it in under an E9-T00 suffix would contradict
+  the very packet whose exclusion this task packet is honoring. `E1-T03b`
+  is therefore the id and epic this packet uses: the smallest deviation from
+  established convention, naming the exact originating task whose own
+  `allowed_paths` this work stays inside.
+
+  Every load-bearing claim below was verified directly against the CURRENT
+  code on `main` (commit `b07d1ab`, after the E9-T00 merge — E9-T00's own
+  seven items are LANDED, not pending):
+
+  (1) `schemas/common.schema.json#/$defs/baseObject` (lines 18-33, read in
+  full) declares exactly ten properties (`id, api_version, kind,
+  practice_id, revision, created_at, created_by, content_hash, supersedes,
+  labels`) and a `required` list of eight — `supersedes`/`labels` are the
+  only two optional ones. No `classification` property exists anywhere on
+  this `$def`. `packages/contracts/mrr/contracts/common.py`'s `BaseObject`
+  class (lines 135-155) mirrors this exactly: ten fields, `supersedes: Urn |
+  None = None` and `labels: dict[str, str] | None = None` the only two
+  defaulted/optional ones, no `classification` field. This confirms the ADR's
+  own "Context" premise is still true today: `classification` exists ONLY
+  on `$defs.artifactRef` (schema lines 46-58, contracts lines 90-99, the
+  `ArtifactRef.classification: Classification | None = None` field — a
+  REFERENCE-shaped nested value, not a property of the referencing object
+  itself) and, separately, as `TaskBundle`'s own required top-level field
+  (`packages/contracts/mrr/contracts/task_bundle.py` line 112,
+  `classification: Classification`; `schemas/task-bundle.schema.json` line
+  9's `required` list and line 60's inline `enum`). A repository-wide search
+  (`grep -rn "\"classification\":" schemas/*.json`) across all 30 files
+  under `schemas/` returns EXACTLY these two hits and no others — confirming
+  the ADR's "only two places in the contracts can carry it today" claim is
+  still accurate, and that this task's design must specifically account for
+  exactly one collision candidate (`TaskBundle`, see derived_decisions (a)),
+  not an open-ended set.
+
+  (2) `packages/contracts/mrr/contracts/common.py`'s existing `Classification`
+  module-level `Literal` (lines 43-53, five values, no `SYNTHETIC_TEST_FIXTURE`)
+  is imported and reused, UNCHANGED, by exactly three existing call sites
+  (confirmed by `grep -n "from mrr.contracts.common import" ... | grep
+  Classification` plus direct reads): `ArtifactRef.classification` (common.py
+  itself), `TaskBundle.classification` (task_bundle.py line 112, required),
+  and `ResearchScore.data_classes: list[Classification]` (research_score.py
+  — a LIST of "which data classes this research touches", a different
+  cardinality/semantics from a single object's own classification, and a
+  field name that is NOT `classification`, so no collision there either).
+  A SEPARATE, structurally identical five-value `Classification` Literal
+  also exists in `packages/domain/mrr/domain/artifacts.py` (lines 62-68,
+  for `ArtifactDescriptor.classification`) — its own docstring (lines 43-61)
+  explains this is a DELIBERATE third copy of the same enum, not an
+  oversight ("A classification enum appearing in a third place (here) is
+  consistent with a pattern that already appears in two"), because
+  `mrr.domain` cannot import `mrr.contracts` without creating a package
+  cycle. ADR-0010's own Decision text names only `baseObject`/`BaseObject`
+  as the target of the new value — it does not ask to touch `ArtifactRef`,
+  `TaskBundle`, `ResearchScore.data_classes`, or
+  `mrr.domain.artifacts.Classification`, and this packet's own design
+  (derived_decisions (a)) deliberately does not widen any of them, to avoid
+  a Pydantic-vs-JSON-Schema drift risk explained there.
+
+  (3) `packages/contracts/mrr/contracts/source_record.py` (read in full,
+  lines 1-60 excerpted) was checked specifically because ADR-0010's own
+  Context section names `SourceRecord` as a future consumer
+  (MRR-MTH-012's eventual wiring target). Its own `classification`-adjacent
+  concept is named `primary_secondary_derived: SourceClassification`
+  (line 90, `SourceClassification = Literal["primary", "secondary",
+  "derived"]` at line 46) — a DIFFERENT field name for a DIFFERENT concept
+  (docs/spec/02_DOMAIN_MODEL.md's "primary/secondary/derived classification",
+  about a source's own evidentiary role, not disclosure sensitivity). No
+  field-name collision exists on `SourceRecord` either — confirmed, not
+  assumed, given both use the English word "classification" in their own
+  documentation.
+
+  (4) `packages/domain/mrr/domain/synthetic_fixture.py` (K1-T02, already
+  landed, read in full) is the pure, already-tested
+  `assert_not_synthetic_fixture_evidence(*, source_classification: str |
+  None)` gate function MRR-MTH-012 needs. Its own module docstring (lines
+  6-45, "ADR-0010 dependency: this function is unblocked; its WIRING is
+  not") states precisely what this packet must NOT do: "wiring it against
+  any REAL stored object's classification ... is explicitly BLOCKED and NOT
+  delivered here. The recommended next step, once the schema/contract field
+  lands in its own future task, is a small follow-up slice that reads a
+  resolved source's stored `classification` field and calls this
+  already-built, already-tested function — no new design work, only
+  wiring." This packet IS the "schema/contract field lands in its own
+  future task" step this docstring anticipates; the wiring itself stays out
+  of scope (forbidden_changes) and is left for the follow-up this docstring
+  already names.
+
+  (5) `services/control_plane/mrr/services/transfer/service.py`'s
+  `_ensure_no_participant_identifiable_object` (lines 532-560, E6-T01,
+  read in full) already reads `referenced.body.get("classification") ==
+  "PARTICIPANT_IDENTIFIABLE"` (line 559) generically off the stored body
+  dict — not through any dedicated `StoredObject` field or database column.
+  Its own docstring (lines 538-552) already discloses: "Only object KINDS
+  that carry a top-level `classification` field on their own stored body
+  (today: `TaskBundle` ...) can ever be flagged by this check." This is the
+  exact practical no-op ADR-0010's Context section 1 describes, and it is
+  step 3 ("a follow-up task hardens `TransferService.create()`") — this
+  packet changes NOTHING about this method's behavior (forbidden_changes):
+  adding the schema/contract field does not by itself make any NEW object
+  carry a real classification value (no creating service is changed either,
+  derived_decisions (c)), so this check's practical scope is unaffected
+  until a later task both wires real values onto more object kinds AND
+  updates this gate's own scope note.
+
+  (6) `packages/domain/mrr/domain/public_correction_view.py` (E6-T05, read
+  relevant excerpts) documents its own attestation-map bridge explicitly as
+  provisional: "pending a future stored-classification-field step" (module
+  docstring). This is step 2. Untouched here (forbidden_changes).
+
+  (7) The migration question, resolved with direct evidence, not assumed.
+  `packages/persistence/mrr/persistence/tables.py`'s `objects_table` (lines
+  47-63, read in full) declares individual columns for every `baseObject`
+  field EXCEPT `body` is also present as one generic `postgresql.JSONB()`
+  column carrying the object's full serialized form; `PostgresObjectRepository.
+  _insert_revision_core` (`packages/persistence/mrr/persistence/repositories.py`
+  lines 186-226, in particular the `.values(...)` call at lines 203-216)
+  writes `id, revision, api_version, kind, practice_id, created_at,
+  created_by, content_hash, supersedes, labels, body` — eleven columns,
+  covering the ten `baseObject` fields (nine of them ALSO duplicated into
+  `body`) plus `body` itself. `packages/domain/mrr/domain/repositories.py`'s
+  `StoredObject` docstring (lines 79-84) explains WHY: "The base fields are
+  duplicated into dedicated columns ... so they stay queryable and indexable
+  without unpacking JSONB; `body` is the authoritative full payload." No
+  `classification` column exists, and this task's own consumers (schema
+  validation, Pydantic round-trip, and any FUTURE step-2/3 reader) all
+  resolve an object via `ObjectRepository.get_latest(id).body["classification"]`
+  — confirmed this is EXACTLY how `TransferService`'s own already-existing
+  `_ensure_no_participant_identifiable_object` already reads `TaskBundle`'s
+  OWN required `classification` field TODAY (line 559, cited above), with
+  ZERO dedicated column or `StoredObject` field for it — proving, by
+  existing, already-shipped precedent, that `classification` living purely
+  inside `body` (never promoted to its own column) is a fully sufficient,
+  already-working pattern in this exact codebase, not a hypothetical. No
+  entry under `EDGE_VOCABULARY`-style CHECK-constraint enforcement exists
+  for `body`'s own keys (`body` is unconstrained JSONB, unlike
+  `edges.edge_type`, which DOES carry a real CHECK constraint
+  `packages/domain/mrr/domain/repositories.py`/`K1-T02`'s migration widened
+  — the one genuine precedent in this repository for "adding a value
+  requires a migration", and it does not apply here because no CHECK
+  constraint targets object body contents anywhere). CONCLUSION: no Alembic
+  migration, and no change to `packages/persistence/mrr/persistence/tables.py`
+  or `packages/domain/mrr/domain/repositories.py`'s `StoredObject`, is
+  needed — see derived_decisions (b) for the acceptance test that proves
+  this by direct round trip rather than merely asserting it.
+
+  (8) Back-compat / no re-signing, evidenced, not merely promised.
+  `services/control_plane/mrr/services/evidence/service.py` (lines 147-163,
+  representative of every creating service checked) builds a new object's
+  `body` via `json.loads(source_record.model_dump_json(exclude_none=True))`
+  — the universal, ADR-0004-unified convention (`task-packets/E5-T00.yaml`)
+  confirmed by `grep`-ing "ADR-0004 ... exclude_none" across
+  `packages/domain/mrr/domain/{correction_notification,crate_trust,
+  envelope_validation,manifest_trust,offline_bundle,transfer_trust,
+  task_trust}.py`. Since Pydantic's `exclude_none=True` drops any field
+  whose value is `None`, and the new `classification` field defaults to
+  `None`, EVERY EXISTING creation path — unchanged by this packet — will
+  continue to omit `classification` from `body` entirely for every object
+  that does not explicitly set it (which is every object today, since no
+  creating service exposes a `classification` parameter to set it with —
+  confirmed by `grep -n "classification"
+  services/control_plane/mrr/services/task_bundle/service.py` returning only
+  one unrelated comment, not a parameter). `packages/domain/mrr/domain/
+  hashing_policy.py`'s `compute_content_hash` (lines 80-85) excludes fields
+  by NAME (`_HASH_EXCLUDED_FIELDS = frozenset({"content_hash", "signature"})`,
+  line 55) — a field-agnostic, generic exclusion, not a fixed allowlist —
+  so a `body` dict that never gains a `classification` key hashes IDENTICALLY
+  before and after this change, for every object that does not set it. This
+  is the concrete mechanism behind ADR-0010's own promise ("Absence is
+  compatible with every existing stored object (no migration, no
+  re-signing)") — this packet's acceptance_tests prove it directly rather
+  than relying on the ADR's own prose alone.
+objective: >-
+  Land ADR-0010's staged-adoption step 1, and step 1 ONLY: add one optional
+  `classification` property to `schemas/common.schema.json#/$defs/baseObject`
+  and a mirroring `classification: BaseObjectClassification | None = None`
+  field to `BaseObject` in `packages/contracts/mrr/contracts/common.py`,
+  where `BaseObjectClassification` is a NEW, separate six-value Literal
+  (`PUBLIC | INTERNAL | RESTRICTED | SENSITIVE | PARTICIPANT_IDENTIFIABLE |
+  SYNTHETIC_TEST_FIXTURE`) — deliberately NOT a widening of the EXISTING
+  five-value `mrr.contracts.common.Classification` (see derived_decisions
+  (a) for why keeping them separate, rather than reusing/extending
+  `Classification`, is this packet's own load-bearing design choice, not an
+  oversight). The field lands additively: no existing example, fixture, or
+  persisted object changes shape, content hash, or signature (derivation
+  (8), acceptance_tests). No Alembic migration is added and no persistence
+  table/column changes (derivation (7), derived_decisions (b)). No consumer
+  reads the field for any enforcement decision (`TransferService`'s
+  `_ensure_no_participant_identifiable_object`, `public_correction_view.py`'s
+  attestation bridge, and `synthetic_fixture.py`'s pure gate function all
+  stay byte-for-byte unmodified — forbidden_changes). No creating service
+  gains a new `classification` constructor/creation-time parameter
+  (derived_decisions (c)) — this packet makes the field POSSIBLE to carry on
+  any first-class object's stored body, proves it round-trips honestly
+  end-to-end (schema tier, Pydantic tier, persistence tier, hashing tier),
+  and stops there. Steps 2 (E6-T05 projection reads the stored field), 3
+  (TransferService gate hardening), and the MRR-MTH-012 gate's real wiring
+  are explicitly, deliberately NOT this packet's job — each is a distinct,
+  separately-derivable future task, per ADR-0010's own staged-adoption text
+  and per K1-T02/K1-T03/E9-T00's own independent, converging confirmations
+  of the same split (derivation).
+source_of_truth:
+  - AGENTS.md
+  - docs/spec/07_AGENT_TASK_TEMPLATE.md#5-specification-to-task-compiler-rules
+  - docs/spec/adr/ADR-0010-OBJECT-LEVEL-DATA-CLASSIFICATION.md
+  - docs/spec/02_DOMAIN_MODEL.md#1-identity-revision-and-hashing
+  - docs/spec/02_DOMAIN_MODEL.md#4-data-classification
+  - docs/spec/04_SECURITY_AND_POLICY.md#2-trust-boundaries
+  - docs/spec/04_SECURITY_AND_POLICY.md#8-federated-security
+  - docs/spec/01_SYSTEM_SPEC.md#9-non-functional-requirements
+  - docs/spec/06_IMPLEMENTATION_PLAN.md#e1--contracts-and-domain-kernel
+  - docs/design/2026-07-21-session-handoff-first-real-run.md
+  - task-packets/E1-T03.yaml
+  - task-packets/E5-T00b.yaml
+  - task-packets/E5-T02b.yaml
+  - task-packets/E5-T07b.yaml
+  - task-packets/E9-T00.yaml
+  - task-packets/K1-T02.yaml
+  - task-packets/K1-T03.yaml
+  - schemas/common.schema.json
+  - schemas/task-bundle.schema.json
+  - examples/practice.example.json
+  - packages/contracts/mrr/contracts/common.py
+  - packages/contracts/mrr/contracts/task_bundle.py
+  - packages/contracts/mrr/contracts/source_record.py
+  - packages/contracts/mrr/contracts/__init__.py
+  - packages/domain/mrr/domain/artifacts.py
+  - packages/domain/mrr/domain/synthetic_fixture.py
+  - packages/domain/mrr/domain/hashing_policy.py
+  - packages/domain/mrr/domain/repositories.py
+  - packages/persistence/mrr/persistence/tables.py
+  - packages/persistence/mrr/persistence/repositories.py
+  - services/control_plane/mrr/services/transfer/service.py
+  - services/control_plane/mrr/services/evidence/service.py
+  - packages/domain/mrr/domain/public_correction_view.py
+  - scripts/check_contracts.py
+  - tests/contract/test_practice_variants.py
+  - tests/contract/test_evidence_anchor_variants.py
+  - tests/contract/test_negative_fixtures.py
+  - tests/integration/persistence/test_postgres_repositories.py
+  - tests/unit/domain/test_hashing_policy.py
+requirements:
+  - MRR-NFR-001
+  - MRR-NFR-002
+  - MRR-NFR-006
+  - MRR-NFR-007
+  - MRR-NFR-010
+  - MRR-NFR-012
+allowed_paths:
+  - schemas/common.schema.json
+  - packages/contracts/mrr/contracts/common.py
+  - packages/contracts/mrr/contracts/__init__.py
+  - docs/spec/02_DOMAIN_MODEL.md
+  - tests/contract/test_practice_variants.py
+  - tests/contract/test_common_classification_variants.py
+  - tests/contract/fixtures/invalid/practice-invalid-classification-value.json
+  - tests/contract/fixtures/invalid/task-bundle-classification-synthetic-test-fixture-rejected.json
+  - tests/integration/persistence/test_postgres_repositories.py
+  - tests/unit/domain/test_hashing_policy.py
+forbidden_changes:
+  - >-
+    `schemas/task-bundle.schema.json` and
+    `packages/contracts/mrr/contracts/task_bundle.py` — `TaskBundle`'s own
+    already-existing, required `classification: Classification` field (five
+    values, no `SYNTHETIC_TEST_FIXTURE`) is NOT touched; it continues to
+    override/narrow the new, wider, optional `BaseObject.classification`
+    field exactly as `BaseObject`'s own established precedent already
+    permits (its docstring: "Entity modules subclass this and narrow `kind`
+    to a `Literal` of the entity's own name" — the identical override
+    mechanism, applied here to `classification` instead of `kind`). If
+    implementation discovers this override does NOT behave as expected
+    (derived_decisions (a)), STOP (stop_conditions) and report the exact
+    failure rather than editing either file to "fix" it
+  - >-
+    the EXISTING five-value `mrr.contracts.common.Classification` Literal
+    (lines 43-53) and every one of its three current call sites
+    (`ArtifactRef.classification`, `TaskBundle.classification`,
+    `ResearchScore.data_classes`) — none gain `SYNTHETIC_TEST_FIXTURE`; the
+    new value lives ONLY on the new, separate `BaseObjectClassification`
+    Literal (derived_decisions (a))
+  - >-
+    `packages/domain/mrr/domain/artifacts.py`'s own separate five-value
+    `Classification` Literal (lines 62-68, for `ArtifactDescriptor`) — an
+    intentional, documented third copy of the ORIGINAL five-value
+    vocabulary (its own docstring explains why); ADR-0010's Decision text
+    names only `baseObject`/`BaseObject`, not this module, and widening it
+    is not this packet's call to make
+  - >-
+    `packages/domain/mrr/domain/synthetic_fixture.py` — K1-T02's already-
+    landed, already-tested pure gate function stays exactly as merged; this
+    packet does NOT wire it against any real stored object's classification
+    (that remains the explicitly-named future follow-up its own module
+    docstring describes) and does NOT change its
+    `SYNTHETIC_TEST_FIXTURE_CLASSIFICATION` local string constant to import
+    from the new `BaseObjectClassification` type — leaving that import
+    unresolved is itself part of the honest disclosure that wiring is still
+    pending (specification_gaps notes this as a natural, tiny follow-up
+    once step 2/3 lands, not this packet's to take)
+  - >-
+    `services/control_plane/mrr/services/transfer/service.py` — no line of
+    `_ensure_no_participant_identifiable_object` or any other method
+    changes; step 3 (TransferService gate hardening) is out of scope
+  - >-
+    `packages/domain/mrr/domain/public_correction_view.py` — the E6-T05
+    attestation-map bridge stays exactly as merged; step 2 (projection reads
+    the stored field) is out of scope
+  - >-
+    every creating service under `services/control_plane/mrr/services/**`
+    (`SourceRecordService`, `EvidenceAnchorService`, `PracticeService`,
+    `ClaimService`, and every other `.create()`-style method) — none gains a
+    new `classification` constructor or creation-time parameter; every
+    object this packet's own tests give a real `classification` value do so
+    by constructing `StoredObject`/a raw document directly, exactly mirroring
+    how `task-packets/K1-T02.yaml`'s own tests already construct
+    prerequisite objects directly via the generic `ObjectRepository`,
+    bypassing any service, when the object under test is not the System
+    Under Test (specification_gaps flags the "should services eventually
+    expose this" question for a future task)
+  - >-
+    any Alembic migration under `migrations/versions/**`,
+    `packages/persistence/mrr/persistence/tables.py`, and
+    `packages/domain/mrr/domain/repositories.py`'s `StoredObject` dataclass
+    — confirmed unnecessary by direct evidence (derivation (7)); if
+    implementation discovers otherwise, STOP (stop_conditions) rather than
+    silently adding one
+  - >-
+    `docs/spec/adr/ADR-0010-OBJECT-LEVEL-DATA-CLASSIFICATION.md` itself —
+    the ADR is a decision record, not a progress tracker; its `Status:
+    ACCEPTED` line and staged-adoption list stay unedited by this
+    implementing task (governance commits, not implementation packets, have
+    amended ADR text elsewhere in this repository's history)
+  - >-
+    `docs/spec/03_API_AND_EVENTS.md` and `docs/spec/08_RESEARCH_METHOD_KERNEL.md`
+    — no event shape, error code, or MTH-012 gate wiring changes here
+  - HTTP/FastAPI endpoints anywhere
+  - both import-linter contracts in `pyproject.toml` (must remain unmodified and KEPT)
+derived_decisions:
+  - >-
+    (a) `BaseObjectClassification` is a NEW, separate six-value `Literal` —
+    not a widening of the existing `Classification`. Concretely:
+    `BaseObjectClassification = Literal["PUBLIC", "INTERNAL", "RESTRICTED",
+    "SENSITIVE", "PARTICIPANT_IDENTIFIABLE", "SYNTHETIC_TEST_FIXTURE"]`
+    (module-level, `packages/contracts/mrr/contracts/common.py`, placed
+    immediately after the existing `Classification` declaration, with a
+    docstring cross-referencing ADR-0010 and explaining why it is not
+    `Classification` itself), and
+    `BaseObject.classification: BaseObjectClassification | None = None`
+    (placed after `labels` in the field list, matching the schema's own
+    property ordering). REASON, evidenced: `Classification` is imported and
+    reused verbatim by `TaskBundle.classification` (required) and
+    `ResearchScore.data_classes` (a list). If `Classification` itself grew a
+    sixth value, `TaskBundle(classification="SYNTHETIC_TEST_FIXTURE", ...)`
+    would VALIDATE at the Pydantic layer (since the shared type now accepts
+    it) while `schemas/task-bundle.schema.json`'s own hand-written,
+    UNCHANGED, five-value inline `enum` (line 60) would still REJECT the
+    identical document — a live schema/Pydantic drift this repository's own
+    `scripts/check_contracts.py` exists specifically to prevent between
+    committed EXAMPLES, but would not catch for a hand-constructed
+    out-of-band document, since nothing round-trips every theoretically
+    constructible instance. Keeping `BaseObjectClassification` separate
+    avoids this drift by construction: `TaskBundle`'s own field continues to
+    validate ONLY against the ORIGINAL five values at BOTH tiers, unaffected
+    by anything this packet does to `BaseObject`. The two-tier interaction
+    for `TaskBundle` specifically: at the JSON Schema level, `allOf`
+    combines `common.schema.json#/$defs/baseObject` (now offering a
+    six-value `classification` property) with `task-bundle.schema.json`'s
+    own fragment (an UNCHANGED five-value `classification` property) — JSON
+    Schema's `allOf` requires the instance to satisfy BOTH subschemas
+    simultaneously, so the EFFECTIVE constraint for a `TaskBundle` document
+    is the intersection (five values, `SYNTHETIC_TEST_FIXTURE` excluded); at
+    the Pydantic level, `TaskBundle`'s own already-existing
+    `classification: Classification` field (required, no default) is a
+    subclass re-declaration that fully overrides `BaseObject`'s newly-added
+    optional field for `TaskBundle` specifically — the SAME mechanism
+    `BaseObject`'s own docstring already documents for `kind` ("Entity
+    modules subclass this and narrow `kind` to a `Literal` of the entity's
+    own name"), applied here to a field Pydantic v2 supports overriding by
+    ordinary subclass re-declaration. Net effect, both tiers agreeing: every
+    OTHER `BaseObject`-derived entity (27 of the 29 total; the two
+    exceptions, per derivation (1)'s schema-reference count, are
+    `TaskBundle` itself, handled above, and none other declares its own
+    `classification` today) automatically and for free gains the new,
+    six-value, OPTIONAL field via the unmodified `allOf`/Python-inheritance
+    mechanism already in place — zero per-entity schema or model edits
+    required, confirmed by the `unevaluatedProperties: false` +
+    `allOf: [{"$ref": "common.schema.json#/$defs/baseObject"}, ...]` pattern
+    already uniform across every entity schema that references `baseObject`
+    (`source-record.schema.json` lines 6-7/68 read as the representative
+    example).
+  - >-
+    (b) No Alembic migration; no persistence-layer code change; the
+    acceptance test that PROVES this rather than merely asserting it.
+    `objects_table.c.body` (`packages/persistence/mrr/persistence/tables.py`
+    line 60) is `postgresql.JSONB()`, unconstrained by any CHECK on its
+    internal keys (unlike `edges.edge_type`, the one genuine
+    migration-requiring precedent in this repository, per K1-T02's own
+    migration). `PostgresObjectRepository.insert_revision`/`get_latest`
+    (`packages/persistence/mrr/persistence/repositories.py`) pass `body`
+    through as an opaque dict — no field-by-field mapping, no allowlist.
+    Therefore a `StoredObject` whose `body` dict happens to carry a
+    `"classification"` key round-trips today, on the CURRENT migration head,
+    with ZERO code change, exactly as `TransferService`'s own
+    already-shipped `.body.get("classification")` read
+    (services/control_plane/mrr/services/transfer/service.py line 559)
+    already proves for `TaskBundle` bodies specifically. This packet's own
+    integration-tier acceptance test (below) inserts a `StoredObject` (via
+    the existing `_stored_object` helper pattern already established in
+    `tests/integration/persistence/test_postgres_repositories.py` lines
+    68-83) whose `body` includes `"classification": "SYNTHETIC_TEST_FIXTURE"`
+    against the CURRENT, UNMODIFIED migration chain and asserts it reads
+    back byte-identical — proving the "no migration needed" claim by
+    running it, not merely by asserting it in prose, and giving a concrete
+    stop_condition if that assumption turns out to be wrong for some reason
+    not yet discovered.
+  - >-
+    (c) No creating service gains a `classification` parameter; the field is
+    real and settable today only via direct document/`StoredObject`
+    construction. Motivation for deferring, stated plainly: ADR-0010's own
+    staged-adoption list names step 1 as "Schema/contract addition" only;
+    wiring roughly fifteen distinct `.create()`-style service methods
+    (`SourceRecordService`, `EvidenceAnchorService`, `PracticeService`,
+    `ClaimService`, `MethodRulingService`, `EvidenceMatrixService`,
+    `ResearchDecisionService`, and others) to each accept and thread through
+    an optional `classification` keyword would multiply this packet's own
+    blast radius by an order of magnitude for a capability nothing yet
+    reads (steps 2/3 are the actual consumers, and neither is in scope
+    here) — directly contradicting docs/spec/07_AGENT_TASK_TEMPLATE.md
+    section 5's own compiler rule 1 ("select no more than one cohesive
+    domain behavior") and rule 10 ("keep tasks small enough for independent
+    review and rollback"). This is a genuine, disclosed judgment call, not a
+    silent omission — flagged again in specification_gaps for a reviewer who
+    might prefer bundling at least ONE representative service (e.g.
+    `SourceRecordService`, the nearest eventual MRR-MTH-012 consumer) into
+    this same packet.
+  - >-
+    (d) `docs/spec/02_DOMAIN_MODEL.md` section 1's own field list (the
+    fenced code block reading `id / api_version / kind / practice_id /
+    revision / created_at / created_by / content_hash / supersedes
+    (optional) / labels (optional)`) is amended to append a new line,
+    `classification (optional)`, immediately after `labels (optional)` —
+    keeping the spec's own normative field inventory honest and in sync
+    with the schema it describes, exactly as the schema/contract change it
+    documents. Section 4 ("Data classification") gains one short new
+    paragraph AFTER its existing table (which stays otherwise unchanged —
+    see specification_gaps for why `SYNTHETIC_TEST_FIXTURE` is NOT added as
+    a sixth table row), reading approximately: "A sixth value,
+    `SYNTHETIC_TEST_FIXTURE`, marks fixture-derived objects that MUST never
+    be treated as empirical evidence (ADR-0010). Every first-class object
+    MAY carry this vocabulary via the optional `baseObject.classification`
+    field; absence means unclassified, and unclassified MUST NOT satisfy
+    any classification-gated check." — wording MAY be lightly copyedited by
+    the implementer, but MUST preserve the fail-closed-on-absent claim
+    verbatim in substance, since it is the ADR's own load-bearing safety
+    property.
+invariants:
+  - >-
+    `schemas/common.schema.json#/$defs/baseObject`'s own `required` array is
+    UNCHANGED (still exactly the original eight names); `classification` is
+    added only to `properties`, never to `required`.
+  - >-
+    every existing file under `examples/*.example.json` and
+    `tests/contract/fixtures/{valid,invalid}/*.json` continues to validate,
+    UNMODIFIED, against both its JSON Schema and its Pydantic model, and
+    produces a byte-identical `model_dump_json(exclude_none=True)` output to
+    before this change (none of them set `classification`, so none of them
+    gain the key).
+  - >-
+    for any object whose stored `body` does not contain a `"classification"`
+    key, `mrr.domain.hashing_policy.compute_content_hash(body)` returns the
+    IDENTICAL value before and after this change — no existing object's
+    `content_hash` or `signature` is invalidated, and no re-signing is ever
+    required as a consequence of this task (ADR-0010's own explicit
+    promise).
+  - >-
+    `TaskBundle.classification` remains REQUIRED and continues to accept
+    ONLY the original five values at BOTH the JSON Schema and the Pydantic
+    tier; `"SYNTHETIC_TEST_FIXTURE"` is rejected for a `TaskBundle`
+    specifically at both tiers, even though it is now a legal value for
+    `BaseObject.classification` in general.
+  - >-
+    every OTHER `BaseObject`-derived entity that does not declare its own
+    `classification` property (confirmed: every one of the 29 entities
+    except `TaskBundle`) accepts all six `BaseObjectClassification` values
+    when present, and accepts the field's total absence, at both tiers,
+    with zero change to that entity's own schema or Pydantic model file.
+  - >-
+    `packages/persistence/mrr/persistence/tables.py`,
+    `packages/domain/mrr/domain/repositories.py`'s `StoredObject`, and
+    `migrations/versions/**` are BYTE-IDENTICAL before and after this task
+    (no diff) — the round-trip test proves the field needs none of them.
+  - >-
+    `mrr.domain.synthetic_fixture.assert_not_synthetic_fixture_evidence`,
+    `services/control_plane/mrr/services/transfer/service.py`'s
+    `_ensure_no_participant_identifiable_object`, and
+    `mrr.domain.public_correction_view`'s attestation-map bridge are all
+    BYTE-IDENTICAL before and after this task (no diff) — nothing newly
+    reads the field for enforcement.
+  - both import-linter contracts in `pyproject.toml` remain KEPT throughout.
+acceptance_tests:
+  - >-
+    schema tier — `schemas/common.schema.json#/$defs/baseObject.properties`
+    gains a `classification` entry with `{"type": "string", "enum":
+    ["PUBLIC", "INTERNAL", "RESTRICTED", "SENSITIVE",
+    "PARTICIPANT_IDENTIFIABLE", "SYNTHETIC_TEST_FIXTURE"]}`, verified by
+    loading the schema and asserting the exact property/enum shape; the
+    `required` array is asserted unchanged (still the original eight
+    names).
+  - >-
+    schema+Pydantic dual tier, `Practice` as the demonstration vehicle (a
+    neutral, already-`BaseObject`-derived entity with no `classification`
+    field of its own): for each of the six `BaseObjectClassification`
+    values, a `Practice` document built from `examples/practice.example.json`
+    with `classification` set to that value validates against BOTH
+    `schemas/practice.schema.json` (resolved through `common.schema.json`
+    via `scripts.check_contracts.build_registry`/`build_validator_for_schema`,
+    mirroring `tests/contract/test_evidence_anchor_variants.py`'s own
+    `_validate_against_schema` helper) AND `mrr.contracts.practice.Practice.
+    model_validate`, with `practice.classification` equal to the value
+    supplied.
+  - >-
+    negative, dual tier: the SAME `Practice` document with `classification`
+    set to an unrecognized string (e.g. `"NOT_A_REAL_VALUE"`) is REJECTED at
+    BOTH the JSON Schema tier and the `Practice.model_validate` (Pydantic)
+    tier — committed as `tests/contract/fixtures/invalid/
+    practice-invalid-classification-value.json` and picked up automatically
+    by `tests/contract/test_negative_fixtures.py`'s existing glob-based
+    fixture discovery (no change to that test file itself required).
+  - >-
+    absence, both tiers: `examples/practice.example.json` UNMODIFIED (no
+    `classification` key) validates exactly as before; `Practice.model_validate(...)
+    .classification is None`; `Practice.model_validate(...).model_dump(
+    exclude_none=True)` does NOT contain a `"classification"` key.
+  - >-
+    `TaskBundle` collision/override regression, dual tier: a document built
+    from `examples/task-bundle.example.json` (already carries a valid
+    `classification` value among the original five) with `classification`
+    overridden to `"SYNTHETIC_TEST_FIXTURE"` is REJECTED at BOTH the JSON
+    Schema tier (`schemas/task-bundle.schema.json`'s own unchanged five-value
+    `enum`) and the Pydantic tier (`TaskBundle.model_validate` raising
+    `ValidationError`) — committed as `tests/contract/fixtures/invalid/
+    task-bundle-classification-synthetic-test-fixture-rejected.json`,
+    exercised by `test_negative_fixtures.py`'s existing discovery
+    mechanism; separately, the SAME document with `classification` set to
+    each of the ORIGINAL five values in turn still validates (regression:
+    `TaskBundle`'s pre-existing behavior is provably unchanged), and a
+    document OMITTING `classification` entirely is still REJECTED (its
+    `required`-ness is provably unchanged).
+  - >-
+    persistence round trip, no migration: `PostgresObjectRepository.
+    insert_revision`/`get_latest` (against the CURRENT, unmodified Alembic
+    head) round-trip a `StoredObject` whose `body` includes
+    `"classification": "SYNTHETIC_TEST_FIXTURE"` byte-for-byte, using the
+    SAME `_stored_object`-style helper pattern already established in
+    `tests/integration/persistence/test_postgres_repositories.py` — proving
+    derived_decisions (b) by direct execution.
+  - >-
+    hash/back-compat, direct proof: `mrr.domain.hashing_policy.
+    compute_content_hash` applied to `examples/practice.example.json`'s own
+    body (with `content_hash`/`signature`-equivalent fields excluded per
+    that module's existing convention) returns the SAME value whether
+    computed via the OLD (pre-this-task) field set or via
+    `Practice.model_validate(...).model_dump(exclude_none=True)` AFTER this
+    task's `BaseObject` change — i.e., round-tripping the unmodified example
+    through the now-`classification`-aware `Practice` model and re-hashing
+    yields byte-identical output to hashing the original document directly.
+  - >-
+    full-suite regression: `make test-contract` passes UNMODIFIED across all
+    29 entities/examples via `scripts/check_contracts.py`'s existing generic
+    round-trip check (schema validity, example-vs-schema, example-vs-model,
+    round-trip); `make test`, `make test-integration`, `make test-e2e`, and
+    `make security-check` all stay green with ZERO other test file changed
+    or broken.
+  - both import-linter contracts remain KEPT (verified via `make lint`).
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+  - make security-check
+required_output:
+  - implementation summary
+  - files changed, and explicit confirmation that every path under forbidden_changes was NOT touched
+  - the exact `classification` property/enum text added to
+    `schemas/common.schema.json#/$defs/baseObject`, and the exact
+    `BaseObjectClassification`/`BaseObject.classification` Python
+    declaration added to `packages/contracts/mrr/contracts/common.py`
+  - >-
+    confirmation, with the actual test output, that the `TaskBundle`
+    override behaves as derived_decisions (a) predicts (both the acceptance
+    and the rejection cases), and that no migration was added, with the
+    round-trip test's result as evidence for derived_decisions (b)
+  - the exact spec-note text added to `docs/spec/02_DOMAIN_MODEL.md` sections 1 and 4
+  - tests added or changed, and exact command results for every command in `commands`
+  - >-
+    security/privacy implications: this field is additive-only and read by
+    NOTHING yet (no enforcement path exists until steps 2/3), so it
+    introduces no new attack surface; its eventual purpose (MRR-NFR-006
+    privacy, MRR-NFR-007 cross-practice integrity via the signed/hashed
+    body) is stated for context but not exercised by this packet
+  - open specification questions exactly as listed under specification_gaps
+stop_conditions:
+  - >-
+    the persistence round-trip acceptance test reveals that a
+    `"classification"` key inside `body` does NOT survive
+    `insert_revision`/`get_latest` unchanged on the CURRENT migration head
+    (contradicting derived_decisions (b)) — stop before adding any migration
+    or table change, and report the exact discrepancy for a reviewer to
+    assess, rather than silently adding a migration to make the test pass.
+  - >-
+    the `TaskBundle` override (derived_decisions (a)) does NOT behave as
+    predicted — e.g. Pydantic does not override `BaseObject.classification`
+    cleanly for `TaskBundle`, or `SYNTHETIC_TEST_FIXTURE` is unexpectedly
+    accepted for a `TaskBundle` at either tier — stop and report the exact
+    failure; do NOT edit `schemas/task-bundle.schema.json` or
+    `packages/contracts/mrr/contracts/task_bundle.py` to route around it
+    (both are forbidden_changes).
+  - >-
+    a repository-wide re-check at implementation time finds a THIRD schema
+    (beyond `common.schema.json#/$defs/artifactRef` and
+    `task-bundle.schema.json`) that already declares its own top-level
+    `classification` property — stop and report exactly which one, since
+    this packet's collision analysis (derivation (1)) assumed exactly two
+    and did not design for a third.
+  - >-
+    the hash/back-compat acceptance test finds that ANY existing committed
+    example's or fixture's `content_hash` would change as a result of this
+    field's addition — stop immediately and report which file; this MUST
+    NEVER happen per ADR-0010's own "no migration, no re-signing" promise,
+    and if it does, the field is not as additive as this packet's own
+    derivation concluded.
+specification_gaps:
+  - >-
+    whether and how each of the roughly fifteen object-creating services
+    should eventually expose a `classification` creation-time parameter is
+    left open (derived_decisions (c)) — a reviewer may prefer bundling at
+    least one representative service (most plausibly `SourceRecordService`,
+    the nearest MRR-MTH-012 consumer) into THIS packet rather than deferring
+    it; this packet's own choice is full deferral, to keep the diff small
+    and reviewable, but the choice is disclosed, not silent.
+  - >-
+    whether `TaskBundle`'s own `classification` vocabulary should ever be
+    widened to also accept `SYNTHETIC_TEST_FIXTURE` (e.g. if a TaskBundle
+    could itself be derived from or reference synthetic fixture data) is NOT
+    decided here — ADR-0010's Decision text names only `baseObject`'s own
+    new field; widening `TaskBundle`'s pre-existing, separately-declared
+    field is a distinct question this packet leaves to `TaskBundle`'s own
+    future owners.
+  - >-
+    whether `docs/spec/02_DOMAIN_MODEL.md` section 4's table should gain
+    `SYNTHETIC_TEST_FIXTURE` as a genuine seventh table row (with its own
+    "Default movement" cell) rather than the prose footnote this packet's
+    derived_decisions (d) proposes is a stylistic judgment call — this
+    packet's own reasoning for the footnote is that `SYNTHETIC_TEST_FIXTURE`
+    is a disclosure-ADJACENT but categorically different "this is not real
+    data" marker (per ADR-0010's own Consequences section: "this is not
+    empirical is a disclosure class"), not a sixth degree of the SAME
+    disclosure-sensitivity ladder the other five values form (each of which
+    has a real "Default movement" semantics `SYNTHETIC_TEST_FIXTURE` does
+    not share) — flagged for reviewer preference, not asserted as
+    uncontestable.
+  - >-
+    now that a classification-shaped enum will exist inline in THREE places
+    (`$defs.artifactRef.properties.classification`,
+    `task-bundle.schema.json`'s own property, and now
+    `$defs.baseObject.properties.classification`) plus the two Python
+    Literal copies (`mrr.contracts.common.Classification` and
+    `mrr.domain.artifacts.Classification`), a shared JSON Schema `$defs`
+    fragment (and/or a single Python source of truth) becomes an
+    increasingly attractive DRY cleanup — explicitly OUT of this packet's
+    scope (mirrors `task-packets/E9-T00.yaml`'s own excluded trust-resolver
+    DRY refactor: "a future, separate, reviewed cleanup", not folded into an
+    additive, small, independently-revertible packet like this one) but
+    flagged here so it is not lost.
+  - >-
+    `packages/domain/mrr/domain/synthetic_fixture.py`'s own
+    `SYNTHETIC_TEST_FIXTURE_CLASSIFICATION` local string constant
+    (currently a bare literal, by its own docstring's own admission,
+    "because that enum does not (yet) carry this value at all") could now
+    import `BaseObjectClassification` from `mrr.contracts.common` instead of
+    redeclaring the literal string — a tiny, natural follow-up this packet
+    deliberately leaves undone (forbidden_changes) so that file's own diff
+    stays exactly zero, keeping this packet's blast radius to the contracts
+    layer only; a reviewer may prefer folding this one-line import cleanup
+    in here instead of waiting for step 2/3's wiring task.
