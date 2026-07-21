@@ -296,7 +296,7 @@
     "unverifiable_reason": null,
     "claim_relevant_finding": "decisive_move: \"An AI trained on real Biennial and Whitney archives endlessly hallucinates fake artist biographies and press releases, exposing algorithmic curation's absurdity by actually letting a machine attempt it, live, forever.\"",
     "extraction": {
-      "classification_basis": "decisive_move states the model is trained once on real Biennial/Whitney archives and then generates continuously, with no described retraining on its own prior-generation output (Step 1 not cleared); classified references-only/contradicts. Atlas verify_status is 'toVerify', not 'verified' — mapped to CorpusEntry verification_status 'pending' (task-packets/K1-T04.yaml derived_decisions (c)); this row is therefore excluded from every independence count regardless of its evidence_relation, and remains present in the frozen matrix, never dropped (MRR-MTH-015)."
+      "classification_basis": "decisive_move states the model is trained once on real Biennial/Whitney archives and then generates continuously, with no described retraining on its own prior-generation output (Step 1 not cleared); classified references-only/contradicts. Atlas verify_status is 'toVerify', not 'verified' — mapped to CorpusEntry verification_status 'pending' (task-packets/K1-T04.yaml derived_decisions (c)). The row is never dropped from the frozen matrix (MRR-MTH-015). Its own 'contradicts' evidence_relation still groups it into the contradicting-entry set the claim's own assertion text is built from (mrr.services.node_runtime.synthesis_executor._build_assertion has no verification-status filter), but mrr.domain.source_independence.distinct_independent_source_family_count only counts 'verified' rows, so this row contributes zero to the numeric contradicting-family tally that actually determines eligibility (13, not 14, distinct families) — the same 'verified'-only rule also excludes it from the separate min_included_sources kill-condition count. The eligibility outcome is unaffected either way."
     },
     "source_family_id": null,
     "identifiers": {
@@ -390,7 +390,7 @@
     "evidence_relation": "contradicts",
     "verification_status": "verified",
     "unverifiable_reason": null,
-    "claim_relevant_finding": "decisive_move: \"Large-scale dome installation built from 6,500 digitized African pictographs, syllabaries and ideographs (extending the artist's 2019-2023 'Ancestral Algorithm' project) that reframes 'algorithm' as 'algo + rhythm', proposing indigenous knowledge systems as an alternative computational epistemics rather than an ornament to it.\"",
+    "claim_relevant_finding": "decisive_move: \"Large-scale dome installation built from 6,500 digitized African pictographs, syllabaries and ideographs (extending the artist's 2019–2023 'Ancestral Algorithm' project) that reframes 'algorithm' as 'algo + rhythm', proposing indigenous knowledge systems as an alternative computational epistemics rather than an ornament to it.\"",
     "extraction": {
       "classification_basis": "decisive_move describes a physical installation of digitized pictographs proposing an alternative epistemics, with no generative-model recursive training loop described at all (Step 1 not cleared, not even a generative-AI production pipeline); classified references-only/contradicts."
     },

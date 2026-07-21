@@ -16,6 +16,13 @@ Acceptance-test mapping (task-packets/K1-T04.yaml):
   ``test_k0_t02_capability_dispatch.py``, and
   ``test_k1_t03_synthesis_evidence_loop.py`` unmodified — not duplicated
   here.
+- "MRR-FR-004, --deny-score-approval's own CLI plumbing" ->
+  ``test_cli_deny_score_approval_flag_gates_the_run_via_mrr_fr_004`` (review
+  follow-up: ``mrr run``'s own identical flag has never had a CLI-level
+  test either — ``run_local_evidence_loop`` is only exercised directly, per
+  ``tests/e2e/test_e2e_001_single_node_evidence_loop.py``'s own
+  ``test_unapproved_score_aborts_at_the_gate`` — so this is this packet's
+  own new coverage, not a regression fix).
 """
 
 from __future__ import annotations
@@ -36,6 +43,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
 from mrr.persistence.repositories import (
     PostgresEdgeRepository,
+    PostgresEventLog,
     PostgresObjectRepository,
 )
 from mrr.services.cli.main import main as mrr_main
@@ -273,5 +281,63 @@ def test_cli_reproduces_the_real_run(
         object_repository = PostgresObjectRepository(engine)
         crate = object_repository.get_latest(out["evidence_crate_id"])
         assert crate.body["sealed"] is True
+    finally:
+        engine.dispose()
+
+
+def test_cli_deny_score_approval_flag_gates_the_run_via_mrr_fr_004(
+    postgres_url: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """MRR-FR-004: ``--deny-score-approval`` threads through
+    ``synthesis_main.run_command``'s own ``approve_score = not
+    args.deny_score_approval`` plumbing, into
+    ``establish_and_run_synthesis``'s ``approve_score`` parameter, into
+    ``run_synthesis_evidence_loop``'s identically-named parameter, and
+    finally into ``ResearchScoreService`` — never approving/activating the
+    Research Score. The CLI aborts with a non-zero exit and an explicit
+    message naming the typed ``ScoreNotApprovedError``, never a fabricated
+    success (mirrors ``mrr run``'s own identical flag/parameter chain,
+    exercised at the function level, not the CLI level, by
+    ``tests/e2e/test_e2e_001_single_node_evidence_loop.py``'s own
+    ``test_unapproved_score_aborts_at_the_gate``).
+    """
+    exit_code = mrr_main(
+        [
+            "synthesis",
+            "run",
+            "--database-url",
+            postgres_url,
+            "--artifact-root",
+            str(tmp_path / "artifacts"),
+            "--code-revision",
+            _TEST_CODE_REVISION,
+            "--deny-score-approval",
+        ]
+    )
+
+    assert exit_code != 0
+    err = capsys.readouterr().err
+    assert "aborted" in err
+    assert "ScoreNotApprovedError" in err
+
+    # establish_and_run_synthesis's OWN governance-object establishment
+    # (MethodProfile/QuestionModel/ConceptCharter/MethodProtocol) happens
+    # unconditionally, BEFORE it ever calls run_synthesis_evidence_loop —
+    # --deny-score-approval only affects that LATER function's own
+    # ResearchScore/TaskBundle-negotiation gate (TaskBundleService.create's
+    # own ensure_can_start_work check, task-packets/E2-T03.yaml), confirmed
+    # directly: those four governance objects DO exist here. What the gate
+    # actually prevents is the run ever reaching execution — no
+    # EvidenceMatrix/Claim/ResearchDecision is ever persisted, and no crate
+    # is ever sealed.
+    engine = sa.create_engine(postgres_url)
+    try:
+        event_log = PostgresEventLog(engine)
+        event_types = {appended.event.event_type for appended in event_log.read_all()}
+        assert "question_model.accepted" in event_types
+        assert "concept_charter.accepted" in event_types
+        assert "method_protocol.locked" in event_types
+        assert "evidence_matrix.created" not in event_types
+        assert not any(event_type.startswith("claim.") for event_type in event_types)
     finally:
         engine.dispose()
