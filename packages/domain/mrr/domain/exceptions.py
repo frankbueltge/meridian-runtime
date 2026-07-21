@@ -1532,3 +1532,107 @@ class PendingDeliveryNotFoundError(DomainError):
             "no pending-delivery record found for recipient_node_id "
             f"{recipient_node_id!r}, notification_id {notification_id!r}"
         )
+
+
+class ProtocolNotLockedError(DomainError):
+    """Raised by ``mrr.services.node_runtime.synthesis_executor.
+    SystematicEvidenceSynthesisExecutor``'s internal, pure protocol-lock
+    precondition check (task-packets/K1-T03.yaml derived_decisions (g),
+    MRR-MTH-007: "Executor tasks for confirmatory branches MUST reference
+    the lock hash and fail with PROTOCOL_NOT_LOCKED otherwise") when the
+    referenced ``MethodProtocol``'s current ``status`` is not one of
+    ``locked``/``amended``/``executed`` — this is the FIRST real enforcement
+    site for MTH-007 in this codebase (K1-T02 explicitly punted it as
+    "documentation only").
+
+    Raised from a pure, in-memory comparison over an already-resolved
+    protocol body — never from I/O this module performs itself. Caught by
+    ``SystematicEvidenceSynthesisExecutor.execute()``'s own outer exception
+    handling (mirroring ``ReferenceTaskExecutor``'s "any raising computation
+    -> failed" precedent) and reported as a ``failed`` ``ExecutionResult``,
+    never propagated past the ``Executor`` Protocol boundary and never
+    silently treated as a domain finding (unlike
+    ``stop_insufficient_evidence``, MRR-MTH-011) — an unlocked protocol is a
+    genuine execution precondition failure, not an honest research outcome.
+
+    Carries ``error_code`` (spec 08 section 3's canonical
+    ``"PROTOCOL_NOT_LOCKED"`` string), ``protocol_id``, and ``actual_status``
+    (the resolved protocol's current ``status`` value).
+    """
+
+    error_code: ClassVar[str] = "PROTOCOL_NOT_LOCKED"
+
+    def __init__(self, protocol_id: str, *, actual_status: str) -> None:
+        self.protocol_id = protocol_id
+        self.actual_status = actual_status
+        super().__init__(
+            f"MethodProtocol {protocol_id!r} is not locked (status={actual_status!r}); "
+            "confirmatory executor work requires status in "
+            "{'locked', 'amended', 'executed'} (MRR-MTH-007)"
+        )
+
+
+class ProtocolLockViolationError(DomainError):
+    """Raised by ``mrr.services.node_runtime.synthesis_executor.
+    SystematicEvidenceSynthesisExecutor``'s internal, pure protocol-lock
+    precondition check (task-packets/K1-T03.yaml derived_decisions (g),
+    MRR-MTH-007) when the referenced ``MethodProtocol`` IS locked (see
+    ``ProtocolNotLockedError`` for the case where it is not), but the
+    protocol-parameters sidecar's own declared ``protocol_lock_content_hash``
+    does not equal the resolved protocol's ACTUAL ``content_hash`` — a stale
+    or tampered sidecar reference to a protocol revision other than the one
+    it claims to be pinned against.
+
+    Raised from a pure, in-memory comparison, caught by
+    ``SystematicEvidenceSynthesisExecutor.execute()``'s own outer exception
+    handling and reported as a ``failed`` ``ExecutionResult`` — see
+    ``ProtocolNotLockedError``'s identical framing for why this fails
+    closed rather than becoming a domain finding.
+
+    Carries ``error_code`` (spec 08 section 3's canonical
+    ``"PROTOCOL_LOCK_VIOLATION"`` string), ``protocol_id``,
+    ``declared_content_hash`` (the sidecar's own claim), and
+    ``actual_content_hash`` (the resolved protocol's real, current
+    ``content_hash``).
+    """
+
+    error_code: ClassVar[str] = "PROTOCOL_LOCK_VIOLATION"
+
+    def __init__(
+        self, protocol_id: str, *, declared_content_hash: str, actual_content_hash: str
+    ) -> None:
+        self.protocol_id = protocol_id
+        self.declared_content_hash = declared_content_hash
+        self.actual_content_hash = actual_content_hash
+        super().__init__(
+            f"MethodProtocol {protocol_id!r}: protocol-parameters sidecar declares "
+            f"protocol_lock_content_hash {declared_content_hash!r}, but the resolved "
+            f"protocol's actual content_hash is {actual_content_hash!r} (MRR-MTH-007) — "
+            "stale or tampered sidecar reference"
+        )
+
+
+class EvidenceMatrixNotFoundError(DomainError):
+    """Raised by ``mrr.services.evidence_matrix.service.EvidenceMatrixService``
+    (task-packets/K1-T03.yaml) when a referenced ``EvidenceMatrix`` id
+    resolves to no stored object at all. Carries ``evidence_matrix_id``.
+    Never returns ``None`` or a boolean for a missing matrix — matches
+    ``ClaimNotFoundError``'s/``MethodProfileNotFoundError``'s own precedent
+    for a first-class object lookup.
+    """
+
+    def __init__(self, evidence_matrix_id: str) -> None:
+        self.evidence_matrix_id = evidence_matrix_id
+        super().__init__(f"no EvidenceMatrix found for id {evidence_matrix_id!r}")
+
+
+class MethodRulingNotFoundError(DomainError):
+    """Raised by ``mrr.services.method_ruling.service.MethodRulingService``
+    (task-packets/K1-T03.yaml) when a referenced ``MethodRuling`` id resolves
+    to no stored object at all. Carries ``method_ruling_id``. Never returns
+    ``None`` or a boolean for a missing ruling.
+    """
+
+    def __init__(self, method_ruling_id: str) -> None:
+        self.method_ruling_id = method_ruling_id
+        super().__init__(f"no MethodRuling found for id {method_ruling_id!r}")
