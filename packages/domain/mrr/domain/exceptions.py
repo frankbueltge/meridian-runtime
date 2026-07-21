@@ -424,6 +424,15 @@ class UnknownKeyIdError(DomainError):
     ``OfflineBundle``'s claimed ``signature.key_id`` — reused unchanged for
     the same reason, mirrored by the distinctly-named ``Bundle*`` siblings
     below for the two conditions that DO need a bundle-specific type.
+
+    Also raised, a seventh time, by
+    ``mrr.domain.correction_notification.
+    resolve_trusted_correction_notification_key`` (task-packets/
+    E6-T03.yaml) for the identical fact pattern applied to a received
+    ``CorrectionNotification``'s claimed ``signature.key_id`` — reused
+    unchanged for the same reason, mirrored by the distinctly-named
+    ``CorrectionNotification*`` siblings below for the two conditions that
+    DO need a notification-specific type.
     """
 
     def __init__(self, kid: str) -> None:
@@ -1171,6 +1180,124 @@ class MissingResolutionEvidenceError(DomainError):
         super().__init__(
             f"Obligation {obligation_id!r} cannot be resolved: resolution_evidence must be "
             "non-empty (MRR-NFR-001) — nothing persisted"
+        )
+
+
+class CorrectionNotificationSignerMismatchError(DomainError):
+    """Raised by ``mrr.domain.correction_notification.
+    resolve_trusted_correction_notification_key`` (task-packets/E6-T03.yaml)
+    when a received ``CorrectionNotification``'s
+    ``signature.signer_practice_id`` does not equal the id of the practice
+    the receiving side actually trusts as THIS notification's NOTIFYING
+    practice. Mirrors ``TaskSignerMismatchError``'s/``CrateSignerMismatchError``'s/
+    ``TransferSignerMismatchError``'s identical fact pattern
+    (docs/spec/04_SECURITY_AND_POLICY.md section 8.1: "Trust is per practice
+    and capability, not universal"), kept as a SEPARATE type rather than
+    reused because it is raised for a different carrying object (a
+    correction notification, not a task bundle, manifest, envelope, crate,
+    or transfer contract) — see ``UnknownKeyIdError``'s docstring for why
+    that one, unlike this one, IS reused verbatim. Carries
+    ``claimed_signer_practice_id`` (from the notification's own signature)
+    and ``trusted_practice_id`` (the practice the caller actually trusts as
+    this notification's signer).
+    """
+
+    def __init__(self, *, claimed_signer_practice_id: str, trusted_practice_id: str) -> None:
+        self.claimed_signer_practice_id = claimed_signer_practice_id
+        self.trusted_practice_id = trusted_practice_id
+        super().__init__(
+            "correction notification signature.signer_practice_id "
+            f"{claimed_signer_practice_id!r} does not equal the trusted notifying "
+            f"practice id {trusted_practice_id!r}"
+        )
+
+
+class CorrectionNotificationKeyNotValidError(DomainError):
+    """Raised by ``resolve_trusted_correction_notification_key``
+    (task-packets/E6-T03.yaml) when a received ``CorrectionNotification``'s
+    claimed signing key id DOES resolve to a descriptor in the trusted
+    notifying practice's ``KeyRing`` (see ``UnknownKeyIdError`` for the case
+    where it does not), but that descriptor is not
+    ``mrr.domain.key_management.KeyRing.is_valid_at`` the evaluation
+    instant — revoked, rotated, expired, or not yet valid. Mirrors
+    ``TaskKeyNotValidError``'s/``CrateKeyNotValidError``'s/
+    ``TransferKeyNotValidError``'s identical fact pattern for a
+    ``CorrectionNotification``, kept as a separate type for the same reason
+    ``CorrectionNotificationSignerMismatchError`` is. This is what rejects a
+    notification signed by a key that has since been revoked or rotated even
+    though the raw Ed25519 signature itself is still cryptographically valid
+    over the notification's bytes (docs/spec/04_SECURITY_AND_POLICY.md
+    section 8.4: "New objects are rejected after revocation.") — trust
+    anchoring is deliberately a stronger gate than raw signature
+    verification alone. Carries ``kid`` and the evaluation instant ``at``.
+    """
+
+    def __init__(self, kid: str, *, at: datetime) -> None:
+        self.kid = kid
+        self.at = at
+        super().__init__(
+            f"key {kid!r} is not valid at evaluation instant {at.isoformat()!r} "
+            "(revoked, rotated, expired, or not yet valid)"
+        )
+
+
+class CorrectionNotificationNotWithinValidityWindowError(DomainError):
+    """Raised by ``mrr.services.correction.service.CorrectionImpactService.
+    receive_correction_notification`` (task-packets/E6-T03.yaml) when the
+    evaluation instant is not within a received ``CorrectionNotification``'s
+    own ``[sent_at, expires_at)`` window — either before the notification
+    was sent, or at/after its declared expiry. This is the SECOND,
+    independent validity-window check task-packets/E6-T03.yaml derived_
+    decisions (b) describes ("its OWN replay/validity state must not depend
+    on which specific envelope most recently wrapped it") — distinct from,
+    and in addition to, the wrapping ``NodeMessageEnvelope``'s own window
+    already enforced (unchanged) by
+    ``mrr.domain.envelope_validation.validate_inbound_envelope``. Mirrors
+    ``EnvelopeNotWithinValidityWindowError``'s/``BundleNotWithinValidityWindowError``'s
+    identical fact pattern (one class, two reasons distinguished by message
+    text), kept as a separate type for the same reason
+    ``CorrectionNotificationSignerMismatchError`` is. Carries
+    ``notification_id``, ``sent_at``, ``expires_at``, and ``at``.
+    """
+
+    def __init__(
+        self, notification_id: str, sent_at: datetime, expires_at: datetime, at: datetime
+    ) -> None:
+        self.notification_id = notification_id
+        self.sent_at = sent_at
+        self.expires_at = expires_at
+        self.at = at
+        reason = (
+            f"not yet sent (sent_at {sent_at.isoformat()!r})"
+            if at < sent_at
+            else f"expired (expires_at {expires_at.isoformat()!r})"
+        )
+        super().__init__(
+            f"CorrectionNotification {notification_id!r} is {reason} at evaluation instant "
+            f"{at.isoformat()!r}"
+        )
+
+
+class CorrectionNotificationAlreadyProcessedError(DomainError):
+    """Raised by ``CorrectionImpactService.receive_correction_notification``
+    (task-packets/E6-T03.yaml) when the caller-supplied
+    ``already_processed_notification`` predicate reports ``True`` for the
+    notification's own ``notification_id`` — a replay at the PAYLOAD level,
+    a SEPARATE namespace from the wrapping envelope's own ``message_id``
+    (already checked, unchanged, by ``validate_inbound_envelope`` via
+    ``EnvelopeAlreadyProcessedError``). Both checks must pass before any
+    local impact computation runs (task-packets/E6-T03.yaml invariant: "a
+    CorrectionNotification is replay-protected at TWO independent levels").
+    This is a CHECK only: no durable processed-notification-id store is
+    built here (mirrors ``EnvelopeAlreadyProcessedError``'s/
+    ``BundleAlreadyProcessedError``'s identical stance — the caller supplies
+    the predicate). Carries ``notification_id``.
+    """
+
+    def __init__(self, notification_id: str) -> None:
+        self.notification_id = notification_id
+        super().__init__(
+            f"CorrectionNotification {notification_id!r} has already been processed (replay)"
         )
 
 

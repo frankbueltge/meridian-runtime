@@ -102,28 +102,141 @@ MRR-FR-092's own "review_required or a stricter status" wording) — a plain
 status check, not exception-driven control flow, so a genuinely unexpected
 ``InvalidTransitionError`` from some other cause still propagates instead of
 being swallowed.
+
+--- E6-T03 additions: cross-practice correction notification ----------------
+
+``notify_affected_practices`` and ``receive_correction_notification`` are
+ADDITIVE methods on this same service (task-packets/E6-T03.yaml) — every
+E3-T06 method/helper above is reused verbatim, unmodified. They carry a
+correction across the trust boundary using three already-shipped pieces,
+reused unchanged: ``mrr.contracts.correction_event.CorrectionEvent`` (this
+module's own ``record``/``propagate_impact``), the pure
+``compute_impact``/``IMPACT_EDGE_TYPES`` traversal above, and the E5-T03/T06
+online transport (``mrr.contracts.node_message_envelope.NodeMessageEnvelope``,
+``mrr.domain.envelope_validation.validate_inbound_envelope``,
+``mrr.domain.envelope_transport.EnvelopeTransport``).
+
+Sending side (``notify_affected_practices``): mints+signs one
+``mrr.contracts.correction_notification.CorrectionNotification`` per
+CALLER-supplied :class:`NotificationRecipient` (mirroring
+``mrr.services.node_runtime.evidence_crate.EvidenceCrateSealer.seal``'s own
+draft-then-resign convention: build with a placeholder signature, compute
+``content_hash`` over the ADR-0004 ``exclude_none=True`` form, sign, then
+re-validate), wraps each in a ``NodeMessageEnvelope``
+(``payload_kind="CorrectionNotification"``), attempts delivery via the
+caller-supplied ``EnvelopeTransport``, and drives the ALREADY-DECLARED
+``CORRECTION_LIFECYCLE`` forward along its already-drawn edges — OPEN ->
+IMPACT_ANALYSIS -> NOTIFYING -> AWAITING_RESPONSES, continuing on to the
+also-already-drawn AWAITING_RESPONSES -> DELIVERY_PENDING edge WITHIN THE
+SAME CALL only if at least one recipient's synchronous delivery attempt
+reports ``"failed"`` (task-packets/E6-T03.yaml derived_decisions (c); see
+``_target_status_after_notification``). No new lifecycle edge is declared —
+``DELIVERY_PENDING``'s already-documented "no drawn outgoing edge at all"
+open question in ``mrr.domain.lifecycles`` is left exactly as-is.
+
+One ``correction.notification_sent`` event is recorded per recipient
+(section 5.2's own enumerated name), carrying the delivery outcome
+(``"sent"``/``"pending"``) in its payload — the durable record MRR-FR-094
+requires for a recipient who could not be reached, per AGENTS.md's own
+source-of-truth discipline ("the append-only domain event log is
+authoritative for audit history"). At most ONE new ``CorrectionEvent``
+revision is written per call (covering the whole hop-chain, mirroring
+``_write_impact_objects``'s "one revision, one event" economy) — the FIRST
+recipient's event is recorded atomically with that revision via the
+existing ``RecordRevisionWithEvent``; any additional recipients' events (a
+second+ recipient in the same call, or ANY recipient when the correction's
+status does not need to change) are appended via the new, OPTIONAL
+``RecordEventOnly`` dependency (:func:`bind_event_unit_of_work`,
+ADR-0007's event-only ``mrr.persistence.unit_of_work.record_event`` path,
+reused unchanged) — kept optional, defaulting to ``None``, so this
+service's existing constructor call sites outside this task's
+``allowed_paths`` (the projection-service unit tests, E2E-003) do not break;
+a caller invoking ``notify_affected_practices`` without configuring it gets
+a clear ``ValueError`` rather than a silent no-op.
+
+Outbound idempotency: recipients already recorded ``"sent"`` for this
+correction (found by scanning the event log's own
+``correction.notification_sent`` events — the same append-only log
+AGENTS.md already names as authoritative) are skipped entirely — no
+re-delivery attempt, no duplicate event, and if every caller-supplied
+recipient is already ``"sent"``, no revision is written and no lifecycle
+transition is attempted at all.
+
+Receiving side (``receive_correction_notification``): validates the inbound
+envelope (``validate_inbound_envelope``, UNCHANGED — the transport-layer
+signature, replay, and validity-window checks), verifies the notification's
+OWN signature (``resolve_trusted_correction_notification_key``, new — see
+``mrr.domain.correction_notification``), checks the notification's OWN
+validity window (``CorrectionNotificationNotWithinValidityWindowError`` — a
+SECOND, independent window from the envelope's own), then a caller-supplied
+replay predicate over the notification's OWN ``notification_id``
+(``CorrectionNotificationAlreadyProcessedError`` — a SEPARATE namespace from
+the envelope's own ``message_id``) — both replay checks, and the window
+check, must pass before any local impact computation runs. Only THEN does
+it treat ``notified_object_ids`` exactly as ``propagate_impact`` already
+treats a LOCAL correction's own ``affected_objects``: gathers this
+practice's OWN local edges via ``_gather_local_impact_edges`` (a small,
+deliberate DUPLICATE of ``_gather_impact_edges`` — task-packets/E6-T03.yaml
+derived_decisions (d): different seed provenance, same traversal shape, not
+force-shared across the two call sites), runs the UNCHANGED
+``compute_impact`` over them, and calls the EXISTING, unchanged
+``_require_review_if_needed`` for every locally-impacted id — never
+creating, storing, or mutating any copy of the remote ``CorrectionEvent``,
+and never deciding accept/adapt/reject/defer (E6-T04). Returns a
+:class:`LocalNotificationImpact` — the computed locally-impacted set,
+explicit even when empty (MRR-NFR-012: an id with zero matching local edges
+is a legitimate, explicit empty result, never a crash and never silently
+dropped) — never a new event type of its own (section 5.2's required-events
+enumeration has no name for the receiving side's own act of processing a
+notification; the only observable trace remains the EXISTING
+``claim.status_changed``-shaped events ``ClaimService.require_review``
+already emits).
+
+Deliberately deferred (task-packets/E6-T03.yaml forbidden_changes/
+specification_gaps): resolving WHICH practices/nodes to notify (and which
+``notified_object_ids`` matter to each) from
+``TransferContract.correction_subscription``/``Obligation`` data is
+E6-T01/E6-T02 wiring — ``NotificationRecipient`` is a plain caller-supplied
+value, never resolved by a query here; the recipient's own accept/adapt/
+reject/defer response is E6-T04; durable offline delivery tracking/retry
+over a ``DELIVERY_PENDING`` correction is E6-T06 (this task performs one
+synchronous online delivery ATTEMPT per recipient and records the outcome —
+it does not call ``mrr.domain.offline_bundle.build_outbox_bundle`` or
+enqueue anything); and the now-five near-identical trust resolvers
+(manifest_trust/task_trust/crate_trust/transfer_trust/this task's own
+correction_notification) are NOT refactored into one shared function.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import secrets
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from mrr.contracts import CorrectionEvent, Urn
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from mrr.contracts import CorrectionEvent, CorrectionNotification, Signature, Urn
+from mrr.contracts.node_message_envelope import NodeMessageEnvelope
 from mrr.domain.correction_impact import IMPACT_EDGE_TYPES, compute_impact
+from mrr.domain.correction_notification import resolve_trusted_correction_notification_key
+from mrr.domain.envelope_transport import EnvelopeDeliveryRequest, EnvelopeTransport
+from mrr.domain.envelope_validation import AlreadyProcessed, validate_inbound_envelope
 from mrr.domain.exceptions import (
     CorrectionNotFoundError,
+    CorrectionNotificationAlreadyProcessedError,
+    CorrectionNotificationNotWithinValidityWindowError,
     InvalidTransitionError,
     ObjectNotFoundError,
 )
-from mrr.domain.hashing_policy import compute_content_hash
+from mrr.domain.hashing_policy import compute_content_hash, sign_object
 from mrr.domain.identity import new_urn
+from mrr.domain.key_management import KeyRing
 from mrr.domain.lifecycles import CORRECTION_LIFECYCLE
 from mrr.domain.repositories import EdgeRepository, ObjectRepository, StoredObject, TypedEdge
 from mrr.persistence.repositories import PostgresEventLog, PostgresObjectRepository
-from mrr.persistence.unit_of_work import record_object_revision_with_event
+from mrr.persistence.unit_of_work import record_event, record_object_revision_with_event
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from mrr.services.claim.service import ClaimService
@@ -190,6 +303,82 @@ def bind_unit_of_work(
     return _record
 
 
+#: The callable shape ``mrr.persistence.unit_of_work.record_event`` (ADR-0007's
+#: event-only path) takes once its ``engine``/``event_log`` arguments are
+#: bound — the E6-T03 counterpart to ``RecordRevisionWithEvent`` for
+#: appending a ``correction.notification_sent`` event WITHOUT writing a new
+#: ``CorrectionEvent`` revision. See :func:`bind_event_unit_of_work` and the
+#: module docstring's "E6-T03 additions" section.
+RecordEventOnly = Callable[[DomainEvent], AppendedEvent]
+
+
+def bind_event_unit_of_work(engine: Engine, event_log: PostgresEventLog) -> RecordEventOnly:
+    """Bind ``mrr.persistence.unit_of_work.record_event`` (ADR-0007,
+    UNCHANGED) to a concrete ``sqlalchemy.Engine``/``PostgresEventLog`` pair.
+    Production wiring and integration tests call this once; DB-free unit
+    tests pass their own trivial callable of the same ``RecordEventOnly``
+    shape, backed by an in-memory fake, instead.
+    """
+
+    def _record_event(event: DomainEvent) -> AppendedEvent:
+        return record_event(engine, event_log, event)
+
+    return _record_event
+
+
+#: ``NodeMessageEnvelope.payload_kind`` tag this service mints/expects for a
+#: ``CorrectionNotification`` payload — a free-form string per that model's
+#: own docstring; this is this task's own chosen spelling, checked by
+#: ``receive_correction_notification`` before attempting to parse the
+#: payload as one.
+_CORRECTION_NOTIFICATION_PAYLOAD_KIND = "CorrectionNotification"
+
+#: Placeholder ``signature.value`` used while building a draft object ahead
+#: of computing its real content hash and signature — mirrors
+#: ``mrr.services.node_runtime.evidence_crate.EvidenceCrateSealer``'s/
+#: ``mrr.domain.offline_bundle``'s own identical
+#: ``_PLACEHOLDER_SIGNATURE_VALUE`` (``min_length=40`` on
+#: ``mrr.contracts.common.Signature.value``). ``prepare_for_signature``
+#: strips the entire ``signature`` field before signing, so this placeholder
+#: never leaks into what gets hashed or signed.
+_PLACEHOLDER_SIGNATURE_VALUE = "0" * 44
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NotificationRecipient:
+    """One recipient practice this correction must be signed-notified to,
+    the specific object ids relevant to THAT recipient
+    (``notified_object_ids`` — task-packets/E6-T03.yaml's own "the specific
+    notified_object_ids relevant to ONE recipient practice"), and the opaque
+    transport address ``EnvelopeTransport`` delivers to (mirroring
+    ``EnvelopeDeliveryRequest.recipient_endpoint``'s own "no URL/host:port
+    format is imposed or parsed here"). Entirely CALLER-supplied: resolving
+    WHICH practices/nodes to notify, and which ids matter to each, from
+    ``TransferContract.correction_subscription``/``Obligation`` data is
+    E6-T01/E6-T02 wiring, out of this task's scope (see the module
+    docstring's own "Deliberately deferred" section).
+    """
+
+    recipient_practice_id: str
+    recipient_node_id: str
+    recipient_endpoint: str
+    notified_object_ids: Sequence[str]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LocalNotificationImpact:
+    """The RECEIVING side's own, LOCAL-ONLY result of processing one
+    accepted ``CorrectionNotification`` (``receive_correction_notification``'s
+    return value). ``locally_impacted_object_ids`` is the computed impacted
+    set — explicit even when empty (MRR-NFR-012) — never a copy of the
+    remote ``CorrectionEvent`` and never a disposition
+    (accept/adapt/reject/defer, E6-T04).
+    """
+
+    notification_id: str
+    locally_impacted_object_ids: frozenset[str]
+
+
 def _correction_to_stored_object(correction: CorrectionEvent) -> StoredObject:
     """Convert an already-valid ``CorrectionEvent`` into the generic
     ``StoredObject`` ``mrr.domain.repositories.ObjectRepository`` persists.
@@ -225,12 +414,20 @@ class CorrectionImpactService:
         claim_service: ClaimService,
         event_log: _EventJournal,
         record: RecordRevisionWithEvent,
+        record_event: RecordEventOnly | None = None,
     ) -> None:
         self._object_repository = object_repository
         self._edge_repository = edge_repository
         self._claim_service = claim_service
         self._event_log = event_log
         self._record = record
+        # E6-T03 addition. OPTIONAL (default None) so this service's
+        # existing construction call sites outside this task's own
+        # allowed_paths (tests/unit/services/projection/test_service.py,
+        # tests/e2e/test_e2e_003_correction_propagation.py — neither of
+        # which ever calls notify_affected_practices) keep working
+        # unmodified. See the module docstring's "E6-T03 additions" section.
+        self._record_event = record_event
 
     # ------------------------------------------------------------------
     # Recording (MRR-FR-090): one-time creation, revision 1.
@@ -337,6 +534,350 @@ class CorrectionImpactService:
             )
 
         return latest
+
+    # ------------------------------------------------------------------
+    # Cross-practice correction notification (MRR-FR-094, E6-T03) —
+    # SENDING side.
+    # ------------------------------------------------------------------
+
+    def notify_affected_practices(
+        self,
+        correction_id: Urn,
+        *,
+        recipients: Sequence[NotificationRecipient],
+        transport: EnvelopeTransport,
+        sender_node_id: Urn,
+        notifying_practice_id: Urn,
+        signing_key: Ed25519PrivateKey,
+        signing_key_id: str,
+        sent_at: datetime,
+        expires_at: datetime,
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+    ) -> StoredObject:
+        """Mint+sign one ``CorrectionNotification`` per recipient in
+        ``recipients`` NOT already recorded ``"sent"`` for this correction,
+        wrap each in a ``NodeMessageEnvelope``
+        (``payload_kind="CorrectionNotification"``), attempt delivery via
+        ``transport``, drive ``CORRECTION_LIFECYCLE`` forward (OPEN ->
+        IMPACT_ANALYSIS -> NOTIFYING -> AWAITING_RESPONSES, continuing to
+        DELIVERY_PENDING within this same call if any delivery attempt
+        reports ``"failed"``), and record one ``correction.notification_sent``
+        event per attempted recipient. See the module docstring's "E6-T03
+        additions" section for the full design.
+
+        Idempotent per recipient: a recipient already recorded ``"sent"``
+        for this correction is skipped entirely (no delivery attempt, no
+        event, no revision contribution); if every recipient in
+        ``recipients`` is already ``"sent"``, this call is a complete no-op
+        and returns the correction's CURRENT latest revision unchanged.
+
+        Args:
+            correction_id: the already-recorded ``CorrectionEvent`` to
+                notify recipients about (typically already
+                ``propagate_impact``-ed, though this method itself never
+                inspects ``impact_objects``).
+            recipients: the caller-resolved recipient list — see
+                :class:`NotificationRecipient`'s own docstring for why this
+                is a plain caller-supplied argument, never resolved from
+                ``TransferContract``/``Obligation`` data here.
+            transport: the abstract delivery port (test fake in unit tests;
+                a real mTLS implementation, when one exists, in production).
+            sender_node_id: this practice's own sending node id (the
+                envelope's ``sender_node_id``).
+            notifying_practice_id: this practice's own id — the notifying
+                practice per MRR-FR-094; becomes both the notification's own
+                ``notifying_practice_id``/``signature.signer_practice_id``
+                and the envelope's ``sender_practice_id``/
+                ``signature.signer_practice_id``.
+            signing_key: this practice's own Ed25519 private key, used to
+                sign BOTH the notification and the wrapping envelope. Key
+                management itself is E5's scope, out of this task's own.
+            signing_key_id: the key id for ``signing_key``.
+            sent_at: the shared ``sent_at`` for every notification/envelope
+                minted by this call.
+            expires_at: the shared ``expires_at`` for every notification/
+                envelope minted by this call (must be strictly after
+                ``sent_at`` — enforced by both contracts' own
+                ``model_validator``s).
+            actor: MRR-NFR-001 provenance — who/what triggered this call.
+            policy_version: MRR-NFR-001 provenance.
+            correlation_id: MRR-NFR-001 provenance.
+
+        Returns:
+            The correction's latest ``StoredObject`` — a NEW revision only
+            if its status actually advanced this call, otherwise the
+            unchanged current revision.
+
+        Raises:
+            CorrectionNotFoundError: ``correction_id`` resolves to no stored
+                object at all.
+            InvalidTransitionError: an attempted lifecycle hop is not a
+                legal ``CORRECTION_LIFECYCLE`` edge (guards against this
+                method's own hop-chain logic ever drifting from the frozen
+                lifecycle) — nothing is persisted.
+            ValueError: more than one recipient's event must be recorded in
+                this call (a second+ pending recipient, or ANY pending
+                recipient when the correction's status does not change) but
+                this service was constructed without a ``record_event``
+                dependency.
+        """
+        latest = self._get_latest_correction_or_raise(correction_id)
+
+        already_sent = self._already_sent_recipient_ids(correction_id)
+        pending_recipients = [
+            recipient
+            for recipient in recipients
+            if recipient.recipient_practice_id not in already_sent
+        ]
+        if not pending_recipients:
+            return latest
+
+        delivery_results: list[tuple[NotificationRecipient, CorrectionNotification, str, str]] = []
+        for recipient in pending_recipients:
+            notification = self._build_and_sign_notification(
+                latest,
+                recipient,
+                notifying_practice_id=notifying_practice_id,
+                signing_key=signing_key,
+                signing_key_id=signing_key_id,
+                sent_at=sent_at,
+                expires_at=expires_at,
+            )
+            envelope = self._build_and_sign_envelope(
+                notification,
+                sender_node_id=sender_node_id,
+                sender_practice_id=notifying_practice_id,
+                recipient_node_id=recipient.recipient_node_id,
+                signing_key=signing_key,
+                signing_key_id=signing_key_id,
+                sent_at=sent_at,
+                expires_at=expires_at,
+            )
+            outcome = transport.send(
+                EnvelopeDeliveryRequest(
+                    envelope=envelope, recipient_endpoint=recipient.recipient_endpoint
+                )
+            )
+            delivery_results.append((recipient, notification, envelope.message_id, outcome.status))
+
+        any_failed = any(status == "failed" for _, _, _, status in delivery_results)
+        current_status = latest.body["status"]
+        final_status = self._target_status_after_notification(current_status, any_failed=any_failed)
+        status_changed = final_status != current_status
+
+        now = datetime.now(UTC)
+        new_obj: StoredObject | None = None
+        new_revision = latest.revision
+        if status_changed:
+            new_body = dict(latest.body)
+            new_body["status"] = final_status
+            new_revision = latest.revision + 1
+            new_body["revision"] = new_revision
+            new_body["created_at"] = now.isoformat()
+            new_body["created_by"] = actor
+            new_content_hash = compute_content_hash(new_body)
+            new_body["content_hash"] = new_content_hash
+
+            # Re-run the CorrectionEvent contract's own validation against
+            # the exact revision body about to be persisted — matches
+            # _write_impact_objects's identical "re-check before
+            # persisting" stance.
+            CorrectionEvent.model_validate(new_body)
+
+            new_obj = StoredObject(
+                id=latest.id,
+                api_version=latest.api_version,
+                kind=latest.kind,
+                practice_id=latest.practice_id,
+                revision=new_revision,
+                created_at=now,
+                created_by=actor,
+                content_hash=new_content_hash,
+                supersedes=latest.supersedes,
+                labels=latest.labels,
+                body=new_body,
+            )
+
+        causation_id = self._last_event_id_for(latest.id)
+        events = [
+            DomainEvent(
+                id=new_urn("domain-event"),
+                event_type="correction.notification_sent",
+                occurred_at=now,
+                actor=actor,
+                policy_version=policy_version,
+                causation_id=causation_id,
+                correlation_id=correlation_id,
+                object_id=latest.id,
+                object_revision=new_revision,
+                payload={
+                    "recipient_practice_id": recipient.recipient_practice_id,
+                    "notification_id": notification.notification_id,
+                    "message_id": message_id,
+                    "delivery_status": "sent" if status == "delivered" else "pending",
+                },
+            )
+            for recipient, notification, message_id, status in delivery_results
+        ]
+
+        if new_obj is not None:
+            stored, _ = self._record(new_obj, latest.revision, events[0])
+            latest = stored
+            remaining_events = events[1:]
+        else:
+            remaining_events = events
+
+        if remaining_events:
+            if self._record_event is None:
+                raise ValueError(
+                    "CorrectionImpactService was constructed without a record_event "
+                    "dependency (bind_event_unit_of_work), required here to append more "
+                    "than one correction.notification_sent event per "
+                    "notify_affected_practices call"
+                )
+            for event in remaining_events:
+                self._record_event(event)
+
+        return latest
+
+    # ------------------------------------------------------------------
+    # Cross-practice correction notification (MRR-FR-094, E6-T03) —
+    # RECEIVING side.
+    # ------------------------------------------------------------------
+
+    def receive_correction_notification(
+        self,
+        envelope: NodeMessageEnvelope,
+        *,
+        this_node_id: Urn,
+        trusted_notifying_practice_id: Urn,
+        ring: KeyRing,
+        already_processed_envelope: AlreadyProcessed,
+        already_processed_notification: Callable[[str], bool],
+        actor: Urn,
+        policy_version: str,
+        correlation_id: Urn,
+        at: datetime | None = None,
+    ) -> LocalNotificationImpact:
+        """Accept one inbound ``CorrectionNotification`` and recompute its
+        LOCAL impact over THIS practice's own graph. See the module
+        docstring's "E6-T03 additions" section for the full check ordering
+        and design rationale.
+
+        Never creates, stores, or mutates any copy of the remote
+        ``CorrectionEvent`` referenced by the notification, and never
+        decides accept/adapt/reject/defer toward the correction (E6-T04) —
+        the only local mutation this method may cause is the EXISTING,
+        unchanged ``ClaimService.require_review`` transition on a claim
+        already resolvable in THIS practice's own object repository.
+
+        Args:
+            envelope: the received, not-yet-trusted ``NodeMessageEnvelope``
+                whose payload is expected to be a ``CorrectionNotification``.
+            this_node_id: this receiving node's own id (forwarded to
+                ``validate_inbound_envelope``, UNCHANGED).
+            trusted_notifying_practice_id: the id of the practice this call
+                trusts as BOTH the envelope's transport sender AND the
+                notification's own notifying practice.
+            ring: ``trusted_notifying_practice_id``'s own trusted
+                ``KeyRing``, used to verify both signatures.
+            already_processed_envelope: the envelope-level replay predicate
+                (forwarded to ``validate_inbound_envelope``, UNCHANGED) —
+                keys on the envelope's own ``message_id``.
+            already_processed_notification: the notification-level replay
+                predicate — a SEPARATE namespace, keyed on the
+                notification's own ``notification_id``.
+            actor: MRR-NFR-001 provenance for any resulting
+                ``ClaimService.require_review`` transition.
+            policy_version: MRR-NFR-001 provenance.
+            correlation_id: MRR-NFR-001 provenance.
+            at: the evaluation instant for every window/validity check in
+                this call (the envelope's own, the notification's own
+                signature-key validity, and the notification's own
+                validity window) — computed ONCE and shared across all of
+                them so they can never disagree by a few microseconds.
+                Defaults to ``datetime.now(UTC)``.
+
+        Returns:
+            A :class:`LocalNotificationImpact` naming the notification's own
+            id and the computed LOCAL impacted set (explicit even when
+            empty — MRR-NFR-012).
+
+        Raises:
+            (from ``validate_inbound_envelope``, UNCHANGED) any of its own
+                typed failures — the envelope is rejected before its
+                payload is ever parsed as a ``CorrectionNotification``.
+            ValueError: ``envelope.payload_kind`` is not
+                ``"CorrectionNotification"``.
+            pydantic.ValidationError: ``envelope.payload`` does not validate
+                as a ``CorrectionNotification``.
+            mrr.domain.exceptions.CorrectionNotificationSignerMismatchError,
+            mrr.domain.exceptions.UnknownKeyIdError,
+            mrr.domain.exceptions.CorrectionNotificationKeyNotValidError,
+            mrr.crypto.exceptions.SignatureVerificationError,
+            mrr.crypto.exceptions.UnsupportedAlgorithmError: the
+                notification's OWN signature fails to resolve/verify (see
+                ``resolve_trusted_correction_notification_key``).
+            mrr.domain.exceptions.CorrectionNotificationNotWithinValidityWindowError:
+                the evaluation instant is outside the notification's OWN
+                ``[sent_at, expires_at)`` window.
+            mrr.domain.exceptions.CorrectionNotificationAlreadyProcessedError:
+                ``already_processed_notification`` reports the
+                notification's own ``notification_id`` as already seen.
+
+        None of these leave any local claim touched.
+        """
+        evaluation_instant = at if at is not None else datetime.now(UTC)
+
+        validate_inbound_envelope(
+            envelope,
+            this_node_id=this_node_id,
+            trusted_sender_practice_id=trusted_notifying_practice_id,
+            ring=ring,
+            already_processed=already_processed_envelope,
+            at=evaluation_instant,
+        )
+
+        if envelope.payload_kind != _CORRECTION_NOTIFICATION_PAYLOAD_KIND:
+            raise ValueError(
+                f"NodeMessageEnvelope {envelope.message_id!r} payload_kind is "
+                f"{envelope.payload_kind!r}, not "
+                f"{_CORRECTION_NOTIFICATION_PAYLOAD_KIND!r}"
+            )
+        notification = CorrectionNotification.model_validate(envelope.payload)
+
+        # The notification's OWN signature, independent of the envelope's
+        # already-verified transport signature.
+        resolve_trusted_correction_notification_key(
+            notification, trusted_notifying_practice_id, ring, at=evaluation_instant
+        )
+
+        if not (notification.sent_at <= evaluation_instant < notification.expires_at):
+            raise CorrectionNotificationNotWithinValidityWindowError(
+                notification.notification_id,
+                notification.sent_at,
+                notification.expires_at,
+                evaluation_instant,
+            )
+
+        if already_processed_notification(notification.notification_id):
+            raise CorrectionNotificationAlreadyProcessedError(notification.notification_id)
+
+        seed_ids: set[str] = set(notification.notified_object_ids)
+        edges = self._gather_local_impact_edges(seed_ids)
+        impacted = compute_impact(seed_ids, edges)
+
+        for object_id in sorted(impacted):
+            self._require_review_if_needed(
+                object_id, actor=actor, policy_version=policy_version, correlation_id=correlation_id
+            )
+
+        return LocalNotificationImpact(
+            notification_id=notification.notification_id,
+            locally_impacted_object_ids=frozenset(impacted),
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers.
@@ -473,3 +1014,221 @@ class CorrectionImpactService:
         self._claim_service.require_review(
             object_id, actor=actor, policy_version=policy_version, correlation_id=correlation_id
         )
+
+    # ------------------------------------------------------------------
+    # E6-T03 internal helpers — sending side.
+    # ------------------------------------------------------------------
+
+    def _already_sent_recipient_ids(self, correction_id: str) -> set[str]:
+        """The set of ``recipient_practice_id``s already recorded
+        ``delivery_status == "sent"`` in a prior ``correction.
+        notification_sent`` event for ``correction_id`` — the durable,
+        append-only-log-backed record ``notify_affected_practices``'s own
+        idempotency check reads (AGENTS.md's source-of-truth discipline:
+        "the append-only domain event log is authoritative for audit
+        history"). No separate persisted state is built for this.
+
+        Reviewer-noted nuance: idempotency is keyed on ``recipient_practice_
+        id`` ONLY, never on the specific ``notified_object_ids`` a prior
+        call actually sent. A recipient once recorded ``"sent"`` for THIS
+        correction is therefore never re-notified by a later
+        ``notify_affected_practices`` call, even if that later call passes
+        a different (or larger) ``notified_object_ids`` set for the same
+        recipient — e.g. because ``propagate_impact`` discovered additional
+        downstream impact after the first notification round already went
+        out. Whether/how a recipient should be re-notified when the
+        correction's own known impact set grows after their first
+        acknowledged delivery is a future specification question, not
+        invented here (mirrors this task's own stance on E6-T06's deferred
+        retry/redelivery machinery).
+        """
+        return {
+            appended.event.payload["recipient_practice_id"]
+            for appended in self._event_log.read_all()
+            if appended.event.object_id == correction_id
+            and appended.event.event_type == "correction.notification_sent"
+            and appended.event.payload.get("delivery_status") == "sent"
+        }
+
+    def _target_status_after_notification(self, current_status: str, *, any_failed: bool) -> str:
+        """Compute the correction's status AFTER this ``notify_affected_
+        practices`` call, validating every hop of the chain via
+        ``CORRECTION_LIFECYCLE.assert_transition`` (task-packets/
+        E6-T03.yaml derived_decisions (c)).
+
+        From ``OPEN`` (never notified before): always advances through
+        IMPACT_ANALYSIS -> NOTIFYING -> AWAITING_RESPONSES, continuing to
+        DELIVERY_PENDING within this same call only if ``any_failed``. From
+        ``AWAITING_RESPONSES`` (already fully notified once): advances to
+        DELIVERY_PENDING only if ``any_failed`` and it has not already;
+        otherwise unchanged. From ``DELIVERY_PENDING`` (or any other
+        status): unchanged — no further edge is drawn out of
+        DELIVERY_PENDING (the module docstring's/``mrr.domain.lifecycles``'s
+        own open question, left exactly as-is), and no other status is ever
+        actually reached by THIS method (IMPACT_ANALYSIS/NOTIFYING are
+        transient within one call, never separately persisted).
+        """
+        if current_status == "OPEN":
+            hops = ["IMPACT_ANALYSIS", "NOTIFYING", "AWAITING_RESPONSES"]
+            if any_failed:
+                hops.append("DELIVERY_PENDING")
+        elif current_status == "AWAITING_RESPONSES" and any_failed:
+            hops = ["DELIVERY_PENDING"]
+        else:
+            hops = []
+
+        status = current_status
+        for next_status in hops:
+            CORRECTION_LIFECYCLE.assert_transition(status, next_status)
+            status = next_status
+        return status
+
+    def _build_and_sign_notification(
+        self,
+        correction: StoredObject,
+        recipient: NotificationRecipient,
+        *,
+        notifying_practice_id: str,
+        signing_key: Ed25519PrivateKey,
+        signing_key_id: str,
+        sent_at: datetime,
+        expires_at: datetime,
+    ) -> CorrectionNotification:
+        """Build and sign one ``CorrectionNotification`` for ``recipient``,
+        self-contained from ``correction``'s own stored body (``correction_
+        type``/``severity``/``reason``/``requested_action``/
+        ``replacement_object_id`` copied in — task-packets/E6-T03.yaml
+        derived_decisions (a)) — mirrors ``EvidenceCrateSealer.seal``'s own
+        draft-then-resign convention: build with a placeholder signature,
+        compute ``content_hash`` over the ADR-0004 ``exclude_none=True``
+        form, sign that same form, then re-validate.
+        """
+        body = correction.body
+        placeholder_signature = Signature(
+            signer_practice_id=notifying_practice_id,
+            key_id=signing_key_id,
+            algorithm="Ed25519",
+            signed_at=sent_at,
+            value=_PLACEHOLDER_SIGNATURE_VALUE,
+        )
+        draft = CorrectionNotification(
+            notification_id=new_urn("correction-notification"),
+            correction_id=correction.id,
+            correction_revision=correction.revision,
+            notifying_practice_id=notifying_practice_id,
+            recipient_practice_id=recipient.recipient_practice_id,
+            notified_object_ids=list(recipient.notified_object_ids),
+            correction_type=body["correction_type"],
+            severity=body["severity"],
+            reason=body["reason"],
+            requested_action=body["requested_action"],
+            replacement_object_id=body.get("replacement_object_id"),
+            content_hash="sha256:" + "0" * 64,  # placeholder; recomputed below
+            nonce=secrets.token_hex(16),
+            sent_at=sent_at,
+            expires_at=expires_at,
+            signature=placeholder_signature,
+        )
+
+        # ADR-0004: hash and sign over the SAME exclude_none=True body a
+        # caller would persist or transmit — never a second, null-including
+        # representation.
+        payload_body: dict[str, Any] = json.loads(draft.model_dump_json(exclude_none=True))
+        payload_body["content_hash"] = compute_content_hash(payload_body)
+
+        signature_value = sign_object(signing_key, payload_body)
+        signature = Signature(
+            signer_practice_id=notifying_practice_id,
+            key_id=signing_key_id,
+            algorithm="Ed25519",
+            signed_at=sent_at,
+            value=signature_value,
+        )
+        payload_body["signature"] = signature.model_dump(mode="json")
+        return CorrectionNotification.model_validate(payload_body)
+
+    def _build_and_sign_envelope(
+        self,
+        notification: CorrectionNotification,
+        *,
+        sender_node_id: str,
+        sender_practice_id: str,
+        recipient_node_id: str,
+        signing_key: Ed25519PrivateKey,
+        signing_key_id: str,
+        sent_at: datetime,
+        expires_at: datetime,
+    ) -> NodeMessageEnvelope:
+        """Wrap an already-signed ``CorrectionNotification`` in a
+        ``NodeMessageEnvelope`` and sign the envelope's OWN transport
+        signature — the UNCHANGED E5-T03 contract, never re-modeled here.
+        ``payload_content_hash`` is the notification's own ``content_hash``,
+        which is what makes ``validate_inbound_envelope``'s unmodified
+        payload-hash consistency check hold for this payload kind.
+        """
+        payload_body: dict[str, Any] = json.loads(notification.model_dump_json(exclude_none=True))
+        placeholder_signature = Signature(
+            signer_practice_id=sender_practice_id,
+            key_id=signing_key_id,
+            algorithm="Ed25519",
+            signed_at=sent_at,
+            value=_PLACEHOLDER_SIGNATURE_VALUE,
+        )
+        draft = NodeMessageEnvelope(
+            message_id=new_urn("node-message-envelope"),
+            sender_node_id=sender_node_id,
+            sender_practice_id=sender_practice_id,
+            recipient_node_id=recipient_node_id,
+            sent_at=sent_at,
+            expires_at=expires_at,
+            payload_kind=_CORRECTION_NOTIFICATION_PAYLOAD_KIND,
+            payload_content_hash=notification.content_hash,
+            payload=payload_body,
+            signature=placeholder_signature,
+        )
+
+        envelope_body: dict[str, Any] = json.loads(draft.model_dump_json(exclude_none=True))
+        signature_value = sign_object(signing_key, envelope_body)
+        signature = Signature(
+            signer_practice_id=sender_practice_id,
+            key_id=signing_key_id,
+            algorithm="Ed25519",
+            signed_at=sent_at,
+            value=signature_value,
+        )
+        envelope_body["signature"] = signature.model_dump(mode="json")
+        return NodeMessageEnvelope.model_validate(envelope_body)
+
+    # ------------------------------------------------------------------
+    # E6-T03 internal helper — receiving side.
+    # ------------------------------------------------------------------
+
+    def _gather_local_impact_edges(self, seed_ids: set[str]) -> list[TypedEdge]:
+        """Deliberate, documented DUPLICATE of ``_gather_impact_edges`` for
+        the RECEIVING side of a cross-practice correction notification —
+        task-packets/E6-T03.yaml derived_decisions (d): the two call sites
+        have different seed provenance (a LOCAL correction's own
+        ``affected_objects`` vs. a received notification's
+        ``notified_object_ids``) even though the traversal shape is
+        identical; kept small and side-by-side rather than force-shared
+        across two services with different callers, mirroring
+        ``mrr.services.claim.service.bind_edge_unit_of_work``'s own
+        documented-duplication precedent.
+        """
+        visited: set[str] = set()
+        frontier: set[str] = set(seed_ids)
+        collected: list[TypedEdge] = []
+        while frontier:
+            next_frontier: set[str] = set()
+            for node_id in frontier:
+                if node_id in visited:
+                    continue
+                visited.add(node_id)
+                for edge in self._edge_repository.edges_to(node_id):
+                    if edge.edge_type not in IMPACT_EDGE_TYPES:
+                        continue
+                    collected.append(edge)
+                    if edge.source_id not in visited:
+                        next_frontier.add(edge.source_id)
+            frontier = next_frontier
+        return collected
