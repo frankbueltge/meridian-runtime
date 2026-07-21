@@ -40,7 +40,31 @@ reviewer_resolution: >-
   `baseObject`-derived entity except `TaskBundle` gains the optional field
   via inheritance — and the implementation should verify the actual entity
   count empirically in its own test rather than trusting either number.
-derivation: >-
+
+  AMENDMENT (2026-07-21, after PR #55's independent review): annotation
+  (i)'s legality claim is WITHDRAWN as factually wrong. The independent
+  reviewer found, and the reviewing session re-verified by direct grep,
+  that `mrr.domain` modules ALREADY import from `mrr.contracts` in twelve-
+  plus files (`task_trust.py`, `manifest_trust.py`, `crate_trust.py`,
+  `correction_notification.py`, `offline_bundle.py`, `independence.py`,
+  `claim_ceiling.py`, `envelope_validation.py`, `envelope_transport.py`,
+  among others), and neither import-linter contract forbids that
+  direction — both directions coexist because Python resolves cycles at
+  MODULE granularity, not package granularity, and no specific module
+  pair forms a loop. `mrr.domain.artifacts`'s own docstring rationale is
+  therefore a LOCAL constraint of that module's own import graph, not the
+  repo-wide rule annotation (i) claimed. What REMAINS binding from
+  annotation (i): the deferral itself (this packet still does not touch
+  `synthetic_fixture.py` — a scope decision, unaffected by the legality
+  question). The future step-2/3 wiring task MAY therefore use a direct
+  `from mrr.contracts.common import BaseObjectClassification` import in
+  `synthetic_fixture.py` if its own module-level import graph stays
+  acyclic — decided then, on this corrected record, not on the withdrawn
+  claim. The empirical entity count, per annotation (ii)'s instruction,
+  came out at 29 entities / 26 BaseObject subclasses / 25 plain
+  inheritors + TaskBundle narrowing + 3 deliberate non-subclasses —
+  neither of the packet prose's two numbers was right, vindicating the
+  count-empirically instruction.
   Derived per docs/spec/07_AGENT_TASK_TEMPLATE.md section 5 from
   docs/spec/adr/ADR-0010-OBJECT-LEVEL-DATA-CLASSIFICATION.md (Status:
   ACCEPTED 2026-07-21, `docs/spec/adr/ADR-0010-OBJECT-LEVEL-DATA-CLASSIFICATION.md`
