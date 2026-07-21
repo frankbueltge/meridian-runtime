@@ -1,4 +1,5 @@
-"""Property tests for mrr.domain.lifecycles (E1-T04).
+"""Property tests for mrr.domain.lifecycles (E1-T04; extended to
+``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml).
 
 Acceptance-test mapping (task-packets/E1-T04.yaml): "property test - randomly
 generated undrawn transitions never succeed", plus the packet's plan-time
@@ -6,6 +7,12 @@ guidance that ``can_transition`` and ``assert_transition`` must agree with
 the declared edge set for arbitrary ``(from, to)`` pairs — including names
 that are not one of the machine's declared states at all — and that a random
 walk starting from the initial state never crosses an undrawn edge silently.
+Parametrizing ``_ALL_MACHINES`` over every declared ``StateMachine`` (rather
+than hard-coding one property per machine) means adding
+``TRANSFER_LIFECYCLE`` to the tuple below is what satisfies task-packets/
+E6-T01.yaml's own acceptance test, "property test: random invalid
+TRANSFER_LIFECYCLE transition sequences never succeed (mirrors the Claim
+lifecycle property test's own discipline)" — no new test bodies needed.
 """
 
 from __future__ import annotations
@@ -19,6 +26,7 @@ from mrr.domain.lifecycles import (
     CORRECTION_LIFECYCLE,
     RESEARCH_SCORE_LIFECYCLE,
     TASK_BUNDLE_LIFECYCLE,
+    TRANSFER_LIFECYCLE,
     StateMachine,
 )
 
@@ -27,6 +35,7 @@ _ALL_MACHINES = (
     TASK_BUNDLE_LIFECYCLE,
     CLAIM_LIFECYCLE,
     CORRECTION_LIFECYCLE,
+    TRANSFER_LIFECYCLE,
 )
 
 

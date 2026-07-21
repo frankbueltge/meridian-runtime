@@ -8,7 +8,8 @@ ModelProfile and ModelInvocation, by E4-T01; extended to a fourteenth
 entity, Hypothesis, by E4-T03; extended to a fifteenth entity,
 SkepticalChallenge, by E4-T04; extended to a sixteenth entity, Practice,
 by E5-T01; extended to a seventeenth entity, NodeMessageEnvelope, by
-E5-T03; extended to an eighteenth entity, OfflineBundle, by E5-T06).
+E5-T03; extended to an eighteenth entity, OfflineBundle, by E5-T06;
+extended to a nineteenth entity, TransferContract, by E6-T01).
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -67,6 +68,7 @@ from mrr.contracts import (
     SourceFamily,
     SourceRecord,
     TaskBundle,
+    TransferContract,
     VerificationResult,
 )
 from pydantic import BaseModel
@@ -98,6 +100,7 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "practice": Practice,
     "node-message-envelope": NodeMessageEnvelope,
     "offline-bundle": OfflineBundle,
+    "transfer-contract": TransferContract,
 }
 
 

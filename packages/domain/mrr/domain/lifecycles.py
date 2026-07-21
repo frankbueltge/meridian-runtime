@@ -1,7 +1,10 @@
-"""Framework-independent state-machine library for the four MRR lifecycles
-defined in docs/spec/01_SYSTEM_SPEC.md section 6 (task-packets/E1-T04.yaml):
+"""Framework-independent state-machine library for the MRR lifecycles defined
+in docs/spec/01_SYSTEM_SPEC.md section 6 (task-packets/E1-T04.yaml):
 ``RESEARCH_SCORE_LIFECYCLE``, ``TASK_BUNDLE_LIFECYCLE``, ``CLAIM_LIFECYCLE``,
-``CORRECTION_LIFECYCLE``.
+``CORRECTION_LIFECYCLE``, plus ``TRANSFER_LIFECYCLE`` (task-packets/
+E6-T01.yaml, added without a section-6 diagram to anchor it — see that
+machine's own comment block below and the "Open specification questions"
+list at the end of this docstring).
 
 State names match the owning schema's ``status`` enum exactly, including
 casing, where one exists (task-packets/E1-T04.yaml invariant): ResearchScore
@@ -62,6 +65,15 @@ or spec amendment):
   (not even a universal rule, since Correction has none). As specified, a
   correction that reaches DELIVERY_PENDING has no drawn way to reach
   RESOLVED, PARTIALLY_RESOLVED, or REJECTED_BY_RECIPIENT.
+- TransferContract has no section-6 diagram at all (unlike the other four
+  machines, each anchored to an ASCII diagram there) — task-packets/
+  E6-T01.yaml ``specification_gaps`` item 1. ``TRANSFER_LIFECYCLE``'s edges
+  are grounded only in MRR-FR-080/081's prose and the section 3.8 API /
+  section 5.2 event enumeration. Whether ``respond`` may be called more than
+  once for the same contract (e.g. a later terminal decision following an
+  earlier ``deferred``/``unresolved``) is left undrawn and unimplemented —
+  task-packets/E6-T01.yaml ``specification_gaps`` item 3 — pending a future
+  specification amendment, exactly like this module's other open questions.
 """
 
 from __future__ import annotations
@@ -399,4 +411,64 @@ CORRECTION_LIFECYCLE = StateMachine(
     states=_CORRECTION_STATES,
     transitions=_CORRECTION_TRANSITIONS,
     initial_state="OPEN",
+)
+
+
+# ---------------------------------------------------------------------------
+# TransferContract — task-packets/E6-T01.yaml. NO section-6 diagram exists
+# for this entity (unlike the four machines above, each anchored to an
+# ASCII diagram there) — see the module docstring's "Open specification
+# questions" list.
+# ---------------------------------------------------------------------------
+#
+#   created -> offered -> {accepted, adapted, rejected, deferred, unresolved}
+#
+# Grounded only in docs/spec/01_SYSTEM_SPEC.md MRR-FR-080 ("A transfer
+# between practices MUST use a versioned TransferContract ...") and
+# MRR-FR-081 ("The receiving practice MUST respond with accepted, adapted,
+# rejected, deferred, or unresolved"), plus the section 3.8 API surface
+# (POST /v1/transfers, .../offer, .../respond) and the section 5.2 required
+# event list (transfer.offered, transfer.responded) — never a verified
+# section-6 diagram. Every one of the five terminal outcomes is reachable
+# ONLY from OFFERED, and each is drawn as its own edge rather than a single
+# "OFFERED -> RESPONDED" collapse, so an illegal decision value can never be
+# recorded even in principle (``StateMachine.assert_transition`` rejects it
+# structurally, not just by convention).
+#
+# State names are lowercase, taken verbatim from MRR-FR-081's own prose
+# (task-packets/E6-T01.yaml derived_decisions (b)) — the same discipline
+# this module already applies to Claim ("State names match the owning
+# schema's status enum exactly, including casing, where one exists"; here,
+# schemas/transfer-contract.schema.json's own status enum IS lowercase,
+# taken directly from the FR text since no diagram exists to anchor casing
+# against instead).
+
+_TRANSFER_STATES = frozenset(
+    {
+        "created",
+        "offered",
+        "accepted",
+        "adapted",
+        "rejected",
+        "deferred",
+        "unresolved",
+    }
+)
+
+_TRANSFER_TRANSITIONS = frozenset(
+    {
+        ("created", "offered"),
+        ("offered", "accepted"),
+        ("offered", "adapted"),
+        ("offered", "rejected"),
+        ("offered", "deferred"),
+        ("offered", "unresolved"),
+    }
+)
+
+TRANSFER_LIFECYCLE = StateMachine(
+    name="TransferContract",
+    states=_TRANSFER_STATES,
+    transitions=_TRANSFER_TRANSITIONS,
+    initial_state="created",
 )

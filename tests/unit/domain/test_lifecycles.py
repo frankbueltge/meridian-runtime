@@ -1,4 +1,5 @@
-"""Unit tests for mrr.domain.lifecycles (E1-T04).
+"""Unit tests for mrr.domain.lifecycles (E1-T04; extended to
+``TRANSFER_LIFECYCLE`` by task-packets/E6-T01.yaml).
 
 Acceptance-test mapping (task-packets/E1-T04.yaml):
 
@@ -9,8 +10,9 @@ Acceptance-test mapping (task-packets/E1-T04.yaml):
 - "the typed error exposes machine, from-state, and to-state" ->
   ``test_invalid_transition_error_exposes_machine_from_and_to``.
 - state-set-matches-schema-enum invariant -> the
-  ``test_*_states_match_contract_status_literal`` group (all four machines,
-  since ADR-0005 gave TaskBundle a schema/contract status enum too).
+  ``test_*_states_match_contract_status_literal`` group (all five machines,
+  since ADR-0005 gave TaskBundle a schema/contract status enum too, and
+  task-packets/E6-T01.yaml gives TransferContract one from the start).
 """
 
 from __future__ import annotations
@@ -18,13 +20,20 @@ from __future__ import annotations
 from typing import get_args
 
 import pytest
-from mrr.contracts import ClaimStatus, CorrectionStatus, ResearchScoreStatus, TaskBundleStatus
+from mrr.contracts import (
+    ClaimStatus,
+    CorrectionStatus,
+    ResearchScoreStatus,
+    TaskBundleStatus,
+    TransferStatus,
+)
 from mrr.domain.exceptions import InvalidTransitionError
 from mrr.domain.lifecycles import (
     CLAIM_LIFECYCLE,
     CORRECTION_LIFECYCLE,
     RESEARCH_SCORE_LIFECYCLE,
     TASK_BUNDLE_LIFECYCLE,
+    TRANSFER_LIFECYCLE,
     StateMachine,
 )
 
@@ -33,6 +42,7 @@ _ALL_MACHINES = [
     TASK_BUNDLE_LIFECYCLE,
     CLAIM_LIFECYCLE,
     CORRECTION_LIFECYCLE,
+    TRANSFER_LIFECYCLE,
 ]
 
 #: Terminal states per machine, i.e. states that are never a transition
@@ -48,6 +58,7 @@ _TERMINAL_STATES: dict[str, frozenset[str]] = {
     "CorrectionEvent": frozenset(
         {"DELIVERY_PENDING", "RESOLVED", "PARTIALLY_RESOLVED", "REJECTED_BY_RECIPIENT"}
     ),
+    "TransferContract": frozenset({"accepted", "adapted", "rejected", "deferred", "unresolved"}),
 }
 
 
@@ -84,6 +95,10 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         (TASK_BUNDLE_LIFECYCLE, "SEALED", "CREATED"),
         (TASK_BUNDLE_LIFECYCLE, "SEALED", "OFFERED"),
         (TASK_BUNDLE_LIFECYCLE, "SEALED", "RUNNING"),
+        (TRANSFER_LIFECYCLE, "created", "accepted"),  # skips offered
+        (TRANSFER_LIFECYCLE, "offered", "offered"),  # no self-transition
+        (TRANSFER_LIFECYCLE, "accepted", "offered"),  # terminal, no way back
+        (TRANSFER_LIFECYCLE, "deferred", "accepted"),  # no drawn revisit edge
     ],
     ids=[
         "research-score-suspended-to-active",
@@ -98,6 +113,10 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         "task-bundle-sealed-to-created",
         "task-bundle-sealed-to-offered",
         "task-bundle-sealed-to-running",
+        "transfer-created-to-accepted-skips-offered",
+        "transfer-offered-to-offered-no-self-transition",
+        "transfer-accepted-to-offered-terminal",
+        "transfer-deferred-to-accepted-no-revisit",
     ],
 )
 def test_representative_undrawn_transitions_are_rejected(
@@ -242,6 +261,10 @@ def test_correction_states_match_contract_status_literal() -> None:
 
 def test_task_bundle_states_match_contract_status_literal() -> None:
     assert TASK_BUNDLE_LIFECYCLE.states == set(get_args(TaskBundleStatus))
+
+
+def test_transfer_states_match_contract_status_literal() -> None:
+    assert TRANSFER_LIFECYCLE.states == set(get_args(TransferStatus))
 
 
 # ---------------------------------------------------------------------------
