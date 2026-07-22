@@ -1,0 +1,115 @@
+task_id: E9-T00c
+title: >-
+  Pre-hardening defect close-out: the event-log hash chain's timezone
+  sensitivity (Rework-Memo §8, filed on PR #40) — occurred_at is normalized
+  to UTC inside the pure hash function, so a chain written under UTC
+  verifies identically from any database session timezone, and a naive
+  datetime is refused loudly instead of hashed ambiguously.
+status: approved
+epic: E9
+reviewer_resolution: >-
+  Approved 2026-07-22 by the main session as reviewing instance, under the
+  owner's decision record of the same date (Entscheidung 2: E9 in scope;
+  the handoff names this defect explicitly). Numbered E9-T00c: third
+  pre-hardening sibling after E9-T00 (2026-07-21 batch) and E9-T00b
+  (2026-07-21 DRY consolidation), before E9-T01's adversarial suite so
+  that suite tests the FIXED behavior; the b-suffix convention's
+  documented extension (E9-T00b reviewer_resolution (1)) covers this
+  sibling identically. Design CONFIRMED: (1) the normalization lives in
+  mrr.provenance.events.event_to_hashable_dict — the single choke point
+  writing and verification already share — as
+  occurred_at.astimezone(UTC).isoformat(); for every event ever written by
+  this codebase (tz-aware UTC datetimes) the produced string, and hence
+  every existing hash, is BYTE-IDENTICAL — proven by a regression test,
+  not asserted; (2) a naive occurred_at raises ValueError (fail loudly;
+  interpreting it via the process's local zone would be exactly the
+  ambiguity this defect is about); (3) implemented by the main session
+  directly (small, precisely understood, review-critical path).
+depends_on: [E9-T00, E9-T00b, E8-T05]
+derivation: >-
+  Derived 2026-07-22 from docs/design/2026-07-21-research-method-kernel-
+  rework.md §8 (verbatim: "The event-log hash chain is sensitive to the
+  database session timezone (fails against a non-UTC server because the
+  rendered timestamptz differs on read-back). CI is UTC, so it never
+  surfaces there. Filed for E9 hardening; noted on PR #40."). Fact base
+  verified first-hand: domain_events.occurred_at is TIMESTAMP(timezone=
+  True) (persistence/tables.py:108); psycopg returns tz-aware datetimes in
+  the SESSION timezone on read-back; event_to_hashable_dict serializes via
+  occurred_at.isoformat() (provenance/events.py), so the same instant
+  renders "+02:00" vs "+00:00" and the recomputed hash diverges;
+  verify_appended_events (provenance/log.py) and PostgresEventLog
+  .verify_chain (persistence/repositories.py) recompute through exactly
+  this function.
+objective: >-
+  After this packet, PostgresEventLog.verify_chain passes against the same
+  archive regardless of the connecting session's timezone; the pure hash
+  function is timezone-total (any tz-aware datetime, one canonical string
+  per instant) and naive-refusing; and every hash already recorded in
+  every archival schema verifies unchanged.
+source_of_truth:
+  - docs/design/2026-07-21-research-method-kernel-rework.md   # §8, the filed defect
+  - packages/provenance/mrr/provenance/events.py
+  - packages/provenance/mrr/provenance/log.py
+  - packages/persistence/mrr/persistence/repositories.py      # verify_chain; read-back path
+requirements:
+  - >-
+    R1: event_to_hashable_dict normalizes occurred_at to UTC before
+    isoformat and raises ValueError (message naming this packet and the
+    ambiguity) on a naive datetime. No other field's serialization
+    changes.
+  - >-
+    R2 (regression, byte-level): a unit test proves the produced
+    occurred_at string and the full event hash are byte-identical to the
+    pre-fix behavior for a tz-aware UTC datetime; a unit test proves two
+    representations of the SAME instant (UTC and +02:00) now hash
+    identically; a unit test proves the naive refusal.
+  - >-
+    R3 (the defect, reproduced then fixed): an integration test appends
+    events over a connection whose session timezone is non-UTC (SET TIME
+    ZONE 'Europe/Berlin') and runs verify_chain through a second
+    connection with a different session timezone — green after the fix;
+    the test docstring cites §8 and states that this exact shape failed
+    before the fix.
+  - >-
+    R4: all make tiers green INCLUDING make security-check (in the
+    command list of this and every future packet after the PR #68
+    lesson); every existing suite passes unmodified.
+allowed_paths:
+  - packages/provenance/mrr/provenance/events.py
+  - tests/unit/
+  - tests/integration/
+  - docs/design/
+  - task-packets/E9-T00c.yaml
+forbidden_changes:
+  - schemas/**
+  - packages/contracts/**
+  - packages/persistence/**       # the storage layer is correct; the serialization was the defect
+  - migrations/**
+  - corpora/**
+  - pyproject.toml
+  - uv.lock
+invariants:
+  - Every hash already recorded in every archival schema verifies unchanged (R2's byte-identity).
+  - The hash function accepts any tz-aware datetime and exactly one string leaves it per instant.
+  - Naive datetimes fail loudly, never silently localized.
+acceptance_tests:
+  - "AT1: R2's three unit tests."
+  - "AT2: R3's cross-timezone integration round trip."
+  - "AT3: full tier run incl. security-check green; archival-schema verify_chain spot-check via the ephemeral DB stays green."
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make security-check
+specification_gaps: []
+required_output:
+  - Compact packet report (docs/design/2026-07-22-e9-t00c-report.md) with
+    the reproduced-then-fixed evidence and the archival spot-check.
+stop_conditions:
+  - >-
+    If any recorded hash in the ephemeral archival schemas fails to
+    verify after the fix, STOP immediately and revert — the fix must be
+    provably hash-preserving or it is wrong.
