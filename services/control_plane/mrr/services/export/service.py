@@ -1,18 +1,38 @@
 """``ExportService`` (task-packets/E8-T01.yaml, EXTENDED by task-packets/
-E8-T02.yaml R4 — see "Provenance edges feed the PROV layer (E8-T02)"
-below): the application-layer, READ-ONLY service that turns one sealed
-``EvidenceCrate`` and its provenance neighborhood into a self-contained,
-offline-verifiable RO-Crate 1.1 export directory. First task of Epic E8;
-the closest template is ``mrr.services.projection.service.ProjectionService``
-(E3-T07) — the same ``ObjectRepository``/``EdgeRepository``/narrow
-event-journal Protocol dependency triple, the same "writes NOTHING"
-discipline, and the same event-log-scan discovery technique for a kind this
-service needs to find without a dedicated "list all" repository method
-(here: ``VerificationResult``, exactly as that service discovers claims and
-corrections). ``ExportService`` additionally depends on
-``mrr.domain.artifacts.ArtifactStore`` (E1-T07), since a crate's own
-artifact BYTES — unlike every other object this task exports — live outside
-``ObjectRepository`` entirely.
+E8-T02.yaml R4 — see "Provenance edges feed the PROV layer (E8-T02)" below —
+and by task-packets/E8-T03.yaml R2, which extracts the closure-resolution
+half of ``export`` into a new public, read-only :meth:`ExportService
+.resolve_closure` method, behavior-identical by construction — see that
+method's own docstring and :class:`ExportClosure`): the application-layer,
+READ-ONLY service that turns one sealed ``EvidenceCrate`` and its provenance
+neighborhood into a self-contained, offline-verifiable RO-Crate 1.1 export
+directory. First task of Epic E8; the closest template is ``mrr.services
+.projection.service.ProjectionService`` (E3-T07) — the same
+``ObjectRepository``/``EdgeRepository``/narrow event-journal Protocol
+dependency triple, the same "writes NOTHING" discipline, and the same
+event-log-scan discovery technique for a kind this service needs to find
+without a dedicated "list all" repository method (here: ``VerificationResult``,
+exactly as that service discovers claims and corrections). ``ExportService``
+additionally depends on ``mrr.domain.artifacts.ArtifactStore`` (E1-T07),
+since a crate's own artifact BYTES — unlike every other object this task
+exports — live outside ``ObjectRepository`` entirely.
+
+--- E8-T03's R2 extraction: one closure, two consumers -----------------------
+
+``mrr.services.report.service.ReportService`` needs the EXACT SAME closure
+(object bodies, provenance edges, artifact refs) this service already
+resolves for export, so a research report never diverges from what the
+export ships (task-packets/E8-T03.yaml derived_decisions (a): "a report
+statement whose object is absent from the RO-Crate export would be a
+projection of nothing verifiable"). :meth:`resolve_closure` is exactly the
+FIRST three-plus-one steps of ``export``'s own prior body (crate resolution,
+the three ``_CRATE_URN_ARRAY_FIELDS``, the per-claim provenance BFS, R2d
+verification discovery) with the fourth (R3's artifact-BYTE fetch) left OUT
+— ``export`` itself now calls :meth:`resolve_closure` and then performs ONLY
+that fourth step (fetch bytes, build the plan, write the tree) on top. No
+line of the closure algorithm changed; task-packets/E8-T01.yaml's/E8-T02
+.yaml's own test suites pass UNMODIFIED against this refactor, which is the
+proof of behavior-identity task-packets/E8-T03.yaml stop_condition 2 demands.
 
 The pure shaping half (file naming, the RO-Crate metadata document itself)
 is ``mrr.domain.ro_crate`` — read that module's docstring first for the
@@ -253,6 +273,37 @@ class _EventJournal(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class ExportClosure:
+    """The exact object-bodies mapping, provenance edges, and artifact refs
+    ``ExportService.export`` computes en route to writing an RO-Crate export
+    — extracted by task-packets/E8-T03.yaml R2 into
+    :meth:`ExportService.resolve_closure`, a public, READ-ONLY method, so
+    ``mrr.services.report.service.ReportService`` can build a research-report
+    projection over the EXACT SAME closure the export ships, without
+    duplicating one line of the R2 closure algorithm (task-packets/
+    E8-T03.yaml reviewer_resolution (2): "one definition of 'what belongs to
+    this run's record', not a second competing one" — derived_decisions (a):
+    "divergence between report content and export content is a bug by
+    definition").
+
+    Deliberately excludes artifact BYTES: ``export``'s own R3 step (fetching
+    every content hash from the ``ArtifactStore``, aggregating every miss)
+    is NOT performed by :meth:`resolve_closure` — see that method's own
+    docstring. ``artifact_refs`` here is the crate's own declared
+    ``ArtifactRef`` array (``artifact_id``/``content_hash``/
+    ``classification`` — metadata a caller can read without ever touching
+    the byte store), not the fetched payloads themselves; a caller that
+    needs the bytes (only ``export`` does) fetches them separately via
+    :meth:`ExportService.export`` or its own ``ArtifactStore``.
+    """
+
+    crate_id: Urn
+    object_bodies: Mapping[str, Mapping[str, JSONValue]]
+    provenance_edges: tuple[ProvenanceEdge, ...]
+    artifact_refs: tuple[Mapping[str, JSONValue], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ExportResult:
     """Every fact ``mrr export ro-crate`` prints (task-packets/E8-T01.yaml
     R5's exit-0 JSON line) — mirrors
@@ -315,31 +366,37 @@ class ExportService:
         self._event_log = event_log
         self._artifact_store = artifact_store
 
-    def export(self, crate_id: Urn, output_dir: Path) -> ExportResult:
-        """Export the RO-Crate closure (R2) for ``crate_id`` into
-        ``output_dir``, atomically (R3). See the module docstring for the
-        full four-step closure algorithm and the atomic-write discipline.
+    def resolve_closure(self, crate_id: Urn) -> ExportClosure:
+        """R2 alone: resolve ``crate_id``'s full export closure — the
+        object-bodies mapping, the deduplicated/sorted provenance edges, and
+        the crate's own artifact refs — WITHOUT fetching any artifact BYTES
+        and WITHOUT writing anything to disk (task-packets/E8-T03.yaml R2's
+        own extraction requirement: "returning the exact object-bodies
+        mapping, provenance edges, and artifact refs export() computes
+        today"). See the module docstring's "The R2 closure, built in four
+        steps" section for the full algorithm this method performs (steps
+        1-3 plus the R2d verification discovery; R3's artifact-byte fetch is
+        deliberately NOT step 4 of this method — :meth:`export` performs it
+        separately, immediately after calling this method, so a caller that
+        only needs the closure's STRUCTURAL shape (``mrr.services.report
+        .service.ReportService``, which builds a narrative projection that
+        never quotes an artifact's raw bytes) never touches the
+        ``ArtifactStore`` at all).
+
+        This is a pure extraction: every line below is copied unchanged from
+        ``export``'s own prior body (steps 1-3 plus verification discovery),
+        proven behavior-identical by task-packets/E8-T01.yaml/E8-T02.yaml's
+        own test suites passing unmodified after this refactor (task-packets/
+        E8-T03.yaml stop_condition 2).
 
         Raises:
-            ValueError: ``output_dir`` already exists (file, or non-empty
-                directory) — checked first, before any read; or
-                ``crate_id`` resolves to a stored object whose ``kind`` is
-                not ``EvidenceCrate``.
+            ValueError: ``crate_id`` resolves to a stored object whose
+                ``kind`` is not ``EvidenceCrate``.
             mrr.domain.exceptions.ObjectNotFoundError: ``crate_id``, or any
                 urn the crate's own ``source_records``/``evidence_anchors``/
                 ``proposed_claims`` arrays name, does not resolve to any
                 stored object — carries the exact missing urn.
-            MissingArtifactBytesError: one or more content hashes named by
-                the crate's own ``artifacts`` array have no corresponding
-                blob in the given ``ArtifactStore`` — carries every missing
-                hash.
         """
-        if output_path_conflict(output_dir):
-            raise ValueError(
-                f"--output-dir {output_dir} already exists (as a file, or as a non-empty "
-                "directory) — refusing to write over or into it"
-            )
-
         crate = self._object_repository.get_latest(crate_id)
         if crate.kind != _EVIDENCE_CRATE_KIND:
             raise ValueError(
@@ -371,23 +428,57 @@ class ExportService:
         }
         object_bodies.update(self._discover_verifications_targeting(claim_ids_in_closure))
 
-        artifact_refs = crate.body.get("artifacts", [])
-        artifact_bytes, missing_content_hashes = self._fetch_artifact_bytes(artifact_refs)
-        if missing_content_hashes:
-            raise MissingArtifactBytesError(missing_content_hashes)
-
-        artifact_sizes = {content_hash: len(data) for content_hash, data in artifact_bytes.items()}
         sorted_provenance_edges = tuple(
             sorted(
                 provenance_edges,
                 key=lambda edge: (edge.source_id, edge.relation, edge.target_id, edge.via),
             )
         )
+        return ExportClosure(
+            crate_id=crate_id,
+            object_bodies=object_bodies,
+            provenance_edges=sorted_provenance_edges,
+            artifact_refs=tuple(crate.body.get("artifacts", [])),
+        )
+
+    def export(self, crate_id: Urn, output_dir: Path) -> ExportResult:
+        """Export the RO-Crate closure (R2, via :meth:`resolve_closure`) for
+        ``crate_id`` into ``output_dir``, atomically (R3). See the module
+        docstring for the full closure algorithm and the atomic-write
+        discipline.
+
+        Raises:
+            ValueError: ``output_dir`` already exists (file, or non-empty
+                directory) — checked first, before any read; or
+                ``crate_id`` resolves to a stored object whose ``kind`` is
+                not ``EvidenceCrate`` (see :meth:`resolve_closure`).
+            mrr.domain.exceptions.ObjectNotFoundError: ``crate_id``, or any
+                urn the crate's own ``source_records``/``evidence_anchors``/
+                ``proposed_claims`` arrays name, does not resolve to any
+                stored object — carries the exact missing urn.
+            MissingArtifactBytesError: one or more content hashes named by
+                the crate's own ``artifacts`` array have no corresponding
+                blob in the given ``ArtifactStore`` — carries every missing
+                hash.
+        """
+        if output_path_conflict(output_dir):
+            raise ValueError(
+                f"--output-dir {output_dir} already exists (as a file, or as a non-empty "
+                "directory) — refusing to write over or into it"
+            )
+
+        closure = self.resolve_closure(crate_id)
+
+        artifact_bytes, missing_content_hashes = self._fetch_artifact_bytes(closure.artifact_refs)
+        if missing_content_hashes:
+            raise MissingArtifactBytesError(missing_content_hashes)
+
+        artifact_sizes = {content_hash: len(data) for content_hash, data in artifact_bytes.items()}
         plan, metadata = build_export(
             crate_urn=crate_id,
-            object_bodies=object_bodies,
+            object_bodies=closure.object_bodies,
             artifact_sizes=artifact_sizes,
-            provenance_edges=sorted_provenance_edges,
+            provenance_edges=closure.provenance_edges,
         )
 
         total_bytes = self._write_export(output_dir, plan, metadata, artifact_bytes)
