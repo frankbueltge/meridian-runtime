@@ -1,0 +1,281 @@
+task_id: E8-T01
+title: >-
+  RO-Crate-compatible export (MRR-FR-055, first half): a read-only export
+  path that turns one sealed EvidenceCrate and its provenance neighborhood
+  into a self-contained directory — RO-Crate 1.1 metadata plus canonical
+  object JSONs plus content-addressed artifact bytes — inspectable and
+  hash-re-verifiable by a third party without the running MRR database.
+status: approved
+epic: E8
+reviewer_resolution: >-
+  Approved 2026-07-22 by the main session as reviewing instance, under the
+  owner's decision record of the same date
+  (docs/design/2026-07-22-verifikations-entscheidung-und-bauprogramm.md,
+  Entscheidung 2: build scope "alles außer E7", order E8-T01…T05 then
+  E9-T01…T07). Primary design choices CONFIRMED: (1) NO new dependency —
+  the RO-Crate metadata document is hand-authored JSON-LD (RO-Crate 1.1
+  profile) via plain dicts; an external rocrate/JSON-LD library would add
+  an unpinned-surface for a document we need byte-deterministic anyway,
+  and auditable-by-reading is the point of this epic; (2) fidelity is
+  defined by the hashing policy, not by byte-verbatim storage — PostgreSQL
+  JSONB does not preserve source bytes and was never the stored contract;
+  the export writes RFC 8785 canonical JSON per object and the acceptance
+  bar is that every exported object's recomputed content_hash equals its
+  stored value; (3) pure metadata/closure logic lives in mrr.domain (like
+  mrr.domain.projection), the service composes repositories + ArtifactStore
+  (like ProjectionService: read-only, no RecordRevisionWithEvent anywhere),
+  the CLI stays law-abiding transport (like verification_main); (4) prov:*
+  term emission is deliberately NOT in this packet — E8-T02 (PROV mapping)
+  owns it; this packet ships the structural crate (files, ids, hashes,
+  mrr extension terms) with the boundary declared, so T02 is additive.
+depends_on: [E2-T06, E3-T07, K1-T05]
+derivation: >-
+  Derived 2026-07-22 from: docs/spec/06_IMPLEMENTATION_PLAN.md §3/E8 (task
+  list and exit criteria: "a third party can inspect object IDs, hashes,
+  methods, evidence, and corrections without the running MRR database"),
+  MRR-FR-055 (docs/spec/01_SYSTEM_SPEC.md Stage 6: crates MUST be
+  exportable in an RO-Crate-compatible form) with MRR-FR-051/-052/-053/-054
+  as the content obligations the export must not drop, and
+  docs/spec/02_DOMAIN_MODEL.md §6 (RO-Crate and PROV mapping; the binding
+  sentence for THIS packet: "Export must preserve MRR identifiers and
+  hashes even when a consumer ignores the extension"). Fact base verified
+  first-hand at derivation time (fact-lock): EvidenceCrateSealer
+  (services/node_runtime/.../evidence_crate.py) seals and signs but
+  explicitly defers RO-Crate/PROV export to E8; no sealed-crate JSON and
+  no artifact-root shard tree is committed in-repo — sealed state lives in
+  archival PostgreSQL schemas plus a LocalFilesystemArtifactStore root
+  (adapters/object_store/.../local.py: <root>/<hex2>/<hex2>/<hex> +
+  .meta.json sidecar); ProjectionService (services/.../projection/
+  service.py) is the read-only service precedent (ObjectRepository +
+  EdgeRepository + narrow event-journal Protocol, writes nothing);
+  mrr.domain.projection.build_provenance_map is the existing BFS closure
+  precedent; the CLI law (task-packets/E2-T07.yaml) governs the new
+  subcommand; uv.lock carries no RO-Crate/JSON-LD library.
+objective: >-
+  After this packet, `mrr export ro-crate --crate-id <urn> --output-dir
+  <dir>` materializes a directory that a third party can verify offline:
+  ro-crate-metadata.json (RO-Crate 1.1, JSON-LD, deterministic), one
+  canonical JSON file per included MRR object (the sealed crate itself,
+  its referenced artifacts' descriptors, source records, evidence anchors,
+  proposed claims, their provenance neighborhood, and every
+  VerificationResult recorded against an included claim), and the raw
+  artifact bytes under their content hashes. Recomputing any exported
+  object's content hash from the exported file alone yields the stored
+  value; the crate's signature travels verbatim; nothing in the export
+  requires the MRR database or invents data that is not in the archive.
+source_of_truth:
+  - docs/spec/01_SYSTEM_SPEC.md                     # MRR-FR-050…056; NFR-012 explicit degradation
+  - docs/spec/02_DOMAIN_MODEL.md                    # §6 mapping table + "preserve identifiers and hashes" sentence
+  - docs/spec/06_IMPLEMENTATION_PLAN.md             # §3/E8 task split (T01 export, T02 PROV) and exit criteria
+  - schemas/evidence-crate.schema.json              # the crate contract being exported
+  - task-packets/E2-T07.yaml                        # CLI law
+  - task-packets/E3-T07.yaml                        # read-only projection precedent
+  - https://www.researchobject.org/ro-crate/1.1/    # profile targeted (see specification_gaps)
+requirements:
+  - >-
+    R1 (pure builder in the domain layer): a new module
+    packages/domain/mrr/domain/ro_crate.py holds pure functions — no I/O,
+    no repository types — that take already-loaded object bodies
+    (Mapping[str, JSONValue]) plus artifact descriptors and produce (a) the
+    deterministic export plan (which files, which names) and (b) the
+    ro-crate-metadata.json document as a plain dict. File naming is fixed
+    and collision-free: objects/<urn with ':' replaced by '_'>.json;
+    artifacts/<64-hex>; ro-crate-metadata.json at the root. The metadata
+    document declares the RO-Crate 1.1 @context plus one extension prefix
+    ("mrr": vocabulary URI derived from the schemas' own $id base), a
+    metadata descriptor entity, a root data entity "./" whose hasPart names
+    every exported file, one File data entity per exported file carrying
+    contentSize and mrr:contentHash (sha256:<hex> — the stored value for
+    object files, the artifact content hash for artifact files), and one
+    contextual entity per MRR object carrying mrr:urn, mrr:kind,
+    mrr:contentHash, mrr:practiceId and (for the crate) mrr:signature
+    fields verbatim. No prov:* terms in this packet (E8-T02's boundary).
+    Every timestamp in the document derives from stored object data
+    (e.g. the crate's created_at as datePublished) — never wall-clock.
+  - >-
+    R2 (closure rule, fixed here): the export includes exactly (a) the
+    sealed EvidenceCrate (latest revision), (b) every object named by the
+    crate's own URN arrays (artifacts via their ArtifactRef descriptors,
+    source_records, evidence_anchors, proposed_claims), (c) for each
+    proposed claim: the objects and edges reachable by the existing
+    provenance BFS (mrr.domain.projection precedent) — reusing that
+    module's traversal semantics, not re-inventing them, and (d) every
+    VerificationResult whose target_id is an included claim, discovered
+    the same way ProjectionService discovers claims (event-journal scan;
+    verification.recorded events). Inclusion is by URN set union,
+    deduplicated, exported in sorted-URN order. Objects whose URN cannot
+    be resolved in the store cause an explicit refusal naming the URN —
+    never a silently thinner crate (MRR-FR-054 spirit: exclusions must be
+    visible; a missing referenced object is a refusal, not an omission).
+  - >-
+    R3 (read-only export service): a new ExportService
+    (services/control_plane/mrr/services/export/service.py) mirrors
+    ProjectionService's construction discipline — ObjectRepository,
+    EdgeRepository, the same narrow event-journal Protocol, plus the
+    ArtifactStore Protocol for payload bytes; NO RecordRevisionWithEvent /
+    RecordEdgeWithEvent anywhere on the class. It loads the closure (R2),
+    fetches every artifact's bytes (get by content hash; a store miss is
+    an explicit failure naming every missing hash after checking them
+    all — one report, not first-miss-wins), calls the pure builder (R1),
+    and writes the directory ATOMICALLY: assembled in a temp sibling
+    directory, os.replace/rename onto the target as the last act; the
+    target path existing beforehand (file or non-empty dir) is a refusal
+    before any work. Object JSON files are written as RFC 8785 canonical
+    bytes (mrr.crypto.canonical.canonicalize) of the stored body.
+  - >-
+    R4 (verifiability is the contract): for every exported object file,
+    recomputing the content hash from the exported bytes alone
+    (strip content_hash/signature, canonicalize, sha256 — the existing
+    mrr.domain.hashing_policy functions) yields the mrr:contentHash the
+    metadata declares and the content_hash inside the file; for every
+    artifact file, sha256 of the raw bytes equals its declared hash; the
+    crate's signature block appears byte-identically (post-canonical) in
+    both the crate object file and the metadata's mrr:signature. These
+    checks are what the integration test performs READING ONLY THE EXPORT
+    DIRECTORY (no database handle in the verification phase).
+  - >-
+    R5 (CLI, per the CLI law): a sibling module
+    services/control_plane/mrr/services/cli/export_main.py registers
+    `mrr export ro-crate` with --database-url, --artifact-root,
+    --crate-id, --output-dir (all required; no defaults that guess).
+    main.py gains exactly the one additive registration line (E2-T07
+    precedent). Ordering per MRR-NFR-012: cheapest local dependency first
+    (output-dir refusal before artifact-root readability before database
+    reachability), then exactly one ExportService call. Exit-code map
+    mirrors verification_main: 0 = export completed (print a single JSON
+    line: crate id, output dir, object count, artifact count, total
+    bytes); 2 = dependency unavailable (unreadable artifact root,
+    unreachable database); 3 = refused (unknown --crate-id, resolved
+    object is not an EvidenceCrate, unresolvable referenced URN, missing
+    artifact bytes, pre-existing output path). No domain behavior in the
+    CLI module.
+  - >-
+    R6 (tests at every tier): contract/unit tests for the pure builder
+    (determinism: identical inputs yield byte-identical
+    ro-crate-metadata.json; naming; boundary: no prov:* keys emitted);
+    integration tests following test_verification_cli_recording.py's
+    pattern (real PostgreSQL via MRR_TEST_DATABASE_URL, real services
+    seed a sealed crate through EvidenceCrateSealer with real artifacts
+    in a tmp LocalFilesystemArtifactStore, then the CLI exports and the
+    offline re-verification of R4 runs against the directory only), plus
+    the refusal paths of R5 asserted by exit code AND stderr content.
+    All make tiers green (format, lint, typecheck, test, test-contract,
+    test-integration; e2e suite unchanged and green).
+allowed_paths:
+  - packages/domain/mrr/domain/ro_crate.py
+  - services/control_plane/mrr/services/export/
+  - services/control_plane/mrr/services/cli/export_main.py
+  - services/control_plane/mrr/services/cli/main.py   # one additive registration line only
+  - tests/contract/
+  - tests/unit/
+  - tests/integration/
+  - docs/design/                                      # packet report
+  - task-packets/E8-T01.yaml
+forbidden_changes:
+  - schemas/**                                        # no contract changes in this packet
+  - packages/contracts/**
+  - migrations/**                                     # export is read-only; no new tables
+  - pyproject.toml                                    # no new dependency (derived decision 1)
+  - uv.lock
+  - corpora/**                                        # pinned fixtures and recorded verifications untouched
+  - services/node_runtime/**                          # the sealer stays exactly as sealed
+derived_decisions:
+  - >-
+    (a) No RO-Crate/JSON-LD library. The metadata document is small,
+    profile-conformant JSON-LD authored as plain dicts and serialized
+    canonically. If a future packet wants richer conformance tooling,
+    adding a pinned dev-dependency VALIDATOR in tests is the door — the
+    production writer stays hand-authored either way.
+  - >-
+    (b) Canonical-form fidelity, declared honestly: JSONB storage does not
+    preserve source bytes; the archive's own integrity contract is the
+    RFC 8785 canonical form + content_hash (hashing_policy). The export
+    therefore ships canonical bytes and proves hash-equality — it does not
+    claim byte-provenance it cannot have.
+  - >-
+    (c) prov:* emission deferred wholesale to E8-T02, including
+    prov:wasDerivedFrom for edges the BFS already walks — half-emitting
+    PROV here would force T02 into editing this packet's output format
+    instead of adding to it. The metadata carries mrr: terms only.
+  - >-
+    (d) A local directory export is NOT publication: the A4
+    publication-approval gate is E8-T04's subject and is not implicated
+    here; nothing in this packet contacts anything external. Noted so the
+    E8 exit criterion "external publication is impossible without A4
+    approval" is read against T04, not T01.
+  - >-
+    (e) The export targets ONE crate per invocation (the CLI's fixed
+    shape, like verification record's one claim). Multi-crate/whole-run
+    bundles, if ever wanted, compose from single-crate exports rather
+    than growing an option surface now.
+invariants:
+  - The service and CLI write nothing to the database — read-only by construction.
+  - No partial export directory ever becomes visible at the target path (temp + atomic rename).
+  - Every included object's stored content_hash re-verifies from the exported bytes alone.
+  - A referenced-but-unresolvable URN or missing artifact blob refuses the whole export, explicitly.
+  - No wall-clock timestamp appears anywhere in the exported bytes.
+acceptance_tests:
+  - >-
+    AT1 (offline verifiability): integration test seals a crate through
+    the real sealer (real artifacts, real signature), exports via the CLI
+    entry point, then — using ONLY the export directory — validates
+    ro-crate-metadata.json is valid JSON with the 1.1 @context, every
+    hasPart names an existing file, every object file's recomputed
+    content_hash equals both the in-file and metadata values, every
+    artifact file's sha256 matches its name and declared hash, and the
+    crate signature block round-trips.
+  - >-
+    AT2 (closure): the exported object set is exactly the R2 closure for
+    the seeded fixture — including a VerificationResult recorded against
+    a proposed claim via the K1-T05 service path — asserted as an exact
+    URN-set equality, not a subset check.
+  - >-
+    AT3 (refusals): unknown crate id → exit 3; URN resolving to a
+    non-crate kind → exit 3; missing artifact blob → exit 3 with every
+    missing hash named on stderr; pre-existing output path → exit 3 and
+    the path untouched; unreachable database / unreadable artifact root →
+    exit 2. Each path asserts no partial directory was left anywhere.
+  - >-
+    AT4 (determinism): exporting the same crate twice into two fresh
+    target paths yields byte-identical trees (recursive file-hash
+    comparison).
+  - >-
+    AT5 (layering): import-linter contracts stay green —
+    mrr.domain.ro_crate imports no repository/service/adapter type; the
+    CLI module contains no closure or metadata logic.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+specification_gaps:
+  - >-
+    MRR-FR-055 names no RO-Crate version. RO-Crate 1.1 is chosen (stable,
+    widely implemented); the @context pin makes any future 1.2 migration
+    an explicit, diffable act. Noted for the packet report.
+  - >-
+    The extension-vocabulary URI reuses the schemas' example.invalid base
+    until the owner's site-coupling decision lands a real host — honest
+    placeholder over invented domain (rule 14: flagged, not guessed).
+required_output:
+  - Packet report per AGENTS "Required delivery format", including one
+    full exported ro-crate-metadata.json from the integration fixture
+    embedded verbatim, the exact CLI invocation and its JSON result line,
+    and the tier results.
+stop_conditions:
+  - >-
+    If the RO-Crate 1.1 profile turns out to require a term the archive
+    cannot truthfully supply (e.g. a mandatory wall-clock date), STOP and
+    record the conflict in the packet report before choosing — spec
+    honesty beats profile conformance.
+  - >-
+    If reusing mrr.domain.projection's BFS requires modifying that module
+    (forbidden here), STOP and report the dependency instead of forking
+    its logic into a divergent copy.
+  - >-
+    If the event-journal scan proves unable to discover verifications
+    recorded against included claims (R2d), STOP and report — never ship
+    an export that silently drops the verification layer, today's freshest
+    real data.
