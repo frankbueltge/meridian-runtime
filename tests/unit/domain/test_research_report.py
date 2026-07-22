@@ -31,6 +31,26 @@ Acceptance-test mapping (task-packets/E8-T03.yaml, unit tier):
   ``test_the_only_timestamp_like_token_in_either_render_is_the_crates_created_at``.
 - derived_decisions (e) (reviewer confidence label) ->
   ``test_reviewer_confidence_column_is_labeled_self_declared``.
+
+Acceptance-test mapping (task-packets/E8-T06.yaml, unit tier — the claim-
+rooted mode, ``crate_id=None``):
+
+- header/methods claim-rooted shape -> ``test_claim_rooted_header_shows_root_and_claim_count``,
+  ``test_claim_rooted_header_crate_fields_are_none``,
+  ``test_claim_rooted_created_at_is_the_max_created_at_over_the_closure``,
+  ``test_claim_rooted_run_urns_is_empty_when_no_run_manifest_in_closure``,
+  ``test_claim_rooted_run_urns_includes_a_reached_run_manifest``,
+  ``test_claim_rooted_methods_section_is_honestly_empty_without_a_crate``.
+- claim table/provenance population from EVERY Claim-kind object, not a
+  crate array -> ``test_claim_rooted_claim_table_is_every_claim_kind_object``.
+- crate-only sections (6/7) are honestly empty without a crate ->
+  ``test_claim_rooted_crate_known_unknowns_and_failures_are_empty``.
+- both renderers render without crashing, title/root visible, disagreement
+  still marked -> ``test_claim_rooted_render_markdown_shows_root_and_disagreement``,
+  ``test_claim_rooted_render_html_shows_root_and_disagreement``.
+- crate-rooted output is BYTE-IDENTICAL to the pre-E8-T06 shape (the
+  byte-identity regression this whole packet is bound by) ->
+  ``test_crate_rooted_render_is_unaffected_by_the_new_optional_crate_id_default``.
 """
 
 from __future__ import annotations
@@ -678,3 +698,199 @@ def test_restated_fail_closed_formula_never_drifts_from_public_correction_view()
                 ids,
                 attestation,  # type: ignore[arg-type]
             ), f"formula drift for ids={ids} attestation={attestation}"
+
+
+# ---------------------------------------------------------------------------
+# task-packets/E8-T06.yaml R4: the claim-rooted mode (``crate_id=None``).
+# ---------------------------------------------------------------------------
+
+_CLAIM_ID_2 = "urn:mrr:claim:01AAAAAAAAAAAAAAAAAAAAAAAK"
+_RUN_MANIFEST_ID = "urn:mrr:run-manifest:01AAAAAAAAAAAAAAAAAAAAAAAL"
+_LATER_CREATED_AT = "2026-07-22T18:30:00Z"
+
+
+def _claim_rooted_object_bodies() -> dict[str, Mapping[str, JSONValue]]:
+    """The disagreement fixture, minus a crate: one claim (the "Hammond"
+    claim) with a pass AND a fail verification, one evidence anchor, one
+    source record — the exact shape R5's real-run fixture reproduces at the
+    domain-module level, DB-free.
+    """
+    return {
+        _CLAIM_ID: _claim_body(evidence_relations=[_EVIDENCE_ANCHOR_ID], created_at=_CREATED_AT),
+        _EVIDENCE_ANCHOR_ID: _evidence_anchor_body(
+            source_record_id=_SOURCE_RECORD_ID, run_id=None, created_at=_CREATED_AT
+        ),
+        _SOURCE_RECORD_ID: _source_record_body(created_at=_CREATED_AT),
+        _VERIFICATION_ID_1: _verification_body(
+            verification_id=_VERIFICATION_ID_1,
+            target_id=_CLAIM_ID,
+            recommendation="pass",
+            created_at=_CREATED_AT,
+        ),
+        _VERIFICATION_ID_2: _verification_body(
+            verification_id=_VERIFICATION_ID_2,
+            target_id=_CLAIM_ID,
+            recommendation="fail",
+            created_at=_LATER_CREATED_AT,
+        ),
+    }
+
+
+def _build_claim_rooted(
+    *,
+    object_bodies: Mapping[str, Mapping[str, JSONValue]] | None = None,
+    disclosure: str = "internal",
+) -> Any:
+    return build_report(
+        object_bodies=object_bodies if object_bodies is not None else _claim_rooted_object_bodies(),
+        crate_id=None,
+        corrections=[],
+        provenance_by_claim={},
+        disclosure=disclosure,  # type: ignore[arg-type]
+        classification_by_object_id={},
+    )
+
+
+def test_claim_rooted_header_shows_root_and_claim_count() -> None:
+    model = _build_claim_rooted()
+    assert model.header.root == "claim graph"
+    assert model.header.claim_count == 1
+    assert model.header.object_count == len(_claim_rooted_object_bodies())
+    assert model.header.artifact_count == 0
+
+
+def test_claim_rooted_header_crate_fields_are_none() -> None:
+    model = _build_claim_rooted()
+    assert model.header.crate_urn is None
+    assert model.header.run_urn is None
+    assert model.header.run_state is None
+    assert model.header.practice_id is None
+    assert model.header.content_hash is None
+
+
+def test_claim_rooted_created_at_is_the_max_created_at_over_the_closure() -> None:
+    model = _build_claim_rooted()
+    assert model.header.created_at == _LATER_CREATED_AT
+
+
+def test_claim_rooted_run_urns_is_empty_when_no_run_manifest_in_closure() -> None:
+    """The real K1-T04 fact-lock, reproduced: every real anchor has an
+    empty ``run_id``, so the run manifest is honestly unreachable
+    claim-side — asserted absent, never fabricated.
+    """
+    model = _build_claim_rooted()
+    assert model.header.run_urns == ()
+    assert model.methods.run_urn is None
+    assert model.methods.run_manifest_included is False
+
+
+def test_claim_rooted_run_urns_includes_a_reached_run_manifest() -> None:
+    """The R1 "when non-empty" branch: one anchor DOES carry a non-empty
+    ``run_id`` whose RunManifest is present in the closure.
+    """
+    object_bodies = dict(_claim_rooted_object_bodies())
+    object_bodies[_EVIDENCE_ANCHOR_ID] = _evidence_anchor_body(
+        source_record_id=_SOURCE_RECORD_ID, run_id=_RUN_MANIFEST_ID, created_at=_CREATED_AT
+    )
+    object_bodies[_RUN_MANIFEST_ID] = {
+        "id": _RUN_MANIFEST_ID,
+        "kind": "RunManifest",
+        "created_at": _CREATED_AT,
+        "parameters": {"operation": "percentage"},
+    }
+    model = _build_claim_rooted(object_bodies=object_bodies)
+    assert model.header.run_urns == (_RUN_MANIFEST_ID,)
+    assert model.methods.run_urn == _RUN_MANIFEST_ID
+    assert model.methods.run_manifest_included is True
+    assert model.methods.declared_parameters == {"operation": "percentage"}
+
+
+def test_claim_rooted_methods_section_is_honestly_empty_without_a_crate() -> None:
+    """No crate exists to source ``artifacts``/``environment`` from at
+    all — the SAME empty values a crate-rooted report already renders for
+    a crate with a minimal ``environment``/``artifacts``.
+    """
+    model = _build_claim_rooted()
+    assert model.methods.artifact_refs == ()
+    assert model.methods.environment_image_digest == ""
+    assert model.methods.environment_code_revision == ""
+    assert model.methods.environment_input_hashes == ()
+    assert model.methods.environment_model_profiles == ()
+
+
+def test_claim_rooted_claim_table_is_every_claim_kind_object() -> None:
+    """No crate ``proposed_claims`` array exists — the claim table's own
+    population is derived directly from ``object_bodies``.
+    """
+    object_bodies = dict(_claim_rooted_object_bodies())
+    object_bodies[_CLAIM_ID_2] = _claim_body(id=_CLAIM_ID_2, created_at=_CREATED_AT)
+    model = _build_claim_rooted(object_bodies=object_bodies)
+    assert {claim.claim_id for claim in model.claims} == {_CLAIM_ID, _CLAIM_ID_2}
+    assert model.header.claim_count == 2
+
+
+def test_claim_rooted_hammond_claim_shows_the_pass_fail_disagreement() -> None:
+    model = _build_claim_rooted()
+    (claim,) = model.claims
+    assert claim.claim_id == _CLAIM_ID
+    recommendations = {v.recommendation for v in claim.verifications}
+    assert recommendations == {"pass", "fail"}
+    assert all(v.disagreement_on_record for v in claim.verifications)
+
+
+def test_claim_rooted_crate_known_unknowns_and_failures_are_empty() -> None:
+    """Both are ``EvidenceCrate``-only fields — honestly empty without a
+    crate, never invented.
+    """
+    model = _build_claim_rooted()
+    assert model.known_unknowns.crate_known_unknowns == ()
+    assert model.failures == ()
+
+
+def test_claim_rooted_render_markdown_shows_root_and_disagreement() -> None:
+    model = _build_claim_rooted()
+    rendered = render_markdown(model)
+    assert "# Research report — claim graph" in rendered
+    assert "**Root:** claim graph" in rendered
+    assert "**Claims:** 1" in rendered
+    assert "DISAGREEMENT ON RECORD" in rendered
+    # No "None" leakage from the Optional crate-specific header fields.
+    assert "Crate" not in rendered.split("## 1. Header")[1].split("## 2.")[0]
+
+
+def test_claim_rooted_render_html_shows_root_and_disagreement() -> None:
+    model = _build_claim_rooted()
+    rendered = render_html(model)
+    assert "<h1>Research report — claim graph</h1>" in rendered
+    assert "<dt>Root</dt><dd>claim graph</dd>" in rendered
+    assert "disagreement on record" in rendered
+    assert "None" not in rendered
+
+
+def test_claim_rooted_render_is_deterministic() -> None:
+    model = _build_claim_rooted()
+    assert render_markdown(model) == render_markdown(model)
+    assert render_html(model) == render_html(model)
+
+
+def test_a_claim_rooted_report_with_zero_reachable_run_manifests_never_says_run() -> None:
+    model = _build_claim_rooted()
+    rendered_md = render_markdown(model)
+    header_section = rendered_md.split("## 1. Header")[1].split("## 2.")[0]
+    assert "(none recorded)" in header_section  # "Run(s) reached" falls back honestly.
+
+
+def test_crate_rooted_render_is_unaffected_by_the_new_optional_crate_id_default() -> None:
+    """The byte-identity bar itself: a crate-rooted report (``crate_id``
+    given explicitly, exactly as every pre-E8-T06 call site does) renders
+    IDENTICAL bytes to before this packet.
+    """
+    model = _build()
+    rendered_md = render_markdown(model)
+    rendered_html = render_html(model)
+    assert model.header.root == "crate"
+    assert f"# Research report — {_CRATE_ID}" in rendered_md
+    assert f"<h1>Research report — {_CRATE_ID}</h1>" in rendered_html
+    assert "**Crate:**" in rendered_md
+    assert "claim graph" not in rendered_md
+    assert "claim graph" not in rendered_html

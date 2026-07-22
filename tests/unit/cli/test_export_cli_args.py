@@ -21,6 +21,23 @@ Acceptance-test mapping (task-packets/E8-T01.yaml, unit tier):
 - --help/usage-error smoke tests (mirroring the K1-T05 precedent's own
   ``--help`` coverage) -> the tests under "--help / usage-error smoke
   tests" below.
+
+Acceptance-test mapping (task-packets/E8-T06.yaml, unit tier — the one-of
+root group and the ``--artifact-root`` shape refusal, all DB-free):
+
+- --help documents the new flags -> the extended
+  ``test_ro_crate_subcommand_help_documents_every_flag``.
+- the mutually-exclusive, required root group (argparse's own usage error,
+  exit 2) -> ``test_no_root_flag_at_all_is_a_usage_error``,
+  ``test_crate_id_and_claim_id_together_is_a_usage_error``,
+  ``test_crate_id_and_all_claims_together_is_a_usage_error``.
+- ``--artifact-root`` REQUIRED with ``--crate-id``, FORBIDDEN with
+  ``--claim-id``/``--all-claims`` (the new, disclosed-exit-2 usage-refusal
+  shape check) -> ``test_crate_id_without_artifact_root_is_a_dependency_failure``,
+  ``test_claim_id_with_artifact_root_is_a_dependency_failure``,
+  ``test_all_claims_with_artifact_root_is_a_dependency_failure``,
+  ``test_artifact_root_shape_check_runs_before_the_existence_check``.
+- ``--claim-id`` is repeatable -> ``test_claim_id_is_repeatable``.
 """
 
 from __future__ import annotations
@@ -251,3 +268,213 @@ def test_unreachable_database_is_a_dependency_failure_after_the_other_two_checks
     err = capsys.readouterr().err
     assert "cannot reach the PostgreSQL database" in err
     assert not output_dir.exists()
+
+
+# ---------------------------------------------------------------------------
+# task-packets/E8-T06.yaml: the one-of root group + --artifact-root shape.
+# ---------------------------------------------------------------------------
+
+
+def test_ro_crate_subcommand_help_also_documents_the_new_root_flags(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A fresh, additive test rather than widening the pre-existing
+    ``test_ro_crate_subcommand_help_documents_every_flag`` (task-packets/
+    E8-T01.yaml) — that test's own original assertion already passes
+    unmodified (it checks a SUBSET of --help's output is present, and
+    --help output only grew), so leaving it byte-for-byte untouched is both
+    sufficient and the more literal reading of "E8-T01..T05 suites must
+    pass UNMODIFIED".
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        main(["export", "ro-crate", "--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    for flag in ("--claim-id", "--all-claims"):
+        assert flag in out, f"expected {flag!r} to be documented in --help output"
+
+
+def test_no_root_flag_at_all_is_a_usage_error() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "export",
+                "ro-crate",
+                "--database-url",
+                _UNREACHABLE_DATABASE_URL,
+                "--output-dir",
+                "/tmp/does-not-matter",
+            ]
+        )
+    assert excinfo.value.code != 0
+
+
+def test_crate_id_and_claim_id_together_is_a_usage_error() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "export",
+                "ro-crate",
+                "--database-url",
+                _UNREACHABLE_DATABASE_URL,
+                "--crate-id",
+                new_urn("evidence-crate"),
+                "--claim-id",
+                new_urn("claim"),
+                "--output-dir",
+                "/tmp/does-not-matter",
+            ]
+        )
+    assert excinfo.value.code != 0
+
+
+def test_crate_id_and_all_claims_together_is_a_usage_error() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "export",
+                "ro-crate",
+                "--database-url",
+                _UNREACHABLE_DATABASE_URL,
+                "--crate-id",
+                new_urn("evidence-crate"),
+                "--all-claims",
+                "--output-dir",
+                "/tmp/does-not-matter",
+            ]
+        )
+    assert excinfo.value.code != 0
+
+
+def test_claim_id_is_repeatable(tmp_path: Path) -> None:
+    """Argparse itself accepts a repeated ``--claim-id`` (the mutually-
+    exclusive group's own "one distinct flag" check does not count a
+    repeated occurrence of the SAME flag as two) — proven by reaching PAST
+    argument parsing into the actual dependency check (an unreachable DB),
+    not by a usage error.
+    """
+    output_dir = tmp_path / "output"
+    exit_code = main(
+        [
+            "export",
+            "ro-crate",
+            "--database-url",
+            _UNREACHABLE_DATABASE_URL,
+            "--claim-id",
+            new_urn("claim"),
+            "--claim-id",
+            new_urn("claim"),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+    assert exit_code == 2  # unreachable database, not a usage error
+
+
+def test_crate_id_without_artifact_root_is_a_dependency_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output_dir = tmp_path / "output"
+
+    exit_code = main(
+        [
+            "export",
+            "ro-crate",
+            "--database-url",
+            _UNREACHABLE_DATABASE_URL,
+            "--crate-id",
+            new_urn("evidence-crate"),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "--crate-id requires --artifact-root" in err
+    assert "cannot reach the PostgreSQL database" not in err
+    assert not output_dir.exists()
+
+
+def test_claim_id_with_artifact_root_is_a_dependency_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output_dir = tmp_path / "output"
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+
+    exit_code = main(
+        [
+            "export",
+            "ro-crate",
+            "--database-url",
+            _UNREACHABLE_DATABASE_URL,
+            "--claim-id",
+            new_urn("claim"),
+            "--artifact-root",
+            str(artifact_root),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "--artifact-root is forbidden with --claim-id/--all-claims" in err
+    assert "cannot reach the PostgreSQL database" not in err
+    assert not output_dir.exists()
+
+
+def test_all_claims_with_artifact_root_is_a_dependency_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output_dir = tmp_path / "output"
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+
+    exit_code = main(
+        [
+            "export",
+            "ro-crate",
+            "--database-url",
+            _UNREACHABLE_DATABASE_URL,
+            "--all-claims",
+            "--artifact-root",
+            str(artifact_root),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "--artifact-root is forbidden with --claim-id/--all-claims" in err
+    assert not output_dir.exists()
+
+
+def test_artifact_root_shape_check_runs_before_the_existence_check(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """MRR-NFR-012 ordering: the pure argument-consistency check (no I/O at
+    all) fires even when ``--artifact-root`` would ALSO fail its own
+    existence check — proof the shape check runs first, not incidentally.
+    """
+    output_dir = tmp_path / "output"
+
+    exit_code = main(
+        [
+            "export",
+            "ro-crate",
+            "--database-url",
+            _UNREACHABLE_DATABASE_URL,
+            "--crate-id",
+            new_urn("evidence-crate"),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "requires --artifact-root" in err
+    assert "does not exist or is not a directory" not in err

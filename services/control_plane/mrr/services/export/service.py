@@ -165,6 +165,104 @@ hash is attempted, and every miss is collected before this method raises
 first-miss-wins — the one place in this whole closure where R3's own text
 explicitly asks for that stronger guarantee, unlike step 2 above).
 
+--- task-packets/E8-T06.yaml: a SECOND closure root, claim-graph-rooted -------
+
+Closes docs/design/2026-07-22-erste-nutzung-befunde.md's Befund 2: the real
+K1-T04 run's ``EvidenceCrate`` shipped with EMPTY ``proposed_claims``/
+``source_records``/``evidence_anchors`` — the crate seals the run's
+*inputs*, the claim graph is a separate downstream step that never links
+back to it — so :meth:`resolve_closure` above, crate-rooted by construction,
+exports only the crate itself (``object_count: 1``) for that real run, even
+though the schema holds the full claim graph. :meth:`resolve_closure_from_
+claims` is the additive, backward-compatible fix (Richtung 2 of that
+finding, not Richtung 1's "populate the crate retroactively", which would
+require mutating an already-sealed object): a SECOND way to seed the exact
+same closure algorithm, rooted on claims instead of a crate.
+
+**Fact-lock, verified first-hand against the real schema before writing a
+line of this section** (task-packets/E8-T06.yaml stop_condition: "verify the
+crux yourself... fact-lock, don't assume") — queried directly with
+``MRR_TEST_DATABASE_URL`` against the ``mrr_k1t04_real_run_v2`` schema (the
+real K1-T04 run, still on disk in the shared test Postgres instance):
+
+- ``ProjectionService.build_claim_table()`` enumerates exactly 2 claims (the
+  two real model-collapse claims — "4 Claims" in the finding record counted
+  REVISIONS, not distinct claims).
+- For the Hammond claim (``evidence_relations`` names 1 anchor,
+  ``counterevidence_relations`` names 13), ``ProjectionService
+  .build_provenance_map(claim_id)`` returns exactly 2 edges — ``ruled_by`` ->
+  MethodRuling and ``governed_by_protocol`` -> MethodProtocol — and NEITHER
+  targets the anchor. Confirmed: the existing provenance BFS does not, and
+  structurally cannot, reach a claim's own evidence from the claim alone.
+- ALL 17 real ``EvidenceAnchor`` objects have ``run_id: null``. The
+  RunManifest is reachable ONLY via ``crate.run_id`` — never from any claim
+  or anchor. A claim-rooted export of this real graph honestly does NOT
+  include the run manifest, and never fabricates one.
+- **Surprise, beyond what the finding record's own fact-lock anticipated:**
+  the Hammond claim's own ``verification_ids`` field is ``[]`` — EMPTY —
+  even though two real ``VerificationResult`` objects (a ``pass`` and a
+  ``fail``: the disagreement this whole packet exists to surface) target it
+  by ``target_id``. Resolving R1's declared ``Claim.verification_ids`` field
+  alone would find NEITHER of them. What DOES find them, unmodified, is
+  :meth:`_discover_verifications_targeting` below (R2d) — already shared
+  by both roots via :meth:`_resolve_provenance_and_verifications`. R1's
+  declared-field map still lists ``verification_ids`` (a real, schema-
+  declared field, resolved for completeness and for any future claim that
+  DOES populate it — a referenced id that fails to resolve is still a fail-
+  fast refusal, R1's own contract) — but in the real data today, it is the
+  event-log-scan step, not this field, doing the actual verification-
+  discovery work. Documented here precisely because the packet's own
+  derivation prose could be read as "the declared field suffices" —fact-
+  locking this catches a real gap that would have caused a silent
+  under-export.
+
+**R1's resolver** (:meth:`_resolve_declared_reference_fields`): a FIXED,
+documented per-kind map of declared reference fields
+(:data:`_DECLARED_REFERENCE_FIELDS`), resolved via ``ObjectRepository
+.get_latest`` (fail-fast — a referenced urn that does not resolve raises
+``ObjectNotFoundError`` naming it, mirroring step 2's identical stance for
+the crate's own ``_CRATE_URN_ARRAY_FIELDS``), applied transitively to
+FIXPOINT: a newly-discovered ``EvidenceAnchor``/``VerificationResult`` has
+its OWN declared fields resolved on the next pass too, until no pass
+discovers a new object. This is explicitly NOT a re-seed of
+``ProjectionService.build_provenance_map`` (the fact-lock above proves that
+BFS cannot reach a claim's evidence at all) — it is the SAME "resolve
+declared reference-field arrays, get_latest each" operation step 2 above
+already performs for the crate's own three URN arrays, extended to the
+claim's and anchor's own reference fields, added HERE (never in
+``mrr.services.projection.service``, which stays reused-verbatim per this
+packet's own ``forbidden_changes``).
+
+:meth:`resolve_closure_from_claims` composes, in order: (1) resolve the root
+claim ids (``claim_ids`` given -> each validated to be a ``Claim``, fail-fast
+otherwise; ``None`` -> every claim ``ProjectionService.build_claim_table``
+enumerates, refusing via :class:`NoClaimsToExportError` if that is empty —
+task-packets/E8-T06.yaml invariant, "never ships an empty bundle"); (2) seed
+``object_bodies`` with those root claims; (3) run R1's fixpoint resolver;
+(4) call the SAME :meth:`_resolve_provenance_and_verifications` step
+:meth:`resolve_closure` calls (R2c's provenance BFS per root claim, PLUS
+R2d's verification discovery over every claim now in the closure) — one
+shared private core, not a fork. The resulting :class:`ExportClosure` carries
+``crate_id=None`` and an EMPTY ``artifact_refs`` (derived_decisions (a): a
+claim-rooted export ships no artifact bytes and needs no crate — the
+research OUTPUT is the claim graph; the artifacts are the run's INPUTS).
+
+``resolve_closure``'s own steps 3-4 (the provenance BFS loop plus R2d
+verification discovery) are extracted, UNCHANGED, into the private
+:meth:`_resolve_provenance_and_verifications` — this extraction, plus
+threading ``closure.crate_id`` (rather than a re-read local variable)
+through the new shared :meth:`_write_closure`, is the ENTIRE "shared private
+core" refactor this packet performs on the crate-rooted path; no line of the
+actual R2 closure algorithm changed, which is the behavior-identity proof
+task-packets/E8-T01.yaml's/E8-T02.yaml's own test suites passing UNMODIFIED
+against this refactor demonstrates (task-packets/E8-T06.yaml stop_condition
+1). ``ExportClosure.crate_id`` becomes ``Urn | None`` — every existing
+reader was checked at derivation (grepped across services/packages/tests):
+neither :meth:`export` nor ``mrr.services.report.service.ReportService
+.render`` nor any test ever read ``ExportClosure.crate_id`` directly (both
+already carry their OWN ``crate_id`` parameter), so this widening is
+source-compatible everywhere; :meth:`_write_closure` is the one new reader.
+
 --- Atomic, all-or-nothing directory write (R3) --------------------------------
 
 ``export`` refuses BEFORE any work — before even resolving ``crate_id`` — if
@@ -198,7 +296,7 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from mrr.contracts import Urn
 from mrr.crypto.canonical import JSONValue, canonicalize
@@ -217,6 +315,10 @@ _EVIDENCE_CRATE_KIND = "EvidenceCrate"
 #: included claim" for R2d's VerificationResult discovery (see the module
 #: docstring's closure step 4).
 _CLAIM_KIND = "Claim"
+
+#: The one other kind task-packets/E8-T06.yaml's R1 declared-reference-field
+#: map names — see :data:`_DECLARED_REFERENCE_FIELDS`.
+_EVIDENCE_ANCHOR_KIND = "EvidenceAnchor"
 
 #: The kind a discovered event's own object must actually resolve to for
 #: R2d — matches ``mrr.contracts.verification_result.VerificationResult
@@ -243,6 +345,49 @@ _CRATE_URN_ARRAY_FIELDS: tuple[str, ...] = ("source_records", "evidence_anchors"
 #: without a per-file ``mkdir``.
 _EXPORT_SUBDIRECTORIES: tuple[str, ...] = ("objects", "artifacts")
 
+#: task-packets/E8-T06.yaml R1: the FIXED, fact-locked (verified against the
+#: real K1-T04 schema — see the module docstring's own "E8-T06" section)
+#: per-kind declared-reference-field map :meth:`ExportService
+#: ._resolve_declared_reference_fields` resolves to fixpoint. Every field
+#: named here is a real, schema-declared reference field (schemas/claim
+#: .schema.json, schemas/evidence-anchor.schema.json, schemas/verification-
+#: result.schema.json) — never a guessed vocabulary (AGENTS.md rule 3).
+#: ``SourceFamily`` is deliberately NOT a key: claim.source_family_ids is
+#: resolved (a SourceFamily urn is added to the closure), but a SourceFamily
+#: object's own ``member_source_ids`` is a leaf for this resolver — not part
+#: of the fact-locked map, so not traversed further (a future packet that
+#: needs the member SourceRecords too is a one-line addition here, per
+#: derived_decisions (b), never an implicit widening).
+_DECLARED_REFERENCE_FIELDS: Mapping[str, tuple[str, ...]] = {
+    _CLAIM_KIND: (
+        "evidence_relations",
+        "counterevidence_relations",
+        "verification_ids",
+        "source_family_ids",
+    ),
+    _EVIDENCE_ANCHOR_KIND: ("source_record_id", "run_id"),
+    _VERIFICATION_RESULT_KIND: ("evidence_inspected",),
+}
+
+
+def _reference_field_urns(value: JSONValue | None) -> list[str]:
+    """Every urn a single R1 declared-reference-field VALUE names — either a
+    plain, nullable urn string (``EvidenceAnchor.source_record_id``/
+    ``run_id``) or an array of urn strings (every ``Claim``/
+    ``VerificationResult`` field in :data:`_DECLARED_REFERENCE_FIELDS`).
+    ``None``, an absent field, or an empty string yields no urns — R1's own
+    "each [anchor field] only when the field is non-empty", applied
+    uniformly to every field this resolver ever reads (an empty array
+    already yields no urns without special-casing).
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, Sequence):
+        return [str(item) for item in value if item]
+    return []
+
 
 class MissingArtifactBytesError(DomainError):
     """Raised by ``ExportService.export`` when one or more content hashes
@@ -258,6 +403,23 @@ class MissingArtifactBytesError(DomainError):
         super().__init__(
             "missing artifact bytes for content hash(es): " + ", ".join(self.missing_content_hashes)
         )
+
+
+class NoClaimsToExportError(DomainError):
+    """Raised by ``ExportService.resolve_closure_from_claims``/``.export_from
+    _claims`` (task-packets/E8-T06.yaml invariant: "a zero-claim claim-rooted
+    export refuses, never ships an empty bundle") when the resolved root
+    claim set is empty — either ``claim_ids=None`` (``--all-claims``) over a
+    schema ``ProjectionService.build_claim_table`` enumerates zero claims
+    for, or an explicitly-supplied, empty ``claim_ids`` sequence. Never
+    raised for a NON-empty explicit ``claim_ids`` list whose entries fail to
+    resolve — that is ``ObjectNotFoundError``/``ValueError`` instead (each
+    urn's own typed refusal, R1), naming the offending urn rather than this
+    generic, message-only "there was nothing to export at all" case.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("no claims to export")
 
 
 class _EventJournal(Protocol):
@@ -295,9 +457,16 @@ class ExportClosure:
     the byte store), not the fetched payloads themselves; a caller that
     needs the bytes (only ``export`` does) fetches them separately via
     :meth:`ExportService.export`` or its own ``ArtifactStore``.
+
+    EXTENDED by task-packets/E8-T06.yaml R1: ``crate_id`` becomes ``Urn |
+    None`` — ``None`` for a claim-rooted closure (:meth:`ExportService
+    .resolve_closure_from_claims`), meaning "no crate anchors this export"
+    (derived_decisions (a)), never a placeholder or invented urn. See the
+    module docstring's "E8-T06" section for why every existing reader of
+    this field is unaffected by the widening.
     """
 
-    crate_id: Urn
+    crate_id: Urn | None
     object_bodies: Mapping[str, Mapping[str, JSONValue]]
     provenance_edges: tuple[ProvenanceEdge, ...]
     artifact_refs: tuple[Mapping[str, JSONValue], ...]
@@ -314,9 +483,22 @@ class ExportResult:
     document's own canonical bytes — the size of the WHOLE exported tree,
     not merely the objects/artifacts (a disclosed reading; task-packets/
     E8-T01.yaml does not itself define what "total bytes" ranges over).
+
+    EXTENDED by task-packets/E8-T06.yaml R2 ("the exit-0 JSON line reports
+    the root kind"): ``root`` is ``"crate"`` for :meth:`ExportService.export`
+    (``crate_id`` always populated, ``claim_ids`` always empty) or
+    ``"claims"`` for :meth:`ExportService.export_from_claims` (``crate_id``
+    always ``None``, ``claim_ids`` the sorted, exported claim urns). Purely
+    additive: every pre-E8-T06 field keeps its exact crate-rooted meaning,
+    and ``mrr.services.cli.export_main``'s own crate-rooted JSON payload
+    keeps every pre-existing key with its pre-existing value — only new keys
+    are added (checked at derivation: no E8-T01..T05 test asserts
+    ``set(result_line.keys()) == ...``, only individual key lookups).
     """
 
-    crate_id: Urn
+    root: Literal["crate", "claims"]
+    crate_id: Urn | None
+    claim_ids: tuple[Urn, ...]
     output_dir: Path
     object_count: int
     artifact_count: int
@@ -387,7 +569,10 @@ class ExportService:
         ``export``'s own prior body (steps 1-3 plus verification discovery),
         proven behavior-identical by task-packets/E8-T01.yaml/E8-T02.yaml's
         own test suites passing unmodified after this refactor (task-packets/
-        E8-T03.yaml stop_condition 2).
+        E8-T03.yaml stop_condition 2; task-packets/E8-T06.yaml stop_condition
+        1 re-proves the identical guarantee against the E8-T06 refactor
+        below, which extracts steps 3-4 into :meth:`_resolve_provenance_and
+        _verifications` — see that method's own docstring).
 
         Raises:
             ValueError: ``crate_id`` resolves to a stored object whose
@@ -410,35 +595,64 @@ class ExportService:
                 if urn not in object_bodies:
                     object_bodies[urn] = self._object_repository.get_latest(urn).body
 
-        projection_service = ProjectionService(
-            self._object_repository, self._edge_repository, self._event_log
+        object_bodies, sorted_provenance_edges = self._resolve_provenance_and_verifications(
+            object_bodies, crate.body.get("proposed_claims", [])
         )
-        provenance_edges: set[ProvenanceEdge] = set()
-        for claim_id in sorted(crate.body.get("proposed_claims", [])):
-            provenance = projection_service.build_provenance_map(claim_id)
-            provenance_edges.update(provenance.edges)
-            for edge in provenance.edges:
-                if edge.target_id not in object_bodies:
-                    object_bodies[edge.target_id] = self._object_repository.get_latest(
-                        edge.target_id
-                    ).body
 
-        claim_ids_in_closure = {
-            urn for urn, body in object_bodies.items() if body.get("kind") == _CLAIM_KIND
-        }
-        object_bodies.update(self._discover_verifications_targeting(claim_ids_in_closure))
-
-        sorted_provenance_edges = tuple(
-            sorted(
-                provenance_edges,
-                key=lambda edge: (edge.source_id, edge.relation, edge.target_id, edge.via),
-            )
-        )
         return ExportClosure(
             crate_id=crate_id,
             object_bodies=object_bodies,
             provenance_edges=sorted_provenance_edges,
             artifact_refs=tuple(crate.body.get("artifacts", [])),
+        )
+
+    def resolve_closure_from_claims(self, claim_ids: Sequence[Urn] | None = None) -> ExportClosure:
+        """R1 (task-packets/E8-T06.yaml): the claim-graph-rooted counterpart
+        to :meth:`resolve_closure` — see the module docstring's own "E8-T06"
+        section for the full fact-locked design rationale (the declared-
+        reference-field map, the fixpoint algorithm, and why this is NOT a
+        re-seed of ``ProjectionService.build_provenance_map``).
+
+        Args:
+            claim_ids: explicit claim urns (``--claim-id``, repeatable at
+                the CLI). Each MUST resolve to a stored object of kind
+                ``Claim`` — a typed refusal names the offending urn
+                otherwise (``ObjectNotFoundError`` if it resolves to
+                nothing, ``ValueError`` if it resolves to a non-``Claim``
+                kind — mirrors :meth:`resolve_closure`'s own identical
+                crate-kind check). ``None`` (``--all-claims``, the default)
+                enumerates EVERY claim ``ProjectionService.build_claim_table``
+                discovers in the schema (derived_decisions (b): "each
+                archival schema is exactly one run's world").
+
+        Raises:
+            mrr.domain.exceptions.ObjectNotFoundError: an explicit
+                ``claim_ids`` entry, or any urn the R1 declared-reference-
+                field resolver subsequently discovers, does not resolve to
+                any stored object — carries the exact missing urn.
+            ValueError: an explicit ``claim_ids`` entry resolves to a
+                stored object whose ``kind`` is not ``Claim``.
+            NoClaimsToExportError: the resolved root claim set is empty —
+                task-packets/E8-T06.yaml invariant, "never ships an empty
+                bundle".
+        """
+        root_claim_ids = self._resolve_root_claim_ids(claim_ids)
+
+        object_bodies: dict[str, Mapping[str, JSONValue]] = {
+            claim_id: self._object_repository.get_latest(claim_id).body
+            for claim_id in root_claim_ids
+        }
+        self._resolve_declared_reference_fields(object_bodies)
+
+        object_bodies, sorted_provenance_edges = self._resolve_provenance_and_verifications(
+            object_bodies, root_claim_ids
+        )
+
+        return ExportClosure(
+            crate_id=None,
+            object_bodies=object_bodies,
+            provenance_edges=sorted_provenance_edges,
+            artifact_refs=(),
         )
 
     def export(self, crate_id: Urn, output_dir: Path) -> ExportResult:
@@ -468,23 +682,59 @@ class ExportService:
             )
 
         closure = self.resolve_closure(crate_id)
-
-        artifact_bytes, missing_content_hashes = self._fetch_artifact_bytes(closure.artifact_refs)
-        if missing_content_hashes:
-            raise MissingArtifactBytesError(missing_content_hashes)
-
-        artifact_sizes = {content_hash: len(data) for content_hash, data in artifact_bytes.items()}
-        plan, metadata = build_export(
-            crate_urn=crate_id,
-            object_bodies=closure.object_bodies,
-            artifact_sizes=artifact_sizes,
-            provenance_edges=closure.provenance_edges,
-        )
-
-        total_bytes = self._write_export(output_dir, plan, metadata, artifact_bytes)
+        plan, total_bytes = self._write_closure(closure, output_dir)
 
         return ExportResult(
+            root="crate",
             crate_id=crate_id,
+            claim_ids=(),
+            output_dir=output_dir,
+            object_count=len(plan.objects),
+            artifact_count=len(plan.artifacts),
+            total_bytes=total_bytes,
+        )
+
+    def export_from_claims(self, claim_ids: Sequence[Urn] | None, output_dir: Path) -> ExportResult:
+        """Export the claim-graph-rooted closure (R1, via :meth:`resolve_
+        closure_from_claims`) into ``output_dir``, atomically (R3, shared
+        with :meth:`export` via :meth:`_write_closure`) — task-packets/
+        E8-T06.yaml's claim-rooted counterpart to :meth:`export`. Fetches NO
+        artifact bytes (``closure.artifact_refs`` is always empty for a
+        claim-rooted closure — derived_decisions (a)) and touches no
+        ``ArtifactStore`` beyond the harmless, always-empty
+        :meth:`_fetch_artifact_bytes` call :meth:`_write_closure` already
+        shares with the crate-rooted path.
+
+        Raises:
+            ValueError: ``output_dir`` already exists (file, or non-empty
+                directory) — checked first, before any read; or an explicit
+                ``claim_ids`` entry resolves to a non-``Claim`` kind (see
+                :meth:`resolve_closure_from_claims`).
+            mrr.domain.exceptions.ObjectNotFoundError: an explicit
+                ``claim_ids`` entry, or any urn R1's resolver subsequently
+                discovers, does not resolve to any stored object.
+            NoClaimsToExportError: the resolved root claim set is empty.
+        """
+        if output_path_conflict(output_dir):
+            raise ValueError(
+                f"--output-dir {output_dir} already exists (as a file, or as a non-empty "
+                "directory) — refusing to write over or into it"
+            )
+
+        closure = self.resolve_closure_from_claims(claim_ids)
+        plan, total_bytes = self._write_closure(closure, output_dir)
+
+        exported_claim_ids = tuple(
+            sorted(
+                urn
+                for urn, body in closure.object_bodies.items()
+                if body.get("kind") == _CLAIM_KIND
+            )
+        )
+        return ExportResult(
+            root="claims",
+            crate_id=None,
+            claim_ids=exported_claim_ids,
             output_dir=output_dir,
             object_count=len(plan.objects),
             artifact_count=len(plan.artifacts),
@@ -494,6 +744,156 @@ class ExportService:
     # ------------------------------------------------------------------
     # Internal helpers.
     # ------------------------------------------------------------------
+
+    def _resolve_provenance_and_verifications(
+        self,
+        object_bodies: dict[str, Mapping[str, JSONValue]],
+        root_claim_ids: Sequence[str],
+    ) -> tuple[dict[str, Mapping[str, JSONValue]], tuple[ProvenanceEdge, ...]]:
+        """R2c (the per-root-claim provenance BFS) plus R2d (verification
+        discovery over every claim now in the closure) — extracted VERBATIM
+        from :meth:`resolve_closure`'s own prior inline body (task-packets/
+        E8-T06.yaml: "the shared private core"), now called by BOTH
+        :meth:`resolve_closure` (seeded from the crate's own
+        ``proposed_claims``) and :meth:`resolve_closure_from_claims` (seeded
+        from the caller's/``--all-claims``'s root claim ids). No line of the
+        original algorithm changed — mutates and returns ``object_bodies``
+        in place (matching the pre-extraction code's own mutation style) plus
+        the deduplicated, sorted provenance-edge tuple.
+
+        R2d's own verification discovery matters MORE for the claim-rooted
+        path than the module docstring's "E8-T06" section might suggest at
+        first read: the real K1-T04 Hammond claim's own ``verification_ids``
+        field is empty even though two real ``VerificationResult`` objects
+        target it (fact-locked directly against the real schema — see that
+        section). This event-log-scan step, unchanged from E8-T01, is what
+        actually finds them; R1's declared-field resolver
+        (:meth:`_resolve_declared_reference_fields`) also resolves
+        ``Claim.verification_ids`` for completeness/fail-fast honesty, but
+        does not, by itself, discover these two in the real data.
+        """
+        projection_service = ProjectionService(
+            self._object_repository, self._edge_repository, self._event_log
+        )
+        provenance_edges: set[ProvenanceEdge] = set()
+        for claim_id in sorted(root_claim_ids):
+            provenance = projection_service.build_provenance_map(claim_id)
+            provenance_edges.update(provenance.edges)
+            for edge in provenance.edges:
+                if edge.target_id not in object_bodies:
+                    object_bodies[edge.target_id] = self._object_repository.get_latest(
+                        edge.target_id
+                    ).body
+
+        claim_ids_in_closure = {
+            urn for urn, body in object_bodies.items() if body.get("kind") == _CLAIM_KIND
+        }
+        object_bodies.update(self._discover_verifications_targeting(claim_ids_in_closure))
+
+        sorted_provenance_edges = tuple(
+            sorted(
+                provenance_edges,
+                key=lambda edge: (edge.source_id, edge.relation, edge.target_id, edge.via),
+            )
+        )
+        return object_bodies, sorted_provenance_edges
+
+    def _resolve_root_claim_ids(self, claim_ids: Sequence[Urn] | None) -> tuple[Urn, ...]:
+        """Resolve :meth:`resolve_closure_from_claims`'s own ``claim_ids``
+        argument to the exact, sorted, deduplicated root claim urn set — see
+        that method's own docstring for the two branches' full rationale.
+        Raises :class:`NoClaimsToExportError` whenever the RESULT is empty,
+        regardless of which branch produced it (an explicit-but-empty
+        ``claim_ids`` sequence refuses identically to an empty
+        ``--all-claims`` enumeration — both are "a zero-claim claim-rooted
+        export", task-packets/E8-T06.yaml's own invariant, phrased as an
+        outcome, not as one specific code path).
+        """
+        if claim_ids is None:
+            projection_service = ProjectionService(
+                self._object_repository, self._edge_repository, self._event_log
+            )
+            resolved: tuple[Urn, ...] = tuple(
+                sorted(row.claim_id for row in projection_service.build_claim_table())
+            )
+        else:
+            validated: list[Urn] = []
+            for claim_id in claim_ids:
+                obj = self._object_repository.get_latest(claim_id)
+                if obj.kind != _CLAIM_KIND:
+                    raise ValueError(
+                        f"--claim-id {claim_id!r} resolves to a stored object of kind "
+                        f"{obj.kind!r}, not {_CLAIM_KIND!r}"
+                    )
+                validated.append(claim_id)
+            resolved = tuple(sorted(set(validated)))
+
+        if not resolved:
+            raise NoClaimsToExportError()
+        return resolved
+
+    def _resolve_declared_reference_fields(
+        self, object_bodies: dict[str, Mapping[str, JSONValue]]
+    ) -> None:
+        """R1's own declared-reference-field resolver — see the module
+        docstring's "E8-T06" section for the full design rationale. Mutates
+        ``object_bodies`` IN PLACE to its fixpoint: every object already
+        present whose ``kind`` is a key of :data:`_DECLARED_REFERENCE_FIELDS`
+        has every urn its own declared fields name resolved via
+        ``ObjectRepository.get_latest`` (FAIL-FAST — a referenced urn that
+        does not resolve raises ``ObjectNotFoundError`` naming it, R1: "a
+        referenced urn that does not resolve is a typed refusal naming it");
+        a newly-discovered object is itself expanded on the next pass, so a
+        ``VerificationResult`` reached via ``Claim.verification_ids`` has its
+        own ``evidence_inspected`` anchors pulled in too, and so on, until no
+        pass discovers anything new. Terminates on any finite graph: every
+        object is expanded at most once (tracked by the ``expanded`` set
+        below), and ``object_bodies`` itself already prevents re-fetching a
+        urn seen on an earlier pass.
+        """
+        frontier: list[str] = list(object_bodies)
+        expanded: set[str] = set()
+        while frontier:
+            next_frontier: list[str] = []
+            for object_id in frontier:
+                if object_id in expanded:
+                    continue
+                expanded.add(object_id)
+                body = object_bodies[object_id]
+                fields = _DECLARED_REFERENCE_FIELDS.get(str(body.get("kind")))
+                if fields is None:
+                    continue
+                for field_name in fields:
+                    for urn in _reference_field_urns(body.get(field_name)):
+                        if urn not in object_bodies:
+                            object_bodies[urn] = self._object_repository.get_latest(urn).body
+                            next_frontier.append(urn)
+            frontier = next_frontier
+
+    def _write_closure(self, closure: ExportClosure, output_dir: Path) -> tuple[ExportPlan, int]:
+        """R3's actual write, shared by :meth:`export` (crate-rooted) and
+        :meth:`export_from_claims` (claim-rooted, task-packets/E8-T06.yaml):
+        fetch every artifact byte ``closure.artifact_refs`` names (empty,
+        hence a no-op, for a claim-rooted closure), build the export plan +
+        metadata (``mrr.domain.ro_crate.build_export``, threading ``closure
+        .crate_id`` into that function's own now-Optional ``crate_urn``
+        parameter — R3), and write the tree atomically (see the module
+        docstring's "atomic, all-or-nothing directory write" section).
+        """
+        artifact_bytes, missing_content_hashes = self._fetch_artifact_bytes(closure.artifact_refs)
+        if missing_content_hashes:
+            raise MissingArtifactBytesError(missing_content_hashes)
+
+        artifact_sizes = {content_hash: len(data) for content_hash, data in artifact_bytes.items()}
+        plan, metadata = build_export(
+            crate_urn=closure.crate_id,
+            object_bodies=closure.object_bodies,
+            artifact_sizes=artifact_sizes,
+            provenance_edges=closure.provenance_edges,
+        )
+
+        total_bytes = self._write_export(output_dir, plan, metadata, artifact_bytes)
+        return plan, total_bytes
 
     def _discover_verifications_targeting(
         self, claim_ids: set[str]
