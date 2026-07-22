@@ -1,0 +1,200 @@
+task_id: K1-T06
+title: >-
+  Independent primary-source verification of the two real claims (candidate c
+  of the owner's 2026-07-22 decision): a structurally separate verifying
+  instance re-reads the pinned source material blind, forms its own per-row
+  judgments, and the comparison is recorded as VerificationResult objects
+  through the K1-T05 CLI — the first Stage-8 verification of the runtime's
+  real research output.
+status: approved
+epic: K1
+reviewer_resolution: >-
+  Approved 2026-07-22 by the main session as reviewing instance, under the
+  owner's in-session decision of the same night
+  (docs/design/2026-07-22-verifikations-entscheidung-und-bauprogramm.md,
+  Entscheidung 1: candidate c now, for BOTH claims). Primary design choices
+  CONFIRMED: (1) blindness is the load-bearing property — the verifying
+  instance never sees the pipeline's classifications, the corpus rows'
+  extraction.classification_basis, the claims' statuses, or any prior
+  review; it receives only the question, the charter criterion, and the raw
+  pinned source material, and its per-row judgments are produced BEFORE any
+  comparison; (2) the MTH-014 boundary is respected by construction — the
+  verifying instance executes no pipeline code at all (this is source
+  re-inspection per MRR-FR-072, i.e. verification, not replication; a
+  code-and-data rerun would be computational reproduction and is already on
+  record from PR #53); (3) results are recorded through `mrr verification
+  record` (K1-T05) and nowhere else — the packet is also the first real
+  consumer proving that CLI on real claims; (4) the independence declaration
+  is honest, not flattering: same responsible human across all instances,
+  same machine, disclosed in conflicts_of_interest verbatim — the
+  independence claimed is substantive (blind re-reading of primary material,
+  no pipeline, separate context), never institutional. SCHEDULING, binding:
+  implementation starts only AFTER PR #60 (K1-T05) has merged.
+depends_on: [K1-T04, K1-T04b, K1-T05]
+derivation: >-
+  Derived 2026-07-22 from: the owner's decision record (Entscheidung 1,
+  candidate c), the verification design memo
+  (docs/design/2026-07-21-verifikations-design-memo.md — especially §2.5 on
+  verification vs. ruling vs. replication, §4c on what a genuine
+  candidate-c check must and must not do, and §7's judgment question 2,
+  which this packet resolves operationally: enough-anders means BLIND
+  re-reading of the sources with no pipeline execution), and the K2 gate
+  decision (docs/design/2026-07-21-k2-gate-decision.md), whose trigger 2
+  names independent verification of the two real claims as half of the
+  condition for re-opening K2. Fact base to be re-verified first-hand at
+  implementation start (fact-lock discipline per K1-T04 precedent): the
+  two real claims and their URNs in the durable archival schema(s)
+  (K2 memo: verification_ids empty on both, by design); the pinned corpus
+  fixtures under corpora/model-collapse/ (18 rows: 15 works, 3 theory);
+  the charter criterion instantiate-vs-reference-v1.
+objective: >-
+  After this packet, both real claims of the model-collapse run carry at
+  least one recorded VerificationResult produced by a blind primary-source
+  re-check: per-row agreement/disagreement is on the record as findings,
+  each claim carries an explicit recommendation (pass/fail/needs-work per
+  the contract's vocabulary) with a confidence and a rationale, and the K2
+  gate's trigger-2 verification half is honestly satisfied — whatever the
+  verdicts turn out to be. A verification that can only agree would fail
+  this packet's point exactly as a run that could only support failed
+  K1-T04's.
+source_of_truth:
+  - docs/design/2026-07-22-verifikations-entscheidung-und-bauprogramm.md
+  - docs/design/2026-07-21-verifikations-design-memo.md
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md          # MTH-014 boundary; MRR-FR-072 source verification
+  - schemas/verification-result.schema.json
+  - task-packets/K1-T05.yaml                        # the recording path this packet consumes
+  - corpora/model-collapse/                         # pinned fixtures incl. charter and corpus rows
+requirements:
+  - >-
+    R1 (the blind instance): a verifying instance structurally separate from
+    this session's context (fresh subagent or worktree session; no access to
+    this packet, the corpus rows' classification fields, the claims, or any
+    MRR code) receives: the research question, the charter criterion
+    instantiate-vs-reference-v1 verbatim, the 15 works' raw decisive_move
+    texts (title + creators + decisive_move only), and the 3 theory papers'
+    bibliographic identifiers with their published abstracts. It returns:
+    per-row verdict (instantiates / references-only for works; supports /
+    does-not-support mechanism-existence for theory) plus a one-paragraph
+    rationale per row, and nothing else.
+  - >-
+    R2 (comparison and findings): the implementing session compares the
+    blind verdicts against the pipeline's recorded classifications AFTER R1
+    is complete and frozen; every disagreement becomes a Finding on the
+    VerificationResult naming the row, both readings, and which source
+    sentence carries the difference. Agreements are summarized, not padded
+    into fake findings.
+  - >-
+    R3 (recording): one VerificationResult per claim (verification_type
+    "source"; evidence_inspected listing the corpus-row URNs/identifiers
+    actually re-read; checks_performed naming the blind protocol), authored
+    as JSON files committed under corpora/model-collapse/verification/, then
+    recorded against the claims in the durable archival schema via
+    `mrr verification record` — with reviewer_id a fresh URN naming the
+    blind instance, run_executor_id supplied from the archived run manifest,
+    and the CLI's printed results captured in the packet report.
+  - >-
+    R4 (honest independence): independence_profile filled truthfully
+    (different code path: no pipeline; different prompt lineage: blind
+    brief; same human owner, same machine: declared), and
+    conflicts_of_interest carrying verbatim: "the same responsible human
+    (the owner) stands behind proposer, executor, and verifier instances;
+    independence here is substantive (blind primary-source re-reading), not
+    institutional."
+  - >-
+    R5 (both schemas covered if both hold the claims): if the run-1 and
+    run-2 archival schemas each hold the claims (id-stable per K1-T04b's
+    invariance proof), the recording runs against each schema that does, so
+    no durable schema keeps showing empty verification_ids by omission;
+    the sealed crates themselves are never modified (append-only recording,
+    new objects and events only).
+allowed_paths:
+  - corpora/model-collapse/verification/            # new: blind brief, blind returns, authored VerificationResult JSONs
+  - docs/design/                                    # the packet report memo if one is warranted
+forbidden_changes:
+  - services/**                                     # no code change of any kind in this packet
+  - packages/**
+  - schemas/**
+  - corpora/model-collapse/corpus-entries.json      # the pinned corpus is immutable
+  - corpora/model-collapse/*.proposal.json
+  - any sealed crate, any migration, any existing archival row
+derived_decisions:
+  - >-
+    (a) The blind instance judges rows, not claims: claim-level
+    recommendations are composed by the implementing session from the row
+    comparison, because the claim wording and ceiling live outside the
+    blind instance's deliberately narrow view. The composition rule is
+    fixed here, not improvised later: full row agreement on a claim's
+    decisive rows → recommendation "pass"; any disagreement on a decisive
+    row (for the instantiation claim: the Hammond row, or any
+    references-only row flipping to instantiates) → recommendation per the
+    contract's own vocabulary reflecting severity, with the disagreement as
+    a Finding — never silently averaged away.
+  - >-
+    (b) Theory-side scope is mechanism-existence only (does the paper
+    support that the mechanism exists), matching what the run actually
+    claimed — the blind instance is not asked to referee the papers'
+    quality. Ulysses' curatorship of the theory atlas is not implicated:
+    the sources re-read are the papers themselves via their public
+    identifiers, not Ulysses' atlas entries (the owner's decision excludes
+    the theory-atlas claim from the Ulysses ask for exactly the curator
+    reason; this packet's theory-side check is the internal counterpart).
+  - >-
+    (c) The übermorgen row (verification_status "pending" in the corpus,
+    the record's weakest point, disclosed as such in the 2026-07-22 Ulysses
+    note) gets no special treatment in the blind pass — but its finding is
+    reported separately in the packet report either way, because it is the
+    one row whose underlying source verification the run itself left open.
+  - >-
+    (d) If Ulysses' answer to the 2026-07-22 offer arrives before this
+    packet completes, it is NOT folded into this packet's
+    VerificationResult: candidate d is a separate voice with its own
+    attribution and its own recording (a later, separate `mrr verification
+    record` invocation). One packet, one verifier.
+invariants:
+  - The blind instance never executes MRR code and never sees pipeline output.
+  - R1's returns are frozen (committed) before any comparison begins.
+  - No sealed artifact and no existing archival row is modified; recording is append-only.
+  - Disagreement is a reportable outcome, not a failure of the packet.
+acceptance_tests:
+  - >-
+    AT1: the committed blind returns predate the committed comparison in
+    git history (two commits minimum; the freeze is checkable, not asserted).
+  - >-
+    AT2: both claims carry at least one recorded VerificationResult in every
+    durable schema that holds them; `mrr verification record` exit code 0
+    outputs captured verbatim in the packet report.
+  - >-
+    AT3: every blind-vs-pipeline disagreement appears as a Finding; the
+    count of rows re-read equals the corpus's 15+3; no row is skipped
+    silently.
+  - >-
+    AT4: the recorded independence_profile and conflicts_of_interest match
+    R4's honest wording; reviewer_id differs from claim proposer_id and
+    run_executor_id (rule-8 passes on substance, not by string accident).
+commands:
+  - make test-integration   # unchanged suite must stay green (no code changed)
+specification_gaps:
+  - >-
+    The contract's recommendation vocabulary is taken as-is from
+    schemas/verification-result.schema.json at implementation time; if its
+    values cannot express "agrees with reservations", the nearest value is
+    used and the nuance carried in findings + rationale, and the gap is
+    noted in the packet report rather than the schema being touched.
+required_output:
+  - Packet report per AGENTS "Required delivery format", including the blind
+    brief verbatim, the frozen blind returns, the comparison table, the CLI
+    outputs, and the recorded verification URNs.
+stop_conditions:
+  - >-
+    If the claims' URNs cannot be resolved unambiguously in the archival
+    schema(s), STOP and report — never guess which stored object a
+    verification targets.
+  - >-
+    If the durable schemas turn out to reject append-only verification
+    recording for architectural reasons, STOP and report the dependency as
+    its own engineering question instead of forcing writes.
+  - >-
+    If a theory paper's abstract cannot be retrieved from its public
+    identifier, that row's blind verdict is recorded as not-performable
+    with the reason — never substituted from memory or from the atlas
+    summary.
