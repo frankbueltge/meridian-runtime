@@ -1,0 +1,254 @@
+task_id: E8-T05
+title: >-
+  Correction banner and release supersession (E8's close-out): the
+  released -> superseded lifecycle driver as a new-revision act, a
+  deterministic release-status projection (current | corrections-affect |
+  superseded) computed from the archive, the banner section both report
+  renderers emit when rendering in a release context, and the CLI verbs
+  that drive and display it — with historical bundles proven byte-untouched
+  by supersession.
+status: approved
+epic: E8
+reviewer_resolution: >-
+  Approved 2026-07-22 by the main session as reviewing instance, under the
+  owner's decision record of the same date (Entscheidung 2); ADR-0011
+  already reserved the released -> superseded edge for exactly this packet.
+  Primary design choices CONFIRMED: (1) supersession is a NEW-REVISION act
+  per domain-model §1 ("Revisions receive a new object record and use
+  supersedes"), never an edit: ReleaseService gains supersede(...) writing
+  the next revision of the OLD record with status superseded and a
+  superseded_by reference in labels, atomically with one release.superseded
+  event — the historical bundle bytes are not touched, and AT4 proves it by
+  re-running `mrr release verify --bundle-dir` against the pre-supersession
+  bundle AFTER the act; (2) superseding is itself part of a publication act
+  and therefore rides on a NEW A4 approval: `mrr release supersede` takes
+  the full create flag set PLUS --supersedes, creates the new release
+  first, then transitions the old one naming the new id — two unit-of-work
+  transactions in a fixed order (the VerificationService record-then-
+  transition precedent), with the one intermediate state (new release
+  created, old not yet marked) named verbatim in the CLI error output and
+  DETECTED by `mrr release status` reporting two unsuperseded releases for
+  one crate as an anomaly verdict, never silently tolerated; (3) the
+  banner is a PROJECTION, not stored state: computed on demand from the
+  release record, the corrections discovery this codebase already has, and
+  the release's own recorded closure membership (the bundle manifest +
+  the crate closure) — three verdicts only (current /
+  corrections_affect_this_release / superseded), no invented severity
+  aggregation; (4) banner free text follows the report's existing
+  disclosure rules (existence and status always visible, correction free
+  text attestation-gated in public — the E8-T03 resolution reused, not
+  re-litigated); (5) no real supersession or release is performed against
+  the real archive in this packet (the gate stays empty; owner's act,
+  owner's timing).
+depends_on: [E8-T04]
+derivation: >-
+  Derived 2026-07-22 from: docs/spec/06_IMPLEMENTATION_PLAN.md §3/E8-T05
+  ("correction banner and release supersession" — the plan's only mention;
+  no further spec section defines "banner", so its shape is fixed HERE,
+  rule-14-honest, from adjacent normative material); docs/spec/
+  02_DOMAIN_MODEL.md §1 (supersedes convention; "identifiers never
+  change"); ADR-0011 (RELEASE_RECORD_LIFECYCLE's reserved edge; bundle
+  immutability and verify); Stage-11 acceptance ("Removing a claim from
+  the graph removes it from regenerated projections without altering
+  historical releases"); MRR-FR-095 (unresolved critical corrections on
+  public projections — already implemented in E8-T03, composed here).
+  Fact base verified first-hand (fact-lock): ReleaseService.create and
+  verify_rebuild/verify_bundle_dir shipped in E8-T04 (PR #67);
+  ProjectionService discovers corrections; ClaimService/VerificationService
+  set the record-then-transition two-step precedent; ReleaseRecord.bundle
+  lists every content file; the report renderers are pure and extendable.
+objective: >-
+  After this packet, a superseded release is visibly superseded everywhere
+  a consumer looks — `mrr release status` returns the verdict with the
+  superseding release's urn, and a report rendered in that release's
+  context carries the banner section at the top — while the historical
+  bundle's bytes remain untouched and still verify against their own
+  record; a release whose underlying objects gained corrections after
+  release time reports corrections_affect_this_release with the exact
+  correction and object urns; and driving released -> superseded requires
+  a fresh, explicit A4 approval for the superseding release. E8's exit
+  criteria are thereby complete.
+source_of_truth:
+  - docs/spec/adr/ADR-0011-RELEASE-RECORD-AND-A4-APPROVAL-EVENT.md
+  - docs/spec/02_DOMAIN_MODEL.md                    # §1 supersedes convention
+  - docs/spec/01_SYSTEM_SPEC.md                     # Stage 11 acceptance; MRR-FR-095
+  - services/control_plane/mrr/services/release/    # E8-T04's machinery, extended
+  - services/control_plane/mrr/services/verification/service.py  # two-step precedent
+  - packages/domain/mrr/domain/research_report.py   # renderers gaining the banner section
+requirements:
+  - >-
+    R1 (supersede, service layer): ReleaseService.supersede(release_id,
+    superseded_by, approved_by) writes the next revision of the release
+    record with status "superseded" and labels carrying
+    {"superseded_by": <urn>}, atomically with one release.superseded
+    event whose actor is approved_by (the superseding release's approver;
+    person-segment enforced exactly as create does). Typed refusals:
+    unknown release_id; already superseded; superseded_by not resolving
+    to a ReleaseRecord with status released; superseded_by == release_id;
+    approver not a person URN. The record's original approval block and
+    bundle manifest are carried into the new revision UNCHANGED (only
+    status and labels move — a supersession never rewrites history).
+  - >-
+    R2 (release-status projection, pure + service): a pure domain
+    function computes the banner model from (release record latest
+    revision, the set of correction bodies, the release's own bundle
+    object membership derived from its manifest paths under objects/):
+    verdict "superseded" (with superseded_by) if status is superseded;
+    else "corrections_affect_this_release" if any correction's
+    affected/impact object urns intersect the release's exported object
+    set AND the correction's created_at is later than the release's
+    created_at (both stored fields — no wall clock), with the sorted
+    intersection listed per correction; else "current". A service method
+    on ReleaseService (read-only path) resolves those inputs and calls
+    it. An ADDITIONAL anomaly verdict "duplicate_unsuperseded_releases"
+    is returned alongside (never instead) when more than one
+    unsuperseded release exists for the same crate_id
+    (reviewer_resolution 2's detection duty).
+  - >-
+    R3 (banner in the report): mrr.domain.research_report gains an
+    OPTIONAL release-banner input (default absent — every existing call
+    site and test stays valid unmodified); when present, both renderers
+    emit a "Release status" block FIRST, before section 1, carrying the
+    verdict verbatim, the release urn, superseded_by when applicable, and
+    per-correction lines whose free text follows the existing disclosure
+    gating while urn/status/verdict never gate. ReportService gains the
+    optional release context parameter and computes the banner via R2.
+    Determinism and no-wall-clock invariants carry over byte-exactly.
+  - >-
+    R4 (CLI): `mrr release supersede` (the full create flag set of
+    E8-T04 R4 PLUS --supersedes <release-urn>; creates the new release,
+    then transitions the old; the intermediate-state error message per
+    reviewer_resolution 2) and `mrr release status` (--database-url,
+    --release-id; prints one JSON line: verdict, release_id, crate_id,
+    superseded_by?, affecting corrections?, anomaly?; exit 0 for every
+    successfully computed verdict INCLUDING superseded and
+    corrections_affect — a verdict is an answer, not an error; exit 2
+    dependencies; exit 3 unknown release). Registered additively in
+    release_main.py's existing subparser tree; main.py unchanged (the
+    "release" group already dispatches there — if a main.py change turns
+    out to be required after all, it is one additive line).
+  - >-
+    R5 (tests at every tier): unit — supersede revision semantics
+    (approval/bundle carried unchanged; only status/labels move),
+    refusal matrix, banner-model verdicts incl. the created_at ordering
+    rule and the anomaly, renderer banner block in both formats and both
+    disclosures, absence-means-absent regression (no banner input -> no
+    banner bytes, byte-identical to E8-T03 output); integration — full
+    supersede flow (create A, create B superseding A, status verdicts
+    for both, release.superseded event actor verified), AT4's
+    historical-bundle immutability check, corrections_affect flow (record
+    a correction against a claim inside a released bundle's closure ->
+    status flips), duplicate-unsuperseded anomaly, CLI refusals;
+    architecture — boundaries unchanged. E8-T01…T04 suites pass
+    unmodified. All make tiers green; e2e unchanged-green.
+allowed_paths:
+  - packages/domain/mrr/domain/research_report.py    # optional banner input + rendering only
+  - packages/domain/mrr/domain/release_status.py     # the pure banner-model module (new)
+  - services/control_plane/mrr/services/release/
+  - services/control_plane/mrr/services/report/service.py  # optional release-context parameter only
+  - services/control_plane/mrr/services/cli/release_main.py
+  - services/control_plane/mrr/services/cli/main.py  # only if R4's fallback line is genuinely required
+  - tests/unit/
+  - tests/contract/
+  - tests/integration/
+  - docs/design/
+  - task-packets/E8-T05.yaml
+forbidden_changes:
+  - schemas/**                                       # ReleaseRecord schema is FROZEN — labels carry superseded_by
+  - packages/contracts/**
+  - packages/domain/mrr/domain/lifecycles.py         # the edge exists; nothing to add
+  - packages/domain/mrr/domain/public_correction_view.py
+  - packages/domain/mrr/domain/projection.py
+  - packages/domain/mrr/domain/ro_crate.py
+  - packages/domain/mrr/domain/prov_mapping.py
+  - services/control_plane/mrr/services/export/**
+  - migrations/**
+  - pyproject.toml
+  - uv.lock
+  - corpora/**
+  - services/node_runtime/**
+derived_decisions:
+  - >-
+    (a) superseded_by lives in baseObject.labels (an existing, open
+    string-map slot) rather than a new schema field — the schema stays
+    frozen one packet after shipping; if labels prove too weak a home,
+    promoting it to a field is a future ADR, not a T05 improvisation.
+  - >-
+    (b) The banner's correction test is INTERSECTION with the release's
+    own exported object set, not the full transitive impact machinery —
+    the release knows exactly what it shipped (its manifest); corrections
+    on objects outside the shipped set are the ordinary projections'
+    business (E8-T03 already shows them), not this banner's. Flagged so
+    nobody mistakes the banner for an impact analysis.
+  - >-
+    (c) status exits 0 for every computed verdict: a superseded release
+    answering "superseded" is the system working, not failing. Scripts
+    branch on the JSON verdict field, not the exit code.
+  - >-
+    (d) No real release/supersession in this packet — unchanged from
+    E8-T04 (the gate machinery ships empty; the owner acts, if ever, on
+    the owner's own timing).
+invariants:
+  - Supersession never touches bundle bytes, the original approval block, or the manifest (AT4-proven).
+  - Every verdict and banner byte derives from stored fields; no wall clock anywhere.
+  - Absent release context renders byte-identical reports to E8-T03 (regression-proven).
+  - The intermediate supersede state is detectable (anomaly verdict), never silent.
+  - No default can produce the superseding release's approval inputs.
+acceptance_tests:
+  - >-
+    AT1: create release A; create release B with --supersedes A (fresh
+    synthetic approval); A's latest revision is status superseded with
+    labels.superseded_by == B; the release.superseded event's actor is
+    B's approver; status A -> verdict superseded naming B; status B ->
+    current; both exit 0.
+  - >-
+    AT2: with a correction recorded against a claim in A's exported set
+    AFTER A's created_at (and A unsuperseded), status A ->
+    corrections_affect_this_release listing exactly that correction and
+    the intersecting urns; a correction dated BEFORE the release, or
+    affecting only objects outside the set, does not flip the verdict.
+  - >-
+    AT3: a report rendered with A's release context carries the banner
+    block first (both formats, both disclosures; correction free text
+    gated in public, verdict/urns never); rendered WITHOUT release
+    context it is byte-identical to the E8-T03 output for the same graph.
+  - >-
+    AT4: after superseding A, `mrr release verify --bundle-dir` against
+    A's untouched bundle directory still exits 0 with A's recorded
+    root_hash — history unaltered, mechanically.
+  - >-
+    AT5: refusal matrix (already-superseded, self-supersede, non-person
+    approver, unknown ids) each exit 3 with nothing persisted; the
+    intermediate state's error message matches reviewer_resolution 2's
+    wording; E8-T01…T04 suites pass unmodified.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+specification_gaps:
+  - >-
+    "Correction banner" has no spec definition beyond the plan line; its
+    shape (three verdicts + anomaly, banner-first rendering, shipped-set
+    intersection) is fixed by this packet and recorded here — a future
+    spec revision can adopt or amend it explicitly.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding one
+    fixture status JSON line per verdict and the banner block of one
+    rendered report verbatim, plus the exact CLI invocations.
+stop_conditions:
+  - >-
+    If carrying superseded_by in labels collides with any existing label
+    convention or validator, STOP and report — promoting it to a schema
+    field is ADR territory, not an in-packet swerve.
+  - >-
+    If the two-transaction supersede order admits an inconsistent state
+    beyond the one named in reviewer_resolution (2), STOP and record it
+    before choosing.
+  - >-
+    If rendering the banner requires changing any EXISTING
+    research_report section's bytes (not merely prepending the new
+    block), STOP — the byte-identity regression of R3 is the packet's
+    own premise.
