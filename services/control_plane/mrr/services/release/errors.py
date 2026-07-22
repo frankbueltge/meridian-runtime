@@ -13,6 +13,18 @@ and ``ReleaseBundleFinalizationError`` are this module's own additions for
 reviewer_resolution (5) requires the CLI to name verbatim — see
 ``mrr.services.release.bundle``'s own module docstring for the full
 atomicity analysis.
+
+task-packets/E8-T05.yaml extends this module with the ``supersede`` refusal
+matrix R1 names (``AlreadySupersededError``, ``SelfSupersessionError``,
+``SupersedingReleaseNotReleasedError`` -- ``NonPersonApproverError``/
+``ReleaseRecordKindError`` above are REUSED verbatim, not re-declared, for
+the identical checks ``ReleaseService.supersede`` also performs) plus
+``SupersessionIntermediateStateError``, the ONE named inconsistent state
+``mrr.services.release.supersede.create_and_supersede`` can produce
+(reviewer_resolution (2) -- the CLI-level two-transaction fixed order:
+create the new release, then transition the old one), mirroring
+``ReleaseBundleFinalizationError``'s own identical shape and rationale one
+section up.
 """
 
 from __future__ import annotations
@@ -165,4 +177,111 @@ class ReleaseBundleFinalizationError(DomainError):
             "bundle directory does not — no partial directory was left on disk "
             "anywhere. Recover by running 'mrr release verify --release-id "
             f"{release_id}' against the archive."
+        )
+
+
+class AlreadySupersededError(DomainError):
+    """task-packets/E8-T05.yaml R1: ``ReleaseService.supersede``'s own
+    ``release_id`` argument already names a ``ReleaseRecord`` whose latest
+    revision has ``status == "superseded"``. ``mrr.domain.lifecycles
+    .RELEASE_RECORD_LIFECYCLE`` draws exactly one edge, ``released ->
+    superseded`` — there is no drawn way back, and no drawn
+    ``superseded -> superseded`` self-transition either (``StateMachine
+    .__post_init__`` forbids declaring one) — so re-superseding an
+    already-superseded record is refused here, before any write, rather than
+    silently re-recording the same fact a second time.
+    """
+
+    def __init__(self, release_id: str) -> None:
+        self.release_id = release_id
+        super().__init__(
+            f"ReleaseRecord {release_id!r} is already superseded (mrr.domain.lifecycles"
+            ".RELEASE_RECORD_LIFECYCLE draws no way back, and no self-transition) — "
+            "nothing was persisted"
+        )
+
+
+class SelfSupersessionError(DomainError):
+    """task-packets/E8-T05.yaml R1: ``superseded_by == release_id`` — a
+    ``ReleaseRecord`` cannot supersede itself. Checked before any database
+    read (a plain string comparison the caller's own two arguments already
+    make possible), mirroring this codebase's own "cheapest checks first"
+    discipline.
+    """
+
+    def __init__(self, release_id: str) -> None:
+        self.release_id = release_id
+        super().__init__(
+            f"superseded_by must not equal release_id ({release_id!r}) — a release cannot "
+            "supersede itself — nothing was persisted"
+        )
+
+
+class SupersedingReleaseNotReleasedError(DomainError):
+    """task-packets/E8-T05.yaml R1: ``superseded_by`` resolves to a
+    ``ReleaseRecord``, but its own latest-revision ``status`` is not
+    ``"released"`` (i.e. it is itself already ``"superseded"``) — a release
+    may only be superseded BY a currently-released record, never by one that
+    is itself already historical. ``superseded_by`` resolving to no object at
+    all, or to a stored object of a different KIND entirely, is instead
+    reported by the existing, reused ``mrr.domain.exceptions
+    .ObjectNotFoundError``/``ReleaseRecordKindError`` — this error is
+    specifically the "right kind, wrong status" case.
+    """
+
+    def __init__(self, superseded_by: str, actual_status: str) -> None:
+        self.superseded_by = superseded_by
+        self.actual_status = actual_status
+        super().__init__(
+            f"--supersedes target {superseded_by!r} has status {actual_status!r}, not "
+            "'released' — a release may only be superseded by a currently-released record — "
+            "nothing was persisted"
+        )
+
+
+class SupersessionIntermediateStateError(DomainError):
+    """The ONE inconsistent state ``mrr.services.release.supersede
+    .create_and_supersede`` can produce (task-packets/E8-T05.yaml
+    reviewer_resolution (2)'s own fixed two-transaction order: create the
+    new release first — mirroring ``ReleaseService.create``'s own atomic
+    revision-1-plus-event write, unchanged — THEN transition the old one via
+    ``ReleaseService.supersede``, a SEPARATE, independently-atomic
+    transaction): the NEW ``ReleaseRecord`` (``new_release_id``) was ALREADY
+    durably persisted — a fully valid, independent, "released" record with
+    its own bundle directory already written to disk — when transitioning
+    ``old_release_id`` to ``"superseded"`` failed for any reason (unknown id,
+    already superseded, or any other typed refusal ``ReleaseService
+    .supersede`` raises). Neither write is rolled back to compensate the
+    other (there is no combined transaction spanning both — each of
+    ``assemble_and_release``'s own persist step and ``ReleaseService
+    .supersede``'s own persist step is independently atomic by construction,
+    exactly as task-packets/E8-T04.yaml's own ``ReleaseBundleFinalizationError``
+    already documents for ITS single-transaction step). The crate now has
+    more than one unsuperseded release — this is exactly, and ONLY, the one
+    state reviewer_resolution (2) names, and it is DETECTABLE, never silent:
+    ``mrr release status`` reports ``duplicate_unsuperseded_releases`` as an
+    anomaly for either release id. There is no automatic recovery command —
+    the new release cannot be un-created (it is a real, valid,
+    independently-approved release), and the old one was simply never
+    transitioned; resolving the duplicate is a deliberate, owner-driven act
+    (a fresh ``mrr release supersede`` naming ``old_release_id`` again,
+    superseding it against a DIFFERENT freshly-created release — the
+    original ``new_release_id`` remains, itself, forever unsuperseded unless
+    a LATER release explicitly supersedes it too), never guessed at here.
+    """
+
+    def __init__(self, *, new_release_id: str, old_release_id: str, cause: BaseException) -> None:
+        self.new_release_id = new_release_id
+        self.old_release_id = old_release_id
+        self.cause = cause
+        super().__init__(
+            f"created new release {new_release_id!r} (fully persisted, released) but failed "
+            f"to transition {old_release_id!r} to superseded ({type(cause).__name__}: {cause}). "
+            "This is the ONE known inconsistent state 'mrr release supersede' can produce: "
+            f"the new release {new_release_id!r} exists and is independently valid, but "
+            f"{old_release_id!r} was NOT marked superseded — the crate now has more than one "
+            "unsuperseded release. Detect this with 'mrr release status --release-id "
+            f"{old_release_id}' (reports the duplicate_unsuperseded_releases anomaly). There "
+            "is no automatic recovery — inspect and decide manually; nothing here guesses at "
+            "which release should win."
         )
