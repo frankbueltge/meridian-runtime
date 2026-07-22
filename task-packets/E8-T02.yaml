@@ -1,0 +1,229 @@
+task_id: E8-T02
+title: >-
+  PROV mapping (MRR-FR-055, second half): the RO-Crate export's metadata
+  document additionally expresses the W3C PROV view of the exported
+  closure — entity/activity/agent types and the four spec-named relations —
+  emitted only where the archive actually holds the underlying fact,
+  with MRR-specific semantics staying in the mrr: extension vocabulary.
+status: approved
+epic: E8
+reviewer_resolution: >-
+  Approved 2026-07-22 by the main session as reviewing instance, under the
+  owner's decision record of the same date (Entscheidung 2). Primary design
+  choices CONFIRMED: (1) PROV lives INSIDE ro-crate-metadata.json's own
+  @graph (a second "prov" prefix in @context; no separate PROV-JSON file,
+  no named graphs) — one document a third party reads, exactly how RO-Crate
+  practice combines the two vocabularies; (2) the exported FILE SET does
+  not change at all relative to E8-T01 — object files and artifact bytes
+  stay byte-identical; only the metadata document grows — asserted by a
+  regression test, so T01's offline hash-verifiability guarantees carry
+  over untouched; (3) emission is unconditional — no CLI flag; MRR-FR-055
+  makes the crate "mappable to W3C PROV relations" a property of the
+  export, not an option a caller may forget; the CLI's surface does not
+  change in this packet; (4) the spec's mapping table rows are transcribed
+  verbatim and BINDING; every kind or relation the closure can contain
+  that the table does NOT name is either given a derived mapping listed
+  exhaustively in derived_decisions below or carries NO prov type at all —
+  the builder never guesses a mapping for an unforeseen kind (AGENTS rule
+  3 applied to vocabulary); (5) SCHEDULING, binding: implementation starts
+  only AFTER PR #64 (E8-T01) has merged, and builds on its shipped format.
+depends_on: [E8-T01]
+derivation: >-
+  Derived 2026-07-22 from: docs/spec/02_DOMAIN_MODEL.md §6 (the mapping
+  table this packet implements: Artifact/SourceRecord/Claim -> PROV
+  Entity; RunManifest/Review/CorrectionEvent -> PROV Activity;
+  Practice/Node/Person/AgentRole -> PROV Agent; derived_from ->
+  prov:wasDerivedFrom; producer relation -> prov:wasGeneratedBy;
+  executor/reviewer relation -> prov:wasAssociatedWith; input relation ->
+  prov:used; plus the two governing sentences: "MRR-specific semantics
+  remain in an extension vocabulary" and "Export must preserve MRR
+  identifiers and hashes even when a consumer ignores the extension"),
+  MRR-FR-055's second half (docs/spec/01_SYSTEM_SPEC.md), and E8-T01's
+  shipped format (packages/domain/mrr/domain/ro_crate.py — contextual
+  entities per object, File entities per file; docs/design/
+  2026-07-22-e8-t01-report.md). Fact base verified first-hand at
+  derivation time (fact-lock): the closure's relation-bearing fields are
+  in the exported bodies themselves (claim.proposer_id,
+  run-manifest.executor_id, verification-result.reviewer_id,
+  evidence-anchor.source_record_id/run_id, evidence-crate.run_id,
+  claim.evidence_relations/counterevidence_relations); the typed-edge
+  vocabulary (packages/domain/mrr/domain/repositories.py EDGE_VOCABULARY)
+  includes derived_from and supports; ExportService already collects the
+  per-claim ProvenanceMap edges during closure building and currently
+  discards them after resolving targets; MRR URNs carry their entity
+  segment (mrr.domain.identity.URN_PATTERN), so a referenced-but-not-
+  exported URN's PROV category is computable without any database read.
+objective: >-
+  After this packet, the same `mrr export ro-crate` invocation produces a
+  metadata document whose contextual entities carry PROV types and PROV
+  relations wherever the archive holds the underlying fact: a consumer who
+  ignores every mrr: term still sees a valid PROV picture (what was
+  derived from what, which activity generated/used what, which agent was
+  associated), and a consumer who ignores prov: still has E8-T01's full
+  MRR view — identifiers and hashes intact either way. Nothing is emitted
+  that the stored bodies and typed edges do not state.
+source_of_truth:
+  - docs/spec/02_DOMAIN_MODEL.md                    # §6 — the binding table and its two sentences
+  - docs/spec/01_SYSTEM_SPEC.md                     # MRR-FR-055
+  - packages/domain/mrr/domain/ro_crate.py          # the shipped format this packet extends
+  - packages/domain/mrr/domain/repositories.py      # EDGE_VOCABULARY
+  - task-packets/E8-T01.yaml                        # boundary this packet was cut along
+requirements:
+  - >-
+    R1 (mapping module): a new pure module
+    packages/domain/mrr/domain/prov_mapping.py holds the kind->PROV-type
+    table (spec rows verbatim; derived rows exactly as fixed in
+    derived_decisions below; every other kind -> None), the URN-entity-
+    segment->PROV-type fallback for referenced-but-not-exported URNs
+    (person/agent-role/practice/node -> prov:Agent; run -> prov:Activity;
+    artifact/source-record/claim/evidence-anchor -> prov:Entity; every
+    other segment -> None), and pure functions deriving the PROV relation
+    properties for one object body / one typed edge. No I/O, no repository
+    types (same discipline as ro_crate.py, same AT).
+  - >-
+    R2 (relations, emitted only from stored facts): the spec's
+    "executor/reviewer relation -> prov:wasAssociatedWith" row applies to
+    ACTIVITIES only — a Claim is an Entity, so claim.proposer_id gets no
+    prov relation in this packet (it stays visible as an mrr: field in the
+    exported body; PROV attribution rows the spec does not name are not
+    invented). Binding emission rules, exactly these: (a) typed edge
+    derived_from -> prov:wasDerivedFrom on the source entity, pointing at
+    the target; (b) RunManifest (Activity): prov:wasAssociatedWith its
+    executor_id; prov:used every artifact URN its parameters name (the
+    run's own declared inputs); (c) VerificationResult (Activity, derived
+    row): prov:wasAssociatedWith its reviewer_id; prov:used its target_id
+    and every evidence_inspected URN; (d) artifact File entities:
+    prov:wasGeneratedBy the crate's own run_id (MRR-FR-050/051: a crate's
+    artifacts are its run's products); (e) EvidenceCrate (Entity):
+    prov:wasGeneratedBy its run_id. All other stored relations — including
+    claim.evidence_relations/counterevidence_relations and every non-
+    derived_from edge type — remain mrr: extension terms ONLY (already in
+    the exported bodies; the metadata does not restate them), per the
+    spec's "MRR-specific semantics remain in an extension vocabulary".
+    No relation property is ever emitted with a fabricated or defaulted
+    value; absent field -> absent property.
+  - >-
+    R3 (stub contextual entities): every URN referenced by an emitted
+    prov relation that names no exported file gets a minimal stub
+    contextual entity (@id = URN, @type from the URN-segment fallback,
+    mrr:urn — nothing else, nothing resolved, nothing invented), so the
+    PROV graph has no dangling references while the closure and file set
+    stay exactly E8-T01's. Stub emission is deterministic and sorted.
+  - >-
+    R4 (wiring): ExportService passes the provenance edges it already
+    collects (union of the per-claim ProvenanceMap edges, deduplicated,
+    sorted) into the builder instead of discarding them; no new
+    repository/store call, no closure change, no CLI change. The builder
+    composes E8-T01's document plus the PROV layer.
+  - >-
+    R5 (regression and determinism): object files and artifact files stay
+    byte-identical to E8-T01's output for the same crate (asserted by a
+    test that runs the T01-shaped fixture and compares everything except
+    ro-crate-metadata.json); the metadata document remains deterministic
+    (AT4 byte-identity across two exports still holds); every E8-T01 test
+    keeps passing unmodified except those asserting the metadata's exact
+    entity shapes, which are updated in place with the PROV additions.
+  - >-
+    R6 (tests): unit tests assert the spec table rows verbatim (a test
+    literally reading the five docstring-pinned mappings), the
+    unknown-kind -> no-prov-type rule, the no-fabricated-relation rule
+    (bodies lacking a field emit no property), and stub determinism;
+    the integration fixture asserts the exported metadata now carries the
+    expected prov types/relations for crate, run (if reached), claim,
+    verification, artifacts, and agent stubs. All make tiers green.
+allowed_paths:
+  - packages/domain/mrr/domain/prov_mapping.py
+  - packages/domain/mrr/domain/ro_crate.py
+  - services/control_plane/mrr/services/export/service.py
+  - tests/unit/
+  - tests/contract/
+  - tests/integration/
+  - docs/design/
+  - task-packets/E8-T02.yaml
+forbidden_changes:
+  - schemas/**
+  - packages/contracts/**
+  - migrations/**
+  - pyproject.toml
+  - uv.lock
+  - corpora/**
+  - services/control_plane/mrr/services/cli/**      # no CLI surface change in this packet
+  - services/node_runtime/**
+derived_decisions:
+  - >-
+    (a) Derived kind mappings, exhaustive: EvidenceCrate -> prov:Entity
+    (a sealed bundle of results is a thing, not a happening);
+    EvidenceAnchor -> prov:Entity; VerificationResult -> prov:Activity
+    (domain 2.13's own words — "a verification records checks" — describe
+    an activity record, the same reading that puts Review in the spec's
+    Activity row). Kinds outside the spec table and this list get NO prov
+    type — visible in the document as an mrr:-only entity, never guessed.
+  - >-
+    (b) "Review" and "CorrectionEvent" appear in the spec table but not in
+    any closure this exporter can currently build (no Review objects are
+    recorded yet; corrections are E8-T05 territory) — their table rows are
+    still transcribed into the mapping module NOW, verbatim, so the later
+    packets inherit them rather than re-deriving them.
+  - >-
+    (c) prov:used for a VerificationResult covers target_id AND
+    evidence_inspected — both are stored, first-class fields of the
+    record; nothing else (checks_performed prose is not a relation).
+  - >-
+    (d) The two @context prefixes are exactly "mrr" (E8-T01's) and "prov"
+    (mapped to http://www.w3.org/ns/prov#) — the RO-Crate 1.1 context
+    already resolves schema.org terms; PROV terms are always written
+    prefixed, never bare.
+invariants:
+  - The exported file set and every non-metadata byte are identical to E8-T01's for the same crate.
+  - No prov property without a stored field or typed edge behind it.
+  - No database/store read added; the service's read pattern is unchanged.
+  - Determinism and wall-clock-freedom carry over unchanged.
+acceptance_tests:
+  - >-
+    AT1: the integration fixture's export carries prov:Entity /
+    prov:Activity / prov:Agent types per the table, prov:wasDerivedFrom
+    for a seeded derived_from edge, prov:wasAssociatedWith for the run's
+    executor and the verification's reviewer, prov:used for the
+    verification's target and inspected evidence, prov:wasGeneratedBy for
+    artifact files and the crate — each asserted against the seeded facts,
+    none asserted merely present.
+  - >-
+    AT2: a body lacking an optional relation field yields a metadata
+    entity lacking that property (asserted on a minimal synthetic body).
+  - >-
+    AT3: file-set regression — everything except ro-crate-metadata.json
+    byte-identical to the pre-PROV output of the same fixture.
+  - >-
+    AT4: two exports remain byte-identical trees (E8-T01's determinism
+    test still green, unmodified).
+  - >-
+    AT5: layering — prov_mapping.py imports no repository/service/adapter
+    type; import-linter contracts stay green.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+specification_gaps:
+  - >-
+    The spec table's "producer relation -> prov:wasGeneratedBy" names no
+    field; this packet grounds it in evidence-crate.run_id (for the crate
+    and its artifacts). If a first-class Artifact object kind ever lands
+    with its own producer_run_id (MRR-FR-051), the mapping module is the
+    one place to extend.
+required_output:
+  - Packet report per AGENTS "Required delivery format", including the
+    fixture's post-PROV ro-crate-metadata.json embedded verbatim and a
+    before/after excerpt of one contextual entity.
+stop_conditions:
+  - >-
+    If expressing the PROV layer forces a change to the exported file SET
+    (not merely the metadata document), STOP — that boundary is this
+    packet's own premise and E8-T01's shipped guarantee.
+  - >-
+    If a closure kind appears that neither the spec table nor
+    derived_decisions (a) names, STOP for that kind: emit no prov type for
+    it and record the gap in the packet report — never guess a vocabulary
+    row mid-implementation.
