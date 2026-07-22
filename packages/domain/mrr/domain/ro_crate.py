@@ -205,6 +205,50 @@ before an export ever runs) — never ``datetime.now()`` or any other clock
 read. Calling ``build_ro_crate_metadata`` for the same crate body at two
 different real-world moments produces byte-identical output.
 
+--- task-packets/E8-T06.yaml R3: a claim-rooted, no-crate mode -----------------
+
+``mrr.services.export.service.ExportService.resolve_closure_from_claims``
+(task-packets/E8-T06.yaml R1) builds a closure with NO ``EvidenceCrate`` at
+all — ``crate_urn`` therefore becomes ``str | None`` on both
+:func:`build_ro_crate_metadata` and :func:`build_export`. Every entity/
+relation this module builds from ``plan.objects``/``provenance_edges`` is
+ALREADY generic over kind (item 4's contextual-entity loop, the PROV
+relation wiring, the R3 stub entities) — none of it reads ``crate_urn``
+directly, so NOTHING about entity shaping changes for the no-crate case.
+Exactly two things DO depend on a crate today, and both are handled:
+
+1. **``datePublished``** — crate-rooted, unchanged: the crate's own
+   ``created_at`` (module docstring "No wall-clock timestamps" section).
+   No-crate: the MAXIMUM ``created_at`` across every object in ``plan
+   .objects`` (:func:`_max_created_at`, task-packets/E8-T06.yaml R3/
+   derived_decisions (c): "deterministic, honest, wall-clock-free" — every
+   value it compares is itself an already-stored, schema-required
+   ``created_at`` field, parsed with ``datetime.fromisoformat`` purely to
+   ORDER the candidates; the winning candidate's own RAW string is emitted
+   verbatim, never reformatted, so this reads no wall clock and invents no
+   new string). Raises ``ValueError`` if ``plan.objects`` is empty (the
+   caller's own :class:`mrr.services.export.service.NoClaimsToExportError`
+   already refuses an empty claim-rooted closure before this module is ever
+   called, so this is a defense-in-depth guard, not a reachable path from
+   the real CLI — matching this module's own "unreachable in practice"
+   convention immediately below for the crate-not-found guard).
+2. **``prov:wasGeneratedBy``** (crate's own contextual entity, and every
+   artifact File entity) — sourced from ``crate.body.get("run_id")``.
+   No-crate: there is no crate body to read a ``run_id`` from, so
+   ``artifact_generated_by_relation`` is called with ``None`` — the SAME
+   call every crate-rooted export already makes when a crate happens to
+   carry no ``run_id`` (schema-required in practice, but this module never
+   assumed that); harmless in the no-crate case specifically because
+   ``plan.artifacts`` is ALWAYS empty for a claim-rooted export
+   (derived_decisions (a): no artifact bytes), so this relation is never
+   actually emitted on anything.
+
+The crate-rooted call path (``crate_urn`` given) is BYTE-IDENTICAL to
+pre-E8-T06 output — every line of its own branch is unchanged, only
+reached under an explicit ``if crate_urn is not None`` now instead of
+unconditionally (task-packets/E8-T06.yaml R3: "The crate-rooted document is
+byte-identical to E8-T01/T02 output (regression-proven)").
+
 --- The extension vocabulary URI: a disclosed placeholder (rule 14) ---------
 
 ``MRR_VOCAB_URI`` reuses the exact ``https://example.invalid`` authority
@@ -222,6 +266,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from mrr.crypto.canonical import JSONValue, canonicalize
 from mrr.domain import prov_mapping
@@ -464,16 +509,43 @@ def _stub_entity(urn: str) -> dict[str, JSONValue]:
     return entity
 
 
+def _max_created_at(objects: Sequence[ExportedObject]) -> JSONValue:
+    """task-packets/E8-T06.yaml R3/derived_decisions (c): the claim-rooted
+    ``datePublished`` — the MAXIMUM ``created_at`` across ``objects``,
+    returned VERBATIM (the winning object's own raw stored value, never
+    reformatted) so the emitted string is always one that was actually,
+    honestly stored — never invented, never re-serialized. Ordering is
+    computed via ``datetime.fromisoformat`` purely to compare candidates;
+    this reads no wall clock (see the module docstring's "No wall-clock
+    timestamps" section — parsing an already-stored string is not reading
+    the clock).
+
+    Raises:
+        ValueError: ``objects`` is empty — see the module docstring's
+            "E8-T06 R3" section for why this is a defense-in-depth guard,
+            not a reachable path from the real CLI.
+    """
+    if not objects:
+        raise ValueError("cannot compute datePublished (max created_at) over zero exported objects")
+    candidates = [
+        (datetime.fromisoformat(str(obj.body["created_at"])), obj.body["created_at"])
+        for obj in objects
+    ]
+    return max(candidates, key=lambda candidate: candidate[0])[1]
+
+
 def build_ro_crate_metadata(
     *,
-    crate_urn: str,
+    crate_urn: str | None,
     plan: ExportPlan,
     provenance_edges: Sequence[ProvenanceEdge] = (),
 ) -> dict[str, JSONValue]:
     """Build the ``ro-crate-metadata.json`` document (task-packets/
-    E8-T01.yaml R1(b), EXTENDED by task-packets/E8-T02.yaml's PROV layer)
-    for ``plan`` — see the module docstring's "The RO-Crate 1.1 document"
-    and "PROV mapping" sections for the full entity-by-entity rationale.
+    E8-T01.yaml R1(b), EXTENDED by task-packets/E8-T02.yaml's PROV layer and
+    by task-packets/E8-T06.yaml R3's claim-rooted, no-crate mode — see the
+    module docstring's own "E8-T06 R3" section) for ``plan`` — see the
+    module docstring's "The RO-Crate 1.1 document" and "PROV mapping"
+    sections for the full entity-by-entity rationale.
 
     Args:
         crate_urn: the urn of the ``EvidenceCrate`` object among ``plan
@@ -481,6 +553,12 @@ def build_ro_crate_metadata(
             module docstring's "No wall-clock timestamps" section), and its
             ``run_id`` becomes ``prov:wasGeneratedBy`` on the crate's own
             contextual entity AND on every artifact File entity (R2(d)/(e)).
+            ``None`` (task-packets/E8-T06.yaml R3) selects the claim-rooted,
+            no-crate mode: ``datePublished`` becomes :func:`_max_created_at`
+            over ``plan.objects``, and no ``run_id`` is available to source
+            ``prov:wasGeneratedBy`` from (harmless: ``plan.artifacts`` is
+            always empty for a claim-rooted export, so that relation is
+            never actually emitted).
         plan: the ``ExportPlan`` this metadata document describes — every
             file it names becomes a ``hasPart`` entry and a ``File``
             entity; every object in ``plan.objects`` becomes a contextual
@@ -505,33 +583,40 @@ def build_ro_crate_metadata(
         times (task-packets/E8-T01.yaml AT4; task-packets/E8-T02.yaml R5).
 
     Raises:
-        ValueError: ``crate_urn`` does not name any object in ``plan
+        ValueError: ``crate_urn`` is given but names no object in ``plan
             .objects`` — unreachable in practice, since
             ``mrr.services.export.service.ExportService`` always includes
             the crate itself in the closure it hands to this function; a
             plain ``if``/``raise`` (not a bare ``assert``) so this guard
             survives Python's optimized (``-O``) bytecode mode, matching
             ``mrr.domain.projection.build_claim_table_row``'s identical
-            "unreachable" guard convention.
+            "unreachable" guard convention. Also raised (via
+            :func:`_max_created_at`) when ``crate_urn`` is ``None`` and
+            ``plan.objects`` is empty.
     """
-    crate_candidates = [obj for obj in plan.objects if obj.urn == crate_urn]
-    if not crate_candidates:
-        raise ValueError(
-            f"crate_urn {crate_urn!r} names no object in plan.objects — "
-            "the crate itself must always be part of its own export plan"
-        )
-    crate = crate_candidates[0]
+    if crate_urn is not None:
+        crate_candidates = [obj for obj in plan.objects if obj.urn == crate_urn]
+        if not crate_candidates:
+            raise ValueError(
+                f"crate_urn {crate_urn!r} names no object in plan.objects — "
+                "the crate itself must always be part of its own export plan"
+            )
+        crate = crate_candidates[0]
+        date_published: JSONValue = crate.body["created_at"]
+        crate_run_id = crate.body.get("run_id")
+    else:
+        date_published = _max_created_at(plan.objects)
+        crate_run_id = None
 
     has_part: list[JSONValue] = [_id_reference(obj.relative_path) for obj in plan.objects]
     has_part.extend(_id_reference(artifact.relative_path) for artifact in plan.artifacts)
 
     graph: list[JSONValue] = [
         _metadata_file_descriptor(),
-        _root_data_entity(date_published=crate.body["created_at"], has_part=has_part),
+        _root_data_entity(date_published=date_published, has_part=has_part),
     ]
     graph.extend(_object_file_entity(obj) for obj in plan.objects)
 
-    crate_run_id = crate.body.get("run_id")
     artifact_generated_by = prov_mapping.artifact_generated_by_relation(
         crate_run_id if isinstance(crate_run_id, str) else None
     )
@@ -568,7 +653,7 @@ def build_ro_crate_metadata(
 
 def build_export(
     *,
-    crate_urn: str,
+    crate_urn: str | None,
     object_bodies: Mapping[str, Mapping[str, JSONValue]],
     artifact_sizes: Mapping[str, int],
     provenance_edges: Sequence[ProvenanceEdge] = (),
@@ -584,6 +669,10 @@ def build_export(
     R5's own file-set-regression invariant; see
     tests/unit/domain/test_ro_crate.py's
     ``test_provenance_edges_do_not_affect_the_export_plan``).
+
+    ``crate_urn`` is ``None`` (task-packets/E8-T06.yaml R3) for a claim-
+    rooted closure — see :func:`build_ro_crate_metadata`'s own docstring for
+    the no-crate mode this threads into.
     """
     plan = build_export_plan(object_bodies, artifact_sizes)
     metadata = build_ro_crate_metadata(

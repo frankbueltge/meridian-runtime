@@ -237,12 +237,77 @@ show different corrections, or the same correction from two different
 angles (section 5: "is this unresolved and critical"; the banner: "did this
 correction land after this release shipped, touching something this release
 shipped") -- this is R2's own design, not a rendering inconsistency.
+
+--- task-packets/E8-T06.yaml R4: the claim-rooted report -----------------------
+
+``build_report``'s ``crate_id`` becomes ``str | None``. ``crate_id`` given:
+EVERY line of the pre-E8-T06 branch is unchanged (extracted, verbatim, into
+:func:`_build_crate_rooted_header`/:func:`_build_crate_rooted_methods` below,
+plus the crate-level known-unknowns/failures reads inlined at their own
+original call sites in :func:`build_report`) — a crate-rooted report is
+byte-identical to E8-T03/T05 output (regression-proven). ``crate_id is
+None``: the claim-rooted mode this packet adds.
+
+R4's own text is narrowly about section 1 (the header) — "the header carries
+crate fields only when crate-rooted ... root = 'claim graph', the run
+urn(s) reached, the claim count, and datePublished". Making the OTHER seven
+sections render at all without a crate is an unavoidable, purely mechanical
+consequence of that same requirement (R1's own "always eight sections, fixed
+order" invariant from task-packets/E8-T03.yaml still binds), not a second,
+separately-authorized scope expansion — every section that reads a crate-
+only field needs SOME honest claim-rooted answer:
+
+- **Header (section 1)** — :func:`_build_claim_rooted_header`: ``root =
+  "claim graph"``, ``created_at`` = :func:`_max_created_at` over EVERY
+  object body in the closure (the same R3 computation ``mrr.domain.ro_crate``
+  performs independently for ``datePublished`` — duplicated rather than
+  imported, since neither pure-domain module may depend on the other, see
+  tests/unit/architecture/test_research_report_boundary.py/
+  test_ro_crate_boundary.py), ``run_urns`` = every ``RunManifest`` object
+  actually present in the closure (0, honestly, for the real K1-T04 shape —
+  see ``mrr.services.export.service``'s own "E8-T06" fact-lock), ``claim_
+  count`` = the number of root claims.
+- **Methods (section 2)** — :func:`_build_claim_rooted_methods`: there is no
+  crate to source a "declared protocol/parameters artifact urns with hashes"
+  or "environment block" from AT ALL (both are ``EvidenceCrate``-only
+  fields per schema) — ``artifact_refs=()``/``environment_*=""`` are the
+  SAME empty values this section already renders for a crate whose own
+  ``environment``/``artifacts`` happen to be minimal, so no new rendering
+  branch is needed for those. ``run_urn`` reports the single reached run
+  when exactly one exists (mirroring the crate-rooted single-run-urn
+  concept one-for-one), ``None`` otherwise (zero or, in principle, more than
+  one — honestly represented, never a guessed pick).
+- **Claim table (3) / provenance summary (8)** — both switch their claim-id
+  source from ``crate_body.get("proposed_claims")`` to "every ``Claim``-kind
+  object in ``object_bodies``" ONLY when ``crate_id is None``; the
+  crate-rooted branch keeps reading ``crate_body`` exactly as before (never
+  "every claim in the closure", even though the two sets happen to coincide
+  in every existing fixture — task-packets/E8-T06.yaml stop_condition 1's
+  own behavior-identity bar is read literally here: the crate-rooted
+  algorithm is UNCHANGED, not merely equivalent-by-observation).
+- **Evidence map (4) / corrections (5)** — already fully generic (iterate
+  ``object_bodies``/the caller-supplied ``corrections`` list); genuinely
+  UNCHANGED code, no branch needed at all.
+- **Known unknowns (6) / failures (7)** — both have a crate-level part
+  sourced from ``EvidenceCrate.known_unknowns``/``.failures`` — fields that
+  do not exist without a crate. Claim-rooted: ``crate_known_unknowns=()``/
+  ``failures=()`` (honestly empty — there IS no crate-level known-unknowns
+  array or failures array to report without a crate); each claim's OWN
+  ``known_unknowns`` (the per-claim part of section 6) is unaffected, since
+  it was never crate-sourced to begin with.
+
+Both renderers gate EVERY one of these differences behind the same single
+``model.header.root`` check, mirroring the established E8-T05 "``if model
+.release_banner is not None`` is the ONLY branch point" convention exactly
+— see :func:`render_markdown`/:func:`render_html`'s own top-of-section-1
+check.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Literal
 
 from mrr.crypto.canonical import JSONValue, canonicalize
@@ -452,16 +517,30 @@ class HeaderSection:
     per the module docstring's "What is never redacted" section).
     ``created_at`` is the ONLY date/time string either renderer ever emits
     anywhere in the document (task-packets/E8-T03.yaml invariant).
+
+    EXTENDED by task-packets/E8-T06.yaml R4: ``root`` distinguishes
+    ``"crate"`` (every pre-E8-T06 field populated exactly as before) from
+    ``"claim graph"`` (the crate-specific fields — ``crate_urn``/``run_urn``/
+    ``run_state``/``practice_id``/``content_hash`` — become ``None``, and
+    ``created_at`` carries the R3 max-created_at instead of a crate's own
+    field; ``run_urns``/``claim_count`` are populated instead). Both
+    renderers branch their OWN section-1 rendering on ``root`` — see
+    :func:`render_markdown`/:func:`render_html`'s own "E8-T06" note — so a
+    crate-rooted report's rendered bytes are untouched (every field it reads
+    is unchanged, reached through the unchanged branch).
     """
 
-    crate_urn: str
-    run_urn: str
-    run_state: str
-    practice_id: str
+    root: Literal["crate", "claim graph"]
     created_at: str
-    content_hash: str
     object_count: int
     artifact_count: int
+    crate_urn: str | None = None
+    run_urn: str | None = None
+    run_state: str | None = None
+    practice_id: str | None = None
+    content_hash: str | None = None
+    run_urns: tuple[str, ...] = ()
+    claim_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -495,9 +574,20 @@ class MethodsSection:
     ``model_profiles`` if the body carries it), schema-required and
     therefore always available too. Nothing here is ever redacted — none of
     it is free text R3 names.
+
+    EXTENDED by task-packets/E8-T06.yaml R4: for a claim-rooted report,
+    there is no crate to source ANY of (a)/(b)/(c) from — ``run_urn``
+    becomes ``str | None`` (``None`` when zero or more than one run is
+    reached; the single reached run's urn when exactly one is — the only
+    case that has a single, unambiguous answer), ``artifact_refs`` is always
+    empty (no crate ``artifacts`` array exists), and the three
+    ``environment_*`` fields are always empty/``""`` — the SAME values this
+    section already renders for a crate whose own ``environment`` block
+    happens to be empty (no new rendering branch needed for those three;
+    see :func:`_build_claim_rooted_methods_section`).
     """
 
-    run_urn: str
+    run_urn: str | None
     run_manifest_included: bool
     declared_parameters: Mapping[str, JSONValue] | None
     artifact_refs: tuple[ArtifactRefRow, ...]
@@ -968,28 +1058,175 @@ def _build_release_banner_section(
     )
 
 
+def _max_created_at(object_bodies: Mapping[str, Mapping[str, JSONValue]]) -> str:
+    """task-packets/E8-T06.yaml R4: the claim-rooted header's own
+    ``created_at`` — the MAXIMUM ``created_at`` across EVERY object body in
+    the closure, returned VERBATIM (never reformatted — the winning object's
+    own raw stored string). Mirrors ``mrr.domain.ro_crate``'s own identical
+    ``_max_created_at`` computation for the export's ``datePublished``
+    (task-packets/E8-T06.yaml R3/derived_decisions (c)) — independently
+    authored here rather than imported, since neither pure-domain module may
+    depend on the other (see tests/unit/architecture/
+    test_research_report_boundary.py's/test_ro_crate_boundary.py's own,
+    independently-enforced "imports no sibling domain module" boundaries).
+    Reads no wall clock: ``datetime.fromisoformat`` only PARSES an
+    already-stored string, purely to ORDER the candidates.
+
+    Raises:
+        ValueError: ``object_bodies`` is empty — unreachable in practice,
+            since ``mrr.services.export.service.NoClaimsToExportError``
+            already refuses an empty claim-rooted closure before
+            :func:`build_report` is ever called with one.
+    """
+    if not object_bodies:
+        raise ValueError("cannot compute max(created_at) over an empty object_bodies mapping")
+    candidates = [
+        (datetime.fromisoformat(str(body["created_at"])), str(body["created_at"]))
+        for body in object_bodies.values()
+    ]
+    return max(candidates, key=lambda candidate: candidate[0])[1]
+
+
+def _build_crate_rooted_header(
+    crate_body: Mapping[str, JSONValue],
+    crate_id: str,
+    object_bodies: Mapping[str, Mapping[str, JSONValue]],
+) -> HeaderSection:
+    """Section 1, crate-rooted — extracted verbatim from ``build_report``'s
+    own pre-E8-T06 body (byte-identity bar: task-packets/E8-T06.yaml R4).
+    """
+    crate_artifacts = _as_object_sequence(crate_body.get("artifacts"))
+    return HeaderSection(
+        root="crate",
+        created_at=str(crate_body["created_at"]),
+        object_count=len(object_bodies),
+        artifact_count=len(crate_artifacts),
+        crate_urn=crate_id,
+        run_urn=str(crate_body["run_id"]),
+        run_state=str(crate_body["run_state"]),
+        practice_id=str(crate_body["practice_id"]),
+        content_hash=str(crate_body["content_hash"]),
+    )
+
+
+def _build_claim_rooted_header(
+    object_bodies: Mapping[str, Mapping[str, JSONValue]], claim_ids: Sequence[str]
+) -> HeaderSection:
+    """Section 1, claim-rooted (task-packets/E8-T06.yaml R4) — see the
+    module docstring's own "E8-T06 R4" section for the full rationale.
+    """
+    run_urns = tuple(
+        sorted(urn for urn, body in object_bodies.items() if body.get("kind") == _RUN_MANIFEST_KIND)
+    )
+    return HeaderSection(
+        root="claim graph",
+        created_at=_max_created_at(object_bodies),
+        object_count=len(object_bodies),
+        artifact_count=0,
+        run_urns=run_urns,
+        claim_count=len(claim_ids),
+    )
+
+
+def _build_crate_rooted_methods(
+    crate_body: Mapping[str, JSONValue], object_bodies: Mapping[str, Mapping[str, JSONValue]]
+) -> MethodsSection:
+    """Section 2, crate-rooted — extracted verbatim from ``build_report``'s
+    own pre-E8-T06 body (byte-identity bar: task-packets/E8-T06.yaml R4).
+    """
+    crate_artifacts = _as_object_sequence(crate_body.get("artifacts"))
+    run_id = str(crate_body["run_id"])
+    run_manifest_body = object_bodies.get(run_id)
+    run_manifest_included = (
+        run_manifest_body is not None and run_manifest_body.get("kind") == _RUN_MANIFEST_KIND
+    )
+    declared_parameters = (
+        _as_mapping(run_manifest_body.get("parameters"))
+        if run_manifest_included and run_manifest_body is not None
+        else None
+    )
+    environment = _as_mapping(crate_body.get("environment"))
+    return MethodsSection(
+        run_urn=run_id,
+        run_manifest_included=run_manifest_included,
+        declared_parameters=declared_parameters or None,
+        artifact_refs=tuple(
+            sorted(
+                (
+                    ArtifactRefRow(
+                        artifact_id=str(ref["artifact_id"]), content_hash=str(ref["content_hash"])
+                    )
+                    for ref in crate_artifacts
+                ),
+                key=lambda row: row.artifact_id,
+            )
+        ),
+        environment_image_digest=str(environment.get("image_digest", "")),
+        environment_code_revision=str(environment.get("code_revision", "")),
+        environment_input_hashes=tuple(_as_string_sequence(environment.get("input_hashes"))),
+        environment_model_profiles=tuple(_as_string_sequence(environment.get("model_profiles"))),
+    )
+
+
+def _build_claim_rooted_methods(
+    object_bodies: Mapping[str, Mapping[str, JSONValue]], run_urns: Sequence[str]
+) -> MethodsSection:
+    """Section 2, claim-rooted (task-packets/E8-T06.yaml R4) — see the
+    module docstring's own "E8-T06 R4" section for the full rationale.
+    ``artifact_refs``/``environment_*`` are the SAME empty values this
+    section already renders for a crate whose own ``artifacts``/
+    ``environment`` happen to be minimal — no new rendering branch needed
+    for those (only ``run_urn``/``run_manifest_included``/``declared_
+    parameters`` carry claim-rooted-specific values here).
+    """
+    single_run_urn = run_urns[0] if len(run_urns) == 1 else None
+    run_manifest_body = object_bodies.get(single_run_urn) if single_run_urn is not None else None
+    declared_parameters = (
+        _as_mapping(run_manifest_body.get("parameters")) if run_manifest_body is not None else None
+    )
+    return MethodsSection(
+        run_urn=single_run_urn,
+        run_manifest_included=bool(run_urns),
+        declared_parameters=declared_parameters or None,
+        artifact_refs=(),
+        environment_image_digest="",
+        environment_code_revision="",
+        environment_input_hashes=(),
+        environment_model_profiles=(),
+    )
+
+
 def build_report(
     *,
     object_bodies: Mapping[str, Mapping[str, JSONValue]],
-    crate_id: str,
+    crate_id: str | None = None,
     corrections: Sequence[PublicCorrectionRow],
     provenance_by_claim: Mapping[str, Sequence[ProvenanceEdge]],
     disclosure: Disclosure,
     classification_by_object_id: Mapping[str, Classification],
     release_banner: ReleaseBannerInput | None = None,
 ) -> ResearchReport:
-    """Build the full :class:`ResearchReport` model for ``crate_id`` from
-    already-loaded closure bodies. Pure — see the module docstring.
+    """Build the full :class:`ResearchReport` model for ``crate_id`` (or, per
+    task-packets/E8-T06.yaml R4, for the claim graph alone when ``crate_id``
+    is ``None``) from already-loaded closure bodies. Pure — see the module
+    docstring, above all its own "E8-T06 R4" section for the claim-rooted
+    mode's full section-by-section rationale.
 
     Args:
         object_bodies: ``mrr.services.export.service.ExportService
-            .resolve_closure(crate_id).object_bodies`` — every MRR object
-            body this crate's export closure includes, keyed by urn. MUST
-            contain ``crate_id`` itself, mapping to kind ``"EvidenceCrate"``.
+            .resolve_closure(crate_id).object_bodies`` (crate-rooted) or
+            ``.resolve_closure_from_claims(...).object_bodies`` (claim-
+            rooted) — every MRR object body this closure includes, keyed by
+            urn. When ``crate_id`` is given, MUST contain it, mapping to
+            kind ``"EvidenceCrate"``.
         crate_id: the crate this report is rooted at — the SAME anchor
             ``ExportService.resolve_closure`` used to build ``object_bodies``
             (task-packets/E8-T03.yaml reviewer_resolution (2): "one
-            definition of 'what belongs to this run's record'").
+            definition of 'what belongs to this run's record'"). ``None``
+            (task-packets/E8-T06.yaml R4, the default) selects the claim-
+            rooted mode: every ``Claim``-kind object in ``object_bodies`` IS
+            the claim table's own population (there is no crate array to
+            read a narrower list from).
         corrections: every correction this report's corrections section
             renders — ALREADY discovered and shaped by the caller (typically
             ``mrr.services.projection.service.ProjectionService
@@ -1024,75 +1261,64 @@ def build_report(
             attestation.
 
     Raises:
-        ValueError: ``crate_id`` is not a key of ``object_bodies``, or the
-            body it names is not of kind ``"EvidenceCrate"`` — a plain
-            ``if``/``raise`` (matching ``mrr.domain.ro_crate
-            .build_ro_crate_metadata``'s identical "the crate must always be
-            part of its own export plan" guard), since every real caller
-            (``ReportService``) only ever calls this with an
-            ``ExportClosure`` that already guarantees both.
+        ValueError: ``crate_id`` is given but is not a key of
+            ``object_bodies``, or the body it names is not of kind
+            ``"EvidenceCrate"`` — a plain ``if``/``raise`` (matching
+            ``mrr.domain.ro_crate.build_ro_crate_metadata``'s identical "the
+            crate must always be part of its own export plan" guard), since
+            every real caller (``ReportService``) only ever calls this with
+            an ``ExportClosure`` that already guarantees both.
     """
-    crate_body = object_bodies.get(crate_id)
-    if crate_body is None or crate_body.get("kind") != "EvidenceCrate":
-        raise ValueError(
-            f"crate_id {crate_id!r} does not name an EvidenceCrate object in object_bodies — "
-            "build_report requires the exact closure ExportService.resolve_closure produced "
-            "for this same crate_id"
-        )
-
     attestation = _attestation_for(disclosure, classification_by_object_id)
 
-    crate_artifacts = _as_object_sequence(crate_body.get("artifacts"))
-    header = HeaderSection(
-        crate_urn=crate_id,
-        run_urn=str(crate_body["run_id"]),
-        run_state=str(crate_body["run_state"]),
-        practice_id=str(crate_body["practice_id"]),
-        created_at=str(crate_body["created_at"]),
-        content_hash=str(crate_body["content_hash"]),
-        object_count=len(object_bodies),
-        artifact_count=len(crate_artifacts),
-    )
-
-    run_id = str(crate_body["run_id"])
-    run_manifest_body = object_bodies.get(run_id)
-    run_manifest_included = (
-        run_manifest_body is not None and run_manifest_body.get("kind") == _RUN_MANIFEST_KIND
-    )
-    declared_parameters = (
-        _as_mapping(run_manifest_body.get("parameters"))
-        if run_manifest_included and run_manifest_body is not None
-        else None
-    )
-    environment = _as_mapping(crate_body.get("environment"))
-    methods = MethodsSection(
-        run_urn=run_id,
-        run_manifest_included=run_manifest_included,
-        declared_parameters=declared_parameters or None,
-        artifact_refs=tuple(
-            sorted(
-                (
-                    ArtifactRefRow(
-                        artifact_id=str(ref["artifact_id"]), content_hash=str(ref["content_hash"])
-                    )
-                    for ref in crate_artifacts
-                ),
-                key=lambda row: row.artifact_id,
+    crate_known_unknowns: tuple[KnownUnknownRow, ...]
+    failures: tuple[FailureRow, ...]
+    if crate_id is not None:
+        crate_body = object_bodies.get(crate_id)
+        if crate_body is None or crate_body.get("kind") != "EvidenceCrate":
+            raise ValueError(
+                f"crate_id {crate_id!r} does not name an EvidenceCrate object in object_bodies — "
+                "build_report requires the exact closure ExportService.resolve_closure produced "
+                "for this same crate_id"
             )
-        ),
-        environment_image_digest=str(environment.get("image_digest", "")),
-        environment_code_revision=str(environment.get("code_revision", "")),
-        environment_input_hashes=tuple(_as_string_sequence(environment.get("input_hashes"))),
-        environment_model_profiles=tuple(_as_string_sequence(environment.get("model_profiles"))),
-    )
+        header = _build_crate_rooted_header(crate_body, crate_id, object_bodies)
+        methods = _build_crate_rooted_methods(crate_body, object_bodies)
+        proposed_claim_ids = sorted(_as_string_sequence(crate_body.get("proposed_claims")))
+        crate_known_unknowns = _build_known_unknown_rows(
+            _as_string_sequence(crate_body.get("known_unknowns")),
+            dependency_id=crate_id,
+            attestation=attestation,
+        )
+        failure_rows = []
+        for entry in _as_object_sequence(crate_body.get("failures")):
+            message, redacted = _redact(
+                str(entry["message"]),
+                dependency_ids=(crate_id,),
+                classification_by_object_id=attestation,
+            )
+            failure_rows.append(
+                FailureRow(
+                    code=str(entry["code"]),
+                    category=str(entry["category"]),
+                    message=message,
+                    redacted=redacted,
+                )
+            )
+        failures = tuple(failure_rows)
+    else:
+        proposed_claim_ids = sorted(
+            urn for urn, body in object_bodies.items() if body.get("kind") == _CLAIM_KIND
+        )
+        header = _build_claim_rooted_header(object_bodies, proposed_claim_ids)
+        methods = _build_claim_rooted_methods(object_bodies, header.run_urns)
+        crate_known_unknowns = ()
+        failures = ()
 
     corrections_sorted = tuple(sorted(corrections, key=lambda row: row.correction_id))
     corrections_by_claim: dict[str, list[str]] = {}
     for row in corrections_sorted:
         for object_id in (*row.affected_object_ids, *row.impact_object_ids):
             corrections_by_claim.setdefault(object_id, []).append(row.correction_id)
-
-    proposed_claim_ids = sorted(_as_string_sequence(crate_body.get("proposed_claims")))
 
     claim_rows = []
     provenance_rows = []
@@ -1101,9 +1327,10 @@ def build_report(
         claim_body = object_bodies.get(claim_id)
         if claim_body is None or claim_body.get("kind") != _CLAIM_KIND:
             raise ValueError(
-                f"proposed claim {claim_id!r} is not present in object_bodies as a Claim — "
-                "build_report requires the exact closure ExportService.resolve_closure "
-                "produced for this crate (every proposed claim resolves there fail-fast)"
+                f"claim {claim_id!r} is not present in object_bodies as a Claim — "
+                "build_report requires the exact closure ExportService.resolve_closure"
+                "(_from_claims) produced for this same root (every claim id it names "
+                "resolves there fail-fast)"
             )
         unresolved_correction_ids = tuple(sorted(set(corrections_by_claim.get(claim_id, []))))
         verifications = _build_verifications_for_claim(
@@ -1186,30 +1413,9 @@ def build_report(
     )
 
     known_unknowns = KnownUnknownsSection(
-        crate_known_unknowns=_build_known_unknown_rows(
-            _as_string_sequence(crate_body.get("known_unknowns")),
-            dependency_id=crate_id,
-            attestation=attestation,
-        ),
+        crate_known_unknowns=crate_known_unknowns,
         per_claim=tuple(per_claim_known_unknowns),
     )
-
-    failure_rows = []
-    for entry in _as_object_sequence(crate_body.get("failures")):
-        message, redacted = _redact(
-            str(entry["message"]),
-            dependency_ids=(crate_id,),
-            classification_by_object_id=attestation,
-        )
-        failure_rows.append(
-            FailureRow(
-                code=str(entry["code"]),
-                category=str(entry["category"]),
-                message=message,
-                redacted=redacted,
-            )
-        )
-    failures = tuple(failure_rows)
 
     source_urn_accumulator: set[str] = set(object_bodies)
     for body in object_bodies.values():
@@ -1304,14 +1510,18 @@ def _md_release_banner_lines(banner: ReleaseBannerSection) -> list[str]:
 def render_markdown(model: ResearchReport) -> str:
     """Render ``model`` to a deterministic, self-contained Markdown
     document. See the module docstring's "Markdown avoids pipe tables"
-    section for why no ``|``-delimited table is ever used, and its "E8-T05:
-    the OPTIONAL release-status banner" section for why the ``if
-    model.release_banner is not None`` check below is the ONLY place this
-    function's control flow branches on the new E8-T05 input.
+    section for why no ``|``-delimited table is ever used, its "E8-T05: the
+    OPTIONAL release-status banner" section for why the ``if model
+    .release_banner is not None`` check below is the ONLY place this
+    function's control flow branches on the E8-T05 input, and its "E8-T06 R4"
+    section for why the ``model.header.root`` check is the ONLY additional
+    place it branches on the E8-T06 input (section 1's own bullets, and this
+    title line — every OTHER section's rendering code is untouched).
     """
     lines: list[str] = []
     h = model.header
-    lines.append(f"# Research report — {h.crate_urn}")
+    title_subject = h.crate_urn if h.root == "crate" else "claim graph"
+    lines.append(f"# Research report — {title_subject}")
     lines.append("")
     lines.append(f"_Disclosure: {model.disclosure}_")
     lines.append("")
@@ -1320,19 +1530,27 @@ def render_markdown(model: ResearchReport) -> str:
         lines.extend(_md_release_banner_lines(model.release_banner))
 
     lines.append("## 1. Header")
-    lines.append(_md_bullet("Crate", h.crate_urn))
-    lines.append(_md_bullet("Run", h.run_urn))
-    lines.append(_md_bullet("Run state", h.run_state))
-    lines.append(_md_bullet("Practice", h.practice_id))
-    lines.append(_md_bullet("Created at", h.created_at))
-    lines.append(_md_bullet("Content hash", h.content_hash))
-    lines.append(_md_bullet("Objects in closure", h.object_count))
-    lines.append(_md_bullet("Artifacts in closure", h.artifact_count))
+    if h.root == "crate":
+        lines.append(_md_bullet("Crate", h.crate_urn))
+        lines.append(_md_bullet("Run", h.run_urn))
+        lines.append(_md_bullet("Run state", h.run_state))
+        lines.append(_md_bullet("Practice", h.practice_id))
+        lines.append(_md_bullet("Created at", h.created_at))
+        lines.append(_md_bullet("Content hash", h.content_hash))
+        lines.append(_md_bullet("Objects in closure", h.object_count))
+        lines.append(_md_bullet("Artifacts in closure", h.artifact_count))
+    else:
+        lines.append(_md_bullet("Root", h.root))
+        lines.append(_md_bullet("Run(s) reached", _md_list_or_none(h.run_urns)))
+        lines.append(_md_bullet("Claims", h.claim_count))
+        lines.append(_md_bullet("Published (max created_at)", h.created_at))
+        lines.append(_md_bullet("Objects in closure", h.object_count))
+        lines.append(_md_bullet("Artifacts in closure", h.artifact_count))
     lines.append("")
 
     lines.append("## 2. Methods")
     m = model.methods
-    lines.append(_md_bullet("Run", m.run_urn))
+    lines.append(_md_bullet("Run", m.run_urn if m.run_urn is not None else _NONE_RECORDED))
     lines.append(_md_bullet("Run manifest included in closure", m.run_manifest_included))
     if m.declared_parameters:
         lines.append("- **Declared parameters:**")
@@ -1572,14 +1790,17 @@ def render_html(model: ResearchReport) -> str:
     HTML document — no external stylesheet/script reference, no inline
     style attribute, minimal semantic tags only (task-packets/E8-T03.yaml
     R1). See the module docstring's "Markdown avoids pipe tables; HTML uses
-    them" section for the escaping discipline, and its "E8-T05: the
-    OPTIONAL release-status banner" section for why the ``if model
-    .release_banner is not None`` check below is the ONLY place this
-    function's control flow branches on the new E8-T05 input.
+    them" section for the escaping discipline, its "E8-T05: the OPTIONAL
+    release-status banner" section for why the ``if model.release_banner is
+    not None`` check below is the ONLY place this function's control flow
+    branches on the E8-T05 input, and its "E8-T06 R4" section for why the
+    ``model.header.root`` check is the ONLY additional place it branches on
+    the E8-T06 input.
     """
     parts: list[str] = []
     h = model.header
-    parts.append(f"<h1>Research report — {_escape_html(h.crate_urn)}</h1>")
+    title_subject = h.crate_urn if h.root == "crate" else "claim graph"
+    parts.append(f"<h1>Research report — {_escape_html(title_subject)}</h1>")
     parts.append(f"<p><em>Disclosure: {_escape_html(model.disclosure)}</em></p>")
 
     if model.release_banner is not None:
@@ -1587,23 +1808,42 @@ def render_html(model: ResearchReport) -> str:
 
     parts.append("<h2>1. Header</h2>")
     parts.append("<dl>")
-    for label, value in (
-        ("Crate", h.crate_urn),
-        ("Run", h.run_urn),
-        ("Run state", h.run_state),
-        ("Practice", h.practice_id),
-        ("Created at", h.created_at),
-        ("Content hash", h.content_hash),
-        ("Objects in closure", h.object_count),
-        ("Artifacts in closure", h.artifact_count),
-    ):
-        parts.append(f"<dt>{_escape_html(label)}</dt><dd>{_escape_html(value)}</dd>")
+    if h.root == "crate":
+        for label, value in (
+            ("Crate", h.crate_urn),
+            ("Run", h.run_urn),
+            ("Run state", h.run_state),
+            ("Practice", h.practice_id),
+            ("Created at", h.created_at),
+            ("Content hash", h.content_hash),
+            ("Objects in closure", h.object_count),
+            ("Artifacts in closure", h.artifact_count),
+        ):
+            parts.append(f"<dt>{_escape_html(label)}</dt><dd>{_escape_html(value)}</dd>")
+    else:
+        for label, value in (
+            ("Root", h.root),
+            ("Claims", h.claim_count),
+            ("Published (max created_at)", h.created_at),
+            ("Objects in closure", h.object_count),
+            ("Artifacts in closure", h.artifact_count),
+        ):
+            parts.append(f"<dt>{_escape_html(label)}</dt><dd>{_escape_html(value)}</dd>")
+        # `_html_list_or_none` already returns escaped/marked-up HTML (see
+        # that helper's own docstring) — NOT routed through `_escape_html`
+        # a second time, mirroring every other `<dd>{_html_list_or_none(...)}
+        # </dd>` call site in this function (e.g. section 2's own
+        # "Environment input hashes" row immediately below).
+        parts.append(
+            f"<dt>{_escape_html('Run(s) reached')}</dt><dd>{_html_list_or_none(h.run_urns)}</dd>"
+        )
     parts.append("</dl>")
 
     parts.append("<h2>2. Methods</h2>")
     m = model.methods
     parts.append("<dl>")
-    parts.append(f"<dt>Run</dt><dd>{_escape_html(m.run_urn)}</dd>")
+    m_run_urn = m.run_urn if m.run_urn is not None else _NONE_RECORDED
+    parts.append(f"<dt>Run</dt><dd>{_escape_html(m_run_urn)}</dd>")
     parts.append(
         f"<dt>Run manifest included in closure</dt><dd>{_escape_html(m.run_manifest_included)}</dd>"
     )
@@ -1829,7 +2069,7 @@ def render_html(model: ResearchReport) -> str:
         parts.append(f"<p>{_escape_html(_NONE_RECORDED)}</p>")
 
     body = "\n".join(parts)
-    title = _escape_html(f"Research report — {model.header.crate_urn}")
+    title = _escape_html(f"Research report — {title_subject}")
     return (
         "<!DOCTYPE html>\n"
         f'<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>{title}</title>\n</head>\n'
