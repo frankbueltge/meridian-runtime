@@ -48,7 +48,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
 from mrr.crypto.exceptions import CryptoError
 from mrr.domain.exceptions import DomainError
-from mrr.services.cli import synthesis_main, verification_main
+from mrr.services.cli import export_main, synthesis_main, verification_main
 from mrr.services.cli.orchestration import DEFAULT_INPUT_BYTES, run_local_evidence_loop
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -190,6 +190,12 @@ def build_parser() -> argparse.ArgumentParser:
     # registration immediately above; no other line in this file changes.
     verification_main.register_verification_subcommand(subparsers)
 
+    # Task-packets/E8-T01.yaml's one additive registration: a new "export"
+    # subparser group ("mrr export ro-crate") delegating entirely to
+    # mrr.services.cli.export_main — mirrors the verification registration
+    # immediately above; no other line in this file changes.
+    export_main.register_export_subcommand(subparsers)
+
     return parser
 
 
@@ -305,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
         return synthesis_main.run_command(args)
     if args.command == "verification":
         return verification_main.run_command(args)
+    if args.command == "export":
+        return export_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
