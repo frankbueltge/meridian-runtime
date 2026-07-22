@@ -86,6 +86,24 @@ The rendered bytes are written to a temp file in the SAME directory as
 whole tree. A failure at any point before the replace leaves ``--output``
 untouched (never created, never partially written) and, at most, an orphaned
 temp file next to it.
+
+--- task-packets/E8-T06.yaml R4: the one-of root group (minus --artifact-root) --
+
+``render`` gains the SAME mutually-exclusive, ``required=True`` root group
+``mrr export ro-crate`` gains (task-packets/E8-T06.yaml R2) — ``--crate-id``/
+``--claim-id`` (repeatable)/``--all-claims`` — MINUS ``--artifact-root``,
+which this command never had in the first place (see "No --artifact-root
+flag, deliberately" above: the report never touches artifact bytes for
+EITHER root). No new usage-refusal shape check is therefore needed here —
+unlike ``export_main``'s own ``--artifact-root``-shape check, there is
+nothing analogous to validate. ``--classification-file``'s own required-
+with-public/forbidden-with-internal rule (R4, above) is UNCHANGED and
+applies identically to both roots.
+
+The exit-0 JSON line gains a ``"root"`` key (``"crate"``/``"claims"``) and a
+``"claim_ids"`` key, mirroring ``export_main``'s own identical, purely
+additive extension — every crate-rooted invocation's pre-existing keys keep
+their pre-existing values.
 """
 
 from __future__ import annotations
@@ -155,10 +173,32 @@ def _add_render_subparser(
         required=True,
         help="SQLAlchemy PostgreSQL URL, e.g. postgresql+psycopg://user:pass@host/db",
     )
-    render_parser.add_argument(
+    root_group = render_parser.add_mutually_exclusive_group(required=True)
+    root_group.add_argument(
         "--crate-id",
-        required=True,
+        default=None,
         help="URN of the sealed EvidenceCrate to report on, loaded from the generic object store.",
+    )
+    root_group.add_argument(
+        "--claim-id",
+        action="append",
+        default=None,
+        dest="claim_id",
+        help=(
+            "URN of a Claim to root the report on (task-packets/E8-T06.yaml). Repeatable — "
+            "the union of every given claim's own closure is reported on. Each MUST resolve "
+            "to a stored Claim, else a typed refusal names it."
+        ),
+    )
+    root_group.add_argument(
+        "--all-claims",
+        action="store_true",
+        default=False,
+        help=(
+            "Root the report on EVERY claim the schema contains (task-packets/E8-T06.yaml) "
+            "— each archival schema is exactly one run's world. Refuses (exit 3) if the "
+            "schema has zero claims, rather than shipping a silent empty report."
+        ),
     )
     render_parser.add_argument(
         "--output",
@@ -309,17 +349,26 @@ def run_command(args: argparse.Namespace) -> int:
         )
         return _EXIT_DEPENDENCY_UNAVAILABLE
 
-    # --- 4. Resolve the crate and render exactly once.
+    # --- 4. Resolve the root and render exactly once.
+    crate_rooted = args.crate_id is not None
     try:
         object_repository = PostgresObjectRepository(engine)
         edge_repository = PostgresEdgeRepository(engine)
         event_log = PostgresEventLog(engine)
         report_service = ReportService(object_repository, edge_repository, event_log)
-        model = report_service.render(
-            args.crate_id,
-            disclosure=disclosure,
-            classification_by_object_id=classification_by_object_id,
-        )
+        if crate_rooted:
+            model = report_service.render(
+                args.crate_id,
+                disclosure=disclosure,
+                classification_by_object_id=classification_by_object_id,
+            )
+        else:
+            claim_ids = None if args.all_claims else args.claim_id
+            model = report_service.render_from_claims(
+                claim_ids,
+                disclosure=disclosure,
+                classification_by_object_id=classification_by_object_id,
+            )
     except (DomainError, ValueError) as exc:
         print(
             f"mrr report render: render refused — {type(exc).__name__}: {exc}",
@@ -358,7 +407,9 @@ def run_command(args: argparse.Namespace) -> int:
         "provenance_summary": len(model.provenance_summary),
     }
     payload = {
+        "root": "crate" if crate_rooted else "claims",
         "crate_id": args.crate_id,
+        "claim_ids": [] if crate_rooted else [row.claim_id for row in model.claims],
         "output": str(args.output),
         "format": args.format,
         "disclosure": disclosure,
