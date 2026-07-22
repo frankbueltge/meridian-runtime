@@ -18,6 +18,22 @@ Acceptance-test mapping (task-packets/E8-T03.yaml, unit tier):
   under "MRR-NFR-012 ordering + refusal tests" below.
 - --help/usage-error smoke tests -> the tests under "--help / usage-error
   smoke tests" below.
+
+Acceptance-test mapping (task-packets/E8-T06.yaml, unit tier — the one-of
+root group, all DB-free):
+
+- --help documents the new flags -> the extended
+  ``test_render_subcommand_help_documents_every_flag``.
+- the mutually-exclusive, required root group (argparse's own usage error,
+  exit 2) -> ``test_no_root_flag_at_all_is_a_usage_error``,
+  ``test_crate_id_and_claim_id_together_is_a_usage_error``,
+  ``test_crate_id_and_all_claims_together_is_a_usage_error``.
+- ``--claim-id`` is repeatable, and reaches the (unreachable-database)
+  dependency check like any other valid invocation ->
+  ``test_claim_id_is_repeatable_and_reaches_the_database_check``.
+- ``--classification-file``'s required-with-public/forbidden-with-internal
+  rule applies identically to the claim-rooted path ->
+  ``test_all_claims_public_disclosure_without_classification_file_is_a_dependency_failure``.
 """
 
 from __future__ import annotations
@@ -318,6 +334,154 @@ def test_unreachable_database_is_a_dependency_failure_after_the_other_checks(
     assert exit_code == 2
     err = capsys.readouterr().err
     assert "cannot reach the PostgreSQL database" in err
+    assert not output.exists()
+
+
+# ---------------------------------------------------------------------------
+# task-packets/E8-T06.yaml: the one-of root group.
+# ---------------------------------------------------------------------------
+
+
+def test_render_subcommand_help_also_documents_the_new_root_flags(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A fresh, additive test rather than widening the pre-existing
+    ``test_render_subcommand_help_documents_every_flag`` (task-packets/
+    E8-T03.yaml) — see ``tests/unit/cli/test_export_cli_args.py``'s own
+    identical, sibling test for why leaving that one byte-for-byte
+    untouched is both sufficient and the more literal reading of
+    "E8-T01..T05 suites must pass UNMODIFIED".
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        main(["report", "render", "--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    for flag in ("--claim-id", "--all-claims"):
+        assert flag in out, f"expected {flag!r} to be documented in --help output"
+
+
+def test_no_root_flag_at_all_is_a_usage_error() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "report",
+                "render",
+                "--database-url",
+                _UNREACHABLE_DATABASE_URL,
+                "--output",
+                "/tmp/does-not-matter",
+                "--format",
+                "md",
+                "--disclosure",
+                "internal",
+            ]
+        )
+    assert excinfo.value.code != 0
+
+
+def test_crate_id_and_claim_id_together_is_a_usage_error() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "report",
+                "render",
+                "--database-url",
+                _UNREACHABLE_DATABASE_URL,
+                "--crate-id",
+                new_urn("evidence-crate"),
+                "--claim-id",
+                new_urn("claim"),
+                "--output",
+                "/tmp/does-not-matter",
+                "--format",
+                "md",
+                "--disclosure",
+                "internal",
+            ]
+        )
+    assert excinfo.value.code != 0
+
+
+def test_crate_id_and_all_claims_together_is_a_usage_error() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "report",
+                "render",
+                "--database-url",
+                _UNREACHABLE_DATABASE_URL,
+                "--crate-id",
+                new_urn("evidence-crate"),
+                "--all-claims",
+                "--output",
+                "/tmp/does-not-matter",
+                "--format",
+                "md",
+                "--disclosure",
+                "internal",
+            ]
+        )
+    assert excinfo.value.code != 0
+
+
+def test_claim_id_is_repeatable_and_reaches_the_database_check(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output = tmp_path / "report.md"
+
+    exit_code = main(
+        [
+            "report",
+            "render",
+            "--database-url",
+            _UNREACHABLE_DATABASE_URL,
+            "--claim-id",
+            new_urn("claim"),
+            "--claim-id",
+            new_urn("claim"),
+            "--output",
+            str(output),
+            "--format",
+            "md",
+            "--disclosure",
+            "internal",
+        ]
+    )
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "cannot reach the PostgreSQL database" in err
+
+
+def test_all_claims_public_disclosure_without_classification_file_is_a_dependency_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The pre-existing ``--classification-file`` rule applies identically
+    regardless of root — task-packets/E8-T06.yaml: "Disclosure gating
+    (E8-T03) ... apply unchanged".
+    """
+    output = tmp_path / "report.md"
+
+    exit_code = main(
+        [
+            "report",
+            "render",
+            "--database-url",
+            _UNREACHABLE_DATABASE_URL,
+            "--all-claims",
+            "--output",
+            str(output),
+            "--format",
+            "md",
+            "--disclosure",
+            "public",
+        ]
+    )
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "requires --classification-file" in err
+    assert "cannot reach the PostgreSQL database" not in err
     assert not output.exists()
 
 

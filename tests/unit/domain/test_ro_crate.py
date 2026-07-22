@@ -689,3 +689,107 @@ def test_metadata_document_is_plain_json_serializable() -> None:
         crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes=artifact_sizes
     )
     json.loads(json.dumps(metadata))
+
+
+# ---------------------------------------------------------------------------
+# task-packets/E8-T06.yaml R3: the claim-rooted, no-crate mode.
+# ---------------------------------------------------------------------------
+
+
+def _claim_rooted_fixture() -> dict[str, dict[str, Any]]:
+    """Two claims, no crate at all — ``build_ro_crate_metadata``/
+    ``build_export`` must still produce a valid document (``crate_urn=None``).
+    """
+    earlier_claim_id = new_urn("claim")
+    later_claim_id = new_urn("claim")
+    return {
+        earlier_claim_id: _claim_body(
+            claim_id=earlier_claim_id, created_at="2026-01-01T00:00:00+00:00"
+        ),
+        later_claim_id: _claim_body(
+            claim_id=later_claim_id, created_at="2026-06-15T09:30:00+00:00"
+        ),
+    }
+
+
+def test_no_crate_date_published_is_the_max_created_at_over_every_object() -> None:
+    object_bodies = _claim_rooted_fixture()
+    plan = build_export_plan(object_bodies, artifact_sizes={})
+    metadata = build_ro_crate_metadata(crate_urn=None, plan=plan)
+    graph = _entities_by_id(metadata)
+    assert graph[ROOT_DATA_ENTITY_ID]["datePublished"] == "2026-06-15T09:30:00+00:00"
+
+
+def test_no_crate_date_published_ignores_object_iteration_order() -> None:
+    """The max is independent of dict/mapping iteration order — inserting
+    the later-created object FIRST still yields the same ``datePublished``.
+    """
+    object_bodies = _claim_rooted_fixture()
+    reordered = dict(reversed(list(object_bodies.items())))
+    plan = build_export_plan(reordered, artifact_sizes={})
+    metadata = build_ro_crate_metadata(crate_urn=None, plan=plan)
+    graph = _entities_by_id(metadata)
+    assert graph[ROOT_DATA_ENTITY_ID]["datePublished"] == "2026-06-15T09:30:00+00:00"
+
+
+def test_no_crate_mode_raises_on_zero_objects() -> None:
+    plan = build_export_plan({}, artifact_sizes={})
+    try:
+        build_ro_crate_metadata(crate_urn=None, plan=plan)
+    except ValueError as exc:
+        assert "zero exported objects" in str(exc)
+    else:  # pragma: no cover - defensive
+        raise AssertionError("expected ValueError for zero exported objects")
+
+
+def test_no_crate_mode_never_emits_prov_was_generated_by_since_there_are_no_artifacts() -> None:
+    """``derived_decisions (a)``: a claim-rooted export carries no artifact
+    bytes at all — ``artifact_sizes`` is always empty in practice, so no
+    ``prov:wasGeneratedBy`` artifact relation is ever emitted (there is no
+    crate ``run_id`` to source one from either).
+    """
+    object_bodies = _claim_rooted_fixture()
+    plan = build_export_plan(object_bodies, artifact_sizes={})
+    assert plan.artifacts == ()
+    metadata = build_ro_crate_metadata(crate_urn=None, plan=plan)
+    graph = _entities_by_id(metadata)
+    for claim_id in object_bodies:
+        assert "prov:wasGeneratedBy" not in graph[claim_id]
+
+
+def test_no_crate_mode_is_deterministic_across_repeated_calls() -> None:
+    object_bodies = _claim_rooted_fixture()
+    plan = build_export_plan(object_bodies, artifact_sizes={})
+    first = build_ro_crate_metadata(crate_urn=None, plan=plan)
+    second = build_ro_crate_metadata(crate_urn=None, plan=plan)
+    assert first == second
+
+
+def test_no_crate_mode_still_shapes_every_contextual_entity_normally() -> None:
+    """Every entity-shaping rule (item 4's contextual entities, PROV types)
+    is generic over kind, never reads ``crate_urn`` — this holds for the
+    no-crate mode exactly as it does for the crate-rooted one.
+    """
+    object_bodies = _claim_rooted_fixture()
+    plan = build_export_plan(object_bodies, artifact_sizes={})
+    metadata = build_ro_crate_metadata(crate_urn=None, plan=plan)
+    graph = _entities_by_id(metadata)
+    for claim_id, body in object_bodies.items():
+        entity = graph[claim_id]
+        assert entity[f"{MRR_VOCAB_PREFIX}:urn"] == claim_id
+        assert entity[f"{MRR_VOCAB_PREFIX}:kind"] == body["kind"]
+
+
+def test_crate_rooted_mode_is_unaffected_by_the_optional_crate_urn_default() -> None:
+    """Calling with the keyword explicitly (``crate_urn=crate_id``) is
+    byte-identical to every pre-E8-T06 call site — the crate-rooted branch
+    is untouched.
+    """
+    crate_id, object_bodies, artifact_sizes = _small_fixture()
+    explicit = build_ro_crate_metadata(
+        crate_urn=crate_id, plan=build_export_plan(object_bodies, artifact_sizes)
+    )
+    _, via_build_export = build_export(
+        crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes=artifact_sizes
+    )
+    assert explicit == via_build_export
