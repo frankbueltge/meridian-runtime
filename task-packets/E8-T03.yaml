@@ -1,0 +1,290 @@
+task_id: E8-T03
+title: >-
+  Markdown/HTML research report projection (MRR-FR-100/-101/-104, MRR-FR-095):
+  a deterministic, crate-rooted narrative projection of the claim graph —
+  methods, claim table with verifications and their disagreements, evidence
+  map, counterevidence, uncertainty, known unknowns, corrections, provenance
+  summary — rendered to Markdown and HTML from stored objects only, with the
+  public disclosure variant redacted fail-closed by the E6-T05 rule.
+status: approved
+epic: E8
+reviewer_resolution: >-
+  Approved 2026-07-22 by the main session as reviewing instance, under the
+  owner's decision record of the same date (Entscheidung 2). Primary design
+  choices CONFIRMED: (1) the "narrative generator" of MRR-FR-104 is a
+  DETERMINISTIC template renderer over stored objects — no model call
+  anywhere in this packet; it structurally cannot invent a citation because
+  every identifier it emits is read from a stored body or typed edge (the
+  same ethos as the K1 pipelines' template prose, and the reason MRR-FR-104's
+  two prohibitions are satisfied by construction plus one structural test
+  each, not by review vigilance); (2) the report is CRATE-ROOTED, same
+  anchor as E8-T01's export, reusing the SAME closure — one definition of
+  "what belongs to this run's record", not a second competing one; the
+  closure logic is EXTRACTED from ExportService.export into a public,
+  behavior-identical read-only method on the same class, and the export
+  packet's tests must keep passing unmodified to prove the extraction
+  changed nothing; (3) disclosure levels shipped here are `internal` (full
+  content) and `public` (E6-T05's fail-closed PUBLIC-attestation redaction,
+  reused verbatim — never a second redaction rule; plus MRR-FR-095's
+  mandatory unresolved-critical-corrections display). `partner-restricted`
+  (MRR-FR-103's third projection) is deliberately NOT in this packet: the
+  Classification vocabulary (mrr.domain.artifacts) has no partner level and
+  the partner relationship machinery lives in the transfer layer — inventing
+  a mapping here would guess governance the spec has not written; recorded
+  as this packet's named gap, to be closed with the E8-T04/E5-transfer
+  integration or an ADR; (4) both renderers are hand-rolled and pure — no
+  Markdown/HTML library dependency; HTML is minimal semantic markup with
+  strict escaping of every stored string; (5) no wall-clock anywhere in the
+  rendered bytes (E8-T01's invariant carried over): the report's own date
+  line is the crate's created_at, and determinism is byte-level for a fixed
+  graph plus fixed attestation input.
+depends_on: [E8-T01, E8-T02]
+derivation: >-
+  Derived 2026-07-22 from: docs/spec/06_IMPLEMENTATION_PLAN.md §3/E8-T03;
+  docs/spec/01_SYSTEM_SPEC.md Stage 11 — MRR-FR-100 (reports are
+  projections from versioned objects), MRR-FR-101 (the section list this
+  packet's report model mirrors ahead of E8-T04's bundle), MRR-FR-103
+  (disclosure projections; partially deferred, see reviewer_resolution 3),
+  MRR-FR-104 (no invented citations, no omitted material unresolved
+  corrections) — plus MRR-FR-095 (public projections display unresolved
+  critical corrections) and §7.9 (Projection Service: "reports and portable
+  bundles from a fixed graph revision"); AGENTS.md source-of-truth
+  ("Narrative reports are projections and are never the primary research
+  record"). Fact base verified first-hand at derivation time (fact-lock):
+  ProjectionService (E3-T07/E6-T05) already builds claim tables, provenance
+  maps, correction discovery, and the public fail-closed redaction
+  (mrr.domain.public_correction_view: caller-supplied
+  classification_by_object_id attestation, PUBLIC-only-when-every-
+  dependency-attested rule); ExportService.export (E8-T01/T02) holds the
+  crate closure incl. VerificationResult discovery; Classification =
+  PUBLIC/INTERNAL/RESTRICTED/SENSITIVE/PARTICIPANT_IDENTIFIABLE (no partner
+  level); the archive's real claims carry disagreeing verifications
+  (pass c / fail d) that the claim table MUST surface, not average away.
+objective: >-
+  After this packet, `mrr report render` produces from one sealed crate a
+  deterministic Markdown or HTML research report whose sections mirror
+  MRR-FR-101 — methods, claim table (with every claim's status, uncertainty,
+  evidence and counterevidence, and EVERY recorded verification including
+  mutually disagreeing ones), evidence map, corrections (never omissible),
+  known unknowns, failures, provenance summary — in an internal variant and
+  a public variant redacted by the existing fail-closed rule. A reader of
+  the public variant sees every unresolved critical correction and never
+  sees un-attested free text; a reader of either variant can trace every
+  statement to a URN and hash that the E8-T01 export makes independently
+  verifiable.
+source_of_truth:
+  - docs/spec/01_SYSTEM_SPEC.md                     # Stage 11; MRR-FR-095; §7.9
+  - docs/spec/06_IMPLEMENTATION_PLAN.md             # §3/E8
+  - packages/domain/mrr/domain/public_correction_view.py  # THE redaction rule (reused, never forked)
+  - services/control_plane/mrr/services/projection/service.py
+  - services/control_plane/mrr/services/export/service.py # the closure this packet extracts and reuses
+  - task-packets/E6-T05.yaml                        # attestation-mapping precedent and its ADR-0010 framing
+requirements:
+  - >-
+    R1 (report model, pure): packages/domain/mrr/domain/research_report.py
+    defines the frozen report model (dataclasses) and the two renderers
+    render_markdown(model) / render_html(model) — pure functions, no I/O,
+    no repository types, hand-rolled output, deterministic byte-for-byte.
+    Sections, fixed order, ALWAYS all present (an empty section renders an
+    explicit "none recorded" line, never disappears): (1) header — crate
+    urn, run urn, run_state, practice, crate created_at (the only date in
+    the document), content hash, object/artifact counts; (2) methods — the
+    run's declared protocol/parameters artifact urns with hashes and the
+    environment block (image digest, code revision, input hashes) verbatim;
+    (3) claim table — per claim: urn, type, scope, status, uncertainty,
+    assertion (disclosure-gated, see R3), evidence and counterevidence
+    relation targets, dependencies, and EVERY VerificationResult targeting
+    it (reviewer_role, recommendation, confidence, finding count, and each
+    finding's severity+statement disclosure-gated) — two disagreeing
+    verifications appear as two rows under the same claim, explicitly
+    marked "disagreement on record", never merged or averaged (MRR-FR-077
+    read into projection); (4) evidence map — source records and anchors
+    with resolution status; (5) corrections — every discovered correction
+    with status; unresolved critical ones FIRST and prefixed as such
+    (MRR-FR-095); the section header is emitted even when empty
+    (MRR-FR-104's "MUST NOT omit" made structural); (6) known unknowns —
+    crate.known_unknowns plus per-claim known_unknowns; (7) failures —
+    crate.failures verbatim (MRR-FR-054); (8) provenance summary — per
+    claim, the count and a sorted, compact rendering of its provenance
+    edges. HTML output escapes every stored string (a stored "<script>" is
+    text, never markup) and carries no external resource reference — fully
+    self-contained, no CSS/JS beyond minimal inline style-free semantic
+    tags.
+  - >-
+    R2 (closure extraction, behavior-identical): ExportService gains a
+    public read-only method resolve_closure(crate_id) returning the exact
+    object-bodies mapping, provenance edges, and artifact refs that
+    export() computes today, and export() is refactored to call it — no
+    behavior change, proven by the E8-T01/T02 test suites passing
+    unmodified. ReportService (new,
+    services/control_plane/mrr/services/report/) composes ExportService
+    for the closure and ProjectionService for corrections discovery —
+    read-only, same dependency discipline as both precedents, no
+    RecordRevisionWithEvent anywhere.
+  - >-
+    R3 (disclosure): render is parameterized disclosure=internal|public.
+    internal renders every stored string. public applies
+    mrr.domain.public_correction_view's fail-closed rule VERBATIM (reused
+    functions, never a reimplementation): free text (assertions, finding
+    statements, correction summaries, failure messages, known-unknown
+    strings) appears only when every object id it depends on is attested
+    "PUBLIC" in a caller-supplied classification_by_object_id mapping;
+    otherwise the structural row stays (urn, status, counts — identifiers
+    and hashes are never redacted, they are the record's spine) and the
+    text is replaced by the module's existing redaction marker. Unresolved
+    critical corrections are displayed in BOTH variants regardless of
+    attestation (MRR-FR-095 outranks redaction for their existence and
+    status; their free-text summary is still attestation-gated).
+  - >-
+    R4 (CLI): `mrr report render` in a sibling module
+    services/control_plane/mrr/services/cli/report_main.py — flags
+    --database-url, --crate-id, --output (file path), --format md|html,
+    --disclosure internal|public, --classification-file (JSON object
+    urn->classification; REQUIRED when --disclosure public, FORBIDDEN when
+    internal — an explicit governance input, never defaulted). NFR-012
+    ordering: --output conflict first (existing file refuses, exit 3),
+    then --classification-file read+parsed+validated (public only), then
+    database reachability, then exactly one ReportService call; atomic
+    write (temp file + os.replace). Exit map 0 (single JSON result line:
+    crate_id, output, format, disclosure, section counts) / 2 / 3, per the
+    house convention. main.py gains exactly one additive registration.
+  - >-
+    R5 (structural MRR-FR-104 tests): one test proves the corrections
+    section cannot be omitted (rendering a graph with an unresolved
+    critical correction ALWAYS emits it, in both formats and both
+    disclosures); one test proves no-invented-citations structurally —
+    every urn appearing in the rendered output is a member of the closure
+    input (rendered_urns ⊆ closure_urns, asserted mechanically on the
+    fixture render).
+  - >-
+    R6 (tests at every tier): unit — model building from plain bodies,
+    both renderers' determinism (byte-identity across calls and dict
+    orders), HTML escaping (a stored string containing markup renders
+    inert), empty-section explicit lines, disagreement marking with two
+    opposing verifications, fail-closed redaction incl. missing-attestation
+    and non-PUBLIC levels, R5's two structural tests; integration — seed
+    the E8-T01/T02 fixture graph EXTENDED by a second disagreeing
+    verification (pass and fail on the same claim), render md and html in
+    both disclosures via the CLI entry point, assert the disagreement is
+    visible, the public variant redacts un-attested assertions while
+    keeping urns/hashes, exit codes and refusals (existing output file,
+    missing classification file for public, classification file supplied
+    for internal, unknown crate, unreachable DB); architecture — the new
+    domain module imports no repository/service/adapter type. All make
+    tiers green; e2e suite unchanged-green.
+allowed_paths:
+  - packages/domain/mrr/domain/research_report.py
+  - services/control_plane/mrr/services/export/service.py   # R2 extraction only — behavior-identical
+  - services/control_plane/mrr/services/report/
+  - services/control_plane/mrr/services/cli/report_main.py
+  - services/control_plane/mrr/services/cli/main.py          # one additive registration line only
+  - tests/unit/
+  - tests/contract/
+  - tests/integration/
+  - docs/design/
+  - task-packets/E8-T03.yaml
+forbidden_changes:
+  - schemas/**
+  - packages/contracts/**
+  - packages/domain/mrr/domain/public_correction_view.py     # THE redaction rule is reused, never edited
+  - packages/domain/mrr/domain/projection.py
+  - migrations/**
+  - pyproject.toml
+  - uv.lock
+  - corpora/**
+  - services/node_runtime/**
+derived_decisions:
+  - >-
+    (a) One closure, two consumers: the report deliberately shows exactly
+    what the export ships — a report statement whose object is absent from
+    the RO-Crate export would be a projection of nothing verifiable. The
+    R2 extraction is the mechanism; divergence between report content and
+    export content is a bug by definition.
+  - >-
+    (b) No model call, no Markdown/HTML library: both prohibitions of
+    MRR-FR-104 are discharged structurally (deterministic renderer + R5's
+    mechanical tests), and the HTML variant's self-containment mirrors the
+    export's own no-external-reference stance.
+  - >-
+    (c) partner-restricted disclosure is a NAMED GAP, not a silent one:
+    MRR-FR-103 lists three projections; this packet ships two. The third
+    requires a partner-classification vocabulary and transfer-obligation
+    integration that no spec section yet grounds — deferred with this
+    paper trail rather than approximated.
+  - >-
+    (d) The classification attestation stays a caller-supplied input (the
+    E6-T05/ADR-0010 bridge), now materialized as an explicit CLI file
+    argument — the report packet does not sneak in the stored
+    classification field that bridge deliberately postponed.
+  - >-
+    (e) Verification confidence numbers are printed with their declared
+    nature: the claim-table row labels the column "reviewer confidence
+    (self-declared)" — the AGENTS prohibition on treating a confidence
+    number as epistemic confidence applied to typography.
+invariants:
+  - No model/LLM call anywhere; renderer output is a pure function of (closure, corrections, disclosure, attestation).
+  - Every urn in the rendered output exists in the closure input (R5, mechanical).
+  - The corrections section exists in every render; unresolved critical corrections are always visible.
+  - Identifiers and hashes are never redacted; free text is fail-closed redacted in the public variant.
+  - No wall-clock timestamp in the rendered bytes; byte-determinism for fixed inputs.
+  - E8-T01/T02 behavior unchanged (their suites pass unmodified after the R2 extraction).
+acceptance_tests:
+  - >-
+    AT1: the integration fixture (with a seeded pass+fail verification
+    pair on one claim and one unresolved critical correction) renders in
+    all four (format × disclosure) combinations via the CLI; the
+    disagreement is visible and marked in all four; the correction is
+    visible in all four; exit 0 each.
+  - >-
+    AT2: the public render with an empty attestation mapping shows
+    structure (urns, statuses, hashes, counts) and redaction markers, and
+    not one byte of any stored assertion/finding/summary string; with the
+    claim attested PUBLIC, its assertion appears while un-attested
+    finding statements stay redacted — fail-closed granularity per object
+    id, exactly the E6-T05 rule.
+  - >-
+    AT3: rendered_urns ⊆ closure_urns holds mechanically on every fixture
+    render (R5); a control assertion proves the check CAN fail (a urn
+    injected into a copy of the rendered text is caught).
+  - >-
+    AT4: byte-determinism — two renders of the same graph/attestation are
+    identical; the only date string in the output equals the crate's
+    created_at.
+  - >-
+    AT5: refusal/dependency paths per R4, each leaving no partial output
+    file; E8-T01/T02 integration suites pass unmodified.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+specification_gaps:
+  - >-
+    MRR-FR-103's partner-restricted projection: deferred, see
+    derived_decisions (c). MRR-FR-101's full bundle (this report PLUS the
+    export PLUS approval) is E8-T04's subject; this packet ships the
+    report section list so T04 bundles, not re-invents.
+  - >-
+    "Evidence map" (MRR-FR-101) has no spec-defined layout; this packet
+    renders it as the anchors/source-records section described in R1(4) —
+    the layout choice is this packet's own, noted for the report.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding one
+    full Markdown render (internal) and the public variant of the same
+    fixture verbatim, plus the exact CLI invocations.
+stop_conditions:
+  - >-
+    If reusing mrr.domain.public_correction_view's functions for report
+    text requires MODIFYING that module (forbidden here), STOP and report
+    the dependency — never fork a second redaction rule.
+  - >-
+    If the R2 extraction cannot be made behavior-identical (any E8-T01/T02
+    test needs a change beyond imports), STOP and report — the closure
+    definition may not drift inside a report packet.
+  - >-
+    If MRR-FR-095's "display regardless" and the fail-closed redaction
+    rule conflict in a case not covered by R3's resolution (existence and
+    status always shown, free text gated), STOP and record the conflict —
+    do not improvise a privacy/transparency trade-off.
