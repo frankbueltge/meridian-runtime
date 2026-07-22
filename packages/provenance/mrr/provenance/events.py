@@ -38,7 +38,7 @@ tests/unit/architecture/test_provenance_boundary.py).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from mrr.crypto.canonical import JSONValue
@@ -121,11 +121,36 @@ def event_to_hashable_dict(event: DomainEvent, prev_hash: str | None) -> dict[st
     its ISO-8601 string form because the underlying canonicalizer
     (``mrr.crypto.canonical.canonicalize``, RFC 8785) only accepts JSON-safe
     scalars, lists, and string-keyed objects - not ``datetime`` instances.
+
+    ``occurred_at`` is normalized to UTC BEFORE serialization
+    (task-packets/E9-T00c.yaml R1, closing the defect filed in
+    docs/design/2026-07-21-research-method-kernel-rework.md section 8): the
+    column is ``TIMESTAMP(timezone=True)`` and psycopg renders a read-back
+    datetime in the SESSION timezone, so without normalization the same
+    instant hashes as ``+02:00`` on one connection and ``+00:00`` on
+    another and ``verify_chain`` fails against any non-UTC server. For
+    every event this codebase ever wrote (tz-aware UTC datetimes),
+    ``astimezone(UTC)`` is the identity and the produced string — hence
+    every recorded hash — is byte-identical (regression-proven in
+    tests/unit/provenance/test_event_hash_timezone.py). A NAIVE datetime
+    is refused with ``ValueError``: interpreting it via the process-local
+    zone would be exactly the ambiguity this normalization removes.
+
+    Raises:
+        ValueError: ``event.occurred_at`` is naive (no tzinfo) — a
+            timezone-ambiguous timestamp must never enter the hash chain
+            (task-packets/E9-T00c.yaml R1).
     """
+    if event.occurred_at.tzinfo is None:
+        raise ValueError(
+            "DomainEvent.occurred_at is naive (no tzinfo); a timezone-ambiguous timestamp "
+            "must never enter the hash chain (task-packets/E9-T00c.yaml R1) — supply a "
+            "tz-aware datetime"
+        )
     return {
         "id": event.id,
         "event_type": event.event_type,
-        "occurred_at": event.occurred_at.isoformat(),
+        "occurred_at": event.occurred_at.astimezone(UTC).isoformat(),
         "actor": event.actor,
         "policy_version": event.policy_version,
         "causation_id": event.causation_id,
