@@ -1,0 +1,248 @@
+task_id: E8-T04
+title: >-
+  Publication approval and immutable release bundle (MRR-FR-101/-102,
+  ADR-0011): the ReleaseRecord object kind, the atomic release.approved A4
+  event whose actor is the approving HUMAN, deterministic bundle assembly
+  from the already-shipped export and report machinery, and a rebuild-and-
+  compare verifier that makes "immutable release" a checkable property.
+status: approved
+epic: E8
+reviewer_resolution: >-
+  Approved 2026-07-22 by the main session as reviewing instance, under the
+  owner's decision record of the same date (Entscheidung 2) and on the
+  basis of ADR-0011 (ACCEPTED 2026-07-22 — read it first; its four
+  decisions are this packet's law). Primary confirmations: (1) this packet
+  ships the GATE, not a release — no ReleaseRecord is created against the
+  real archive in this packet; integration tests approve synthetic
+  releases with synthetic person URNs in throwaway schemas, which records
+  nothing real and approves nothing real; the owner's own first release,
+  if ever, is a separate, explicitly-owner-driven act (Site-Kopplung
+  remains the owner's open decision, untouched); (2) the A4 act cannot be
+  defaulted: `--approved-by` and `--approval-statement-file` have no
+  defaults, no environment-variable fallbacks, and their absence is a
+  refusal — supplying them IS the recorded human act, and the flags' help
+  text says so; (3) `approved_by` must be a `person`-segment URN — an
+  agent-role/node/practice approver is refused at the contract AND the
+  service layer (MRR-FR-110: no inferring A4 from lower-level identity);
+  (4) bundle assembly REUSES ExportService and ReportService by
+  composition — zero new closure, render, or redaction logic; (5) the
+  known non-atomicity across the DB write and the filesystem rename is
+  resolved by the fixed order assemble-content -> persist record+event ->
+  finalize bundle directory, with the one possible inconsistent state
+  (record persisted, bundle finalization failed) named in the CLI's error
+  output verbatim, left on disk nowhere (temp cleanup), and recoverable by
+  `mrr release verify` reporting the mismatch loudly — never papered over.
+depends_on: [E8-T01, E8-T02, E8-T03]
+derivation: >-
+  Derived 2026-07-22 from: ADR-0011 (the object shape, event semantics,
+  bundle hashing rule, and no-connector stance — normative for this
+  packet); docs/spec/01_SYSTEM_SPEC.md Stage 11 (MRR-FR-101 bundle
+  contents; MRR-FR-102 A4 human approval event; acceptance "an unapproved
+  bundle cannot be published" and "without altering historical releases")
+  and §5 autonomy model (A4, MRR-FR-110/-112); the E8 exit criterion
+  ("external publication is impossible without A4 approval"). Fact base
+  verified first-hand (fact-lock): ResearchDecision's decision_type is the
+  closed method-kernel vocabulary (unusable here, rule 3); no release/
+  publication kind exists in schemas/ or contracts; ExportService.export,
+  ExportService.resolve_closure, ReportService.render and the
+  one-revision-one-event unit-of-work primitive are shipped and tested;
+  sibling schema/contract/service triples (e.g. verification-result,
+  research-decision) are the shape template.
+objective: >-
+  After this packet, `mrr release create` assembles — for one sealed crate
+  and one disclosure level — a deterministic bundle directory (the RO-Crate
+  export, the Markdown and HTML reports, release-manifest.json, and a
+  verbatim copy of the persisted ReleaseRecord), persists the ReleaseRecord
+  with its atomic release.approved event naming the approving human as
+  actor, and refuses without the explicit human-approval inputs;
+  `mrr release verify` rebuilds the content from the archive and compares
+  the root hash, so an altered or rotted bundle can never pass silently.
+  External publication remains impossible (no connector exists); the gate
+  any future connector must check now exists.
+source_of_truth:
+  - docs/spec/adr/ADR-0011-RELEASE-RECORD-AND-A4-APPROVAL-EVENT.md
+  - docs/spec/01_SYSTEM_SPEC.md                     # Stage 11; §5 autonomy model
+  - schemas/verification-result.schema.json         # sibling schema discipline template
+  - packages/contracts/mrr/contracts/research_decision.py  # sibling contract template
+  - services/control_plane/mrr/services/export/service.py  # reused by composition
+  - services/control_plane/mrr/services/report/service.py  # reused by composition
+requirements:
+  - >-
+    R1 (schema + contract): schemas/release-record.schema.json and
+    mrr.contracts.ReleaseRecord exactly per ADR-0011 decision 1 — kind,
+    crate_id, disclosure (internal|public), bundle (files: sorted array of
+    {path, sha256} + root_hash per the ADR hashing rule), approval
+    (approved_by person-URN pattern-enforced in the schema; non-empty
+    approval_statement; approval_mode single_human|dual), status
+    (released|superseded). Registered in the contracts package and the
+    schema/contract roundtrip test harness like every sibling; the schema
+    docstring-style description documents ADR-0011 as its source.
+    mrr.domain.lifecycles gains RELEASE_RECORD_LIFECYCLE with the single
+    edge released -> superseded (driven only by E8-T05, not here).
+  - >-
+    R2 (ReleaseService): services/control_plane/mrr/services/release/ —
+    create(record) persists revision 1 plus exactly one release.approved
+    domain event, atomically, via the existing unit-of-work primitive;
+    the event actor IS record.approval.approved_by (ADR-0011 decision 2);
+    the service refuses (typed errors) an approved_by that is not a
+    person-segment URN, an empty approval_statement, a crate_id that does
+    not resolve to a sealed EvidenceCrate, and a bundle manifest whose
+    root_hash does not match its own files list (recomputed in-service —
+    the record never stores an unchecked hash). No update/delete method
+    exists (immutability by omission, the sealer's own precedent).
+  - >-
+    R3 (bundle assembly, composition only): a build function that, given
+    the crate id, disclosure, and (for public) the classification
+    attestation, produces in a temp directory: ro-crate/ (via
+    ExportService.export), report.md and report.html (via
+    ReportService.render), then computes the manifest per ADR-0011
+    (root_hash over every content file, EXCLUDING release-manifest.json
+    and release-record.json), persists the ReleaseRecord (R2), writes
+    release-manifest.json and release-record.json (the persisted record
+    verbatim), and finalizes with one atomic rename to --output-dir. The
+    fixed order and its one named failure state follow
+    reviewer_resolution (5). Determinism: two assemblies of the same
+    crate/disclosure/attestation yield byte-identical CONTENT files and
+    identical root_hash (record copy differs only in record identity/
+    timestamp fields — asserted exactly so).
+  - >-
+    R4 (CLI): `mrr release create` (--database-url, --artifact-root,
+    --crate-id, --disclosure, --classification-file public-only rules as
+    in E8-T03, --output-dir, --approved-by, --approval-statement-file,
+    --approval-mode default NONE and required) and `mrr release verify`
+    (--database-url, --artifact-root, --release-id, plus --bundle-dir to
+    check an existing directory's bytes against the record) in one new
+    sibling module services/control_plane/mrr/services/cli/release_main.py;
+    main.py gains exactly one additive registration. House exit map
+    0/2/3; NFR-012 cheapest-first ordering; missing approval inputs are a
+    REFUSAL (exit 3) whose message names MRR-FR-102 and states that no
+    default exists by design. verify: exit 0 on match printing the
+    recomputed root_hash; exit 3 on any mismatch naming every differing
+    path; exit 2 on unreachable dependencies.
+  - >-
+    R5 (tests at every tier): contract — schema/contract roundtrip incl.
+    the person-URN pattern and non-empty statement; unit — manifest/root-
+    hash rule (incl. the two excluded files), determinism, service
+    refusals (agent-role approver, empty statement, unsealed/absent crate,
+    forged root_hash), lifecycle edge; integration — full create with a
+    synthetic person approver in a throwaway schema (event actor equals
+    approver; record readable back; bundle verifies), verify detecting a
+    single flipped byte in a content file (exit 3 naming the path),
+    refusal paths, and the E8-T01/T02/T03 suites passing unmodified;
+    architecture — boundary tests per house pattern. All make tiers
+    green; e2e unchanged-green.
+allowed_paths:
+  - schemas/release-record.schema.json
+  - packages/contracts/mrr/contracts/release_record.py
+  - packages/contracts/mrr/contracts/__init__.py     # registry addition only
+  - packages/domain/mrr/domain/lifecycles.py         # RELEASE_RECORD_LIFECYCLE addition only
+  - services/control_plane/mrr/services/release/
+  - services/control_plane/mrr/services/cli/release_main.py
+  - services/control_plane/mrr/services/cli/main.py  # one additive registration line only
+  - tests/unit/
+  - tests/contract/
+  - tests/integration/
+  - docs/design/
+  - task-packets/E8-T04.yaml
+forbidden_changes:
+  - schemas/*.schema.json                            # every EXISTING schema; only the new file above is allowed
+  - packages/domain/mrr/domain/public_correction_view.py
+  - packages/domain/mrr/domain/projection.py
+  - packages/domain/mrr/domain/ro_crate.py
+  - packages/domain/mrr/domain/research_report.py
+  - services/control_plane/mrr/services/export/**    # reused, not edited
+  - services/control_plane/mrr/services/report/**    # reused, not edited
+  - migrations/**
+  - pyproject.toml
+  - uv.lock
+  - corpora/**
+  - services/node_runtime/**
+derived_decisions:
+  - >-
+    (a) No release against the real archive in this packet — the gate
+    ships empty. The first real ReleaseRecord, if ever, is the owner's
+    own act with the owner's own approval statement (reviewer_resolution
+    1); nothing here schedules or suggests it.
+  - >-
+    (b) approval_mode "dual" is schema-valid but service-refused in this
+    packet ("single_human" only) with a message naming this decision —
+    recording the vocabulary the spec offers ("explicit human or dual
+    approval") without pretending a second-approver workflow exists.
+  - >-
+    (c) The bundle embeds release-record.json verbatim so a third party
+    holding only the bundle sees WHO approved and the root_hash it
+    attests; the self-reference problem is resolved by the ADR's
+    exclusion rule (root_hash covers content files only).
+  - >-
+    (d) `mrr release verify` rebuilds from the archive (fresh export +
+    fresh renders in a temp dir) rather than trusting the bundle's own
+    manifest — trust flows record -> archive -> bytes, never bundle ->
+    bundle.
+invariants:
+  - No default, fallback, or inference can produce the approval inputs; absence refuses.
+  - The release.approved event actor is the approving person URN, atomically with the record.
+  - root_hash is recomputed, never trusted from input, at every boundary (service create, verify).
+  - Existing E8 machinery is composed, byte-unchanged; their suites pass unmodified.
+  - No connector, no network egress, no real release.
+acceptance_tests:
+  - >-
+    AT1: create with full synthetic approval inputs -> exit 0; the stored
+    record's approval block equals the inputs; the release.approved event
+    exists with actor == approved_by; the bundle directory contains
+    ro-crate/, report.md, report.html, release-manifest.json,
+    release-record.json; verify (both modes: rebuild and --bundle-dir)
+    exits 0 with the same root_hash.
+  - >-
+    AT2: create without --approved-by, or without
+    --approval-statement-file, or with an agent-role URN as approver, or
+    with an empty statement file -> exit 3, nothing persisted, no
+    directory at the target; the refusal message names MRR-FR-102.
+  - >-
+    AT3: flipping one byte in one content file of a created bundle makes
+    verify --bundle-dir exit 3 naming exactly that path; the rebuild mode
+    still exits 0 (the archive is intact — the message distinguishes the
+    two verdicts).
+  - >-
+    AT4: two creates of the same crate/disclosure/attestation (different
+    record identities) produce byte-identical content files and equal
+    root_hash; the record copies differ exactly in the identity/
+    timestamp/hash-of-record fields and nowhere else.
+  - >-
+    AT5: E8-T01/T02/T03 integration suites pass unmodified; import-linter
+    contracts stay green.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+specification_gaps:
+  - >-
+    MRR-FR-101 lists "methods, claim table, evidence map, counterevidence,
+    uncertainty, known unknowns, corrections, provenance summary" — all
+    carried via the E8-T03 report inside the bundle; the spec does not say
+    whether the bundle must ALSO carry raw artifacts; ADR-0011/E8-T01's
+    RO-Crate portion does carry them, so the bundle over-fulfils rather
+    than interprets.
+  - >-
+    Where real bundles will LIVE (site dist/, a releases/ tree in git,
+    object storage) is deliberately not decided here — it belongs to the
+    owner's Site-Kopplung decision; the CLI writes to an explicit
+    --output-dir and nothing else.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding one
+    integration-fixture release-manifest.json and release-record.json
+    verbatim and the exact create/verify invocations with their JSON
+    result lines.
+stop_conditions:
+  - >-
+    If the atomicity analysis of reviewer_resolution (5) turns out to
+    have a second inconsistent state not named there, STOP and record it
+    before choosing an order — never discover-and-shrug mid-implementation.
+  - >-
+    If registering a new schema breaks the contract-test harness's
+    assumptions (e.g. it requires a domain-model section reference that
+    does not exist for this kind), STOP and report — the harness's
+    conventions outrank this packet's convenience, and ADR-0011 is the
+    citation to wire in, not to work around.
