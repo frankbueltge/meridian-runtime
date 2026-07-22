@@ -123,11 +123,28 @@ redact and shape (see that module's own "E8-T05: the OPTIONAL release-status
 banner" section for why the RAW bodies, not pre-redacted text, cross this
 boundary — this service performs I/O only, every actual redaction decision
 stays exactly where it already lives, ``mrr.domain.research_report``'s own).
+
+--- E8-T06: the claim-graph-rooted report (R4) --------------------------------
+
+:meth:`ReportService.render_from_claims` is task-packets/E8-T06.yaml R4's
+second closure root, mirroring ``mrr.services.export.service.ExportService
+.export_from_claims``'s own relationship to ``.export`` exactly: composes
+``ExportService.resolve_closure_from_claims`` (R1) instead of ``.resolve_
+closure``, otherwise identical wiring to :meth:`render` — same corrections
+discovery/crate-scope filter (:func:`_corrections_for_closure`, already
+generic over ``closure.object_bodies``, never reads ``crate_id``), same
+per-claim provenance-map composition. ``build_report`` is called with
+``crate_id=None``, which selects ``mrr.domain.research_report``'s own
+claim-rooted section-1 rendering (read that module's docstring's "E8-T06 R4"
+section first) — every actual redaction/shaping decision still lives there,
+unchanged; this service still performs I/O only. See :meth:`render_from_
+claims`'s own docstring for why it deliberately carries no ``release_id``
+parameter (release stays crate-rooted, reviewer_resolution (4)).
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Protocol
 
@@ -150,6 +167,14 @@ from mrr.provenance.log import AppendedEvent
 from mrr.services.export.service import ExportClosure, ExportService
 from mrr.services.projection.service import ProjectionService
 from mrr.services.release.service import ReleaseService
+
+#: The kind checked when deriving the claim-rooted claim-id population from
+#: an ``ExportClosure.object_bodies`` mapping (task-packets/E8-T06.yaml R4)
+#: — identical to ``mrr.services.export.service._CLAIM_KIND``, declared
+#: independently here rather than imported (that name is module-private,
+#: matching this module's own established per-module-constant convention,
+#: e.g. ``_EventJournal`` immediately below).
+_CLAIM_KIND = "Claim"
 
 
 class _EventJournal(Protocol):
@@ -359,6 +384,89 @@ class ReportService:
             disclosure=disclosure,
             classification_by_object_id=classification_by_object_id or {},
             release_banner=release_banner,
+        )
+
+    def render_from_claims(
+        self,
+        claim_ids: Sequence[Urn] | None,
+        *,
+        disclosure: Disclosure,
+        classification_by_object_id: Mapping[str, Classification] | None = None,
+    ) -> ResearchReport:
+        """task-packets/E8-T06.yaml R4: the claim-graph-rooted counterpart to
+        :meth:`render` — composes ``ExportService.resolve_closure_from_
+        claims`` (R1) instead of ``.resolve_closure``, otherwise mirroring
+        :meth:`render`'s own composition line for line: the SAME
+        ``ProjectionService.build_public_correction_view``/crate-scope
+        filter (:func:`_corrections_for_closure` works unchanged — it reads
+        ``closure.object_bodies`` generically, never ``crate_id``), and the
+        SAME per-claim ``ProjectionService.build_provenance_map`` call,
+        keyed now by EVERY ``Claim``-kind object the claim-rooted closure
+        contains (there is no crate's own ``proposed_claims`` array to read
+        a narrower list from — mirrors ``mrr.domain.research_report
+        .build_report``'s own identical claim-id derivation for its
+        claim-rooted branch, task-packets/E8-T06.yaml R4). ``build_report``
+        is called with ``crate_id=None``, selecting that module's own
+        claim-rooted rendering (see its module docstring's "E8-T06 R4"
+        section).
+
+        Deliberately carries NO ``release_id`` parameter (unlike
+        :meth:`render`): task-packets/E8-T06.yaml reviewer_resolution (4)/
+        derived_decisions (e) keep the release banner (E8-T05) strictly
+        crate-rooted — "a release bundle is a published, A4-approved
+        artifact; whether one may publish a claim graph with no sealed
+        crate is a governance question for a later packet". ``mrr report
+        render`` never exposed ``--release-id`` at the CLI for the
+        crate-rooted path either (checked at derivation — no such flag
+        exists in ``mrr.services.cli.report_main`` today), so this omission
+        changes no currently-reachable CLI behavior.
+
+        Args:
+            claim_ids: see ``ExportService.resolve_closure_from_claims``'s
+                own docstring — explicit claim urns (``--claim-id``,
+                repeatable), or ``None`` (``--all-claims``) for every claim
+                the schema contains.
+            disclosure: identical meaning to :meth:`render`'s own parameter.
+            classification_by_object_id: identical meaning to :meth:`render`'s
+                own parameter.
+
+        Raises:
+            mrr.domain.exceptions.ObjectNotFoundError: an explicit
+                ``claim_ids`` entry, or any urn the R1 declared-reference-
+                field resolver discovers, does not resolve to any stored
+                object.
+            ValueError: an explicit ``claim_ids`` entry resolves to a
+                stored object whose ``kind`` is not ``Claim``.
+            mrr.services.export.service.NoClaimsToExportError: the resolved
+                root claim set is empty.
+        """
+        closure = self._export_service.resolve_closure_from_claims(claim_ids)
+
+        attestation = (
+            ALWAYS_PUBLIC_ATTESTATION
+            if disclosure == "internal"
+            else (classification_by_object_id or {})
+        )
+        all_corrections = self._projection_service.build_public_correction_view(
+            classification_by_object_id=attestation
+        )
+        corrections = _corrections_for_closure(all_corrections, closure)
+
+        claim_ids_in_closure = sorted(
+            urn for urn, body in closure.object_bodies.items() if body.get("kind") == _CLAIM_KIND
+        )
+        provenance_by_claim: dict[str, tuple[ProvenanceEdge, ...]] = {
+            claim_id: self._projection_service.build_provenance_map(claim_id).edges
+            for claim_id in claim_ids_in_closure
+        }
+
+        return build_report(
+            object_bodies=closure.object_bodies,
+            crate_id=None,
+            corrections=corrections,
+            provenance_by_claim=provenance_by_claim,
+            disclosure=disclosure,
+            classification_by_object_id=classification_by_object_id or {},
         )
 
     def _resolve_release_banner_input(self, release_id: Urn | None) -> ReleaseBannerInput | None:
