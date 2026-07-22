@@ -1,0 +1,296 @@
+task_id: E8-T06
+title: >-
+  Claim-graph-rooted export and report (first-use finding close-out): a
+  second closure root alongside the crate — export and report the actual
+  claim graph of an archival schema (claims, evidence and counter-evidence
+  anchors, source records, source families, and every verification incl.
+  disagreements) without a populated EvidenceCrate — resolving the claim
+  graph's declared reference fields, touching no sealed bytes, keeping
+  every crate-rooted output byte-identical.
+status: approved
+epic: E8
+reviewer_resolution: >-
+  Approved 2026-07-22 by the main session as reviewing instance, under the
+  owner's use-first decision of the same day (docs/design/
+  2026-07-22-nutzungsentscheidung-e9-vertagt.md) and directly on the
+  first-use finding (docs/design/2026-07-22-erste-nutzung-befunde.md,
+  Befund 2). Numbered E8-T06: a genuinely NEW capability slot found by
+  real use, extending the plan's E8-T01..T05 list (not a b-suffix
+  completeness gap — this was not excluded at derivation, it was
+  discovered by exporting the real run). Primary design choices CONFIRMED:
+  (1) the fix is RICHTUNG 2 of the finding record — make the export
+  ROOTABLE on the claim graph, additive and backward-compatible, rather
+  than mutating the sealed crate (Richtung 1 would touch seal semantics
+  and cannot retrofit an existing sealed run); (2) the fix resolves the
+  claim graph's DECLARED REFERENCE FIELDS (claim -> anchors / verifications
+  / source-families; anchor -> source-record), a resolver added in the
+  export service — the fact-lock at derivation showed build_provenance_map
+  does NOT traverse claim.evidence_relations (from a claim it reaches only
+  ruling/protocol), and all 17 real anchors have empty run_id, so the run
+  is honestly not reached claim-side; build_provenance_map is still reused
+  verbatim for the typed-edge enrichment it DOES provide, and verification
+  discovery already works on ANY included claim; (3) a claim-rooted
+  export/report carries NO artifact bytes and needs no crate — this is
+  faithful, not lossy: the artifacts are run INPUTS (corpus, protocol),
+  the research OUTPUT is the claims + verifications + evidence, which is
+  exactly what a claim root ships; artifact durability is Befund 1's
+  separate concern; (4) both `mrr export ro-crate` and `mrr report render`
+  gain the claim root (the report is the human-readable surface that shows
+  the disagreement — shipping only the machine-readable export would leave
+  the finding unshowable); release (E8-T04) stays crate-rooted (a
+  claim-rooted release touches the A4 gate — out of scope, noted); (5) no
+  real release/publication; this packet only READS the existing archive.
+depends_on: [E8-T01, E8-T02, E8-T03]
+derivation: >-
+  Derived 2026-07-22 from docs/design/2026-07-22-erste-nutzung-befunde.md
+  (Befund 2: the real EvidenceCrate has empty proposed_claims/
+  source_records/evidence_anchors, so the crate-rooted export of the real
+  run K1-T04 yields object_count 1 — only the crate, no claims — while the
+  schema holds a full graph: 18 SourceRecords, 17 EvidenceAnchors, 4
+  Claims, 3 VerificationResults, ...). Fact base verified first-hand at
+  derivation (fact-lock): a real Claim links via OBJECT-FIELD references
+  (evidence_relations/counterevidence_relations -> EvidenceAnchor urns;
+  verification_ids; source_family_ids), the EvidenceAnchor carries
+  source_record_id (populated) and run_id (EMPTY on all 17 real anchors);
+  ProjectionService.build_provenance_map traverses typed edges plus anchor
+  field references ONLY (source_record_id/run_id from an anchor) and does
+  NOT traverse claim.evidence_relations, so from a real claim it reaches
+  only ruling/protocol (2 edges) — the claim-rooted export therefore needs
+  its own declared-reference-field resolver (R1), not a BFS re-seed;
+  ProjectionService.build_claim_table already enumerates every claim ever
+  created in a schema via claim.created events; ExportService.resolve_closure (E8-T03)
+  seeds its per-claim loop from crate.body["proposed_claims"];
+  build_ro_crate_metadata takes crate_urn and uses crate.created_at as
+  datePublished; ReportService.render and the research-report header carry
+  crate fields.
+objective: >-
+  After this packet, `mrr export ro-crate --all-claims` (and
+  `--claim-id <urn>` repeatable) exports the full claim-graph closure of an
+  archival schema with no crate required — the two real model-collapse
+  claims, their evidence and counter-evidence anchors, the source records,
+  the source families, and ALL three recorded verifications including the Hammond pass/fail
+  disagreement — as offline-verifiable RO-Crate/PROV; `mrr report render`
+  with the same roots renders the human-readable report of that graph, the
+  disagreement visible and marked. Every crate-rooted export and report
+  stays byte-identical. No sealed bytes are touched; nothing is written to
+  the archive.
+source_of_truth:
+  - docs/design/2026-07-22-erste-nutzung-befunde.md         # Befund 2, the finding this closes
+  - services/control_plane/mrr/services/export/service.py   # resolve_closure — refactored to two seeds
+  - services/control_plane/mrr/services/report/service.py   # gains the claim root
+  - packages/domain/mrr/domain/ro_crate.py                  # datePublished for the no-crate case
+  - packages/domain/mrr/domain/research_report.py           # header for the no-crate case
+  - services/control_plane/mrr/services/projection/service.py  # build_claim_table (claim enumeration), build_provenance_map
+requirements:
+  - >-
+    R1 (claim-rooted closure — a DECLARED-REFERENCE-FIELD resolver, fact-
+    locked, NOT a re-seed of build_provenance_map): the real graph was
+    inspected at derivation (docs/design/2026-07-22-erste-nutzung-befunde
+    .md, Nachtrag): build_provenance_map traverses typed edges (from any
+    node) plus field references ONLY from an EvidenceAnchor
+    (source_record_id/run_id); it does NOT traverse claim.evidence_relations
+    -> anchor, so a BFS seeded from a claim reaches only ruling/protocol,
+    never the evidence. The claim-rooted export therefore resolves a FIXED,
+    DOCUMENTED per-kind reference-field map, transitively to fixpoint,
+    every field a real declared reference field verified present in the
+    K1-T04 schema (never a guessed one):
+      Claim         -> evidence_relations, counterevidence_relations,
+                       verification_ids, source_family_ids
+      EvidenceAnchor-> source_record_id, run_id   (each only when non-empty;
+                       all 17 real anchors have run_id EMPTY, so the run is
+                       honestly not reached from claims — documented, never
+                       fabricated)
+      VerificationResult -> evidence_inspected
+    PLUS build_provenance_map(claim) per root claim for typed-edge
+    enrichment (ruling, protocol), reused verbatim. The two are unioned,
+    deduplicated, sorted. This resolver is the SAME operation the export
+    already performs for the crate's own URN arrays (resolve declared
+    reference fields, get_latest each), extended to the claim's and
+    anchor's own reference fields — added in the EXPORT service, NOT in
+    projection.py (forbidden; reused as-is). resolve_closure(crate_id)
+    keeps its EXACT public signature and behavior (crate-rooted path
+    unchanged, still carrying the crate's ArtifactRef array). A NEW public
+    resolve_closure_from_claims(claim_ids: Sequence[Urn] | None) drives the
+    claim-rooted resolver: claim_ids given -> those (each must resolve to a
+    Claim, else typed refusal naming the urn); None -> every claim
+    ProjectionService.build_claim_table enumerates in the schema. The
+    claim-rooted ExportClosure carries crate_id = None and an EMPTY
+    artifact_refs tuple (derived_decision (a)); ExportClosure.crate_id
+    becomes Optional and every existing reader is checked.
+  - >-
+    R2 (export CLI, one-of root group): `mrr export ro-crate` gains a
+    mutually-exclusive, required-exactly-one root group: --crate-id (as
+    today), --claim-id (repeatable), --all-claims. --artifact-root stays
+    required only for --crate-id (crate-rooted export fetches bytes);
+    claim-rooted export takes NO --artifact-root and fetches no bytes
+    (there is no ArtifactRef array to fetch). NFR-012 ordering unchanged;
+    exit map 0/2/3 unchanged; the exit-0 JSON line reports the root kind.
+    A claim-rooted export with zero claims in the schema is a refusal
+    (exit 3, "no claims to export"), never a silent empty bundle.
+  - >-
+    R3 (metadata for the no-crate case): build_ro_crate_metadata gains a
+    claim-rooted mode. datePublished, when no crate is present, is the
+    MAXIMUM created_at across all exported object bodies (deterministic,
+    stored-field-derived, never wall clock — the moment the last piece of
+    the exported record came into being); the metadata's root data entity
+    and File/contextual entities are otherwise built exactly as today. The
+    crate-rooted document is byte-identical to E8-T01/T02 output
+    (regression-proven). No prov:* boundary changes (E8-T02's rules apply
+    unchanged to whatever objects the closure contains).
+  - >-
+    R4 (report claim root): ReportService.render and the research-report
+    model gain the claim root. The header (section 1) carries crate fields
+    only when crate-rooted; claim-rooted, section 1 shows root = "claim
+    graph", the run urn(s) reached, the claim count, and datePublished =
+    the R3 max-created_at — the crate-specific header fields become
+    OPTIONAL and absent (additive: a crate-rooted report is byte-identical
+    to E8-T03/T05 output, regression-proven). `mrr report render` gains
+    the same one-of root group as R2 (minus --artifact-root, which the
+    report never needed). Disclosure gating (E8-T03) and the release
+    banner (E8-T05) apply unchanged.
+  - >-
+    R5 (real-run smoke, the point of the packet): an integration test
+    seeds a graph shaped like the REAL run — a crate with EMPTY
+    proposed_claims/source_records/evidence_anchors AND, separately, claims
+    linked to their evidence via claim.evidence_relations/
+    counterevidence_relations -> anchors, anchors carrying source_record_id
+    but EMPTY run_id (exactly the real shape), plus a pass and a fail
+    verification on one claim — then asserts: crate-rooted export yields
+    only the crate (reproducing Befund 2 exactly, as a documented
+    expectation); --all-claims export yields the claims + evidence anchors
+    + counterevidence anchors + source records + BOTH verifications, and
+    HONESTLY does NOT include the run manifest (unreachable claim-side,
+    empty run_id — asserted absent, not fabricated); the claim-rooted
+    report shows the pass/fail disagreement marked. A second, smaller
+    fixture with ONE anchor carrying a non-empty run_id asserts the run
+    manifest IS included on that branch (covering R1's "when non-empty").
+    This test IS the finding, reproduced and resolved.
+  - >-
+    R6 (tests every tier + security-check): unit — the two-seed refactor
+    (crate seed and claim seed reach identical closures for a graph where
+    the crate DOES reference its claims; claim-rooted closure for a graph
+    where it does not), datePublished max-created_at determinism, header
+    optional-crate-fields, refusals; integration — R5 plus crate-rooted
+    byte-identity regressions for both export and report; architecture —
+    boundaries unchanged. E8-T01..T05 suites pass UNMODIFIED. All make
+    tiers green INCLUDING make security-check (standing since PR #68).
+allowed_paths:
+  - services/control_plane/mrr/services/export/service.py
+  - services/control_plane/mrr/services/report/service.py
+  - services/control_plane/mrr/services/cli/export_main.py
+  - services/control_plane/mrr/services/cli/report_main.py
+  - packages/domain/mrr/domain/ro_crate.py
+  - packages/domain/mrr/domain/research_report.py
+  - tests/unit/
+  - tests/contract/
+  - tests/integration/
+  - docs/design/
+  - task-packets/E8-T06.yaml
+forbidden_changes:
+  - schemas/**
+  - packages/contracts/**
+  - packages/domain/mrr/domain/public_correction_view.py
+  - packages/domain/mrr/domain/projection.py               # reused as-is (build_claim_table, build_provenance_map)
+  - packages/domain/mrr/domain/prov_mapping.py
+  - services/control_plane/mrr/services/release/**          # release stays crate-rooted (reviewer_resolution 4)
+  - services/control_plane/mrr/services/cli/main.py         # no new subcommand — existing ones gain a flag
+  - migrations/**
+  - corpora/**
+  - pyproject.toml
+  - uv.lock
+  - services/node_runtime/**
+derived_decisions:
+  - >-
+    (a) Claim-rooted output carries NO artifact bytes and no crate. This
+    is faithful: artifacts are run inputs; the research output is the
+    claim graph. A researcher who also wants the input artifacts uses the
+    crate root (once Befund 1 makes the bytes durable). The two roots are
+    complementary, not redundant.
+  - >-
+    (b) Claim enumeration reuses ProjectionService.build_claim_table
+    verbatim (it already scans claim.created events); no new "list claims"
+    logic is written. --all-claims exports the whole schema because each
+    archival schema is exactly one run's world. The per-kind reference-
+    field map (R1) is the ONLY new traversal logic, and every field in it
+    was verified present-and-load-bearing in the real K1-T04 schema at
+    derivation — it is a fact-locked map, not a guessed vocabulary
+    (AGENTS rule 3). A future kind gaining a reference field is a one-line
+    addition to that documented map, never an implicit behavior change.
+  - >-
+    (c) datePublished with no crate = max(created_at) over exported
+    objects — deterministic, honest, wall-clock-free. Documented at the
+    point of use.
+  - >-
+    (d) resolve_closure keeps its exact public signature and behavior;
+    the refactor is internal (shared private core). E8-T01/T02/T03 tests
+    proving the crate path are the behavior-identity bar.
+  - >-
+    (e) Release (E8-T04) is deliberately NOT made claim-rootable here: a
+    release bundle is a published, A4-approved artifact; whether one may
+    publish a claim graph with no sealed crate is a governance question
+    for a later packet, not an export-convenience change.
+invariants:
+  - The per-claim BFS and verification discovery are the SAME engine for both roots (one core).
+  - Every crate-rooted export and report is byte-identical to its pre-E8-T06 output.
+  - Claim-rooted output touches no ArtifactStore and no sealed bytes; writes nothing to the archive.
+  - No wall-clock timestamp in any rendered/exported byte; determinism for fixed inputs.
+  - A zero-claim claim-rooted export refuses, never ships an empty bundle.
+acceptance_tests:
+  - >-
+    AT1: the R5 real-shaped fixture — crate-rooted export = crate only
+    (Befund 2 reproduced); --all-claims export = the full claim graph incl.
+    both verifications; asserted as exact URN-set membership.
+  - >-
+    AT2: the claim-rooted report renders the pass/fail disagreement marked
+    "disagreement on record" in both formats and both disclosures; the
+    header shows root = claim graph with the run urn and claim count and
+    the max-created_at date.
+  - >-
+    AT3: crate-rooted byte-identity — for a graph whose crate DOES
+    reference its claims, the E8-T01/T02 export bytes and the E8-T03/T05
+    report bytes are byte-identical before and after this packet.
+  - >-
+    AT4: two claim-rooted exports of the same schema are byte-identical
+    trees; the only date equals max(created_at) of the exported objects.
+  - >-
+    AT5: refusals — --claim-id naming a non-Claim (exit 3), zero-claim
+    --all-claims (exit 3), --artifact-root supplied with a claim root or
+    absent with --crate-id (usage refusal); E8-T01..T05 suites unmodified.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make security-check
+specification_gaps:
+  - >-
+    Befund 1 (artifact-byte durability) is NOT closed here — a crate-rooted
+    export of the real run still needs the ephemeral artifact root until
+    the blobs are committed/dumped. Named, separate, next.
+  - >-
+    Whether the run pipeline should ALSO populate crate.proposed_claims
+    going forward (Richtung 1) remains open — this packet makes the
+    existing runs exportable without deciding it.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding the
+    exact --all-claims CLI invocation and JSON result line, and the
+    claim-rooted report's claim-table section for the Hammond claim
+    (showing the pass/fail disagreement) verbatim.
+stop_conditions:
+  - >-
+    If the two-seed refactor cannot keep resolve_closure(crate_id)
+    behavior-identical (any E8-T01/T02/T03 test needs a change beyond
+    imports), STOP and report — the crate path may not drift.
+  - >-
+    Already fact-locked at derivation (do NOT re-assume the finding's first
+    wording): build_provenance_map from a real claim reaches ONLY
+    ruling/protocol, never the anchors; all 17 real anchors have empty
+    run_id. R1's declared-reference-field map is the resolution. If, on a
+    DIFFERENT real schema, a claim's evidence is reachable by yet another
+    field not in R1's map, STOP and report it as a one-line map addition
+    rather than silently widening the traversal.
+  - >-
+    If a claim-rooted export would require touching a sealed artifact or
+    writing to the archive to be useful, STOP — that is not this packet.
