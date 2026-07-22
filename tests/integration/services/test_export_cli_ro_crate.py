@@ -1,6 +1,8 @@
-"""Integration tests for ``mrr export ro-crate`` (task-packets/E8-T01.yaml),
-driven end to end through the REAL console-script entry point
-(``mrr.services.cli.main.main``, exactly as
+"""Integration tests for ``mrr export ro-crate`` (task-packets/E8-T01.yaml,
+EXTENDED by task-packets/E8-T02.yaml's PROV layer — see that packet's OWN
+AT1 below, not to be confused with E8-T01's identically-numbered but
+differently-scoped AT1), driven end to end through the REAL console-script
+entry point (``mrr.services.cli.main.main``, exactly as
 ``tests/integration/services/test_verification_cli_recording.py`` already
 exercises ``mrr verification record``) against a real, throwaway PostgreSQL
 test schema AND a real ``mrr.adapters.object_store.local
@@ -22,17 +24,31 @@ codebase ships — never a raw insert, never a fake repository:
 - ``ClaimService`` (E3-T02) for the claim, EDGED to the anchor via
   ``add_evidence_edge(..., edge_type="supports")`` — a typed edge the SAME
   BFS also follows (``ProvenanceEdge.via == "edge"``), so this fixture
-  exercises both provenance-hop kinds in one small graph;
+  exercises both provenance-hop kinds in one small graph. AS OF E8-T02, the
+  claim ALSO carries a SECOND edge, ``add_evidence_edge(..., edge_type=
+  "derived_from")`` -> the source record, so that packet's own R2(a) has a
+  seeded fact to assert ``prov:wasDerivedFrom`` against;
 - one real artifact, ``put()`` into a real ``LocalFilesystemArtifactStore``;
 - ``RunManifestRecorder``/``EvidenceCrateSealer`` (E2-T05/T06) to seal a
   REAL, Ed25519-signed ``EvidenceCrate`` naming the source record, the
-  anchor, the claim, and the artifact through its own arrays;
+  anchor, the claim, and the artifact through its own arrays. AS OF E8-T02,
+  the ``RunManifest`` is now recorded BEFORE the anchor, and the anchor's
+  own ``run_id`` is set to it — so the SAME pre-existing R2(c) field-
+  reference BFS this fixture already exercised for ``source_record_id``
+  ALSO reaches the run, pulling it into the closure as a real, non-stub
+  contextual entity ("run (if reached)" per that packet's own R6 — reached
+  here on purpose, so its own R2(b) relations are directly assertable);
 - ``mrr verification record`` — the REAL K1-T05 CLI path (not
   ``VerificationService`` called directly from Python) — to record a
   ``VerificationResult`` against the proposed claim, so AT2's closure
-  includes it exactly as task-packets/E8-T01.yaml's own objective names.
+  includes it exactly as task-packets/E8-T01.yaml's own objective names. AS
+  OF E8-T02, its own ``evidence_inspected`` now names the anchor (rather
+  than staying empty), so R2(c)'s ``prov:used`` has more than the bare
+  ``target_id`` to assert.
 
-Acceptance-test mapping (task-packets/E8-T01.yaml, integration tier):
+Acceptance-test mapping, integration tier:
+
+task-packets/E8-T01.yaml:
 
 - AT1 (offline verifiability) -> ``test_export_is_offline_verifiable``.
 - AT2 (closure) -> ``test_exported_object_set_is_exactly_the_r2_closure``.
@@ -53,6 +69,28 @@ Acceptance-test mapping (task-packets/E8-T01.yaml, integration tier):
   ``tests/unit/architecture/test_export_cli_boundary.py``) and by the
   existing import-linter contract run
   (``tests/unit/architecture/test_import_boundaries.py``).
+
+task-packets/E8-T02.yaml:
+
+- AT1 (PROV types/relations against seeded facts, not merely present) ->
+  ``test_export_carries_the_expected_prov_types_and_relations``.
+- AT2 (absent optional relation field -> absent property, on a minimal
+  synthetic body) is asserted at the unit tier
+  (``tests/unit/domain/test_prov_mapping.py``'s ``test_*_omits_*`` tests) —
+  a real fixture graph cannot easily omit a schema-required field, which is
+  exactly why AT2 names a SYNTHETIC body.
+- AT3 (file-set regression) is asserted at the unit tier
+  (``tests/unit/domain/test_ro_crate.py``'s
+  ``test_provenance_edges_do_not_affect_the_export_plan``) by construction
+  (``provenance_edges`` never reaches ``build_export_plan`` at all) — see
+  that test's own docstring.
+- AT4 (determinism) — E8-T01's own
+  ``test_two_exports_of_the_same_crate_are_byte_identical`` stays green
+  UNMODIFIED, now additionally covering the PROV layer since it hashes the
+  entire exported tree, ``ro-crate-metadata.json`` included.
+- AT5 (layering) is asserted at the unit tier
+  (``tests/unit/architecture/test_prov_mapping_boundary.py``) and by the
+  existing import-linter contract run.
 """
 
 from __future__ import annotations
@@ -366,7 +404,15 @@ def _execution_result(
     )
 
 
-def _run_manifest_for(engine: Engine, bundle: TaskBundle, result: ExecutionResult) -> RunManifest:
+def _run_manifest_for(
+    engine: Engine, bundle: TaskBundle, result: ExecutionResult, *, executor_id: str | None = None
+) -> RunManifest:
+    """``executor_id`` is caller-overridable (task-packets/E8-T02.yaml AT1:
+    ``_seed_graph`` mints it up front so ``SeededGraph.executor_id`` can
+    assert the exact ``prov:wasAssociatedWith`` value the export ought to
+    carry) — defaults to a fresh ``new_urn("executor")`` when omitted,
+    matching E8-T01's own original behavior exactly.
+    """
     object_repository = PostgresObjectRepository(engine)
     event_log = PostgresEventLog(engine)
     record = bind_manifest_uow(engine, object_repository, event_log)
@@ -376,7 +422,7 @@ def _run_manifest_for(engine: Engine, bundle: TaskBundle, result: ExecutionResul
         result,
         bundle,
         practice_id=new_urn("practice"),
-        executor_id=new_urn("executor"),
+        executor_id=executor_id if executor_id is not None else new_urn("executor"),
         executor_role="reference-task-executor",
         started_at=now,
         ended_at=now + timedelta(seconds=1),
@@ -446,7 +492,8 @@ def _verification_payload(*, target_id: str, reviewer_id: str, **overrides: Any)
 @dataclass(frozen=True, slots=True)
 class SeededGraph:
     """Every id ``_seed_graph`` produces — the expected R2 closure (AT2)
-    reads off this dataclass directly, rather than re-deriving it.
+    and the expected PROV relations/agents (task-packets/E8-T02.yaml AT1)
+    read off this dataclass directly, rather than re-deriving them.
     """
 
     crate_id: str
@@ -454,6 +501,9 @@ class SeededGraph:
     source_record_id: str
     evidence_anchor_id: str
     verification_id: str
+    run_manifest_id: str
+    executor_id: str
+    reviewer_id: str
     artifact_content_hash: str
     artifact_data: bytes
 
@@ -462,6 +512,21 @@ def _seed_graph(postgres_url: str, artifact_root: Path, tmp_path: Path) -> Seede
     """Build the full fixture graph described in this module's own
     docstring, through real services end to end. Returns every id the
     subsequent export/verification is checked against.
+
+    task-packets/E8-T02.yaml's own AT1 additionally requires this fixture to
+    exercise every R2 relation rule end to end, so — beyond E8-T01's own
+    shape — this graph now also: (1) records the ``RunManifest`` BEFORE the
+    ``EvidenceAnchor`` and sets the anchor's own ``run_id`` to it, so the
+    R2(c) field-reference BFS (``mrr.services.projection.service``'s own
+    ``_field_reference_hops``) pulls the run into the closure as a REAL
+    contextual entity — "run (if reached)" IS reached here, so R2(b)'s own
+    ``prov:wasAssociatedWith``/``prov:used`` are directly assertable, not
+    merely a stub; (2) adds a SECOND typed edge from the claim,
+    ``derived_from`` -> the source record (alongside the existing
+    ``supports`` -> anchor edge), so R2(a)'s ``prov:wasDerivedFrom`` has a
+    seeded fact to assert against; (3) passes ``evidence_inspected=
+    [anchor.id]`` to the recorded ``VerificationResult``, so R2(c)'s
+    ``prov:used`` has more than just ``target_id`` to assert.
     """
     engine = sa.create_engine(postgres_url)
     try:
@@ -473,13 +538,20 @@ def _seed_graph(postgres_url: str, artifact_root: Path, tmp_path: Path) -> Seede
         anchor_service = EvidenceAnchorService(evidence_record)
         source_record = _source_record()
         source_service.create(source_record, **_kwargs())
-        anchor = _evidence_anchor(source_record_id=source_record.id)
+
+        bundle = _bundle()
+        result = _execution_result(bundle, "completed", output_hash="sha256:" + "e" * 64)
+        executor_id = new_urn("executor")
+        run_manifest = _run_manifest_for(engine, bundle, result, executor_id=executor_id)
+
+        anchor = _evidence_anchor(source_record_id=source_record.id, run_id=run_manifest.id)
         anchor_service.create(anchor, **_kwargs())
 
         claim_service = _claim_service_for(engine)
         claim = _claim()
         claim_service.create(claim, **_kwargs())
         claim_service.add_evidence_edge(claim.id, anchor.id, "supports", **_kwargs())
+        claim_service.add_evidence_edge(claim.id, source_record.id, "derived_from", **_kwargs())
 
         artifact_store = LocalFilesystemArtifactStore(artifact_root)
         artifact_data = b"E8-T01 fixture artifact bytes for RO-Crate export testing."
@@ -495,10 +567,6 @@ def _seed_graph(postgres_url: str, artifact_root: Path, tmp_path: Path) -> Seede
             content_hash=descriptor.content_hash,
             classification="PUBLIC",
         )
-
-        bundle = _bundle()
-        result = _execution_result(bundle, "completed", output_hash="sha256:" + "e" * 64)
-        run_manifest = _run_manifest_for(engine, bundle, result)
 
         crate_record = bind_crate_uow(engine, object_repository, event_log)
         sealer = EvidenceCrateSealer(crate_record)
@@ -521,7 +589,12 @@ def _seed_graph(postgres_url: str, artifact_root: Path, tmp_path: Path) -> Seede
     # task-packets/E8-T01.yaml's own objective describes.
     verification_id = new_urn("verification")
     reviewer_id = new_urn("person")
-    payload = _verification_payload(target_id=claim.id, reviewer_id=reviewer_id, id=verification_id)
+    payload = _verification_payload(
+        target_id=claim.id,
+        reviewer_id=reviewer_id,
+        id=verification_id,
+        evidence_inspected=[anchor.id],
+    )
     verification_file = tmp_path / f"verification-{uuid.uuid4().hex}.json"
     verification_file.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -549,6 +622,9 @@ def _seed_graph(postgres_url: str, artifact_root: Path, tmp_path: Path) -> Seede
         source_record_id=source_record.id,
         evidence_anchor_id=anchor.id,
         verification_id=verification_id,
+        run_manifest_id=run_manifest.id,
+        executor_id=executor_id,
+        reviewer_id=reviewer_id,
         artifact_content_hash=descriptor.content_hash,
         artifact_data=artifact_data,
     )
@@ -605,7 +681,11 @@ def test_export_is_offline_verifiable(
     result_line = json.loads(capsys.readouterr().out)
     assert result_line["crate_id"] == graph.crate_id
     assert result_line["output_dir"] == str(output_dir)
-    assert result_line["object_count"] == 5  # crate + source record + anchor + claim + verification
+    # crate + source record + anchor + claim + verification + run manifest
+    # (task-packets/E8-T02.yaml: the anchor's own run_id now names the
+    # manifest, so the R2(c) field-reference BFS reaches it — "run (if
+    # reached)" IS reached in this fixture).
+    assert result_line["object_count"] == 6
     assert result_line["artifact_count"] == 1
     assert result_line["total_bytes"] > 0
 
@@ -630,7 +710,7 @@ def test_export_is_offline_verifiable(
         recomputed_hash = compute_content_hash(raw_body)
         assert recomputed_hash == raw_body["content_hash"]
         assert recomputed_hash == entity["mrr:contentHash"]
-    assert object_file_count == 5
+    assert object_file_count == 6
 
     artifact_file_count = 0
     for relative_path, entity in entities_by_id.items():
@@ -649,6 +729,97 @@ def test_export_is_offline_verifiable(
     crate_relative_path = f"objects/{graph.crate_id.replace(':', '_')}.json"
     crate_body = json.loads((output_dir / crate_relative_path).read_bytes())
     assert entities_by_id[graph.crate_id]["mrr:signature"] == crate_body["signature"]
+
+
+# ---------------------------------------------------------------------------
+# AT1 (task-packets/E8-T02.yaml): PROV types/relations against seeded facts,
+# not merely asserted present.
+# ---------------------------------------------------------------------------
+
+
+def test_export_carries_the_expected_prov_types_and_relations(
+    postgres_url: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    artifact_root = tmp_path / "artifact-root"
+    output_dir = tmp_path / "export"
+    graph = _seed_graph(postgres_url, artifact_root, tmp_path)
+    capsys.readouterr()  # drain `_seed_graph`'s own `verification record` JSON line
+
+    exit_code = mrr_main(
+        _export_args(
+            postgres_url=postgres_url,
+            artifact_root=artifact_root,
+            crate_id=graph.crate_id,
+            output_dir=output_dir,
+        )
+    )
+    assert exit_code == 0
+
+    metadata = json.loads((output_dir / "ro-crate-metadata.json").read_text(encoding="utf-8"))
+    assert metadata["@context"][-1] == {"prov": "http://www.w3.org/ns/prov#"}
+    entities_by_id = {entity["@id"]: entity for entity in metadata["@graph"]}
+
+    # --- Types (docs/spec/02_DOMAIN_MODEL.md section 6 + derived rows). ---
+    assert entities_by_id[graph.crate_id]["@type"] == ["mrr:EvidenceCrate", "prov:Entity"]
+    assert entities_by_id[graph.source_record_id]["@type"] == ["mrr:SourceRecord", "prov:Entity"]
+    assert entities_by_id[graph.claim_id]["@type"] == ["mrr:Claim", "prov:Entity"]
+    assert entities_by_id[graph.evidence_anchor_id]["@type"] == [
+        "mrr:EvidenceAnchor",
+        "prov:Entity",
+    ]
+    assert entities_by_id[graph.run_manifest_id]["@type"] == ["mrr:RunManifest", "prov:Activity"]
+    assert entities_by_id[graph.verification_id]["@type"] == [
+        "mrr:VerificationResult",
+        "prov:Activity",
+    ]
+
+    # --- R2(a): the seeded derived_from edge, claim -> source record. ---
+    assert entities_by_id[graph.claim_id]["prov:wasDerivedFrom"] == [
+        {"@id": graph.source_record_id}
+    ]
+    # The claim's OTHER edge ("supports" -> the anchor) names no spec-table
+    # relation and is correctly absent from the claim's own relations.
+    assert "prov:used" not in entities_by_id[graph.claim_id]
+    assert (
+        "prov:wasAssociatedWith" not in entities_by_id[graph.claim_id]
+    )  # proposer_id: no relation.
+
+    # --- R2(b): the run's own executor. ---
+    assert entities_by_id[graph.run_manifest_id]["prov:wasAssociatedWith"] == {
+        "@id": graph.executor_id
+    }
+
+    # --- R2(c): the verification's own reviewer, target, and inspected evidence. ---
+    verification_entity = entities_by_id[graph.verification_id]
+    assert verification_entity["prov:wasAssociatedWith"] == {"@id": graph.reviewer_id}
+    assert verification_entity["prov:used"] == [
+        {"@id": urn} for urn in sorted([graph.claim_id, graph.evidence_anchor_id])
+    ]
+
+    # --- R2(d)/(e): the crate and its artifact are both the run's products. ---
+    assert entities_by_id[graph.crate_id]["prov:wasGeneratedBy"] == {"@id": graph.run_manifest_id}
+    artifact_relative_path = f"artifacts/{graph.artifact_content_hash.removeprefix('sha256:')}"
+    assert entities_by_id[artifact_relative_path]["prov:wasGeneratedBy"] == {
+        "@id": graph.run_manifest_id
+    }
+
+    # --- R3: stub agents for the two referenced-but-never-resolved people. ---
+    reviewer_stub = entities_by_id[graph.reviewer_id]
+    assert reviewer_stub == {
+        "@id": graph.reviewer_id,
+        "@type": "prov:Agent",
+        "mrr:urn": graph.reviewer_id,
+    }
+    # The executor's own urn entity segment, "executor", is not one of
+    # task-packets/E8-T02.yaml R1's own fallback rows (a disclosed
+    # specification gap — see mrr.domain.prov_mapping's own docstring) — its
+    # stub carries no "@type" at all.
+    executor_stub = entities_by_id[graph.executor_id]
+    assert executor_stub == {"@id": graph.executor_id, "mrr:urn": graph.executor_id}
+
+    has_part_ids = {ref["@id"] for ref in entities_by_id["./"]["hasPart"]}
+    assert graph.reviewer_id not in has_part_ids
+    assert graph.executor_id not in has_part_ids
 
 
 # ---------------------------------------------------------------------------
@@ -672,8 +843,13 @@ def test_exported_object_set_is_exactly_the_r2_closure(postgres_url: str, tmp_pa
     assert exit_code == 0
 
     metadata = json.loads((output_dir / "ro-crate-metadata.json").read_text(encoding="utf-8"))
+    # "mrr:kind" (not "mrr:urn") is the discriminator for a REAL, exported
+    # contextual entity — an R3 stub (task-packets/E8-T02.yaml) also carries
+    # "mrr:urn" (e.g. this fixture's own reviewer/executor agent stubs, see
+    # test_export_carries_the_expected_prov_types_and_relations below) but
+    # never "mrr:kind", since nothing about it was ever resolved.
     exported_object_urns = {
-        entity["mrr:urn"] for entity in metadata["@graph"] if "mrr:urn" in entity
+        entity["mrr:urn"] for entity in metadata["@graph"] if "mrr:kind" in entity
     }
 
     expected_urns = {
@@ -682,6 +858,7 @@ def test_exported_object_set_is_exactly_the_r2_closure(postgres_url: str, tmp_pa
         graph.evidence_anchor_id,
         graph.claim_id,
         graph.verification_id,
+        graph.run_manifest_id,
     }
     assert exported_object_urns == expected_urns
 

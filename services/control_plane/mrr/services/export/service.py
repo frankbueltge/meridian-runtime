@@ -1,13 +1,14 @@
-"""``ExportService`` (task-packets/E8-T01.yaml): the application-layer,
-READ-ONLY service that turns one sealed ``EvidenceCrate`` and its
-provenance neighborhood into a self-contained, offline-verifiable RO-Crate
-1.1 export directory. First task of Epic E8; the closest template is
-``mrr.services.projection.service.ProjectionService`` (E3-T07) — the same
-``ObjectRepository``/``EdgeRepository``/narrow event-journal Protocol
-dependency triple, the same "writes NOTHING" discipline, and the same
-event-log-scan discovery technique for a kind this service needs to find
-without a dedicated "list all" repository method (here:
-``VerificationResult``, exactly as that service discovers claims and
+"""``ExportService`` (task-packets/E8-T01.yaml, EXTENDED by task-packets/
+E8-T02.yaml R4 — see "Provenance edges feed the PROV layer (E8-T02)"
+below): the application-layer, READ-ONLY service that turns one sealed
+``EvidenceCrate`` and its provenance neighborhood into a self-contained,
+offline-verifiable RO-Crate 1.1 export directory. First task of Epic E8;
+the closest template is ``mrr.services.projection.service.ProjectionService``
+(E3-T07) — the same ``ObjectRepository``/``EdgeRepository``/narrow
+event-journal Protocol dependency triple, the same "writes NOTHING"
+discipline, and the same event-log-scan discovery technique for a kind this
+service needs to find without a dedicated "list all" repository method
+(here: ``VerificationResult``, exactly as that service discovers claims and
 corrections). ``ExportService`` additionally depends on
 ``mrr.domain.artifacts.ArtifactStore`` (E1-T07), since a crate's own
 artifact BYTES — unlike every other object this task exports — live outside
@@ -19,6 +20,29 @@ full RO-Crate design; this module's job is exactly the I/O this task's own
 R1 explicitly excludes from that pure module: resolving urns, walking the
 provenance graph, fetching artifact bytes, and writing the export directory
 to disk, atomically.
+
+--- Provenance edges feed the PROV layer (task-packets/E8-T02.yaml R4) --------
+
+E8-T01's own ``export`` already called ``ProjectionService.build_provenance_
+map`` once per proposed claim (see "Reusing the provenance BFS" below) and
+then DISCARDED every ``ProvenanceMap.edges`` hop the instant it had used it
+to resolve one more urn into ``object_bodies`` — R4 is exactly, and only,
+"stop discarding them": every hop from every one of those per-claim calls is
+now also accumulated into a ``set[ProvenanceEdge]`` (``ProvenanceEdge`` is
+frozen/``slots``, hence hashable, hence a plain ``set`` already IS "the
+union ... deduplicated" R4 asks for — no bespoke dedup logic needed), then
+sorted by ``(source_id, relation, target_id, via)`` — the exact same key
+``ProjectionService._trace_provenance`` already sorts a SINGLE claim's own
+hops by, reused here (not re-derived) across the UNION of every proposed
+claim's hops, for the identical reason: a deterministic order regardless of
+dict/set iteration order or claim-processing order. The resulting tuple is
+handed to ``mrr.domain.ro_crate.build_export`` as its new ``provenance_edges``
+parameter, exactly once, per export — no second repository/store call was
+added (the edges were already being read; only their post-use handling
+changed), no closure change (which urns get resolved into ``object_bodies``
+is byte-for-byte identical to E8-T01 — R4's own "no closure change"), no CLI
+change (``mrr.services.cli.export_main`` calls ``ExportService.export`` the
+same way it always did).
 
 --- This service writes NOTHING -----------------------------------------------
 
@@ -160,6 +184,7 @@ from mrr.contracts import Urn
 from mrr.crypto.canonical import JSONValue, canonicalize
 from mrr.domain.artifacts import ArtifactStore
 from mrr.domain.exceptions import ArtifactNotFoundError, DomainError, ObjectNotFoundError
+from mrr.domain.projection import ProvenanceEdge
 from mrr.domain.repositories import EdgeRepository, ObjectRepository
 from mrr.domain.ro_crate import METADATA_FILE_NAME, ExportPlan, build_export
 from mrr.provenance.log import AppendedEvent
@@ -331,8 +356,10 @@ class ExportService:
         projection_service = ProjectionService(
             self._object_repository, self._edge_repository, self._event_log
         )
+        provenance_edges: set[ProvenanceEdge] = set()
         for claim_id in sorted(crate.body.get("proposed_claims", [])):
             provenance = projection_service.build_provenance_map(claim_id)
+            provenance_edges.update(provenance.edges)
             for edge in provenance.edges:
                 if edge.target_id not in object_bodies:
                     object_bodies[edge.target_id] = self._object_repository.get_latest(
@@ -350,8 +377,17 @@ class ExportService:
             raise MissingArtifactBytesError(missing_content_hashes)
 
         artifact_sizes = {content_hash: len(data) for content_hash, data in artifact_bytes.items()}
+        sorted_provenance_edges = tuple(
+            sorted(
+                provenance_edges,
+                key=lambda edge: (edge.source_id, edge.relation, edge.target_id, edge.via),
+            )
+        )
         plan, metadata = build_export(
-            crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes=artifact_sizes
+            crate_urn=crate_id,
+            object_bodies=object_bodies,
+            artifact_sizes=artifact_sizes,
+            provenance_edges=sorted_provenance_edges,
         )
 
         total_bytes = self._write_export(output_dir, plan, metadata, artifact_bytes)
