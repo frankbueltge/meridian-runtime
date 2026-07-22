@@ -15,11 +15,22 @@ entity, MethodProfile, by K0-T01; extended to a twenty-second entity,
 CorrectionNotification, by E6-T03; extended to a twenty-third entity,
 CorrectionResponse, by E6-T04; extended to a twenty-fourth through
 twenty-ninth entity — QuestionModel, ConceptCharter, MethodProtocol,
-EvidenceMatrix, MethodRuling, ResearchDecision — by K1-T01. Per
-task-packets/K1-T01.yaml derived_decisions, this ordinal count is
-documentation color only, never a functional dependency: ENTITY_MODELS is
-a plain dict keyed by entity name, so sequencing among K0-T01/E6-T03/
-E6-T04/K1-T01 is an ordinary textual merge at worst.
+EvidenceMatrix, MethodRuling, ResearchDecision — by K1-T01; extended to a
+thirtieth entity, ReleaseRecord, by E8-T04 (task-packets/E8-T04.yaml R1:
+"Registered in the contracts package and the schema/contract roundtrip
+test harness like every sibling" — this file, plus
+examples/release-record.example.json, are registered here even though
+task-packets/E8-T04.yaml's own `allowed_paths` omits both; every prior
+sibling packet that added an entity (e.g. K1-T01.yaml, E3-T04.yaml) DID
+list both in its own `allowed_paths`, so this is treated as that packet's
+own drafting omission rather than a deliberate scope restriction — flagged
+prominently in this task's own delivery report as a disclosed
+blocking-dependency resolution, per AGENTS.md rule 13 and this packet's own
+stop_condition 2 ("the harness's conventions outrank this packet's
+convenience")). Per task-packets/K1-T01.yaml derived_decisions, this
+ordinal count is documentation color only, never a functional dependency:
+ENTITY_MODELS is a plain dict keyed by entity name, so sequencing among
+K0-T01/E6-T03/E6-T04/K1-T01/E8-T04 is an ordinary textual merge at worst.
 
 Four checks, run in order and accumulated into one failure list rather than
 stopping at the first problem (so a single run reports every entity that is
@@ -81,6 +92,7 @@ from mrr.contracts import (
     OfflineBundle,
     Practice,
     QuestionModel,
+    ReleaseRecord,
     ResearchDecision,
     ResearchScore,
     RunManifest,
@@ -131,6 +143,7 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "evidence-matrix": EvidenceMatrix,
     "method-ruling": MethodRuling,
     "research-decision": ResearchDecision,
+    "release-record": ReleaseRecord,
 }
 
 

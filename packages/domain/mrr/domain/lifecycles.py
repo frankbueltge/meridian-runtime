@@ -10,7 +10,11 @@ section 3's table), and ``QUESTION_MODEL_LIFECYCLE``/
 ``EVIDENCE_MATRIX_LIFECYCLE``/``METHOD_RULING_LIFECYCLE``/
 ``RESEARCH_DECISION_LIFECYCLE`` (task-packets/K1-T01.yaml, the kernel
 governance contracts task — also grounded in spec 08 section 3's table, AS
-AMENDED by commit 1d453bf for ``MethodProtocol``). None of these has a
+AMENDED by commit 1d453bf for ``MethodProtocol``), plus
+``RELEASE_RECORD_LIFECYCLE`` (task-packets/E8-T04.yaml, docs/spec/adr/
+ADR-0011-RELEASE-RECORD-AND-A4-APPROVAL-EVENT.md decision 1: "Lifecycle:
+released -> superseded is the ONLY transition (E8-T05 drives it); release
+records are never edited, deleted, or re-released"). None of these has a
 section-6 diagram to anchor it — see each machine's own comment block below
 and the "Open specification questions" list at the end of this docstring.
 
@@ -144,6 +148,18 @@ or spec amendment):
   code. Every ``(from, to)`` pair, including ``("issued", "issued")``, is
   therefore illegal — proving append-only-ness structurally rather than by
   convention.
+- ``RELEASE_RECORD_LIFECYCLE`` (task-packets/E8-T04.yaml) declares exactly
+  ONE edge, ``released -> superseded``, verbatim from ADR-0011 decision 1's
+  own text — no section-6 diagram or spec-08-style table exists for this
+  entity (it is not in docs/spec/02_DOMAIN_MODEL.md section 2 at all; the
+  ADR is the record of that extension). Whether ``superseded`` may
+  transition further is undrawn, mirroring ``METHOD_PROFILE_LIFECYCLE``'s
+  own identical open question. This packet (E8-T04) never drives this
+  machine at all — ``mrr.services.release.service.ReleaseService.create``
+  always writes a brand-new ``ReleaseRecord`` at revision 1, status
+  ``"released"``, and calls ``StateMachine.assert_transition`` for neither
+  state; the edge exists for a future E8-T05 (the correction banner) to
+  drive.
 """
 
 from __future__ import annotations
@@ -826,4 +842,36 @@ RESEARCH_DECISION_LIFECYCLE = StateMachine(
     states=_RESEARCH_DECISION_STATES,
     transitions=_RESEARCH_DECISION_TRANSITIONS,
     initial_state="issued",
+)
+
+
+# ---------------------------------------------------------------------------
+# ReleaseRecord — task-packets/E8-T04.yaml (docs/spec/adr/ADR-0011-RELEASE-
+# RECORD-AND-A4-APPROVAL-EVENT.md decision 1). No section-6 diagram exists
+# for this entity either — grounded only in the ADR's own literal text:
+# "Lifecycle: released -> superseded is the ONLY transition (E8-T05 drives
+# it); release records are never edited, deleted, or re-released."
+# ---------------------------------------------------------------------------
+#
+#   released -> superseded
+#
+# Exactly one edge. `superseded` has no drawn outgoing edge (open question
+# above, mirroring METHOD_PROFILE_LIFECYCLE's own identical treatment).
+# task-packets/E8-T04.yaml itself never drives this machine — it only ever
+# creates revision-1 "released" records; the edge is declared here for a
+# future E8-T05 to drive, exactly as ADR-0011 decision 1 states.
+
+_RELEASE_RECORD_STATES = frozenset({"released", "superseded"})
+
+_RELEASE_RECORD_TRANSITIONS = frozenset(
+    {
+        ("released", "superseded"),
+    }
+)
+
+RELEASE_RECORD_LIFECYCLE = StateMachine(
+    name="ReleaseRecord",
+    states=_RELEASE_RECORD_STATES,
+    transitions=_RELEASE_RECORD_TRANSITIONS,
+    initial_state="released",
 )

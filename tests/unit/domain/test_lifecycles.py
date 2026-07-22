@@ -5,7 +5,10 @@
 ``QUESTION_MODEL_LIFECYCLE``/``CONCEPT_CHARTER_LIFECYCLE``/
 ``METHOD_PROTOCOL_LIFECYCLE``/``EVIDENCE_MATRIX_LIFECYCLE``/
 ``METHOD_RULING_LIFECYCLE``/``RESEARCH_DECISION_LIFECYCLE`` by
-task-packets/K1-T01.yaml).
+task-packets/K1-T01.yaml; extended to ``RELEASE_RECORD_LIFECYCLE`` by
+task-packets/E8-T04.yaml — a plain, additive two-state/one-edge machine
+(``released -> superseded``), extended purely by adding entries to the
+existing parametrized tuples/dicts, exactly like every prior extension).
 
 Deviation from task-packets/K1-T01.yaml's "no new test bodies required"
 framing: ``RESEARCH_DECISION_LIFECYCLE`` is a deliberately one-state,
@@ -57,6 +60,7 @@ from mrr.contracts import (
     MethodRulingStatus,
     ObligationStatus,
     QuestionModelStatus,
+    ReleaseStatus,
     ResearchDecisionStatus,
     ResearchScoreStatus,
     TaskBundleStatus,
@@ -73,6 +77,7 @@ from mrr.domain.lifecycles import (
     METHOD_RULING_LIFECYCLE,
     OBLIGATION_LIFECYCLE,
     QUESTION_MODEL_LIFECYCLE,
+    RELEASE_RECORD_LIFECYCLE,
     RESEARCH_DECISION_LIFECYCLE,
     RESEARCH_SCORE_LIFECYCLE,
     TASK_BUNDLE_LIFECYCLE,
@@ -94,6 +99,7 @@ _ALL_MACHINES = [
     EVIDENCE_MATRIX_LIFECYCLE,
     METHOD_RULING_LIFECYCLE,
     RESEARCH_DECISION_LIFECYCLE,
+    RELEASE_RECORD_LIFECYCLE,
 ]
 
 #: The one legitimate zero-transition machine (task-packets/K1-T01.yaml) —
@@ -126,6 +132,7 @@ _TERMINAL_STATES: dict[str, frozenset[str]] = {
     "EvidenceMatrix": frozenset({"superseded"}),
     "MethodRuling": frozenset({"superseded"}),
     "ResearchDecision": frozenset({"issued"}),
+    "ReleaseRecord": frozenset({"superseded"}),
 }
 
 
@@ -197,6 +204,8 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         (METHOD_RULING_LIFECYCLE, "superseded", "pending"),  # terminal, no way back
         (METHOD_RULING_LIFECYCLE, "pending", "pending"),  # no self-transition
         (RESEARCH_DECISION_LIFECYCLE, "issued", "issued"),  # append-only, no self-transition
+        (RELEASE_RECORD_LIFECYCLE, "released", "released"),  # no self-transition
+        (RELEASE_RECORD_LIFECYCLE, "superseded", "released"),  # terminal, no way back
     ],
     ids=[
         "research-score-suspended-to-active",
@@ -245,6 +254,8 @@ def test_every_declared_edge_is_accepted(machine: StateMachine) -> None:
         "method-ruling-superseded-to-pending-terminal",
         "method-ruling-pending-to-pending-no-self-transition",
         "research-decision-issued-to-issued-append-only",
+        "release-record-released-to-released-no-self-transition",
+        "release-record-superseded-to-released-terminal",
     ],
 )
 def test_representative_undrawn_transitions_are_rejected(
@@ -425,6 +436,10 @@ def test_method_ruling_states_match_contract_status_literal() -> None:
 
 def test_research_decision_states_match_contract_status_literal() -> None:
     assert RESEARCH_DECISION_LIFECYCLE.states == set(get_args(ResearchDecisionStatus))
+
+
+def test_release_record_states_match_contract_status_literal() -> None:
+    assert RELEASE_RECORD_LIFECYCLE.states == set(get_args(ReleaseStatus))
 
 
 # ---------------------------------------------------------------------------

@@ -48,7 +48,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
 from mrr.crypto.exceptions import CryptoError
 from mrr.domain.exceptions import DomainError
-from mrr.services.cli import export_main, report_main, synthesis_main, verification_main
+from mrr.services.cli import (
+    export_main,
+    release_main,
+    report_main,
+    synthesis_main,
+    verification_main,
+)
 from mrr.services.cli.orchestration import DEFAULT_INPUT_BYTES, run_local_evidence_loop
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -202,6 +208,13 @@ def build_parser() -> argparse.ArgumentParser:
     # immediately above; no other line in this file changes.
     report_main.register_report_subcommand(subparsers)
 
+    # Task-packets/E8-T04.yaml's one additive registration: a new "release"
+    # subparser group ("mrr release create" / "mrr release verify")
+    # delegating entirely to mrr.services.cli.release_main — mirrors the
+    # report registration immediately above; no other line in this file
+    # changes.
+    release_main.register_release_subcommand(subparsers)
+
     return parser
 
 
@@ -321,6 +334,8 @@ def main(argv: list[str] | None = None) -> int:
         return export_main.run_command(args)
     if args.command == "report":
         return report_main.run_command(args)
+    if args.command == "release":
+        return release_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1

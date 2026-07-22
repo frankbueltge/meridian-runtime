@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/mrr/schemas/release-record.schema.json",
+  "title": "MRR ReleaseRecord",
+  "description": "docs/spec/adr/ADR-0011-RELEASE-RECORD-AND-A4-APPROVAL-EVENT.md decision 1, implemented per task-packets/E8-T04.yaml (Epic E8's fourth task; the thirtieth entity schema in this repository). Records ONE immutable, durable publication-approval act: a deterministic bundle (the E8-T01/T02 RO-Crate export plus the E8-T03 report renders) rooted at one sealed EvidenceCrate, approved by exactly one human. This is the A4 gate MRR-FR-101/-102 and Stage 11's acceptance criteria name ('an unapproved bundle cannot be published through any first-party connector'; 'historical releases' must be durable, not regenerable projections) — the object kind docs/spec/02_DOMAIN_MODEL.md section 2 does not itself define; ADR-0011 is the record of that extension. crate_id names the sealed EvidenceCrate this release is rooted on. disclosure ('internal'|'public') is the report projection actually rendered into the bundle (mrr.domain.research_report.Disclosure, MRR-FR-095). bundle is the deterministic content manifest: files (a SORTED array of {path, sha256}, one entry per content file the bundle directory carries) plus root_hash (sha256 over the sorted per-file hash lines — the bundle's own identity, ADR-0011 decision 1/3). The rule that makes this checkable ('immutable release'): root_hash covers every CONTENT file only and EXCLUDES release-manifest.json and release-record.json themselves (the two files that DESCRIBE the bundle, not its content — derived_decisions (c): the bundle embeds release-record.json verbatim so a third party holding only the bundle sees who approved and the hash it attests, and this exclusion is what makes that self-reference non-circular). approval is the A4 human act itself: approved_by is a PERSON urn (never an agent-role, node, or practice identity — MRR-FR-110 forbids inferring A4 permission from a lower-autonomy identity), pattern-enforced here to the exact person entity segment; approval_statement is the human's own words, non-empty; approval_mode names the vocabulary spec 01 section 5's autonomy model offers for an A4 act ('explicit human or dual approval') without this schema itself licensing a second-approver workflow — 'dual' is schema-valid but service-refused in this packet (task-packets/E8-T04.yaml derived_decisions (b)); the release.approved domain event's own actor field is this same approved_by value, atomically with this record's own revision-1 insert (ADR-0011 decision 2) — the human act IS the event, not a service default. status is 'released'|'superseded'; mrr.domain.lifecycles.RELEASE_RECORD_LIFECYCLE declares the single legal edge released -> superseded, driven only by a future E8-T05 (never by this packet — no ReleaseRecord this packet's own tests create is ever superseded). Release records are never edited, deleted, or re-released (ADR-0011 decision 1) — no update/delete method exists anywhere in mrr.services.release, immutability by omission, mirroring mrr.services.source_family.service.SourceFamilyService's own create-only precedent.",
+  "$defs": {
+    "personUrn": {
+      "description": "ADR-0011 decision 1's own person-URN pattern for approval.approved_by: the exact urn shape common.schema.json#/$defs/urn already defines, with the entity segment LOCKED to the literal 'person' rather than the generic '[a-z0-9-]+'. The ULID character class below is the SAME one common.schema.json#/$defs/urn and mrr.domain.identity.URN_PATTERN already use, duplicated here (not $ref'd, since #/$defs/urn's own entity segment is not itself parameterizable inside a JSON Schema pattern) rather than widening the shared urn definition — a disclosed, minor duplication, mirroring mrr.domain.artifacts.Classification's own documented precedent for 'a small enum appearing in a third place, consistent with a pattern that already appears in two'.",
+      "type": "string",
+      "pattern": "^urn:mrr:person:[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "bundleFile": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative POSIX path from the bundle directory's own root, e.g. 'ro-crate/ro-crate-metadata.json', 'report.md'."
+        },
+        "sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "bundle": {
+      "type": "object",
+      "required": ["files", "root_hash"],
+      "properties": {
+        "files": {
+          "description": "One entry per CONTENT file the bundle directory carries, SORTED by path — every file under ro-crate/ plus report.md and report.html, EXCLUDING release-manifest.json and release-record.json (ADR-0011 decision 1/3's own exclusion rule). Sortedness is enforced by the Pydantic contract (mrr.contracts.release_record.Bundle), not expressible cleanly as a JSON Schema constraint over array order.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/bundleFile"}
+        },
+        "root_hash": {
+          "description": "sha256 over the sorted per-file hash lines (mrr.services.release.manifest's own concrete, disclosed byte-format choice — the ADR names the rule, not the exact bytes) — the bundle's own identity, recomputed and never trusted from input at every boundary this packet defines (create, verify).",
+          "$ref": "common.schema.json#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "approval": {
+      "type": "object",
+      "required": ["approved_by", "approval_statement", "approval_mode"],
+      "properties": {
+        "approved_by": {"$ref": "#/$defs/personUrn"},
+        "approval_statement": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The human's own words recording why this release is approved. No default exists anywhere for this field (MRR-FR-102: supplying it IS the recorded human act)."
+        },
+        "approval_mode": {
+          "type": "string",
+          "enum": ["single_human", "dual"],
+          "description": "'single_human' is this practice's only IMPLEMENTED mode (task-packets/E8-T04.yaml derived_decisions (b)); 'dual' is schema-valid — recording the vocabulary docs/spec/01_SYSTEM_SPEC.md section 5's autonomy model offers ('explicit human or dual approval') — but service-refused, since no second-approver workflow exists yet."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/baseObject"},
+    {
+      "type": "object",
+      "required": ["kind", "crate_id", "disclosure", "bundle", "approval", "status"],
+      "properties": {
+        "kind": {"const": "ReleaseRecord"},
+        "crate_id": {
+          "description": "The sealed EvidenceCrate this release is rooted on (ADR-0011 decision 1).",
+          "$ref": "common.schema.json#/$defs/urn"
+        },
+        "disclosure": {
+          "type": "string",
+          "enum": ["internal", "public"],
+          "description": "The report projection actually rendered into the bundle (mrr.domain.research_report.Disclosure, MRR-FR-095)."
+        },
+        "bundle": {"$ref": "#/$defs/bundle"},
+        "approval": {"$ref": "#/$defs/approval"},
+        "status": {
+          "type": "string",
+          "enum": ["released", "superseded"],
+          "description": "mrr.domain.lifecycles.RELEASE_RECORD_LIFECYCLE's single legal edge is released -> superseded, driven only by a future E8-T05 task."
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

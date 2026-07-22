@@ -144,6 +144,12 @@ allowed_paths:
   - tests/integration/
   - docs/design/
   - task-packets/E8-T04.yaml
+  # AMENDMENT (2026-07-22, reviewing instance, ratifying the implementing
+  # session's disclosed resolution): the two harness-registration files
+  # every prior entity-adding packet (K1-T01, E3-T04) carried were omitted
+  # in drafting — added here so the record matches the rule that governed:
+  - examples/release-record.example.json
+  - scripts/check_contracts.py                       # registry addition only
 forbidden_changes:
   - schemas/*.schema.json                            # every EXISTING schema; only the new file above is allowed
   - packages/domain/mrr/domain/public_correction_view.py
