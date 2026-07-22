@@ -99,6 +99,54 @@ required/forbidden check necessarily runs AFTER the database is reached and
 ``--release-id`` resolves, not before. Every other NFR-012 dependency check
 (bundle-dir/artifact-root readability, database reachability) still runs
 cheapest-first, ahead of that database round trip.
+
+--- E8-T05: ``mrr release supersede`` / ``mrr release status`` --------------
+
+Two additive subcommands, registered on this module's existing "release"
+subparser tree (task-packets/E8-T05.yaml R4: "Registered additively ...
+main.py only if genuinely required" — it was not; ``main.py``'s existing
+``register_release_subcommand`` call already dispatches every subcommand
+this module defines, unchanged). Neither imports ``mrr.services.release
+.service``/``mrr.domain.release_status`` directly — both reach that layer
+exclusively through ``mrr.services.release.supersede``'s own two composition
+functions (``create_and_supersede``/``resolve_release_status``), extending
+this module's own pre-existing "no domain behavior in the CLI" law
+(``tests/unit/architecture/test_release_cli_boundary.py``, an E8-T04 test
+left byte-for-byte unmodified — its own forbidden-import list already
+excludes ``mrr.services.release.service``, so this task's own new imports
+need no change there at all) to the two new commands too.
+
+``mrr release supersede`` takes the FULL ``create`` flag set
+(:func:`_add_create_flags`, reused verbatim) PLUS ``--supersedes
+<release-urn>``: creates a brand-new release exactly as ``mrr release
+create`` does, THEN transitions ``--supersedes`` to ``superseded``, naming
+the new release. Exit ``0``: both writes succeeded — prints ``create``'s own
+JSON payload shape PLUS ``supersedes``/``supersedes_revision``/
+``supersedes_status`` (the OLD release's own id, its NEW revision number,
+and ``"superseded"``, respectively). Exit ``2``: the identical create-side
+dependency failures ``mrr release create`` already reports (nothing new).
+Exit ``3``: any create-side refusal (identical to ``mrr release create``);
+OR ``mrr.services.release.errors.SupersessionIntermediateStateError`` — THE
+ONE named inconsistent state reviewer_resolution (2) describes (the new
+release exists, durably, but ``--supersedes`` was NOT transitioned) —
+printed VERBATIM, its own message already stating the exact state and
+pointing at ``mrr release status`` for detection.
+
+``mrr release status --database-url ... --release-id ...`` is read-only —
+never writes, never takes an A4 input. Exit ``0`` for EVERY successfully
+computed verdict (derived_decisions (c): "a superseded release answering
+'superseded' is the system working, not failing" — scripts branch on the
+JSON ``verdict`` field, never the exit code, for this one command). Prints a
+single JSON line: ``verdict``, ``release_id``, ``crate_id``, plus
+``superseded_by`` (only when the verdict is ``"superseded"``),
+``affecting_corrections`` (only when non-empty — each entry
+``{"correction_id": ..., "intersecting_object_ids": [...]}``), and
+``anomaly`` (only when ``duplicate_unsuperseded_releases`` is ``True`` — the
+literal string ``"duplicate_unsuperseded_releases"``, not a bare boolean, so
+a future second anomaly kind could be added without changing this field's
+own shape). Exit ``2``: the database is unreachable. Exit ``3``:
+``--release-id`` does not resolve, or resolves to a non-``ReleaseRecord``
+kind.
 """
 
 from __future__ import annotations
@@ -120,7 +168,11 @@ from mrr.persistence.repositories import (
 )
 from mrr.persistence.unit_of_work import bind_unit_of_work
 from mrr.services.release.bundle import assemble_and_release, output_dir_conflict
-from mrr.services.release.errors import ReleaseBundleFinalizationError
+from mrr.services.release.errors import (
+    ReleaseBundleFinalizationError,
+    SupersessionIntermediateStateError,
+)
+from mrr.services.release.supersede import create_and_supersede, resolve_release_status
 from mrr.services.release.verify import (
     PathDiff,
     resolve_release_record,
@@ -189,17 +241,16 @@ def _load_classification_file(path: Path) -> dict[str, Classification]:
 # ---------------------------------------------------------------------------
 
 
-def _add_create_subparser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-) -> None:
-    create_parser = subparsers.add_parser(
-        "create",
-        help=(
-            "Assemble a deterministic release bundle (RO-Crate export + report renders) for "
-            "one sealed EvidenceCrate and persist its ReleaseRecord, atomically with the "
-            "release.approved A4 event (task-packets/E8-T04.yaml)."
-        ),
-    )
+def _add_create_flags(create_parser: argparse.ArgumentParser) -> None:
+    """The full "create flag set" (task-packets/E8-T04.yaml R4), factored
+    out of :func:`_add_create_subparser` so ``mrr release supersede``
+    (task-packets/E8-T05.yaml R4: "the full create flag set of E8-T04 R4
+    PLUS --supersedes") can reuse it verbatim on its own subparser rather
+    than a second, copy-pasted, possibly-drifting flag list. Behavior-
+    preserving refactor only — every flag, default, help string, and
+    ``required``/``choices`` value below is byte-identical to E8-T04's own
+    original ``_add_create_subparser`` body.
+    """
     create_parser.add_argument(
         "--database-url",
         required=True,
@@ -292,6 +343,76 @@ def _add_create_subparser(
     )
 
 
+def _add_create_subparser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    create_parser = subparsers.add_parser(
+        "create",
+        help=(
+            "Assemble a deterministic release bundle (RO-Crate export + report renders) for "
+            "one sealed EvidenceCrate and persist its ReleaseRecord, atomically with the "
+            "release.approved A4 event (task-packets/E8-T04.yaml)."
+        ),
+    )
+    _add_create_flags(create_parser)
+
+
+def _add_supersede_subparser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """``mrr release supersede`` (task-packets/E8-T05.yaml R1/R4): the full
+    create flag set (:func:`_add_create_flags`, reused verbatim — this
+    subcommand creates a brand-new release exactly like ``create`` does)
+    PLUS ``--supersedes``, the urn of the EXISTING ``ReleaseRecord`` this
+    new release supersedes.
+    """
+    supersede_parser = subparsers.add_parser(
+        "supersede",
+        help=(
+            "Create a brand-new release (the full 'create' flag set) and then transition an "
+            "EXISTING release to superseded, naming the new one — the released -> superseded "
+            "lifecycle driver (task-packets/E8-T05.yaml R1), itself a fresh A4 publication act."
+        ),
+    )
+    _add_create_flags(supersede_parser)
+    supersede_parser.add_argument(
+        "--supersedes",
+        required=True,
+        help=(
+            "URN of the EXISTING ReleaseRecord (status 'released') this new release supersedes. "
+            "Transitioned to 'superseded' AFTER the new release is durably persisted — see "
+            "this command's own module docstring for the one named intermediate state this "
+            "two-step order can produce."
+        ),
+    )
+
+
+def _add_status_subparser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """``mrr release status`` (task-packets/E8-T05.yaml R2/R4): the
+    read-only banner projection over an already-persisted ``ReleaseRecord``.
+    """
+    status_parser = subparsers.add_parser(
+        "status",
+        help=(
+            "Report an already-persisted ReleaseRecord's own current/superseded/"
+            "corrections_affect_this_release verdict, plus the duplicate_unsuperseded_releases "
+            "anomaly flag (task-packets/E8-T05.yaml R2) — a projection, not a mutation."
+        ),
+    )
+    status_parser.add_argument(
+        "--database-url",
+        required=True,
+        help="SQLAlchemy PostgreSQL URL, e.g. postgresql+psycopg://user:pass@host/db",
+    )
+    status_parser.add_argument(
+        "--release-id",
+        required=True,
+        help="URN of the ReleaseRecord to report status for, loaded from the object store.",
+    )
+
+
 def _add_verify_subparser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -350,16 +471,21 @@ def register_release_subcommand(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     """The ONE call ``mrr.services.cli.main.build_parser`` makes to register
-    ``mrr release create``/``mrr release verify`` — everything else about
-    this subcommand's flags and behavior lives in this module.
+    ``mrr release create``/``verify``/``supersede``/``status`` — everything
+    else about this subcommand's flags and behavior lives in this module.
     """
     release_parser = subparsers.add_parser(
         "release",
-        help="Publication approval and immutable release bundle (task-packets/E8-T04.yaml).",
+        help=(
+            "Publication approval, immutable release bundle, supersession, and status "
+            "(task-packets/E8-T04.yaml, E8-T05.yaml)."
+        ),
     )
     release_subparsers = release_parser.add_subparsers(dest="release_command", required=True)
     _add_create_subparser(release_subparsers)
     _add_verify_subparser(release_subparsers)
+    _add_supersede_subparser(release_subparsers)
+    _add_status_subparser(release_subparsers)
 
 
 # ---------------------------------------------------------------------------
@@ -513,6 +639,238 @@ def _run_create_command(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# `mrr release supersede` (task-packets/E8-T05.yaml R1/R4). A disclosed,
+# deliberate near-duplicate of `_run_create_command` above rather than a
+# deep shared-helper refactor: every one of `_run_create_command`'s own
+# already-tested NFR-012 checks (--output-dir conflict, the A4 act's three
+# no-default inputs, --classification-file rules, --artifact-root, database
+# reachability) applies identically here, PLUS the two E8-T05-only additions
+# (the --supersedes presence — argparse's own `required=True` already
+# enforces this, so no additional runtime check is needed here — and
+# `create_and_supersede`'s own two-transaction call instead of
+# `assemble_and_release`'s one). A shared-helper extraction risked a subtle,
+# unintended behavior change to `_run_create_command`'s own already-tested
+# code path; this near-duplicate keeps that path untouched and lets this
+# command's own control flow be read start-to-finish in one place.
+# ---------------------------------------------------------------------------
+
+
+def _run_supersede_command(args: argparse.Namespace) -> int:
+    # --- 1. --output-dir conflict FIRST — the cheapest of all checks.
+    if output_dir_conflict(args.output_dir):
+        print(
+            f"mrr release supersede: --output-dir {args.output_dir} already exists (as a file, "
+            "or as a non-empty directory) — refusing to write over or into it.",
+            file=sys.stderr,
+        )
+        return _EXIT_REFUSED
+
+    # --- 2. The A4 act's three inputs: NO default, absence is a refusal.
+    missing = [
+        flag
+        for flag, value in (
+            ("--approved-by", args.approved_by),
+            ("--approval-statement-file", args.approval_statement_file),
+            ("--approval-mode", args.approval_mode),
+        )
+        if value is None
+    ]
+    if missing:
+        print(
+            "mrr release supersede: "
+            + ", ".join(missing)
+            + " must be given explicitly — no default exists by design (MRR-FR-102: "
+            "supplying these flags IS the recorded human approval act for the NEW, "
+            "superseding release).",
+            file=sys.stderr,
+        )
+        return _EXIT_REFUSED
+
+    # --- 3. Read --approval-statement-file (a dependency, not a refusal).
+    try:
+        approval_statement = args.approval_statement_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(
+            "mrr release supersede: cannot read --approval-statement-file "
+            f"{args.approval_statement_file} ({exc}). Refusing to fabricate a substitute "
+            "result (MRR-NFR-012).",
+            file=sys.stderr,
+        )
+        return _EXIT_DEPENDENCY_UNAVAILABLE
+
+    # --- 4. --classification-file: required-with-public / forbidden-with-internal.
+    disclosure = args.disclosure
+    if disclosure == _DISCLOSURE_PUBLIC and args.classification_file is None:
+        print(
+            "mrr release supersede: --disclosure public requires --classification-file (an "
+            "explicit governance input, never defaulted). Refusing to fabricate a substitute "
+            "result (MRR-NFR-012).",
+            file=sys.stderr,
+        )
+        return _EXIT_DEPENDENCY_UNAVAILABLE
+    if disclosure == _DISCLOSURE_INTERNAL and args.classification_file is not None:
+        print(
+            "mrr release supersede: --disclosure internal forbids --classification-file — an "
+            "internal render ignores any attestation and must never appear to depend on one.",
+            file=sys.stderr,
+        )
+        return _EXIT_DEPENDENCY_UNAVAILABLE
+
+    classification_by_object_id: dict[str, Classification] = {}
+    if args.classification_file is not None:
+        try:
+            classification_by_object_id = _load_classification_file(args.classification_file)
+        except ValueError as exc:
+            print(
+                f"mrr release supersede: {exc}. Refusing to fabricate a substitute result "
+                "(MRR-NFR-012).",
+                file=sys.stderr,
+            )
+            return _EXIT_DEPENDENCY_UNAVAILABLE
+
+    # --- 5. --artifact-root must already exist and be readable.
+    if not args.artifact_root.is_dir():
+        print(
+            f"mrr release supersede: --artifact-root {args.artifact_root} does not exist or is "
+            "not a directory. Refusing to fabricate a substitute result (MRR-NFR-012).",
+            file=sys.stderr,
+        )
+        return _EXIT_DEPENDENCY_UNAVAILABLE
+
+    # --- 6. Dependency check: the database must be reachable.
+    try:
+        engine = sa.create_engine(args.database_url)
+        with engine.connect() as conn:
+            conn.execute(sa.text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        print(
+            "mrr release supersede: cannot reach the PostgreSQL database at the given "
+            f"--database-url ({exc}). Refusing to fabricate a substitute result (MRR-NFR-012).",
+            file=sys.stderr,
+        )
+        return _EXIT_DEPENDENCY_UNAVAILABLE
+
+    # --- 7. Create the new release, then transition the old one — the two-
+    #        transaction fixed order (reviewer_resolution (2)).
+    correlation_id = args.correlation_id or new_urn("research-run")
+    try:
+        object_repository = PostgresObjectRepository(engine)
+        edge_repository = PostgresEdgeRepository(engine)
+        event_log = PostgresEventLog(engine)
+        artifact_store = LocalFilesystemArtifactStore(args.artifact_root)
+        record = bind_unit_of_work(engine, object_repository, event_log)
+
+        new_result, old_stored = create_and_supersede(
+            object_repository=object_repository,
+            edge_repository=edge_repository,
+            event_log=event_log,
+            artifact_store=artifact_store,
+            record=record,
+            crate_id=args.crate_id,
+            disclosure=disclosure,
+            classification_by_object_id=classification_by_object_id,
+            approved_by=args.approved_by,
+            approval_statement=approval_statement,
+            approval_mode=args.approval_mode,
+            policy_version=args.policy_version,
+            correlation_id=correlation_id,
+            output_dir=args.output_dir,
+            supersedes=args.supersedes,
+        )
+    except SupersessionIntermediateStateError as exc:
+        # Named verbatim — this error's own message already states the
+        # exact inconsistent state and how to detect it (reviewer_resolution
+        # (2)); printed as-is, never paraphrased.
+        print(f"mrr release supersede: {exc}", file=sys.stderr)
+        return _EXIT_REFUSED
+    except ReleaseBundleFinalizationError as exc:
+        print(f"mrr release supersede: {exc}", file=sys.stderr)
+        return _EXIT_REFUSED
+    except (DomainError, ValueError) as exc:
+        print(
+            f"mrr release supersede: release refused — {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return _EXIT_REFUSED
+    finally:
+        engine.dispose()
+
+    payload = {
+        "release_id": new_result.release_id,
+        "revision": new_result.revision,
+        "crate_id": new_result.crate_id,
+        "disclosure": new_result.disclosure,
+        "approval_mode": new_result.approval_mode,
+        "root_hash": new_result.root_hash,
+        "file_count": new_result.file_count,
+        "output_dir": str(new_result.output_dir),
+        "supersedes": old_stored.id,
+        "supersedes_revision": old_stored.revision,
+        "supersedes_status": old_stored.body["status"],
+    }
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# `mrr release status` (task-packets/E8-T05.yaml R2/R4).
+# ---------------------------------------------------------------------------
+
+
+def _run_status_command(args: argparse.Namespace) -> int:
+    # --- 1. Dependency check: the database must be reachable.
+    try:
+        engine = sa.create_engine(args.database_url)
+        with engine.connect() as conn:
+            conn.execute(sa.text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        print(
+            "mrr release status: cannot reach the PostgreSQL database at the given "
+            f"--database-url ({exc}). Refusing to fabricate a substitute result (MRR-NFR-012).",
+            file=sys.stderr,
+        )
+        return _EXIT_DEPENDENCY_UNAVAILABLE
+
+    try:
+        object_repository = PostgresObjectRepository(engine)
+        event_log = PostgresEventLog(engine)
+        banner = resolve_release_status(object_repository, event_log, args.release_id)
+    except (DomainError, ValueError) as exc:
+        print(
+            f"mrr release status: {args.release_id!r} — {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return _EXIT_REFUSED
+    finally:
+        engine.dispose()
+
+    # derived_decisions (c): a computed verdict is an answer, not an error —
+    # exit 0 for EVERY verdict, including "superseded"/
+    # "corrections_affect_this_release". Scripts branch on the JSON
+    # "verdict" field, never on the exit code, for this command.
+    payload: dict[str, object] = {
+        "verdict": banner.verdict,
+        "release_id": banner.release_id,
+        "crate_id": banner.crate_id,
+    }
+    if banner.superseded_by is not None:
+        payload["superseded_by"] = banner.superseded_by
+    if banner.affecting_corrections:
+        payload["affecting_corrections"] = [
+            {
+                "correction_id": row.correction_id,
+                "intersecting_object_ids": list(row.intersecting_object_ids),
+            }
+            for row in banner.affecting_corrections
+        ]
+    if banner.duplicate_unsuperseded_releases:
+        payload["anomaly"] = "duplicate_unsuperseded_releases"
+
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # `mrr release verify`.
 # ---------------------------------------------------------------------------
 
@@ -651,14 +1009,19 @@ def _run_verify_command(args: argparse.Namespace) -> int:
 
 
 def run_command(args: argparse.Namespace) -> int:
-    """The actual execution logic for ``mrr release create``/``mrr release
-    verify`` — called both by ``mrr.services.cli.main.main`` (the real,
-    nested entry point) and by this module's own standalone ``main`` (below).
+    """The actual execution logic for ``mrr release create``/``verify``/
+    ``supersede``/``status`` — called both by ``mrr.services.cli.main.main``
+    (the real, nested entry point) and by this module's own standalone
+    ``main`` (below).
     """
     if args.release_command == "create":
         return _run_create_command(args)
     if args.release_command == "verify":
         return _run_verify_command(args)
+    if args.release_command == "supersede":
+        return _run_supersede_command(args)
+    if args.release_command == "status":
+        return _run_status_command(args)
     raise AssertionError(  # pragma: no cover - unreachable while required=True
         f"unknown release_command: {args.release_command!r}"
     )
@@ -671,11 +1034,16 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="mrr release",
-        description="Publication approval and immutable release bundle (task-packets/E8-T04.yaml).",
+        description=(
+            "Publication approval, immutable release bundle, supersession, and status "
+            "(task-packets/E8-T04.yaml, E8-T05.yaml)."
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     _add_create_subparser(subparsers)
     _add_verify_subparser(subparsers)
+    _add_supersede_subparser(subparsers)
+    _add_status_subparser(subparsers)
     return parser
 
 
@@ -687,6 +1055,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_create_command(args)
     if args.command == "verify":
         return _run_verify_command(args)
+    if args.command == "supersede":
+        return _run_supersede_command(args)
+    if args.command == "status":
+        return _run_status_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
