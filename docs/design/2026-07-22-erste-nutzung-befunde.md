@@ -73,3 +73,28 @@ umsetzbare Lücken freilegen, ist genau das Verhalten eines funktionierenden Sys
 Der erste Export lief technisch fehlerfrei (4 Artefakte, 75.621 Bytes, gültige
 RO-Crate-1.1-Metadaten mit PROV) — er zeigte nur wahrheitsgemäß, dass die Wurzel am
 falschen Objekt hängt.
+
+## Nachtrag (fact-lock vor dem Fix-Paket E8-T06): die Abkopplung ist tiefer
+
+Bei der Paket-Ableitung direkt an der DB geprüft — die erste Fassung dieses Records war
+technisch ungenau („die vorhandene Provenance-BFS traversiert diese Felder"). Korrekt:
+
+- `ProjectionService.build_provenance_map(claim)` traversiert **typisierte Kanten** (von
+  jedem Knoten) **plus Feldreferenzen nur VON EvidenceAnchors aus** (`source_record_id`,
+  `run_id`). Sie traversiert **nicht** `claim.evidence_relations` → Anchor. Aus dem
+  Hammond-Claim erreicht die BFS darum nur Ruling + Protocol (2 Kanten, 3 Objekte) —
+  **keinen einzigen der 13 Evidence-Anchors**, auf die der Claim zeigt.
+- Die E8-Export-Tests „funktionierten", weil ihre Fixtures die **Crate-Arrays** füllten;
+  der Export listet Anchors direkt aus `crate.evidence_anchors`, nicht über die BFS.
+- Zusätzlich: **alle 17 realen Anchors haben leeres `run_id`**, und das RunManifest hängt
+  an keiner Kante. Es ist aus dem Claim-Graphen gar nicht erreichbar (nur die Crate
+  referenziert den Lauf, via `crate.run_id`).
+
+**Konsequenz für den Fix:** Ein claim-verwurzelter Export kann NICHT einfach die
+bestehende BFS neu säen — er braucht eine eigene, dokumentierte Auflösung *deklarierter
+Referenzfelder*: `claim.{evidence_relations, counterevidence_relations, verification_ids,
+source_family_ids}` → Anchors/Verifications/Source-Families; `anchor.source_record_id` →
+Source; plus `build_provenance_map` für die typisierten Kanten (Ruling, Protocol). Das
+RunManifest bleibt claim-seitig unerreichbar (ehrlich, keine Fabrikation). Genau diese
+Closure spezifiziert E8-T06 — der Fact-Lock hat die erste, falsche Paketfassung
+(„BFS erreicht die Evidence") noch vor der Umsetzung korrigiert.
