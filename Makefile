@@ -38,3 +38,9 @@ security-check:
 	uv run pip-audit --strict -r .security-check-requirements.txt
 	rm -f .security-check-requirements.txt
 	uv run bandit -c pyproject.toml -r packages adapters services
+
+archive-dump:
+	scripts/archive-dump.sh
+
+archive-dump-verify:
+	scripts/archive-dump.sh --verify
