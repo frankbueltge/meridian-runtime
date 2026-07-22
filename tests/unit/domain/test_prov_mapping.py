@@ -12,9 +12,10 @@ Acceptance-test mapping (task-packets/E8-T02.yaml, unit tier):
   ``test_unknown_kind_maps_to_no_prov_type``.
 - R1 "the URN-entity-segment -> PROV-type fallback" ->
   ``test_urn_entity_segment_fallback_matches_the_packet_table``,
-  ``test_unknown_urn_entity_segment_maps_to_no_prov_type`` (this doubles as
-  documentation of the "executor" segment gap flagged in the module's own
-  docstring), ``test_malformed_urn_maps_to_no_prov_type``.
+  ``test_unknown_urn_entity_segment_maps_to_no_prov_type``,
+  ``test_malformed_urn_maps_to_no_prov_type``. The "executor" row carries
+  the 2026-07-22 packet amendment (see the module docstring's fallback
+  section for its history).
 - R6 "the no-fabricated-relation rule (bodies lacking a field emit no
   property)" / AT2 -> every ``test_*_omits_*`` test below.
 - R2(a)/(b)/(c)/(e) grounded relation derivation -> every
@@ -103,6 +104,7 @@ def test_urn_entity_segment_fallback_matches_the_packet_table() -> None:
     assert prov_type_for_urn(new_urn("agent-role")) == "prov:Agent"
     assert prov_type_for_urn(new_urn("practice")) == "prov:Agent"
     assert prov_type_for_urn(new_urn("node")) == "prov:Agent"
+    assert prov_type_for_urn(new_urn("executor")) == "prov:Agent"
     assert prov_type_for_urn(new_urn("run")) == "prov:Activity"
     assert prov_type_for_urn(new_urn("artifact")) == "prov:Entity"
     assert prov_type_for_urn(new_urn("source-record")) == "prov:Entity"
@@ -110,20 +112,25 @@ def test_urn_entity_segment_fallback_matches_the_packet_table() -> None:
     assert prov_type_for_urn(new_urn("evidence-anchor")) == "prov:Entity"
 
 
-def test_urn_entity_segment_fallback_table_has_exactly_nine_rows() -> None:
-    assert len(URN_ENTITY_SEGMENT_TO_PROV_TYPE) == 9
+def test_urn_entity_segment_fallback_table_has_exactly_ten_rows() -> None:
+    # Nine original R1 rows plus the "executor" row of the 2026-07-22
+    # packet amendment.
+    assert len(URN_ENTITY_SEGMENT_TO_PROV_TYPE) == 10
 
 
 def test_unknown_urn_entity_segment_maps_to_no_prov_type() -> None:
-    # "executor" is this codebase's own consistent urn entity segment for
-    # RunManifest.executor_id (see e.g.
-    # tests/integration/services/node_runtime/test_evidence_crate.py) yet is
-    # NOT one of the packet's own nine fallback rows — a genuine,
-    # deliberately-not-guessed specification gap (see the module docstring's
-    # "URN-entity-segment fallback" section).
-    assert prov_type_for_urn(new_urn("executor")) is None
+    # Kinds always exported (never stub-referenced) and future segments the
+    # fallback table does not name stay type-less — never guessed.
     assert prov_type_for_urn(new_urn("evidence-crate")) is None
     assert prov_type_for_urn(new_urn("verification")) is None
+
+
+def test_executor_segment_maps_to_agent_per_the_packet_amendment() -> None:
+    # task-packets/E8-T02.yaml reviewer_resolution AMENDMENT 2026-07-22:
+    # "executor" -> prov:Agent — the associated agent of the spec table's
+    # own "executor/reviewer relation" row (see the module docstring's
+    # fallback section for why this row arrived by amendment, not guess).
+    assert prov_type_for_urn(new_urn("executor")) == "prov:Agent"
 
 
 def test_malformed_urn_maps_to_no_prov_type() -> None:

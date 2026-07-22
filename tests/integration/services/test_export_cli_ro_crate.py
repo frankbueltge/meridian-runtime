@@ -810,12 +810,15 @@ def test_export_carries_the_expected_prov_types_and_relations(
         "@type": "prov:Agent",
         "mrr:urn": graph.reviewer_id,
     }
-    # The executor's own urn entity segment, "executor", is not one of
-    # task-packets/E8-T02.yaml R1's own fallback rows (a disclosed
-    # specification gap — see mrr.domain.prov_mapping's own docstring) — its
-    # stub carries no "@type" at all.
+    # "executor" -> prov:Agent per the packet's reviewer_resolution
+    # AMENDMENT of 2026-07-22 (the row arrived by governance amendment,
+    # not implementation guess — see mrr.domain.prov_mapping's docstring).
     executor_stub = entities_by_id[graph.executor_id]
-    assert executor_stub == {"@id": graph.executor_id, "mrr:urn": graph.executor_id}
+    assert executor_stub == {
+        "@id": graph.executor_id,
+        "@type": "prov:Agent",
+        "mrr:urn": graph.executor_id,
+    }
 
     has_part_ids = {ref["@id"] for ref in entities_by_id["./"]["hasPart"]}
     assert graph.reviewer_id not in has_part_ids

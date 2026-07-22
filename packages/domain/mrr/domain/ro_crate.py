@@ -452,8 +452,8 @@ def _stub_entity(urn: str) -> dict[str, JSONValue]:
     """An R3 stub contextual entity for a urn some emitted ``prov:``
     relation references that names no exported object — ``@id``, ``@type``
     (OMITTED if ``mrr.domain.prov_mapping.prov_type_for_urn`` reports
-    ``None`` — see that function's own docstring for the "executor" gap
-    this can trigger), ``mrr:urn`` — nothing else, nothing resolved,
+    ``None`` — an unmapped urn entity segment, e.g. a future kind the
+    fallback table does not yet name), ``mrr:urn`` — nothing else, nothing resolved,
     nothing invented (task-packets/E8-T02.yaml R3).
     """
     entity: dict[str, JSONValue] = {"@id": urn}

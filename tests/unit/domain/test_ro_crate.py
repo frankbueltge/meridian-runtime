@@ -492,7 +492,7 @@ def test_run_manifest_and_verification_relations_reach_the_document_with_agent_s
     crate_id = new_urn("evidence-crate")
     manifest_id = new_urn("run")
     verification_id = new_urn("verification")
-    executor_id = new_urn("executor")  # unmapped urn segment -> stub with NO @type.
+    executor_id = new_urn("executor")  # -> prov:Agent stub (packet amendment 2026-07-22).
     reviewer_id = new_urn("person")  # mapped -> prov:Agent stub.
     target_claim_id = new_urn("claim")  # unreached -> prov:Entity stub.
     inspected_anchor_id = new_urn("evidence-anchor")  # unreached -> prov:Entity stub.
@@ -526,10 +526,15 @@ def test_run_manifest_and_verification_relations_reach_the_document_with_agent_s
         {"@id": urn} for urn in sorted([target_claim_id, inspected_anchor_id])
     ]
 
-    # Executor stub: an urn segment task-packets/E8-T02.yaml's own fallback
-    # does not name -> no @type at all, only @id/mrr:urn.
+    # Executor stub: "executor" -> prov:Agent per the packet's
+    # reviewer_resolution AMENDMENT of 2026-07-22 (governance amendment,
+    # not implementation guess — see mrr.domain.prov_mapping's docstring).
     executor_stub = graph[executor_id]
-    assert executor_stub == {"@id": executor_id, f"{MRR_VOCAB_PREFIX}:urn": executor_id}
+    assert executor_stub == {
+        "@id": executor_id,
+        "@type": "prov:Agent",
+        f"{MRR_VOCAB_PREFIX}:urn": executor_id,
+    }
 
     reviewer_stub = graph[reviewer_id]
     assert reviewer_stub["@type"] == "prov:Agent"

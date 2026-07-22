@@ -72,27 +72,28 @@ group — the same segment ``mrr.domain.identity.new_urn`` mints from and
 ``mrr.domain.ro_crate.object_relative_path`` substitutes ``:`` for ``_`` in),
 never on any resolved body:
 
-    person, agent-role, practice, node  -> prov:Agent
+    person, agent-role, practice,
+      node, executor                    -> prov:Agent
     run                                 -> prov:Activity
     artifact, source-record, claim,
       evidence-anchor                   -> prov:Entity
 
-Every other segment -> ``None``. **Flagged for reviewer scrutiny, a genuine
-specification gap, not silently patched over**: this codebase consistently
-mints ``RunManifest.executor_id`` with urn entity segment ``"executor"``
-(every fixture across tests/integration/services/node_runtime/
-test_evidence_crate.py, tests/property/test_canonical_signed_form_properties
-.py, tests/unit/domain/test_crate_trust*.py, and this packet's own extended
-tests/integration/services/test_export_cli_ro_crate.py — never
-``"agent-role"`` or ``"person"``), yet ``"executor"`` is NOT one of the six
-segments task-packets/E8-T02.yaml's own R1 text lists. Per that same R1 text
-("every other segment -> None") and the packet's stop_conditions ("never
-guess a vocabulary row mid-implementation"), an executor urn referenced only
-via a stub (the run itself unreached) gets a stub entity with NO ``@type``
-at all — ``@id``/``mrr:urn`` only. This module does not add ``"executor" ->
-prov:Agent`` on its own initiative, however plausible that reading looks;
-recorded here, and again in the packet report, as a gap for the packet's own
-future extension, not resolved by inference.
+Every other segment -> ``None``. The ``"executor"`` row was NOT in the
+packet's original R1 list: this codebase consistently mints ``RunManifest
+.executor_id`` fixture urns with entity segment ``"executor"`` (every
+fixture across tests/integration/services/node_runtime/test_evidence_crate
+.py, tests/property/test_canonical_signed_form_properties.py, tests/unit/
+domain/test_crate_trust*.py, and this packet's own extended tests/
+integration/services/test_export_cli_ro_crate.py — never ``"agent-role"``
+or ``"person"``; production archival runs use ``"node"``, already mapped).
+The implementing session honored the packet's stop_conditions ("never guess
+a vocabulary row mid-implementation") by first shipping NO type for it and
+flagging the gap; the reviewing instance then AMENDED task-packets/
+E8-T02.yaml (reviewer_resolution, AMENDMENT 2026-07-22) to add
+``"executor" -> prov:Agent`` — spec-derived, not invented: section 6's own
+"executor/reviewer relation -> prov:wasAssociatedWith" row names the
+executor as the associated AGENT of an activity. The vocabulary decision
+stayed a governance act; this table follows the amended packet text.
 
 --- R2: relation-deriving pure functions, exactly rules (a)-(e) --------------
 
@@ -255,14 +256,17 @@ KIND_TO_PROV_TYPE: Mapping[str, str] = {
 }
 
 #: See the module docstring's "The URN-entity-segment fallback" section —
-#: task-packets/E8-T02.yaml R1, exhaustive. Every segment not listed here
-#: maps to ``None`` (``prov_type_for_urn``) — including, deliberately,
-#: ``"executor"`` (see that section's own flagged specification gap).
+#: task-packets/E8-T02.yaml R1 as amended 2026-07-22 (the ``"executor"``
+#: row's history lives there), exhaustive. Every segment not listed here
+#: maps to ``None`` (``prov_type_for_urn``).
 URN_ENTITY_SEGMENT_TO_PROV_TYPE: Mapping[str, str] = {
     "person": _PROV_AGENT,
     "agent-role": _PROV_AGENT,
     "practice": _PROV_AGENT,
     "node": _PROV_AGENT,
+    # task-packets/E8-T02.yaml reviewer_resolution AMENDMENT 2026-07-22 —
+    # see the module docstring's fallback section for the full history.
+    "executor": _PROV_AGENT,
     "run": _PROV_ACTIVITY,
     "artifact": _PROV_ENTITY,
     "source-record": _PROV_ENTITY,

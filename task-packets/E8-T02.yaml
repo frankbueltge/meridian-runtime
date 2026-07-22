@@ -27,6 +27,19 @@ reviewer_resolution: >-
   the builder never guesses a mapping for an unforeseen kind (AGENTS rule
   3 applied to vocabulary); (5) SCHEDULING, binding: implementation starts
   only AFTER PR #64 (E8-T01) has merged, and builds on its shipped format.
+  AMENDMENT (2026-07-22, same day, by the same reviewing instance,
+  after implementation surfaced the gap): the R1 fallback list gains
+  the segment "executor" -> prov:Agent. Grounds: the implementing
+  session found this codebase consistently mints RunManifest
+  .executor_id test/fixture urns with entity segment "executor"
+  (production archival runs use "node", already mapped), and honored
+  the packet by emitting NO type rather than guessing (the correct
+  stop_condition-2 behavior). The row is spec-derived, not invented:
+  the section-6 table's own "executor/reviewer relation ->
+  prov:wasAssociatedWith" names the executor as the associated AGENT
+  of an activity — a urn whose entity segment says it IS an executor
+  can only be that agent. Amended here so the vocabulary decision
+  stays a governance act, not an implementation improvisation.
 depends_on: [E8-T01]
 derivation: >-
   Derived 2026-07-22 from: docs/spec/02_DOMAIN_MODEL.md §6 (the mapping
@@ -75,7 +88,7 @@ requirements:
     table (spec rows verbatim; derived rows exactly as fixed in
     derived_decisions below; every other kind -> None), the URN-entity-
     segment->PROV-type fallback for referenced-but-not-exported URNs
-    (person/agent-role/practice/node -> prov:Agent; run -> prov:Activity;
+    (person/agent-role/practice/node/executor -> prov:Agent; run -> prov:Activity;
     artifact/source-record/claim/evidence-anchor -> prov:Entity; every
     other segment -> None), and pure functions deriving the PROV relation
     properties for one object body / one typed edge. No I/O, no repository
