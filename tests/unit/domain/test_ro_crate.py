@@ -1,16 +1,16 @@
-"""Unit tests for ``mrr.domain.ro_crate`` (task-packets/E8-T01.yaml), run
-entirely DB-free and I/O-free — plain mapping fixtures, no repository, no
-filesystem, no ``ArtifactStore``.
+"""Unit tests for ``mrr.domain.ro_crate`` (task-packets/E8-T01.yaml, EXTENDED
+by task-packets/E8-T02.yaml's PROV layer), run entirely DB-free and
+I/O-free — plain mapping fixtures, no repository, no filesystem, no
+``ArtifactStore``.
 
-Acceptance-test mapping (task-packets/E8-T01.yaml, unit/contract tier):
+Acceptance-test mapping (task-packets/E8-T01.yaml + E8-T02.yaml, unit/
+contract tier):
 
 - naming (R1): ``test_object_relative_path_replaces_colons_with_underscores``,
   ``test_artifact_relative_path_strips_the_sha256_prefix``.
 - determinism (R6, AT4's own logic reused at the unit tier): identical
   inputs yield byte-identical ``ro-crate-metadata.json`` ->
   ``test_build_export_is_deterministic_across_repeated_calls``.
-- boundary: no ``prov:*`` keys anywhere (E8-T02's boundary) ->
-  ``test_metadata_contains_no_prov_terms_anywhere``.
 - structure (R1): metadata descriptor, root data entity, ``hasPart``
   completeness, ``File`` entities, contextual entities, signature emitted
   only when present, artifacts get no contextual entity ->
@@ -27,6 +27,15 @@ Acceptance-test mapping (task-packets/E8-T01.yaml, unit/contract tier):
   ``test_date_published_is_the_crates_own_created_at_never_wall_clock``.
 - the internal "crate must be in its own plan" guard ->
   ``test_build_ro_crate_metadata_raises_if_crate_urn_is_not_in_the_plan``.
+- E8-T02 R1/R2/R3 wiring (the "PROV mapping (task-packets/E8-T02.yaml)"
+  section below): the ``@context`` prefix, ``@type`` list-vs-string, per-kind
+  relations reaching the built document, the Claim carve-out, stub entities,
+  and the AT3 file-set regression argument
+  (``test_provenance_edges_do_not_affect_the_export_plan``). Boundary note:
+  E8-T01's own former ``test_metadata_contains_no_prov_terms_anywhere`` is
+  gone — emitting ``prov:`` terms is now this module's own job; its "scan
+  every string" helper (``_flatten_strings``) is repurposed below to assert
+  presence/absence PER kind instead of absence everywhere.
 """
 
 from __future__ import annotations
@@ -36,6 +45,8 @@ from typing import Any, cast
 
 from mrr.crypto.canonical import canonicalize
 from mrr.domain.identity import new_urn
+from mrr.domain.projection import ProvenanceEdge
+from mrr.domain.prov_mapping import PROV_VOCAB_PREFIX, PROV_VOCAB_URI
 from mrr.domain.ro_crate import (
     METADATA_FILE_NAME,
     MRR_VOCAB_PREFIX,
@@ -172,15 +183,11 @@ def test_build_export_is_deterministic_regardless_of_input_mapping_order() -> No
     assert canonicalize(metadata_forward) == canonicalize(metadata_reversed)
 
 
-# ---------------------------------------------------------------------------
-# Boundary: no prov:* terms anywhere (E8-T02's boundary).
-# ---------------------------------------------------------------------------
-
-
 def _flatten_strings(value: object) -> list[str]:
     """Every string appearing anywhere in a JSON-like structure — keys and
-    values alike — so the prov:* scan below cannot miss one hiding inside a
-    nested list/dict.
+    values alike — reused below (E8-T02) to scan for/count ``prov:*``
+    occurrences per fixture, rather than (E8-T01's own retired test) to
+    assert their total absence.
     """
     strings: list[str] = []
     if isinstance(value, str):
@@ -195,17 +202,6 @@ def _flatten_strings(value: object) -> list[str]:
     return strings
 
 
-def test_metadata_contains_no_prov_terms_anywhere() -> None:
-    crate_id, object_bodies, artifact_sizes = _small_fixture()
-    _, metadata = build_export(
-        crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes=artifact_sizes
-    )
-
-    every_string = _flatten_strings(metadata)
-    prov_hits = [s for s in every_string if s.startswith("prov:") or s == "prov" or "prov#" in s]
-    assert prov_hits == [], f"unexpected prov:* term(s) in RO-Crate metadata: {prov_hits}"
-
-
 # ---------------------------------------------------------------------------
 # Structure (R1).
 # ---------------------------------------------------------------------------
@@ -217,7 +213,11 @@ def test_metadata_descriptor_and_root_data_entity_shape() -> None:
         crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes=artifact_sizes
     )
 
-    assert metadata["@context"] == [RO_CRATE_CONTEXT_URI, {MRR_VOCAB_PREFIX: MRR_VOCAB_URI}]
+    assert metadata["@context"] == [
+        RO_CRATE_CONTEXT_URI,
+        {MRR_VOCAB_PREFIX: MRR_VOCAB_URI},
+        {PROV_VOCAB_PREFIX: PROV_VOCAB_URI},
+    ]
     graph = _entities_by_id(metadata)
 
     descriptor = graph[METADATA_FILE_NAME]
@@ -271,7 +271,10 @@ def test_contextual_entity_carries_urn_kind_hash_practice_id() -> None:
 
     crate_body = object_bodies[crate_id]
     entity = graph[crate_id]
-    assert entity["@type"] == f"{MRR_VOCAB_PREFIX}:EvidenceCrate"
+    # EvidenceCrate is a derived-row PROV mapping (task-packets/E8-T02.yaml
+    # derived_decisions (a)) -> a two-element [mrr:<kind>, prov:<Type>] list,
+    # never a bare string, once ANY kind mapping exists for this kind.
+    assert entity["@type"] == [f"{MRR_VOCAB_PREFIX}:EvidenceCrate", "prov:Entity"]
     assert entity[f"{MRR_VOCAB_PREFIX}:urn"] == crate_id
     assert entity[f"{MRR_VOCAB_PREFIX}:kind"] == "EvidenceCrate"
     assert entity[f"{MRR_VOCAB_PREFIX}:contentHash"] == crate_body["content_hash"]
@@ -360,6 +363,313 @@ def test_build_ro_crate_metadata_raises_if_crate_urn_is_not_in_the_plan() -> Non
         assert "names no object in plan.objects" in str(exc)
     else:  # pragma: no cover - defensive
         raise AssertionError("expected ValueError for a crate_urn absent from the plan")
+
+
+# ---------------------------------------------------------------------------
+# PROV mapping (task-packets/E8-T02.yaml).
+# ---------------------------------------------------------------------------
+
+
+def _run_manifest_body(
+    *,
+    manifest_id: str,
+    executor_id: str,
+    parameters: dict[str, Any] | None = None,
+    **overrides: Any,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "id": manifest_id,
+        "api_version": "mrr/v1alpha1",
+        "kind": "RunManifest",
+        "practice_id": new_urn("practice"),
+        "content_hash": "sha256:" + "d" * 64,
+        "executor_id": executor_id,
+        "parameters": parameters or {},
+    }
+    body.update(overrides)
+    return body
+
+
+def _verification_body(
+    *,
+    verification_id: str,
+    reviewer_id: str,
+    target_id: str,
+    evidence_inspected: list[str] | None = None,
+    **overrides: Any,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "id": verification_id,
+        "api_version": "mrr/v1alpha1",
+        "kind": "VerificationResult",
+        "practice_id": new_urn("practice"),
+        "content_hash": "sha256:" + "e" * 64,
+        "reviewer_id": reviewer_id,
+        "target_id": target_id,
+        "evidence_inspected": evidence_inspected or [],
+    }
+    body.update(overrides)
+    return body
+
+
+def test_context_gains_the_prov_prefix_after_the_mrr_one() -> None:
+    crate_id, object_bodies, artifact_sizes = _small_fixture()
+    _, metadata = build_export(
+        crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes=artifact_sizes
+    )
+    assert metadata["@context"] == [
+        RO_CRATE_CONTEXT_URI,
+        {MRR_VOCAB_PREFIX: MRR_VOCAB_URI},
+        {PROV_VOCAB_PREFIX: PROV_VOCAB_URI},
+    ]
+
+
+def test_unmapped_kind_keeps_a_bare_mrr_type_string() -> None:
+    # TaskBundle is a real MRR kind that names no row anywhere in
+    # mrr.domain.prov_mapping.KIND_TO_PROV_TYPE.
+    crate_id = new_urn("evidence-crate")
+    bundle_id = new_urn("task-bundle")
+    object_bodies = {
+        crate_id: _crate_body(crate_id=crate_id),
+        bundle_id: {
+            "id": bundle_id,
+            "kind": "TaskBundle",
+            "content_hash": "sha256:" + "9" * 64,
+            "practice_id": new_urn("practice"),
+        },
+    }
+    _, metadata = build_export(crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes={})
+    graph = _entities_by_id(metadata)
+
+    assert graph[bundle_id]["@type"] == f"{MRR_VOCAB_PREFIX}:TaskBundle"
+    # No stray "prov:" hits anywhere in this unmapped kind's own entity.
+    prov_hits = [s for s in _flatten_strings(graph[bundle_id]) if s.startswith("prov:")]
+    assert prov_hits == []
+
+
+def test_claim_gets_a_prov_type_but_no_prov_relation_for_proposer_id() -> None:
+    # R2's own preamble: Claim is a PROV Entity, so claim.proposer_id gets
+    # no prov relation in this packet (it stays an mrr: field only).
+    crate_id, object_bodies, artifact_sizes = _small_fixture()
+    claim_id = next(urn for urn, body in object_bodies.items() if body["kind"] == "Claim")
+    object_bodies[claim_id]["proposer_id"] = new_urn("agent-role")
+
+    _, metadata = build_export(
+        crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes=artifact_sizes
+    )
+    claim_entity = _entities_by_id(metadata)[claim_id]
+
+    assert claim_entity["@type"] == [f"{MRR_VOCAB_PREFIX}:Claim", "prov:Entity"]
+    assert not any(key.startswith("prov:") and key != "@type" for key in claim_entity)
+
+
+def test_evidence_crate_and_its_artifacts_get_generated_by_and_a_run_stub() -> None:
+    run_id = new_urn("run")  # never itself part of object_bodies -> unreached.
+    crate_id = new_urn("evidence-crate")
+    content_hash = "sha256:" + "c" * 64
+    object_bodies = {crate_id: _crate_body(crate_id=crate_id, run_id=run_id)}
+    artifact_sizes = {content_hash: 7}
+
+    _, metadata = build_export(
+        crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes=artifact_sizes
+    )
+    graph = _entities_by_id(metadata)
+
+    crate_entity = graph[crate_id]
+    assert crate_entity["prov:wasGeneratedBy"] == {"@id": run_id}
+
+    artifact_relative = artifact_relative_path(content_hash)
+    assert graph[artifact_relative]["prov:wasGeneratedBy"] == {"@id": run_id}
+
+    stub = graph[run_id]
+    assert stub == {"@id": run_id, "@type": "prov:Activity", f"{MRR_VOCAB_PREFIX}:urn": run_id}
+    # The stub names no file — never added to hasPart.
+    has_part_ids = {ref["@id"] for ref in graph[ROOT_DATA_ENTITY_ID]["hasPart"]}
+    assert run_id not in has_part_ids
+
+
+def test_run_manifest_and_verification_relations_reach_the_document_with_agent_stubs() -> None:
+    crate_id = new_urn("evidence-crate")
+    manifest_id = new_urn("run")
+    verification_id = new_urn("verification")
+    executor_id = new_urn("executor")  # unmapped urn segment -> stub with NO @type.
+    reviewer_id = new_urn("person")  # mapped -> prov:Agent stub.
+    target_claim_id = new_urn("claim")  # unreached -> prov:Entity stub.
+    inspected_anchor_id = new_urn("evidence-anchor")  # unreached -> prov:Entity stub.
+
+    object_bodies = {
+        crate_id: _crate_body(crate_id=crate_id, run_id=manifest_id),
+        manifest_id: _run_manifest_body(manifest_id=manifest_id, executor_id=executor_id),
+        verification_id: _verification_body(
+            verification_id=verification_id,
+            reviewer_id=reviewer_id,
+            target_id=target_claim_id,
+            evidence_inspected=[inspected_anchor_id],
+        ),
+    }
+
+    _, metadata = build_export(crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes={})
+    graph = _entities_by_id(metadata)
+
+    manifest_entity = graph[manifest_id]
+    assert manifest_entity["@type"] == [f"{MRR_VOCAB_PREFIX}:RunManifest", "prov:Activity"]
+    assert manifest_entity["prov:wasAssociatedWith"] == {"@id": executor_id}
+    assert "prov:used" not in manifest_entity  # empty `parameters` names no artifact urn.
+
+    verification_entity = graph[verification_id]
+    assert verification_entity["@type"] == [
+        f"{MRR_VOCAB_PREFIX}:VerificationResult",
+        "prov:Activity",
+    ]
+    assert verification_entity["prov:wasAssociatedWith"] == {"@id": reviewer_id}
+    assert verification_entity["prov:used"] == [
+        {"@id": urn} for urn in sorted([target_claim_id, inspected_anchor_id])
+    ]
+
+    # Executor stub: an urn segment task-packets/E8-T02.yaml's own fallback
+    # does not name -> no @type at all, only @id/mrr:urn.
+    executor_stub = graph[executor_id]
+    assert executor_stub == {"@id": executor_id, f"{MRR_VOCAB_PREFIX}:urn": executor_id}
+
+    reviewer_stub = graph[reviewer_id]
+    assert reviewer_stub["@type"] == "prov:Agent"
+
+    claim_stub = graph[target_claim_id]
+    assert claim_stub["@type"] == "prov:Entity"
+
+    anchor_stub = graph[inspected_anchor_id]
+    assert anchor_stub["@type"] == "prov:Entity"
+
+    has_part_ids = {ref["@id"] for ref in graph[ROOT_DATA_ENTITY_ID]["hasPart"]}
+    for stub_urn in (executor_id, reviewer_id, target_claim_id, inspected_anchor_id):
+        assert stub_urn not in has_part_ids
+
+
+def test_derived_from_typed_edge_produces_a_relation_and_a_stub_for_its_target() -> None:
+    crate_id, object_bodies, artifact_sizes = _small_fixture()
+    claim_id = next(urn for urn, body in object_bodies.items() if body["kind"] == "Claim")
+    target_id = new_urn("source-record")  # unexported -> gets a prov:Entity stub.
+    edges = (
+        ProvenanceEdge(
+            source_id=claim_id,
+            target_id=target_id,
+            target_kind="SourceRecord",
+            relation="derived_from",
+            via="edge",
+            edge_id=new_urn("edge"),
+        ),
+    )
+
+    _, metadata = build_export(
+        crate_urn=crate_id,
+        object_bodies=object_bodies,
+        artifact_sizes=artifact_sizes,
+        provenance_edges=edges,
+    )
+    graph = _entities_by_id(metadata)
+
+    assert graph[claim_id]["prov:wasDerivedFrom"] == [{"@id": target_id}]
+    assert graph[target_id] == {
+        "@id": target_id,
+        "@type": "prov:Entity",
+        f"{MRR_VOCAB_PREFIX}:urn": target_id,
+    }
+
+
+def test_a_derived_from_edge_of_the_wrong_via_kind_produces_no_relation() -> None:
+    # mrr.services.projection.service never emits a "derived_from"-named
+    # FIELD reference today, but this module's own R2(a) rule is scoped to
+    # via == "edge" regardless — proven directly here.
+    crate_id, object_bodies, artifact_sizes = _small_fixture()
+    claim_id = next(urn for urn, body in object_bodies.items() if body["kind"] == "Claim")
+    edges = (
+        ProvenanceEdge(
+            source_id=claim_id,
+            target_id=new_urn("run"),
+            target_kind="RunManifest",
+            relation="derived_from",
+            via="field",
+            edge_id=None,
+        ),
+    )
+
+    _, metadata = build_export(
+        crate_urn=crate_id,
+        object_bodies=object_bodies,
+        artifact_sizes=artifact_sizes,
+        provenance_edges=edges,
+    )
+    claim_entity = _entities_by_id(metadata)[claim_id]
+    assert "prov:wasDerivedFrom" not in claim_entity
+
+
+def test_stub_entities_are_deterministic_and_sorted() -> None:
+    crate_id = new_urn("evidence-crate")
+    claim_id = new_urn("claim")
+    object_bodies = {
+        crate_id: _crate_body(crate_id=crate_id),
+        claim_id: _claim_body(claim_id=claim_id),
+    }
+    # Three independently-unreached derived_from targets, inserted out of
+    # sorted order, to prove the stub section itself re-sorts.
+    targets = sorted(new_urn("source-record") for _ in range(3))
+    edges = tuple(
+        ProvenanceEdge(
+            source_id=claim_id,
+            target_id=target,
+            target_kind="SourceRecord",
+            relation="derived_from",
+            via="edge",
+            edge_id=new_urn("edge"),
+        )
+        for target in reversed(targets)  # inserted out of order
+    )
+
+    _, metadata = build_export(
+        crate_urn=crate_id,
+        object_bodies=object_bodies,
+        artifact_sizes={},
+        provenance_edges=edges,
+    )
+    graph_ids = list(_entities_by_id(metadata).keys())
+    stub_positions = [graph_ids.index(target) for target in targets]
+    assert stub_positions == sorted(stub_positions)
+
+
+def test_provenance_edges_do_not_affect_the_export_plan() -> None:
+    """AT3 (file-set regression), constructed directly: ``plan`` — hence
+    every object's ``relative_path``/``canonical_bytes`` and every
+    artifact's ``relative_path``/``size_bytes``, i.e. the entire exported
+    FILE SET other than ``ro-crate-metadata.json`` — is a pure function of
+    ``(object_bodies, artifact_sizes)`` alone. ``provenance_edges`` never
+    reaches ``build_export_plan`` at all, so passing it (or not, or
+    differently) cannot change the file set, by construction.
+    """
+    crate_id, object_bodies, artifact_sizes = _small_fixture()
+    claim_id = next(urn for urn, body in object_bodies.items() if body["kind"] == "Claim")
+    edges = (
+        ProvenanceEdge(
+            source_id=claim_id,
+            target_id=new_urn("source-record"),
+            target_kind="SourceRecord",
+            relation="derived_from",
+            via="edge",
+            edge_id=new_urn("edge"),
+        ),
+    )
+
+    plan_without_edges, _ = build_export(
+        crate_urn=crate_id, object_bodies=object_bodies, artifact_sizes=artifact_sizes
+    )
+    plan_with_edges, _ = build_export(
+        crate_urn=crate_id,
+        object_bodies=object_bodies,
+        artifact_sizes=artifact_sizes,
+        provenance_edges=edges,
+    )
+
+    assert plan_without_edges == plan_with_edges
+    assert plan_with_edges == build_export_plan(object_bodies, artifact_sizes)
 
 
 # ---------------------------------------------------------------------------
