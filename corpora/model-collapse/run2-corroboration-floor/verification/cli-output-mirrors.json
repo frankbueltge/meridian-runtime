@@ -1,0 +1,62 @@
+[
+ {
+  "file": "verification-mirror-a-instantiation-blind-instantiation.json",
+  "exit": 0,
+  "result": {
+   "claim_id": "urn:mrr:claim:01KY35BP43WR5J45ZNFFP09Q0K",
+   "claim_status": "contested",
+   "revision": 1,
+   "verification_id": "urn:mrr:verification:01KY4SWM9RJ74NBETW8ND6PKCS"
+  }
+ },
+ {
+  "file": "verification-mirror-a-instantiation-ulysses.json",
+  "exit": 0,
+  "result": {
+   "claim_id": "urn:mrr:claim:01KY35BP43WR5J45ZNFFP09Q0K",
+   "claim_status": "contested",
+   "revision": 1,
+   "verification_id": "urn:mrr:verification:01KY4SWM9XD1QQWKCW5Z964JT1"
+  }
+ },
+ {
+  "file": "verification-mirror-a-theory-blind-theory.json",
+  "exit": 0,
+  "result": {
+   "claim_id": "urn:mrr:claim:01KY35BP6Q89XGTC17SRCFB11F",
+   "claim_status": "draft",
+   "revision": 1,
+   "verification_id": "urn:mrr:verification:01KY4SWM9Z537GEYQS3WNSDVBS"
+  }
+ },
+ {
+  "file": "verification-mirror-b-instantiation-blind-instantiation.json",
+  "exit": 0,
+  "result": {
+   "claim_id": "urn:mrr:claim:01KY35CS8KZ12FJC71H3XCMEQH",
+   "claim_status": "contested",
+   "revision": 1,
+   "verification_id": "urn:mrr:verification:01KY4SWMA0XNEWWZS3G7CKHGBJ"
+  }
+ },
+ {
+  "file": "verification-mirror-b-instantiation-ulysses.json",
+  "exit": 0,
+  "result": {
+   "claim_id": "urn:mrr:claim:01KY35CS8KZ12FJC71H3XCMEQH",
+   "claim_status": "contested",
+   "revision": 1,
+   "verification_id": "urn:mrr:verification:01KY4SWMA2K5GDTR006VF9TE3K"
+  }
+ },
+ {
+  "file": "verification-mirror-b-theory-blind-theory.json",
+  "exit": 0,
+  "result": {
+   "claim_id": "urn:mrr:claim:01KY35CSBGPJ7Z02N6NDY25TBH",
+   "claim_status": "draft",
+   "revision": 1,
+   "verification_id": "urn:mrr:verification:01KY4SWMA38QZ3WPDPYWFDR4BX"
+  }
+ }
+]
