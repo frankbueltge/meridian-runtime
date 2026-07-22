@@ -178,6 +178,65 @@ five-character substitution table, not "a markdown/html library" (task-
 packets/E8-T03.yaml R1(b)'s prohibition) — it parses nothing and renders
 nothing, it only makes a string safe to place inside markup this module
 itself, by hand, already decided to emit.
+
+--- E8-T05: the OPTIONAL release-status banner (R3) --------------------------
+
+task-packets/E8-T05.yaml R3 adds exactly ONE new, OPTIONAL input:
+``build_report``'s ``release_banner: ReleaseBannerInput | None = None``
+keyword parameter, threaded onto ``ResearchReport.release_banner``
+(:class:`ReleaseBannerSection` -- the model's own, fully pre-shaped
+rendering form -- or ``None``). Every existing call site and test omits it,
+gets ``None`` back, defaults to ``None`` all the way through, and both
+renderers emit not one extra byte -- this is R3's own byte-identity
+regression, made structural: both renderers gate the whole block behind a
+single ``if model.release_banner is not None`` check at the very top,
+BEFORE section 1, and that is the ONLY place this file's own control flow
+branches on the new input at all.
+
+When present, the banner block renders FIRST -- before "## 1. Header" (or
+its HTML ``<h2>1. Header</h2>`` equivalent) -- carrying the verdict verbatim
+(``mrr.domain.release_status.ReleaseVerdict``, imported and reused, never
+re-typed), the release urn, ``superseded_by`` when the verdict is
+``"superseded"``, the ``duplicate_unsuperseded_releases`` anomaly flag, and
+one line per affecting correction. None of the STRUCTURAL fields -- verdict,
+release/crate urns, ``superseded_by``, the anomaly flag, or a correction's
+own id/intersecting-object-urns -- is ever gated by disclosure (R3: "verdict/
+urns never gate"); this holds by construction, mirroring the module's own
+established "What is never redacted" section above, since none of those
+fields is EVER passed through ``_redact``/``build_public_correction_row``
+anywhere in this file.
+
+Only each affecting correction's own FREE TEXT (``reason``/
+``requested_action``) is gated, and it is gated through the EXACT SAME,
+already-tested, already-imported ``mrr.domain.public_correction_view
+.build_public_correction_row`` this module already calls for the Claim
+assertion case (see "Why this module owns the report's own redaction too"
+above) -- never a third, competing redaction formula. This is a deliberate,
+narrow reuse: ``mrr.domain.release_status.ReleaseBanner``'s own
+``affecting_corrections`` carries ONLY ``correction_id``/
+``intersecting_object_ids`` (that module is pure and I/O-free, so it never
+even SEES a correction's free text or its classification attestation) -- the
+CALLER (``mrr.services.report.service.ReportService``) resolves the raw
+``CorrectionEvent`` body for each affecting correction id and hands it into
+``ReleaseBannerInput.correction_bodies_by_id``, keyed by correction id, so
+this module can redact it itself, the same way it already redacts findings/
+failures/known-unknowns beyond what ``public_correction_view`` was ever
+scoped to cover. A correction id the banner names but whose body is absent
+from ``correction_bodies_by_id`` (a caller contract violation this module
+cannot itself prevent) renders fail-closed -- ``redacted=True``, no text --
+never an invented substitute or a crash: "no invented citations" applies
+here exactly as it does to ``ResearchReport.source_urns``.
+
+R3's own "corrections_affect_this_release ... no invented severity
+aggregation" note (release_status's own derived_decisions (b)) means the
+banner's own population of affecting corrections is NOT the same population
+as ``ResearchReport.corrections`` (section 5's own unresolved-critical-only
+set) -- a correction affecting a release under R2's own intersection test
+carries no severity/status filter at all. The two sections can legitimately
+show different corrections, or the same correction from two different
+angles (section 5: "is this unresolved and critical"; the banner: "did this
+correction land after this release shipped, touching something this release
+shipped") -- this is R2's own design, not a rendering inconsistency.
 """
 
 from __future__ import annotations
@@ -190,7 +249,12 @@ from mrr.crypto.canonical import JSONValue, canonicalize
 from mrr.domain.artifacts import Classification
 from mrr.domain.identity import URN_PATTERN
 from mrr.domain.projection import ClaimTableRow, ProvenanceEdge
-from mrr.domain.public_correction_view import PublicCorrectionRow, build_public_claim_row
+from mrr.domain.public_correction_view import (
+    PublicCorrectionRow,
+    build_public_claim_row,
+    build_public_correction_row,
+)
+from mrr.domain.release_status import ReleaseBanner, ReleaseVerdict
 
 #: task-packets/E8-T03.yaml R3/R4: the report ships exactly these two
 #: disclosure projections; ``partner-restricted`` (MRR-FR-103's third) is
@@ -640,12 +704,66 @@ class ClaimProvenanceRow:
 
 
 @dataclass(frozen=True, slots=True)
+class ReleaseBannerCorrectionRow:
+    """E8-T05 R3: one ``mrr.domain.release_status.AffectingCorrection``,
+    rendered with its own disclosure-gated free text — see the module
+    docstring's "E8-T05: the OPTIONAL release-status banner" section.
+    ``intersecting_object_ids`` is copied verbatim from the pure banner
+    computation (already sorted there); ``reason``/``requested_action`` are
+    ``None`` whenever ``redacted`` is ``True``, mirroring
+    ``PublicCorrectionRow``'s own identical shape.
+    """
+
+    correction_id: str
+    intersecting_object_ids: tuple[str, ...]
+    reason: str | None
+    requested_action: str | None
+    redacted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseBannerSection:
+    """E8-T05 R3: the fully pre-shaped "Release status" block —
+    ``mrr.domain.release_status.ReleaseBanner``'s own structural fields,
+    copied verbatim (never gated — see the module docstring), plus
+    :class:`ReleaseBannerCorrectionRow` rows for ``affecting_corrections``.
+    """
+
+    verdict: ReleaseVerdict
+    release_id: str
+    crate_id: str
+    superseded_by: str | None
+    affecting_corrections: tuple[ReleaseBannerCorrectionRow, ...]
+    duplicate_unsuperseded_releases: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseBannerInput:
+    """:func:`build_report`'s OPTIONAL banner input (E8-T05 R3): the
+    already-computed pure ``ReleaseBanner`` (``mrr.services.release.service
+    .ReleaseService.status``'s own result — R2) plus the raw
+    ``CorrectionEvent`` bodies of EXACTLY the corrections its own
+    ``affecting_corrections`` names, keyed by correction id — see the module
+    docstring's "E8-T05: the OPTIONAL release-status banner" section for why
+    this module needs the raw bodies (to redact ``reason``/
+    ``requested_action`` itself, via ``mrr.domain.public_correction_view
+    .build_public_correction_row``) rather than pre-redacted text.
+    """
+
+    banner: ReleaseBanner
+    correction_bodies_by_id: Mapping[str, Mapping[str, JSONValue]]
+
+
+@dataclass(frozen=True, slots=True)
 class ResearchReport:
     """The full report model (task-packets/E8-T03.yaml R1) for one crate,
     already disclosure-shaped by :func:`build_report` — ``render_markdown``/
     ``render_html`` render whatever is already here, with no further
     disclosure branching of their own (both take exactly one argument, this
     type — task-packets/E8-T03.yaml R1's own signature sketch).
+    ``release_banner`` (E8-T05 R3) is the one field added since E8-T03,
+    OPTIONAL and defaulting to ``None`` — absent means byte-identical output
+    to the E8-T03 shape (see the module docstring's own regression section).
     """
 
     header: HeaderSection
@@ -658,6 +776,7 @@ class ResearchReport:
     provenance_summary: tuple[ClaimProvenanceRow, ...]
     disclosure: Disclosure
     source_urns: frozenset[str] = field(default_factory=frozenset)
+    release_banner: ReleaseBannerSection | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -802,6 +921,53 @@ def _build_known_unknown_rows(
     return tuple(rows)
 
 
+def _build_release_banner_section(
+    release_banner: ReleaseBannerInput | None, *, attestation: Mapping[str, Classification]
+) -> ReleaseBannerSection | None:
+    """E8-T05 R3: ``None`` straight through when ``release_banner`` is
+    absent (the byte-identity regression's own structural guarantee — see
+    the module docstring); otherwise reshape ``release_banner.banner`` into
+    the fully pre-redacted :class:`ReleaseBannerSection`, redacting each
+    affecting correction's own free text via ``build_public_correction_row``
+    against exactly the raw body ``release_banner.correction_bodies_by_id``
+    supplies for that correction id (fail-closed, ``redacted=True``, no
+    text, if a caller-promised body is somehow absent — see the module
+    docstring's own "no invented citations" note for this case).
+    """
+    if release_banner is None:
+        return None
+
+    banner = release_banner.banner
+    rows = []
+    for affecting in banner.affecting_corrections:
+        body = release_banner.correction_bodies_by_id.get(affecting.correction_id)
+        if body is None:
+            reason, requested_action, redacted = None, None, True
+        else:
+            public_row = build_public_correction_row(body, classification_by_object_id=attestation)
+            reason = public_row.reason
+            requested_action = public_row.requested_action
+            redacted = public_row.redacted
+        rows.append(
+            ReleaseBannerCorrectionRow(
+                correction_id=affecting.correction_id,
+                intersecting_object_ids=affecting.intersecting_object_ids,
+                reason=reason,
+                requested_action=requested_action,
+                redacted=redacted,
+            )
+        )
+
+    return ReleaseBannerSection(
+        verdict=banner.verdict,
+        release_id=banner.release_id,
+        crate_id=banner.crate_id,
+        superseded_by=banner.superseded_by,
+        affecting_corrections=tuple(rows),
+        duplicate_unsuperseded_releases=banner.duplicate_unsuperseded_releases,
+    )
+
+
 def build_report(
     *,
     object_bodies: Mapping[str, Mapping[str, JSONValue]],
@@ -810,6 +976,7 @@ def build_report(
     provenance_by_claim: Mapping[str, Sequence[ProvenanceEdge]],
     disclosure: Disclosure,
     classification_by_object_id: Mapping[str, Classification],
+    release_banner: ReleaseBannerInput | None = None,
 ) -> ResearchReport:
     """Build the full :class:`ResearchReport` model for ``crate_id`` from
     already-loaded closure bodies. Pure — see the module docstring.
@@ -846,6 +1013,15 @@ def build_report(
             (task-packets/E6-T05.yaml's bridge, reused verbatim) — used only
             when ``disclosure == "public"``; ignored for ``"internal"`` (see
             :func:`_attestation_for`).
+        release_banner: E8-T05 R3's own OPTIONAL banner input — ``None``
+            (the default) means every existing call site's behavior:
+            ``ResearchReport.release_banner`` is ``None`` and neither
+            renderer emits a "Release status" block at all (byte-identical
+            to E8-T03 output). When given, the SAME ``attestation`` this
+            function already computed for every other redaction call site
+            in this build is reused to redact each affecting correction's
+            own free text — never a second, disclosure-inconsistent
+            attestation.
 
     Raises:
         ValueError: ``crate_id`` is not a key of ``object_bodies``, or the
@@ -1044,6 +1220,8 @@ def build_report(
         source_urn_accumulator.update(row.impact_object_ids)
     source_urns = frozenset(source_urn_accumulator)
 
+    release_banner_section = _build_release_banner_section(release_banner, attestation=attestation)
+
     return ResearchReport(
         header=header,
         methods=methods,
@@ -1055,6 +1233,7 @@ def build_report(
         provenance_summary=tuple(provenance_rows),
         disclosure=disclosure,
         source_urns=source_urns,
+        release_banner=release_banner_section,
     )
 
 
@@ -1081,10 +1260,54 @@ def _md_list_or_none(items: Sequence[str]) -> str:
     return ", ".join(items) if items else _NONE_RECORDED
 
 
+def _md_release_banner_lines(banner: ReleaseBannerSection) -> list[str]:
+    """E8-T05 R3: the "Release status" block's own Markdown lines — never
+    called at all when ``model.release_banner`` is ``None`` (see
+    :func:`render_markdown`), so this function's mere existence cannot
+    affect the byte-identity regression.
+    """
+    lines: list[str] = []
+    lines.append("## Release status")
+    lines.append(_md_bullet("Verdict", banner.verdict))
+    lines.append(_md_bullet("Release", banner.release_id))
+    lines.append(_md_bullet("Crate", banner.crate_id))
+    lines.append(
+        _md_bullet(
+            "Superseded by", banner.superseded_by if banner.superseded_by else _NONE_RECORDED
+        )
+    )
+    lines.append(
+        _md_bullet(
+            "Duplicate unsuperseded releases (anomaly)", banner.duplicate_unsuperseded_releases
+        )
+    )
+    if banner.affecting_corrections:
+        lines.append("- **Affecting corrections:**")
+        for row in banner.affecting_corrections:
+            lines.append(f"    - `{row.correction_id}`")
+            lines.append(
+                f"        - Intersecting objects: {_md_list_or_none(row.intersecting_object_ids)}"
+            )
+            lines.append(
+                f"        - Reason: {row.reason if row.reason is not None else _REDACTED_MARKER}"
+            )
+            lines.append(
+                "        - Requested action: "
+                f"{row.requested_action if row.requested_action is not None else _REDACTED_MARKER}"
+            )
+    else:
+        lines.append(_md_bullet("Affecting corrections", _NONE_RECORDED))
+    lines.append("")
+    return lines
+
+
 def render_markdown(model: ResearchReport) -> str:
     """Render ``model`` to a deterministic, self-contained Markdown
     document. See the module docstring's "Markdown avoids pipe tables"
-    section for why no ``|``-delimited table is ever used.
+    section for why no ``|``-delimited table is ever used, and its "E8-T05:
+    the OPTIONAL release-status banner" section for why the ``if
+    model.release_banner is not None`` check below is the ONLY place this
+    function's control flow branches on the new E8-T05 input.
     """
     lines: list[str] = []
     h = model.header
@@ -1092,6 +1315,9 @@ def render_markdown(model: ResearchReport) -> str:
     lines.append("")
     lines.append(f"_Disclosure: {model.disclosure}_")
     lines.append("")
+
+    if model.release_banner is not None:
+        lines.extend(_md_release_banner_lines(model.release_banner))
 
     lines.append("## 1. Header")
     lines.append(_md_bullet("Crate", h.crate_urn))
@@ -1302,17 +1528,62 @@ def _html_list_or_none(items: Sequence[str]) -> str:
     return ", ".join(f"<code>{_escape_html(item)}</code>" for item in items)
 
 
+def _html_release_banner_parts(banner: ReleaseBannerSection) -> list[str]:
+    """E8-T05 R3: the "Release status" block's own HTML parts — never
+    called at all when ``model.release_banner`` is ``None`` (see
+    :func:`render_html`), so this function's mere existence cannot affect
+    the byte-identity regression.
+    """
+    parts: list[str] = []
+    parts.append("<h2>Release status</h2>")
+    parts.append("<dl>")
+    for label, value in (
+        ("Verdict", banner.verdict),
+        ("Release", banner.release_id),
+        ("Crate", banner.crate_id),
+        ("Superseded by", banner.superseded_by if banner.superseded_by else _NONE_RECORDED),
+        ("Duplicate unsuperseded releases (anomaly)", banner.duplicate_unsuperseded_releases),
+    ):
+        parts.append(f"<dt>{_escape_html(label)}</dt><dd>{_escape_html(value)}</dd>")
+    parts.append("</dl>")
+    if banner.affecting_corrections:
+        parts.append(
+            "<table><caption>Affecting corrections</caption><tr><th>Correction</th>"
+            "<th>Intersecting objects</th><th>Reason</th><th>Requested action</th></tr>"
+        )
+        for row in banner.affecting_corrections:
+            reason = row.reason if row.reason is not None else _REDACTED_MARKER
+            requested_action = (
+                row.requested_action if row.requested_action is not None else _REDACTED_MARKER
+            )
+            parts.append(
+                f"<tr><td>{_escape_html(row.correction_id)}</td>"
+                f"<td>{_html_list_or_none(row.intersecting_object_ids)}</td>"
+                f"<td>{_escape_html(reason)}</td><td>{_escape_html(requested_action)}</td></tr>"
+            )
+        parts.append("</table>")
+    else:
+        parts.append(f"<p>Affecting corrections: {_escape_html(_NONE_RECORDED)}</p>")
+    return parts
+
+
 def render_html(model: ResearchReport) -> str:
     """Render ``model`` to a deterministic, self-contained, strictly-escaped
     HTML document — no external stylesheet/script reference, no inline
     style attribute, minimal semantic tags only (task-packets/E8-T03.yaml
     R1). See the module docstring's "Markdown avoids pipe tables; HTML uses
-    them" section for the escaping discipline.
+    them" section for the escaping discipline, and its "E8-T05: the
+    OPTIONAL release-status banner" section for why the ``if model
+    .release_banner is not None`` check below is the ONLY place this
+    function's control flow branches on the new E8-T05 input.
     """
     parts: list[str] = []
     h = model.header
     parts.append(f"<h1>Research report — {_escape_html(h.crate_urn)}</h1>")
     parts.append(f"<p><em>Disclosure: {_escape_html(model.disclosure)}</em></p>")
+
+    if model.release_banner is not None:
+        parts.extend(_html_release_banner_parts(model.release_banner))
 
     parts.append("<h2>1. Header</h2>")
     parts.append("<dl>")
