@@ -323,9 +323,19 @@ def test_refusals_write_nothing(overrides: dict[str, Any]) -> None:
 
 
 def test_service_exposes_no_transition_method() -> None:
+    # task-packets/E8-T05.yaml R1/R2 explicitly mandate "ReleaseService
+    # gains supersede(...)" and "a service method on ReleaseService
+    # (read-only path) resolves those inputs and calls it [the pure
+    # release-status banner function]" — this directly supersedes E8-T04's
+    # own "exposes exactly one public method" design note above (see
+    # mrr.services.release.service's own updated module docstring, "task-
+    # packets/E8-T05.yaml: supersede and status, additively", for the full
+    # resolution). The public surface stays CLOSED and enumerable — the
+    # test's real invariant — just widened to the three methods E8-T04 and
+    # E8-T05 together define; no OTHER method sneaks onto this class.
     public_methods = {
         name
         for name in dir(ReleaseService)
         if not name.startswith("_") and callable(getattr(ReleaseService, name))
     }
-    assert public_methods == {"create"}
+    assert public_methods == {"create", "supersede", "status"}
