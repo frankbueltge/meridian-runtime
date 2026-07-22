@@ -128,6 +128,16 @@ from mrr.contracts.obligation import Obligation, ObligationStatus
 from mrr.contracts.offline_bundle import BundleEncryption, BundleEntry, OfflineBundle
 from mrr.contracts.practice import DisclosureAndTrust, Practice, PublicKeyDescriptor
 from mrr.contracts.question_model import QuestionModel, QuestionModelStatus
+from mrr.contracts.release_record import (
+    Approval,
+    Bundle,
+    BundleFile,
+    PersonUrn,
+    ReleaseApprovalMode,
+    ReleaseRecord,
+    ReleaseStatus,
+)
+from mrr.contracts.release_record import Disclosure as ReleaseDisclosure
 from mrr.contracts.research_decision import (
     ResearchDecision,
     ResearchDecisionStatus,
@@ -177,6 +187,7 @@ __all__ = [
     "AnchorKind",
     "AnchorValidationStatus",
     "ApiVersion",
+    "Approval",
     "ApprovalMode",
     "ArtifactRef",
     "AutonomyLevel",
@@ -185,6 +196,8 @@ __all__ = [
     "BaseObjectClassification",
     "BranchRole",
     "Budget",
+    "Bundle",
+    "BundleFile",
     "BundleEncryption",
     "BundleEntry",
     "CHALLENGE_TYPES",
@@ -256,6 +269,7 @@ __all__ = [
     "OperationKind",
     "Practice",
     "ProtocolAmendment",
+    "PersonUrn",
     "PublicKeyDescriptor",
     "PublicationPolicy",
     "QuestionModel",
@@ -264,6 +278,10 @@ __all__ = [
     "Recommendation",
     "RedactionPolicy",
     "RelationshipType",
+    "ReleaseApprovalMode",
+    "ReleaseDisclosure",
+    "ReleaseRecord",
+    "ReleaseStatus",
     "ResearchDecision",
     "ResearchDecisionStatus",
     "ResearchDecisionType",
