@@ -186,7 +186,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from mrr.crypto.canonical import JSONValue
+from mrr.crypto.canonical import JSONValue, canonicalize
 from mrr.domain.artifacts import Classification
 from mrr.domain.identity import URN_PATTERN
 from mrr.domain.projection import ClaimTableRow, ProvenanceEdge
@@ -1067,6 +1067,16 @@ def _md_bullet(label: str, value: object) -> str:
     return f"- **{label}:** {value}"
 
 
+def _scope_text(scope: Mapping[str, JSONValue]) -> str:
+    """``Claim.scope`` rendered as RFC 8785 canonical JSON text (the
+    archive's own canonical convention, ``mrr.crypto.canonical``) — never
+    a Python ``repr`` and never an ad-hoc ``k=v`` join, so both renderers
+    print the identical, machine-faithful text (reviewer-added fix, E8-T03
+    review 2026-07-22: the first render leaked ``repr`` formatting).
+    """
+    return canonicalize(dict(scope)).decode("utf-8")
+
+
 def _md_list_or_none(items: Sequence[str]) -> str:
     return ", ".join(items) if items else _NONE_RECORDED
 
@@ -1125,7 +1135,9 @@ def render_markdown(model: ResearchReport) -> str:
         lines.append(_md_bullet("Type", claim.claim_type))
         lines.append(_md_bullet("Status", claim.status))
         lines.append(_md_bullet("Assertion", claim.assertion))
-        lines.append(_md_bullet("Scope", dict(claim.scope) if claim.scope else _NONE_RECORDED))
+        lines.append(
+            _md_bullet("Scope", _scope_text(claim.scope) if claim.scope else _NONE_RECORDED)
+        )
         if claim.uncertainty:
             lines.append("- **Uncertainty:**")
             for u in claim.uncertainty:
@@ -1370,9 +1382,7 @@ def render_html(model: ResearchReport) -> str:
         parts.append(f"<dt>Type</dt><dd>{_escape_html(claim.claim_type)}</dd>")
         parts.append(f"<dt>Status</dt><dd>{_escape_html(claim.status)}</dd>")
         parts.append(f"<dt>Assertion</dt><dd>{_escape_html(claim.assertion)}</dd>")
-        scope_text = (
-            ", ".join(f"{k}={v}" for k, v in claim.scope.items()) if claim.scope else _NONE_RECORDED
-        )
+        scope_text = _scope_text(claim.scope) if claim.scope else _NONE_RECORDED
         parts.append(f"<dt>Scope</dt><dd>{_escape_html(scope_text)}</dd>")
         parts.append(
             f"<dt>Evidence relations</dt><dd>{_html_list_or_none(claim.evidence_relations)}</dd>"

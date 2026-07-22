@@ -634,3 +634,47 @@ def test_build_report_raises_if_crate_id_is_not_an_evidence_crate() -> None:
         assert _CRATE_ID in str(exc)
     else:
         raise AssertionError("expected ValueError for a non-EvidenceCrate crate_id")
+
+
+# ---------------------------------------------------------------------------
+# Drift guard: the restated fail-closed formula vs. the E6-T05 original.
+# ---------------------------------------------------------------------------
+
+
+def test_restated_fail_closed_formula_never_drifts_from_public_correction_view() -> None:
+    """``mrr.domain.research_report._all_attested_public`` deliberately
+    RESTATES (docstring: "restated rather than imported since that name is
+    module-private") the fail-closed formula of ``mrr.domain
+    .public_correction_view._all_ids_attested_public`` for the three
+    free-text categories that module never covered. This test pins the two
+    to each other over the full attestation matrix — if either is ever
+    edited without the other, it fails here first, not in a silently
+    diverging public render. Reviewer-added guard (E8-T03 review,
+    2026-07-22): private-name imports are the point, not an accident —
+    the PUBLIC APIs cannot express the comparison this narrowly.
+    """
+    from mrr.domain.public_correction_view import _all_ids_attested_public
+    from mrr.domain.research_report import _all_attested_public
+
+    claim_a = "urn:mrr:claim:01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    claim_b = "urn:mrr:claim:01BX5ZZKBKACTAV9WEVGEMMVRZ"
+    attestation_cases: list[dict[str, str]] = [
+        {},
+        {claim_a: "PUBLIC"},
+        {claim_a: "PUBLIC", claim_b: "PUBLIC"},
+        {claim_a: "PUBLIC", claim_b: "INTERNAL"},
+        {claim_a: "INTERNAL"},
+        {claim_a: "RESTRICTED"},
+        {claim_a: "SENSITIVE"},
+        {claim_a: "PARTICIPANT_IDENTIFIABLE"},
+        {claim_a: "public"},  # case-sensitive: not the literal "PUBLIC"
+        {claim_a: "UNRECOGNIZED-LEVEL"},
+    ]
+    id_sets: list[tuple[str, ...]] = [(), (claim_a,), (claim_b,), (claim_a, claim_b)]
+
+    for attestation in attestation_cases:
+        for ids in id_sets:
+            assert _all_attested_public(ids, attestation) == _all_ids_attested_public(  # type: ignore[arg-type]
+                ids,
+                attestation,  # type: ignore[arg-type]
+            ), f"formula drift for ids={ids} attestation={attestation}"
