@@ -1,11 +1,17 @@
 """Pure, framework-free RO-Crate 1.1 export shaping (task-packets/E8-T01.yaml,
-MRR-FR-055's first half). First task of Epic E8; the closest templates are
-``mrr.domain.projection`` (a pure-domain module consumed by an application-
-layer service that performs the actual repository/store reads —
-``mrr.services.export.service.ExportService`` plays that role here) and
+MRR-FR-055's first half, EXTENDED by task-packets/E8-T02.yaml, MRR-FR-055's
+second half, with the W3C PROV layer — see "PROV mapping (E8-T02)" below).
+First task of Epic E8; the closest templates are ``mrr.domain.projection``
+(a pure-domain module consumed by an application-layer service that
+performs the actual repository/store reads —
+``mrr.services.export.service.ExportService`` plays that role here, and
+whose ``ProvenanceEdge`` this module now also accepts, see below) and
 ``mrr.domain.hashing_policy`` (this module's own dependency, for the exact
 canonicalization discipline object bodies get before they are hashed,
-signed, or — as of this packet — exported).
+signed, or — as of this packet — exported). E8-T02's own closest template is
+this module's OWN E8-T01 shape: the pure-shaping/I/O-performing service
+split, the "same discipline, same AT" boundary test, and the dense,
+decision-by-decision docstring convention all carry over unchanged.
 
 Everything in this module is a pure function of its arguments: no I/O, no
 network, no filesystem, and — task-packets/E8-T01.yaml R1's own words — "no
@@ -102,19 +108,25 @@ dicts"). Its ``@graph`` carries, in order:
    correspondence explicit in the graph rather than only implicit in a
    naming convention;
 4. one contextual entity per MRR object (``@id`` is the object's own urn,
-   ``@type`` is the compact IRI ``mrr:<kind>``), carrying ``mrr:urn``,
+   ``@type`` — AS OF E8-T02, see "PROV mapping" below — is the compact IRI
+   ``mrr:<kind>`` ALONE when ``mrr.domain.prov_mapping.prov_type_for_kind``
+   reports no mapping for that kind, or the two-element list
+   ``[mrr:<kind>, prov:<Type>]`` when it does), carrying ``mrr:urn``,
    ``mrr:kind``, ``mrr:contentHash``, ``mrr:practiceId`` verbatim from the
    stored body, plus ``mrr:signature`` — verbatim, whatever the body's own
-   ``signature`` field holds — WHENEVER the body actually carries one. R1's
-   own text says "(for the crate) mrr:signature" because the crate is the
-   only kind this packet's own closure (task-packets/E8-T01.yaml R2) ever
-   includes that carries a top-level ``signature`` field at all (Claim,
-   SourceRecord, EvidenceAnchor, VerificationResult do not); this module
-   does not hardcode "only if kind == EvidenceCrate", since that would be
-   inventing a kind-based rule the schemas do not state — it checks for the
-   field's actual presence in the body, which happens to produce exactly
-   R1's "for the crate" outcome against today's closure and stays correct
-   without amendment if a future closure ever includes another signed kind.
+   ``signature`` field holds — WHENEVER the body actually carries one, plus
+   — AS OF E8-T02 — every ``prov:`` relation property task-packets/
+   E8-T02.yaml R2 grounds for that object's own kind (see "PROV mapping"
+   below). R1's own text says "(for the crate) mrr:signature" because the
+   crate is the only kind this packet's own closure (task-packets/
+   E8-T01.yaml R2) ever includes that carries a top-level ``signature``
+   field at all (Claim, SourceRecord, EvidenceAnchor, VerificationResult do
+   not); this module does not hardcode "only if kind == EvidenceCrate",
+   since that would be inventing a kind-based rule the schemas do not
+   state — it checks for the field's actual presence in the body, which
+   happens to produce exactly R1's "for the crate" outcome against today's
+   closure and stays correct without amendment if a future closure ever
+   includes another signed kind.
 
 Artifacts get File entities only (item 3) — never a contextual entity (item
 4): task-packets/E8-T01.yaml R2(b) names artifacts as included "via their
@@ -128,19 +140,60 @@ practiceId`` therefore has nothing to read for an artifact; a reader who
 wants the mapping from an ``artifact_id`` URN to its content hash already
 has it, verbatim, inside the crate's own exported object file (its
 ``artifacts`` array, an ``ArtifactRef`` list) — this module does not
-duplicate that mapping into the metadata document a second time.
+duplicate that mapping into the metadata document a second time. AS OF
+E8-T02, an artifact File entity DOES additionally carry one relation
+property, ``prov:wasGeneratedBy`` — see "PROV mapping" below.
 
---- No prov:* terms (R1, E8-T02's boundary) ----------------------------------
+--- PROV mapping (R1/R2/R3, task-packets/E8-T02.yaml) ------------------------
 
-Nothing in this module emits any ``prov:`` term, or declares a ``prov``
-``@context`` prefix. task-packets/E8-T01.yaml derived decision (c): PROV
-mapping — including ``prov:wasDerivedFrom`` for exactly the edges the
-provenance BFS already walks to build this closure — is E8-T02's entire
-subject; emitting even a partial PROV vocabulary here would force that
-future task to edit this packet's already-shipped output format instead of
-purely adding to it. This is asserted directly by a unit test scanning the
-built metadata document for any ``"prov:"``-prefixed key or ``@context``
-entry.
+E8-T01 deliberately shipped with no ``prov:`` term anywhere (its own derived
+decision (c): "PROV mapping ... is E8-T02's entire subject; emitting even a
+partial PROV vocabulary here would force that future task to edit this
+packet's already-shipped output format instead of purely adding to it").
+E8-T02 is exactly that purely-additive extension — the file SET does not
+change at all (task-packets/E8-T02.yaml invariant, asserted by a regression
+test comparing everything except ``ro-crate-metadata.json`` to the pre-PROV
+output); only ``ro-crate-metadata.json`` itself grows, by exactly three
+things, all computed by ``mrr.domain.prov_mapping`` (read that module's own
+docstring first for the full kind/urn/relation mapping rationale — this
+section covers only how ``build_ro_crate_metadata`` WIRES that module's pure
+functions into the document already described above):
+
+1. **A second ``@context`` prefix**, ``prov`` -> ``mrr.domain.prov_mapping
+   .PROV_VOCAB_URI`` (``http://www.w3.org/ns/prov#``), appended after
+   ``mrr`` (task-packets/E8-T02.yaml derived_decisions (d): "exactly 'mrr'
+   ... and 'prov'").
+2. **PROV types and relation properties on contextual entities** — every
+   object's own ``@type``/relation properties as described in item 4 above,
+   computed by ``mrr.domain.prov_mapping.prov_type_for_kind``/
+   ``.prov_relations_for_object`` from that object's own already-stored
+   body, PLUS ``prov:wasDerivedFrom`` for any ``derived_from`` typed edge
+   whose SOURCE is that object (``mrr.domain.prov_mapping
+   .group_derived_from_targets``, over the ``provenance_edges`` this
+   module's own callers now pass — see ``build_ro_crate_metadata``'s own
+   parameter docstring and ``mrr.services.export.service.ExportService``'s
+   own R4 wiring). **PROV types on artifact File entities**:
+   ``prov:wasGeneratedBy`` the crate's own ``run_id``
+   (``mrr.domain.prov_mapping.artifact_generated_by_relation`` — R2(d)).
+3. **R3 stub contextual entities** — every urn ANY emitted ``prov:``
+   relation property references (via ``mrr.domain.prov_mapping
+   .relation_target_urns``, accumulated across every contextual entity and
+   the artifact ``wasGeneratedBy`` relation) that is not itself one of
+   ``plan.objects``'s own urns gets a minimal entity: ``@id``, ``@type``
+   from ``mrr.domain.prov_mapping.prov_type_for_urn`` (OMITTED entirely if
+   that fallback reports ``None`` — never a fabricated type), and
+   ``mrr:urn`` — nothing else, nothing resolved. Appended to ``@graph``
+   AFTER every real contextual entity, sorted by urn (task-packets/
+   E8-T02.yaml R3: "deterministic and sorted"). A stub is never added to
+   ``hasPart`` (item 2 above) — it names no file; the exported FILE SET is
+   untouched by this entire section, exactly the packet's own premise.
+
+``build_ro_crate_metadata``'s new ``provenance_edges`` parameter defaults to
+``()`` — calling it with no edges at all (e.g. every pre-E8-T02 unit test
+that never learned about the parameter) still produces a fully prov-typed
+document; it just never emits a ``prov:wasDerivedFrom`` property anywhere,
+which is the CORRECT output for a graph this module was never told about any
+``derived_from`` edge in (never a crash, never a silently wrong guess).
 
 --- No wall-clock timestamps (R1, an explicit invariant) ---------------------
 
@@ -171,6 +224,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from mrr.crypto.canonical import JSONValue, canonicalize
+from mrr.domain import prov_mapping
+from mrr.domain.projection import ProvenanceEdge
 
 #: RO-Crate 1.1's own remote context document — pinned to an exact version so
 #: a future 1.2 migration is an explicit, diffable change to this constant,
@@ -348,20 +403,40 @@ def _object_file_entity(obj: ExportedObject) -> dict[str, JSONValue]:
     }
 
 
-def _artifact_file_entity(artifact: ExportedArtifact) -> dict[str, JSONValue]:
-    return {
+def _artifact_file_entity(
+    artifact: ExportedArtifact, *, generated_by: Mapping[str, JSONValue]
+) -> dict[str, JSONValue]:
+    entity: dict[str, JSONValue] = {
         "@id": artifact.relative_path,
         "@type": "File",
         "contentSize": artifact.size_bytes,
         f"{MRR_VOCAB_PREFIX}:contentHash": artifact.content_hash,
     }
+    entity.update(generated_by)
+    return entity
 
 
-def _object_contextual_entity(obj: ExportedObject) -> dict[str, JSONValue]:
-    kind = obj.body["kind"]
+def _entity_type(kind: str) -> JSONValue:
+    """``mrr:<kind>`` alone, or ``[mrr:<kind>, prov:<Type>]`` when
+    ``mrr.domain.prov_mapping.prov_type_for_kind`` maps ``kind`` — the
+    module docstring's "PROV mapping" section, item 2's own disclosed,
+    deterministic representation choice: ``mrr:`` always first, ``prov:``
+    always second, never the reverse and never alphabetically resorted.
+    """
+    mrr_type = f"{MRR_VOCAB_PREFIX}:{kind}"
+    prov_type = prov_mapping.prov_type_for_kind(kind)
+    if prov_type is None:
+        return mrr_type
+    return [mrr_type, prov_type]
+
+
+def _object_contextual_entity(
+    obj: ExportedObject, *, relations: Mapping[str, JSONValue]
+) -> dict[str, JSONValue]:
+    kind = str(obj.body["kind"])
     entity: dict[str, JSONValue] = {
         "@id": obj.urn,
-        "@type": f"{MRR_VOCAB_PREFIX}:{kind}",
+        "@type": _entity_type(kind),
         f"{MRR_VOCAB_PREFIX}:urn": obj.urn,
         f"{MRR_VOCAB_PREFIX}:kind": kind,
         f"{MRR_VOCAB_PREFIX}:contentHash": obj.body["content_hash"],
@@ -369,27 +444,65 @@ def _object_contextual_entity(obj: ExportedObject) -> dict[str, JSONValue]:
     }
     if _SIGNATURE_FIELD in obj.body:
         entity[f"{MRR_VOCAB_PREFIX}:signature"] = obj.body[_SIGNATURE_FIELD]
+    entity.update(relations)
     return entity
 
 
-def build_ro_crate_metadata(*, crate_urn: str, plan: ExportPlan) -> dict[str, JSONValue]:
+def _stub_entity(urn: str) -> dict[str, JSONValue]:
+    """An R3 stub contextual entity for a urn some emitted ``prov:``
+    relation references that names no exported object — ``@id``, ``@type``
+    (OMITTED if ``mrr.domain.prov_mapping.prov_type_for_urn`` reports
+    ``None`` — an unmapped urn entity segment, e.g. a future kind the
+    fallback table does not yet name), ``mrr:urn`` — nothing else, nothing resolved,
+    nothing invented (task-packets/E8-T02.yaml R3).
+    """
+    entity: dict[str, JSONValue] = {"@id": urn}
+    prov_type = prov_mapping.prov_type_for_urn(urn)
+    if prov_type is not None:
+        entity["@type"] = prov_type
+    entity[f"{MRR_VOCAB_PREFIX}:urn"] = urn
+    return entity
+
+
+def build_ro_crate_metadata(
+    *,
+    crate_urn: str,
+    plan: ExportPlan,
+    provenance_edges: Sequence[ProvenanceEdge] = (),
+) -> dict[str, JSONValue]:
     """Build the ``ro-crate-metadata.json`` document (task-packets/
-    E8-T01.yaml R1(b)) for ``plan`` — see the module docstring's "The
-    RO-Crate 1.1 document" section for the full entity-by-entity rationale.
+    E8-T01.yaml R1(b), EXTENDED by task-packets/E8-T02.yaml's PROV layer)
+    for ``plan`` — see the module docstring's "The RO-Crate 1.1 document"
+    and "PROV mapping" sections for the full entity-by-entity rationale.
 
     Args:
         crate_urn: the urn of the ``EvidenceCrate`` object among ``plan
             .objects`` — its ``created_at`` becomes ``datePublished`` (the
-            module docstring's "No wall-clock timestamps" section).
+            module docstring's "No wall-clock timestamps" section), and its
+            ``run_id`` becomes ``prov:wasGeneratedBy`` on the crate's own
+            contextual entity AND on every artifact File entity (R2(d)/(e)).
         plan: the ``ExportPlan`` this metadata document describes — every
             file it names becomes a ``hasPart`` entry and a ``File``
             entity; every object in ``plan.objects`` becomes a contextual
             entity.
+        provenance_edges: every typed-edge/field-reference hop the R2
+            closure's own provenance BFS walked (task-packets/E8-T02.yaml
+            R4: "the union of the per-claim ProvenanceMap edges,
+            deduplicated, sorted"), as already collected and passed by
+            ``mrr.services.export.service.ExportService``. Only hops whose
+            ``via == "edge"`` and ``relation == "derived_from"`` ever
+            produce a ``prov:wasDerivedFrom`` property (``mrr.domain
+            .prov_mapping.group_derived_from_targets`` — see that
+            function's own docstring). Defaults to ``()``: a caller that
+            passes nothing (every pre-E8-T02 call site) gets a fully
+            prov-typed document that simply never emits
+            ``prov:wasDerivedFrom`` anywhere — never a crash, never a
+            guessed edge.
 
     Returns:
         A plain ``dict`` — no RO-Crate/JSON-LD library round trip anywhere.
         Calling this twice with equal arguments returns an equal dict both
-        times (task-packets/E8-T01.yaml AT4).
+        times (task-packets/E8-T01.yaml AT4; task-packets/E8-T02.yaml R5).
 
     Raises:
         ValueError: ``crate_urn`` does not name any object in ``plan
@@ -417,11 +530,38 @@ def build_ro_crate_metadata(*, crate_urn: str, plan: ExportPlan) -> dict[str, JS
         _root_data_entity(date_published=crate.body["created_at"], has_part=has_part),
     ]
     graph.extend(_object_file_entity(obj) for obj in plan.objects)
-    graph.extend(_artifact_file_entity(artifact) for artifact in plan.artifacts)
-    graph.extend(_object_contextual_entity(obj) for obj in plan.objects)
+
+    crate_run_id = crate.body.get("run_id")
+    artifact_generated_by = prov_mapping.artifact_generated_by_relation(
+        crate_run_id if isinstance(crate_run_id, str) else None
+    )
+    graph.extend(
+        _artifact_file_entity(artifact, generated_by=artifact_generated_by)
+        for artifact in plan.artifacts
+    )
+
+    derived_from_by_source = prov_mapping.group_derived_from_targets(provenance_edges)
+
+    referenced_urns: set[str] = set(prov_mapping.relation_target_urns(artifact_generated_by))
+    contextual_entities: list[dict[str, JSONValue]] = []
+    for obj in plan.objects:
+        kind = str(obj.body["kind"])
+        own_relations = prov_mapping.prov_relations_for_object(kind, obj.body)
+        derived_from = prov_mapping.derived_from_relation(derived_from_by_source.get(obj.urn, ()))
+        relations = {**own_relations, **derived_from}
+        contextual_entities.append(_object_contextual_entity(obj, relations=relations))
+        referenced_urns.update(prov_mapping.relation_target_urns(relations))
+    graph.extend(contextual_entities)
+
+    exported_urns = {obj.urn for obj in plan.objects}
+    graph.extend(_stub_entity(urn) for urn in sorted(referenced_urns - exported_urns))
 
     return {
-        "@context": [RO_CRATE_CONTEXT_URI, {MRR_VOCAB_PREFIX: MRR_VOCAB_URI}],
+        "@context": [
+            RO_CRATE_CONTEXT_URI,
+            {MRR_VOCAB_PREFIX: MRR_VOCAB_URI},
+            {prov_mapping.PROV_VOCAB_PREFIX: prov_mapping.PROV_VOCAB_URI},
+        ],
         "@graph": graph,
     }
 
@@ -431,12 +571,22 @@ def build_export(
     crate_urn: str,
     object_bodies: Mapping[str, Mapping[str, JSONValue]],
     artifact_sizes: Mapping[str, int],
+    provenance_edges: Sequence[ProvenanceEdge] = (),
 ) -> tuple[ExportPlan, dict[str, JSONValue]]:
     """Convenience composition of ``build_export_plan``/``build_ro_crate_
     metadata`` — the one call ``mrr.services.export.service.ExportService``
     makes once it has finished resolving the closure (task-packets/
-    E8-T01.yaml R2) and fetching every artifact's bytes (R3).
+    E8-T01.yaml R2) and fetching every artifact's bytes (R3). ``plan`` is
+    built from ``object_bodies``/``artifact_sizes`` ALONE — ``provenance_
+    edges`` never reaches ``build_export_plan`` — so the exported file SET
+    this returns is, by construction, identical regardless of what (if
+    anything) is passed for ``provenance_edges`` (task-packets/E8-T02.yaml
+    R5's own file-set-regression invariant; see
+    tests/unit/domain/test_ro_crate.py's
+    ``test_provenance_edges_do_not_affect_the_export_plan``).
     """
     plan = build_export_plan(object_bodies, artifact_sizes)
-    metadata = build_ro_crate_metadata(crate_urn=crate_urn, plan=plan)
+    metadata = build_ro_crate_metadata(
+        crate_urn=crate_urn, plan=plan, provenance_edges=provenance_edges
+    )
     return plan, metadata
