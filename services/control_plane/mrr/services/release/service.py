@@ -587,7 +587,14 @@ class ReleaseService:
     # ------------------------------------------------------------------
 
     def _discover_ids_by_event_type(self, event_type: str) -> set[str]:
-        assert self._event_log is not None  # guarded by status()'s own check
+        if self._event_log is None:  # guarded by status()'s own check; plain
+            # if/raise (not a bare assert) so the guard survives Python's
+            # optimized (-O) bytecode mode — mrr.domain.ro_crate's own
+            # documented convention, and bandit B101 (CI security-check).
+            raise ValueError(
+                "_discover_ids_by_event_type requires an event log; status() refuses "
+                "before reaching this helper when none was supplied"
+            )
         return {
             appended.event.object_id
             for appended in self._event_log.read_all()
