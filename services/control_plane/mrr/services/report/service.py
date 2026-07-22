@@ -95,6 +95,34 @@ proposed claim — the exact same already-tested method ``ExportService
 .resolve_closure`` itself calls internally, called here a second time for a
 different purpose (grouping by claim rather than flattening into a union) —
 never a forked traversal.
+
+--- E8-T05: the OPTIONAL ``release_id`` parameter (R3) -----------------------
+
+``render`` gains one new, OPTIONAL keyword parameter, ``release_id: Urn |
+None = None`` (task-packets/E8-T05.yaml R3: "ReportService gains the
+optional release context parameter and computes the banner via R2"). When
+``None`` (every existing call site), NOTHING changes — ``build_report`` is
+called exactly as before, with ``release_banner`` simply omitted (defaults
+to ``None`` there too), producing byte-identical output to E8-T03 (R3's own
+regression requirement). When given, this method resolves the R2 banner via
+``mrr.services.release.service.ReleaseService.status`` (constructed with a
+never-invoked ``RecordRevisionWithEvent`` stand-in — mirroring THIS module's
+own ``_NeverInvokedArtifactStore`` precedent immediately below, one section
+over, for the identical "read-only call path, but the constructor still
+needs the write dependency" situation; imported directly from
+``mrr.services.release.service`` rather than composed through
+``mrr.services.release.supersede.resolve_release_status``, which would
+otherwise close a genuine import cycle — that module imports
+``mrr.services.release.bundle``, which imports THIS module, for
+``assemble_and_release``'s own ``ReportService`` composition), then resolves
+the RAW ``CorrectionEvent`` body for every ``correction_id`` the returned
+banner's own ``affecting_corrections`` names (a plain ``ObjectRepository
+.get_latest`` per id — this service already holds one), and hands both into
+``mrr.domain.research_report.ReleaseBannerInput`` for ``build_report`` to
+redact and shape (see that module's own "E8-T05: the OPTIONAL release-status
+banner" section for why the RAW bodies, not pre-redacted text, cross this
+boundary — this service performs I/O only, every actual redaction decision
+stays exactly where it already lives, ``mrr.domain.research_report``'s own).
 """
 
 from __future__ import annotations
@@ -104,19 +132,24 @@ from datetime import datetime
 from typing import Protocol
 
 from mrr.contracts import Urn
+from mrr.crypto.canonical import JSONValue
 from mrr.domain.artifacts import ArtifactDescriptor, Classification
+from mrr.domain.exceptions import ObjectNotFoundError
 from mrr.domain.projection import ProvenanceEdge
 from mrr.domain.public_correction_view import PublicCorrectionRow
-from mrr.domain.repositories import EdgeRepository, ObjectRepository
+from mrr.domain.repositories import EdgeRepository, ObjectRepository, StoredObject
 from mrr.domain.research_report import (
     ALWAYS_PUBLIC_ATTESTATION,
     Disclosure,
+    ReleaseBannerInput,
     ResearchReport,
     build_report,
 )
+from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
 from mrr.services.export.service import ExportClosure, ExportService
 from mrr.services.projection.service import ProjectionService
+from mrr.services.release.service import ReleaseService
 
 
 class _EventJournal(Protocol):
@@ -177,6 +210,24 @@ class _NeverInvokedArtifactStore:
         )
 
 
+def _never_invoked_record(
+    obj: StoredObject, expected_current_revision: int | None, event: DomainEvent
+) -> tuple[StoredObject, AppendedEvent]:
+    """A ``RecordRevisionWithEvent`` stand-in that always raises — E8-T05's
+    own addition, used only to satisfy ``ReleaseService.__init__``'s
+    required ``record`` parameter when composing it for
+    :meth:`ReportService._resolve_release_banner_input` alone, which calls
+    only ``ReleaseService.status`` (read-only — never writes). Mirrors
+    ``_NeverInvokedArtifactStore`` immediately above: same rationale, same
+    shape, for the same reason (a constructor requires a write dependency
+    this particular call path never actually reaches).
+    """
+    raise AssertionError(
+        "ReportService's internal ReleaseService never writes (status() is read-only) — "
+        "this stand-in should never actually be invoked"
+    )
+
+
 def _corrections_for_closure(
     corrections: list[PublicCorrectionRow], closure: ExportClosure
 ) -> list[PublicCorrectionRow]:
@@ -220,6 +271,9 @@ class ReportService:
             object_repository, edge_repository, event_log, _NeverInvokedArtifactStore()
         )
         self._projection_service = ProjectionService(object_repository, edge_repository, event_log)
+        self._release_service = ReleaseService(
+            object_repository, _never_invoked_record, event_log=event_log
+        )
 
     def render(
         self,
@@ -227,6 +281,7 @@ class ReportService:
         *,
         disclosure: Disclosure,
         classification_by_object_id: Mapping[str, Classification] | None = None,
+        release_id: Urn | None = None,
     ) -> ResearchReport:
         """Build the full :class:`mrr.domain.research_report.ResearchReport`
         model for ``crate_id``. Pure composition — every actual shaping and
@@ -246,13 +301,30 @@ class ReportService:
                 as an empty mapping (AT2: "an empty attestation mapping
                 shows structure ... and not one byte of any stored
                 assertion/finding/summary string").
+            release_id: E8-T05 R3's own OPTIONAL release-context parameter —
+                ``None`` (the default) renders byte-identical to E8-T03
+                output (no "Release status" block at all). When given, the
+                urn of an already-persisted ``ReleaseRecord`` whose banner
+                (verdict/``superseded_by``/affecting corrections/anomaly —
+                see the module docstring's own "E8-T05" section) is computed
+                and rendered FIRST, before section 1. This release need not
+                be rooted on ``crate_id`` at all — this method never checks
+                — a caller asking for a banner from an unrelated release's
+                own context is a caller error this method does not itself
+                guard against, matching this class's own "pure composition,
+                no invented cross-checks" stance elsewhere.
 
         Raises:
             ValueError: ``crate_id`` resolves to a stored object whose
                 ``kind`` is not ``EvidenceCrate`` (from ``resolve_closure``).
             mrr.domain.exceptions.ObjectNotFoundError: ``crate_id``, or any
                 urn the crate's own arrays name, does not resolve to any
-                stored object — carries the exact missing urn.
+                stored object — carries the exact missing urn; or
+                ``release_id`` (when given) does not resolve to any stored
+                object.
+            mrr.services.release.errors.ReleaseRecordKindError: ``release_id``
+                (when given) resolves to a stored object whose ``kind`` is
+                not ``"ReleaseRecord"``.
         """
         closure = self._export_service.resolve_closure(crate_id)
 
@@ -277,6 +349,8 @@ class ReportService:
             for claim_id in proposed_claim_ids
         }
 
+        release_banner = self._resolve_release_banner_input(release_id)
+
         return build_report(
             object_bodies=closure.object_bodies,
             crate_id=crate_id,
@@ -284,4 +358,31 @@ class ReportService:
             provenance_by_claim=provenance_by_claim,
             disclosure=disclosure,
             classification_by_object_id=classification_by_object_id or {},
+            release_banner=release_banner,
         )
+
+    def _resolve_release_banner_input(self, release_id: Urn | None) -> ReleaseBannerInput | None:
+        """``None`` straight through when ``release_id`` is absent — see
+        the module docstring's "E8-T05: the OPTIONAL release_id parameter"
+        section. Otherwise resolves the R2 banner and every raw
+        ``CorrectionEvent`` body its own ``affecting_corrections`` names,
+        for ``mrr.domain.research_report`` to redact and shape itself — this
+        method performs I/O only; it never redacts anything (no
+        ``classification_by_object_id`` is read here at all).
+        """
+        if release_id is None:
+            return None
+
+        banner = self._release_service.status(release_id)
+        correction_bodies_by_id: dict[str, Mapping[str, JSONValue]] = {}
+        for affecting in banner.affecting_corrections:
+            resolved = self._get_object_body_or_none(affecting.correction_id)
+            if resolved is not None:
+                correction_bodies_by_id[affecting.correction_id] = resolved
+        return ReleaseBannerInput(banner=banner, correction_bodies_by_id=correction_bodies_by_id)
+
+    def _get_object_body_or_none(self, object_id: str) -> Mapping[str, JSONValue] | None:
+        try:
+            return self._object_repository.get_latest(object_id).body
+        except ObjectNotFoundError:
+            return None

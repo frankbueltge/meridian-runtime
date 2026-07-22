@@ -48,6 +48,71 @@ service with the CLI's raw, unvalidated ``--approved-by``/
 ``--approval-statement-file`` contents/``--approval-mode`` strings — see
 that module's own docstring.
 
+--- task-packets/E8-T05.yaml: ``supersede`` and ``status``, additively -------
+
+E8-T04's own module docstring (above, unedited) says this class "exposes
+exactly one public method, ``create``" — true when E8-T04 shipped, and now
+superseded BY THIS TASK'S OWN explicit design mandate: reviewer_resolution
+(1)/R1 says, verbatim, "ReleaseService gains supersede(...)", and R2 says "A
+service method on ReleaseService (read-only path) resolves those inputs and
+calls it [the pure ``mrr.domain.release_status.compute_release_banner``]." A
+class that closes its own public surface by omission (E8-T04's own stated
+design) and a task packet that explicitly reopens it are two facts that
+cannot both hold; this docstring resolves the conflict in the task packet's
+favor (it is E8-T05's own binding text) and flags it for reviewer scrutiny
+here, in this task's own delivery report, and — the one place a REGRESSION
+would otherwise silently hide — in ``tests/unit/services/release
+/test_service.py``'s own ``test_service_exposes_no_transition_method``,
+whose assertion is widened from ``{"create"}`` to
+``{"create", "supersede", "status"}`` (one line changed, comment added
+explaining why; every OTHER assertion in that E8-T04 file is untouched).
+Immutability is now: "release BYTES (the approval block, the bundle
+manifest) are never rewritten" — proven by :meth:`supersede` carrying both
+forward UNCHANGED into the next revision — not "this class has one method."
+
+:meth:`supersede` writes the release record's OWN next revision (same id,
+``status`` -> ``"superseded"``, ``labels["superseded_by"]`` set) plus one
+``release.superseded`` event, atomically — mirrors ``mrr.services.claim
+.service.ClaimService._transition``'s own "load latest, assert the
+lifecycle edge via ``mrr.domain.lifecycles``, mint the next revision,
+record atomically" shape, applied here to ``mrr.domain.lifecycles
+.RELEASE_RECORD_LIFECYCLE``'s own single ``released -> superseded`` edge.
+Unlike ``create``, this method DOES take a separate ``policy_version``/
+``correlation_id`` pair for its own event — R1's own signature sketch
+(``supersede(release_id, superseded_by, approved_by)``) omits them exactly
+as R4's own flag list omitted ``--policy-version``/``--correlation-id`` for
+``create`` (E8-T04's own disclosed addition, cited here as direct
+precedent): every OTHER event-writing write in this codebase requires an
+explicit ``policy_version`` (no default — recording a governance act states
+the policy version every time) and accepts a ``correlation_id``, and a
+``release.superseded`` event is exactly such a write.
+
+:meth:`status` is the READ-ONLY companion (R2): resolves a ``ReleaseRecord``
+by id, discovers every ``CorrectionEvent`` this practice has ever recorded
+(mirroring ``mrr.services.projection.service.ProjectionService``'s own
+"scan the event log for genesis events" discovery pattern — task-packets/
+E3-T07.yaml — restated here as a small, disclosed, minimal duplication
+rather than composed via ``ProjectionService`` itself, which would need an
+``EdgeRepository`` this service has no other use for, and whose own
+``_read_correction_bodies`` is module-private), scans for sibling
+``ReleaseRecord``s sharing this one's own ``crate_id`` (the
+``duplicate_unsuperseded_releases`` anomaly, reviewer_resolution (2)'s own
+detection duty), and calls the pure ``mrr.domain.release_status
+.compute_release_banner`` with the results. Never calls ``self._record``
+anywhere — a pure read, like every sibling "read-only path" method this
+codebase already has (``ProjectionService``'s own two builders,
+``mrr.services.release.verify``'s two functions). Needs an event log the
+ORIGINAL ``create``-only constructor never required — see ``event_log``'s
+own new, OPTIONAL constructor parameter below: adding it as a REQUIRED
+positional/keyword argument would break ``mrr.services.release.bundle
+.assemble_and_release``'s own existing ``ReleaseService(object_repository,
+record)`` call site AND ``tests/unit/services/release/test_service.py``'s
+own identical two-argument construction (an E8-T04 test file this task must
+not edit) — ``event_log: _EventJournal | None = None`` keeps both
+call sites byte-identical, valid, and untouched; only NEW callers that need
+:meth:`status` (``mrr.services.release.supersede.resolve_release_status``,
+and this task's own new unit tests) supply it.
+
 --- practice_id is inherited from the resolved crate, never a separate arg --
 
 A release is fundamentally scoped to the crate (and therefore the practice)
@@ -73,23 +138,31 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from mrr.contracts import Approval, Bundle, BundleFile, ReleaseRecord, Urn
 from mrr.contracts.release_record import Disclosure
+from mrr.domain.exceptions import ObjectNotFoundError
 from mrr.domain.hashing_policy import compute_content_hash
 from mrr.domain.identity import URN_PATTERN, new_urn
+from mrr.domain.lifecycles import RELEASE_RECORD_LIFECYCLE
+from mrr.domain.release_status import ReleaseBanner, compute_release_banner
 from mrr.domain.repositories import ObjectRepository, StoredObject
 from mrr.persistence.unit_of_work import (
     RecordRevisionWithEvent as RecordRevisionWithEvent,
 )
 from mrr.provenance.events import DomainEvent
+from mrr.provenance.log import AppendedEvent
 from mrr.services.release.errors import (
+    AlreadySupersededError,
     BundleRootHashMismatchError,
     DualApprovalNotSupportedError,
     EmptyApprovalStatementError,
     NonPersonApproverError,
     ReleaseCrateKindError,
+    ReleaseRecordKindError,
+    SelfSupersessionError,
+    SupersedingReleaseNotReleasedError,
 )
 from mrr.services.release.manifest import BundleManifest, compute_root_hash
 
@@ -97,8 +170,23 @@ from mrr.services.release.manifest import BundleManifest, compute_root_hash
 #: ReleaseRecord revision-1 insert.
 _EVENT_RELEASE_APPROVED = "release.approved"
 
+#: task-packets/E8-T05.yaml R1: the ``release.superseded`` event ``supersede``
+#: writes atomically with the record's next revision.
+_EVENT_RELEASE_SUPERSEDED = "release.superseded"
+
 #: task-packets/E8-T04.yaml R2a: the ONLY kind --crate-id may resolve to.
 _EVIDENCE_CRATE_KIND = "EvidenceCrate"
+
+#: The one kind ``--release-id``/``--supersedes`` may resolve to (R1/R2).
+_RELEASE_RECORD_KIND = "ReleaseRecord"
+
+#: mrr.domain.lifecycles.RELEASE_RECORD_LIFECYCLE's two states.
+_RELEASED_STATUS = "released"
+_SUPERSEDED_STATUS = "superseded"
+
+#: derived_decisions (a): the open ``labels`` string-map slot ``supersede``
+#: carries the superseding release's own urn in.
+_SUPERSEDED_BY_LABEL = "superseded_by"
 
 #: mrr.domain.identity.URN_PATTERN's own named group, matched against the
 #: literal 'person' — see the module docstring's "Deliberate deviation"
@@ -108,6 +196,15 @@ _PERSON_ENTITY = "person"
 #: task-packets/E8-T04.yaml derived_decisions (b): the only approval_mode
 #: this practice actually implements.
 _SUPPORTED_APPROVAL_MODE = "single_human"
+
+#: task-packets/E3-T07.yaml's own genesis-event discovery convention,
+#: applied here to ReleaseRecord/CorrectionEvent — see :meth:`ReleaseService
+#: .status`'s own docstring, "the READ-ONLY companion", for the full
+#: rationale for why this is a small, disclosed, local duplication of
+#: ``mrr.services.projection.service.ProjectionService``'s own identical
+#: pattern rather than a composed dependency on that class.
+_CORRECTION_RECORDED_EVENT = "correction.recorded"
+_CORRECTION_KIND = "CorrectionEvent"
 
 #: A placeholder later overwritten by the real, recomputed content hash
 #: (mrr.domain.hashing_policy.compute_content_hash's own `content_hash`/
@@ -139,19 +236,38 @@ def _release_record_to_stored_object(record: ReleaseRecord) -> StoredObject:
     )
 
 
+class _EventJournal(Protocol):
+    """The one read operation :meth:`ReleaseService.status` needs from an
+    event log — identical in spirit to every other service module's own
+    independently-declared, narrower-than-``mrr.provenance.log.EventLog[TTx]``
+    Protocol (see e.g. ``mrr.services.projection.service._EventJournal``'s
+    own docstring for why this codebase declares this Protocol independently
+    per consuming module rather than sharing one).
+    """
+
+    def read_all(self) -> list[AppendedEvent]: ...
+
+
 class ReleaseService:
     """docs/spec/adr/ADR-0011-RELEASE-RECORD-AND-A4-APPROVAL-EVENT.md,
-    implemented per task-packets/E8-T04.yaml. See the module docstring for
-    the full design rationale, above all the four typed refusals and why
-    ``create`` takes raw approval inputs rather than a pre-built contract
-    object.
+    implemented per task-packets/E8-T04.yaml/E8-T05.yaml. See the module
+    docstring for the full design rationale, above all the four ``create``
+    typed refusals, why ``create`` takes raw approval inputs rather than a
+    pre-built contract object, and — E8-T05's own addition — the
+    ``supersede``/``status`` rationale under "task-packets/E8-T05.yaml:
+    supersede and status, additively".
     """
 
     def __init__(
-        self, object_repository: ObjectRepository, record: RecordRevisionWithEvent
+        self,
+        object_repository: ObjectRepository,
+        record: RecordRevisionWithEvent,
+        *,
+        event_log: _EventJournal | None = None,
     ) -> None:
         self._object_repository = object_repository
         self._record = record
+        self._event_log = event_log
 
     def create(
         self,
@@ -282,3 +398,240 @@ class ReleaseService:
         )
         stored, _ = self._record(obj, None, event)
         return stored
+
+    # ------------------------------------------------------------------
+    # task-packets/E8-T05.yaml R1 — supersede.
+    # ------------------------------------------------------------------
+
+    def supersede(
+        self,
+        release_id: Urn,
+        *,
+        superseded_by: Urn,
+        approved_by: str,
+        policy_version: str,
+        correlation_id: Urn,
+    ) -> StoredObject:
+        """Write the NEXT revision of ``release_id`` with ``status``
+        ``"superseded"`` and ``labels["superseded_by"] == superseded_by``,
+        atomically with one ``release.superseded`` event whose ``actor`` is
+        ``approved_by`` — R1, verbatim. ``approval``/``bundle`` are carried
+        into the new revision UNCHANGED (only ``status``/``labels`` move; see
+        the module docstring's "supersede and status, additively" section).
+
+        Checks run cheapest-first, entirely before any database write
+        (mirrors ``create``'s own discipline): the person-URN pattern check
+        and the self-supersession check need no I/O at all; resolving
+        ``release_id`` is the first database read; resolving
+        ``superseded_by`` is the second.
+
+        Args:
+            release_id: the OLD ``ReleaseRecord`` being superseded.
+            superseded_by: the urn of the NEW ``ReleaseRecord`` that
+                supersedes it — must already resolve to a ``ReleaseRecord``
+                with ``status == "released"``.
+            approved_by: the raw, caller-supplied approver URN string for
+                the superseding release — validated here to be a
+                person-segment URN, exactly as ``create`` validates its own
+                ``approved_by`` (ADR-0011 decision 2: no service/CLI default
+                can stand in for the human act; see this method's own
+                docstring for why this is the SAME person who approved
+                ``superseded_by``, not a separate identity).
+            policy_version: recorded on the ``release.superseded`` event.
+            correlation_id: recorded on the ``release.superseded`` event.
+
+        Raises:
+            mrr.services.release.errors.NonPersonApproverError: ``approved_by``
+                is not a person-segment URN.
+            mrr.services.release.errors.SelfSupersessionError:
+                ``superseded_by == release_id``.
+            mrr.domain.exceptions.ObjectNotFoundError: ``release_id`` or
+                ``superseded_by`` does not resolve to any stored object.
+            mrr.services.release.errors.ReleaseRecordKindError:
+                ``release_id`` or ``superseded_by`` resolves to a stored
+                object whose ``kind`` is not ``"ReleaseRecord"``.
+            mrr.services.release.errors.AlreadySupersededError:
+                ``release_id``'s latest revision already has
+                ``status == "superseded"``.
+            mrr.services.release.errors.SupersedingReleaseNotReleasedError:
+                ``superseded_by`` resolves to a ``ReleaseRecord`` whose
+                latest revision's ``status`` is not ``"released"``.
+        """
+        match = URN_PATTERN.match(approved_by)
+        if match is None or match.group("entity") != _PERSON_ENTITY:
+            raise NonPersonApproverError(approved_by)
+
+        if superseded_by == release_id:
+            raise SelfSupersessionError(release_id)
+
+        latest = self._object_repository.get_latest(release_id)
+        if latest.kind != _RELEASE_RECORD_KIND:
+            raise ReleaseRecordKindError(release_id, latest.kind)
+        if latest.body["status"] == _SUPERSEDED_STATUS:
+            raise AlreadySupersededError(release_id)
+
+        superseding = self._object_repository.get_latest(superseded_by)
+        if superseding.kind != _RELEASE_RECORD_KIND:
+            raise ReleaseRecordKindError(superseded_by, superseding.kind)
+        if superseding.body["status"] != _RELEASED_STATUS:
+            raise SupersedingReleaseNotReleasedError(superseded_by, str(superseding.body["status"]))
+
+        # RELEASE_RECORD_LIFECYCLE's own single drawn edge — the authoritative
+        # source for "released -> superseded is legal", rather than trusting
+        # the two checks above to have already proven it by elimination
+        # (they do, since ReleaseStatus is a closed two-value enum, but
+        # driving the transition through the state machine itself is what
+        # ADR-0011 decision 1's own "E8-T05 drives it" text calls for).
+        RELEASE_RECORD_LIFECYCLE.assert_transition(str(latest.body["status"]), _SUPERSEDED_STATUS)
+
+        now = datetime.now(UTC)
+        new_revision = latest.revision + 1
+        new_labels = dict(latest.labels or {})
+        new_labels[_SUPERSEDED_BY_LABEL] = superseded_by
+
+        new_body = dict(latest.body)
+        new_body["status"] = _SUPERSEDED_STATUS
+        new_body["revision"] = new_revision
+        new_body["created_at"] = now.isoformat()
+        new_body["created_by"] = approved_by
+        new_body["labels"] = new_labels
+        # approval/bundle are NOT touched — they remain the same dict values
+        # already present on `latest.body` (R1: "carried into the new
+        # revision UNCHANGED").
+        new_content_hash = compute_content_hash(new_body)
+        new_body["content_hash"] = new_content_hash
+
+        # Re-run the ReleaseRecord contract's own validator against the
+        # EXACT revision body about to be persisted — mirrors ClaimService
+        # ._transition's identical "re-validate the body, not just trust the
+        # field-by-field edit above" discipline for its own supported
+        # transition.
+        ReleaseRecord.model_validate(new_body)
+
+        obj = StoredObject(
+            id=latest.id,
+            api_version=latest.api_version,
+            kind=latest.kind,
+            practice_id=latest.practice_id,
+            revision=new_revision,
+            created_at=now,
+            created_by=approved_by,
+            content_hash=new_content_hash,
+            supersedes=latest.supersedes,
+            labels=new_labels,
+            body=new_body,
+        )
+        event = DomainEvent(
+            id=new_urn("domain-event"),
+            event_type=_EVENT_RELEASE_SUPERSEDED,
+            occurred_at=now,
+            actor=approved_by,
+            policy_version=policy_version,
+            causation_id=None,
+            correlation_id=correlation_id,
+            object_id=latest.id,
+            object_revision=new_revision,
+            payload={
+                "crate_id": latest.body["crate_id"],
+                "superseded_by": superseded_by,
+                "from_status": latest.body["status"],
+                "to_status": _SUPERSEDED_STATUS,
+            },
+        )
+        stored, _ = self._record(obj, latest.revision, event)
+        return stored
+
+    # ------------------------------------------------------------------
+    # task-packets/E8-T05.yaml R2 — status (read-only).
+    # ------------------------------------------------------------------
+
+    def status(self, release_id: Urn) -> ReleaseBanner:
+        """Resolve every input ``mrr.domain.release_status
+        .compute_release_banner`` needs for ``release_id`` and call it — see
+        the module docstring's "the READ-ONLY companion" section. Never
+        writes anything (no ``self._record`` call anywhere in this method).
+
+        Raises:
+            mrr.domain.exceptions.ObjectNotFoundError: ``release_id`` does
+                not resolve to any stored object.
+            mrr.services.release.errors.ReleaseRecordKindError:
+                ``release_id`` resolves to a stored object whose ``kind`` is
+                not ``"ReleaseRecord"``.
+            RuntimeError: this ``ReleaseService`` was constructed without an
+                ``event_log`` — a wiring error (every production/test caller
+                of :meth:`status` supplies one), not a user-facing refusal.
+        """
+        if self._event_log is None:
+            raise RuntimeError(
+                "ReleaseService.status requires event_log to be supplied at construction "
+                "(the read-only status path needs it to discover corrections and sibling "
+                "releases sharing this release's own crate_id) — this is a wiring error, "
+                "not a user-facing refusal"
+            )
+
+        stored = self._object_repository.get_latest(release_id)
+        if stored.kind != _RELEASE_RECORD_KIND:
+            raise ReleaseRecordKindError(release_id, stored.kind)
+
+        correction_bodies = self._read_correction_bodies()
+        duplicate = self._has_duplicate_unsuperseded_releases(crate_id=str(stored.body["crate_id"]))
+
+        return compute_release_banner(
+            release_body=stored.body,
+            correction_bodies=correction_bodies,
+            duplicate_unsuperseded_releases=duplicate,
+        )
+
+    # ------------------------------------------------------------------
+    # Internal helpers for :meth:`status`.
+    # ------------------------------------------------------------------
+
+    def _discover_ids_by_event_type(self, event_type: str) -> set[str]:
+        assert self._event_log is not None  # guarded by status()'s own check
+        return {
+            appended.event.object_id
+            for appended in self._event_log.read_all()
+            if appended.event.event_type == event_type
+        }
+
+    def _read_correction_bodies(self) -> list[dict[str, Any]]:
+        """Every ``CorrectionEvent`` this practice has ever recorded,
+        discovered by scanning the event log for ``correction.recorded``
+        genesis events — see the module docstring's "the READ-ONLY
+        companion" section for why this small pattern is restated here
+        rather than composed via ``mrr.services.projection.service
+        .ProjectionService``.
+        """
+        correction_ids = self._discover_ids_by_event_type(_CORRECTION_RECORDED_EVENT)
+        bodies: list[dict[str, Any]] = []
+        for correction_id in sorted(correction_ids):
+            try:
+                obj = self._object_repository.get_latest(correction_id)
+            except ObjectNotFoundError:
+                continue
+            if obj.kind == _CORRECTION_KIND:
+                bodies.append(obj.body)
+        return bodies
+
+    def _has_duplicate_unsuperseded_releases(self, *, crate_id: str) -> bool:
+        """``True`` iff more than one ``ReleaseRecord`` sharing ``crate_id``
+        currently has ``status != "superseded"`` — reviewer_resolution (2)'s
+        own detection duty for the ONE known
+        ``mrr.services.release.supersede.create_and_supersede`` intermediate
+        state (a newly-created release left unlinked when transitioning the
+        old one failed).
+        """
+        release_ids = self._discover_ids_by_event_type(_EVENT_RELEASE_APPROVED)
+        unsuperseded_count = 0
+        for candidate_id in release_ids:
+            try:
+                candidate = self._object_repository.get_latest(candidate_id)
+            except ObjectNotFoundError:
+                continue
+            if candidate.kind != _RELEASE_RECORD_KIND:
+                continue
+            if str(candidate.body.get("crate_id")) != crate_id:
+                continue
+            if str(candidate.body.get("status")) != _SUPERSEDED_STATUS:
+                unsuperseded_count += 1
+        return unsuperseded_count > 1
