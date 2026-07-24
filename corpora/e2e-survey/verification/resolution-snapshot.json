@@ -1,0 +1,20 @@
+{
+  "schema_version": "citation-resolution-snapshot.v1",
+  "manifest": "../citations.manifest.json",
+  "fetched_on": "2026-07-24",
+  "resolvers": {
+    "arxiv": "arXiv API — https://export.arxiv.org/api/query?id_list=<id> (Atom; a requested id absent from the response = NOT FOUND)",
+    "doi": "Crossref REST — https://api.crossref.org/works/<doi> (JSON; 404 = NOT FOUND)"
+  },
+  "note": "Point-in-time resolution of each cited identifier against the open metadata APIs. Re-runnable: the same id_list / DOI queries reproduce these results, so this snapshot is verifiable, not asserted. It records EXISTENCE and the canonical title each identifier resolves to. It does NOT establish that the resolved source SUPPORTS the claim it was cited for (that is N2-T02, support-checking), nor that any number attributed to it is consistent (N2-T03). Existence is not support.",
+  "resolutions": [
+    { "citation_id": "sakana-nature", "identifier": "doi:10.1038/s41586-026-10265-5", "resolver": "doi", "resolved": true, "resolved_title": "Towards end-to-end automation of AI research", "resolved_container": "Nature", "resolved_detail": "vol 651 (8107), pp. 914-919, 2026; first author Chris Lu; published online 2026-03-25" },
+    { "citation_id": "kosmos", "identifier": "arxiv:2511.02824", "resolver": "arxiv", "resolved": true, "resolved_title": "Kosmos: An AI Scientist for Autonomous Discovery", "resolved_detail": "first author Ludovico Mitchener" },
+    { "citation_id": "agent-laboratory", "identifier": "arxiv:2501.04227", "resolver": "arxiv", "resolved": true, "resolved_title": "Agent Laboratory: Using LLM Agents as Research Assistants", "resolved_detail": "first author Samuel Schmidgall" },
+    { "citation_id": "independent-ai-scientist-eval", "identifier": "arxiv:2502.14297", "resolver": "arxiv", "resolved": true, "resolved_title": "Evaluating Sakana's AI Scientist: Bold Claims, Mixed Results, and a Promising Future?", "resolved_detail": "first author Joeran Beel" },
+    { "citation_id": "sciintegrity-bench", "identifier": "arxiv:2605.10246", "resolver": "arxiv", "resolved": true, "resolved_title": "SciIntegrity-Bench: A Benchmark for Evaluating Academic Integrity in AI Scientist Systems", "resolved_detail": "first author Zonglin Yang" },
+    { "citation_id": "deeptrace", "identifier": "arxiv:2509.04499", "resolver": "arxiv", "resolved": true, "resolved_title": "DeepTRACE: Auditing Deep Research AI Systems for Tracking Reliability Across Citations and Evidence", "resolved_detail": "first author Pranav Narayanan Venkit" },
+    { "citation_id": "claim-level-auditability-aar", "identifier": "arxiv:2602.13855", "resolver": "arxiv", "resolved": true, "resolved_title": "From Fluent to Verifiable: Claim-Level Auditability for Deep Research Agents", "resolved_detail": "first author Razeen A Rasheed" },
+    { "citation_id": "inspectable-ai-for-science", "identifier": "arxiv:2604.11261", "resolver": "arxiv", "resolved": true, "resolved_title": "Inspectable AI for Science: A Research Object Approach to Generative AI Governance", "resolved_detail": "first author Ruta Binkyte" }
+  ]
+}

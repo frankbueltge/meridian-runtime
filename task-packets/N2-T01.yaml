@@ -1,0 +1,286 @@
+task_id: N2-T01
+title: >-
+  Citation existence + title audit and `mrr audit citations` (read-only,
+  no-network): over a committed citation manifest and a committed resolution
+  snapshot, classify each cited reference as resolved / not_found /
+  title_mismatch / unverifiable / malformed — never collapsing those statuses —
+  and render a deterministic report that verifies a reference EXISTS and is
+  correctly titled, explicitly NOT that it supports the claim it is cited for.
+  First target: the eight primary sources cited by the public /e2e-automation
+  survey (all eight resolved at derivation — the acceptance oracle). Opens no
+  network connection and writes nothing to the archive.
+status: approved
+epic: N2
+reviewer_resolution: >-
+  Approved 2026-07-24 by the main session as reviewing instance, under the
+  owner's decision the same day ("mach doch beide und erst a" — build N2 first,
+  then the Hammond adjudication) recorded in docs/design/2026-07-24-n2-derivation.md,
+  and under the standing use-first decision (docs/design/2026-07-22-
+  nutzungsentscheidung-e9-vertagt.md). N2 is decomposed; ONLY N2-T01 is built now,
+  on a real, today-satisfiable, reflexive use case: audit the /e2e-automation
+  survey's own eight citations (a survey warning of citation fabrication must
+  survive its citations being checked). Load-bearing choices CONFIRMED at
+  derivation: (1) EXISTENCE is not SUPPORT — the audit verifies a reference
+  resolves to a real registered work and is correctly titled, NOT that the source
+  carries the claim it is cited for (that is N2-T02) nor that any number is
+  consistent (N2-T03); the report says so and claims no support-verification;
+  (2) network is SEPARATED from the audit — the resolution snapshot is a gated
+  fetch run once and committed (git = archive), the audit tool is deterministic
+  and no-network, reading only the committed snapshot (repo pattern: pipelines
+  fetch, runtime reads committed); (3) statuses are NEVER collapsed (AGENTS
+  prohibited shortcut): resolved / not_found (potential fabrication) /
+  title_mismatch (potential misattribution) / unverifiable (metadata-only /
+  paywalled) / malformed (ill-formed identifier) are distinct; (4) hand-rolled,
+  no new dependency (identifier-pattern checks + title comparison are short);
+  (5) the report is a Pydantic-validated PROJECTION (rule 7), not a persisted
+  object — no schemas/**, no migration; (6) the real resolution snapshot
+  (8/8 resolved via the arXiv API and Crossref, fetched at derivation) is the
+  committed oracle.
+depends_on: []
+derivation: >-
+  Derived 2026-07-24 from docs/design/2026-07-24-n2-derivation.md and the
+  capability-roadmap draft (docs/design/2026-07-24-capability-roadmap-entwurf.md,
+  section N2). Fact base verified first-hand at derivation: all eight cited
+  identifiers of the /e2e-automation survey resolve — seven arXiv ids via the
+  arXiv API (2511.02824 Kosmos, 2501.04227 Agent Laboratory, 2502.14297 Beel
+  eval, 2605.10246 SciIntegrity-Bench, 2509.04499 DeepTRACE, 2602.13855
+  claim-level auditability, 2604.11261 Inspectable AI for Science; titles match
+  the survey's labels) and the Nature DOI 10.1038/s41586-026-10265-5 via Crossref
+  ("Towards end-to-end automation of AI research", Nature 651:914-919, 2026 —
+  exactly the record's citation). Committed fixtures: corpora/e2e-survey/
+  citations.manifest.json (8 citations, transcribed verbatim from the survey
+  component's `sources` array) and corpora/e2e-survey/verification/
+  resolution-snapshot.json (the real fetch results). MRR identifier convention
+  from corpora/model-collapse/corpus-entries.json: identifiers = {doi,
+  repository_id (arxiv), archive_id, local_asset_id}. No `audit` service or CLI
+  exists yet (services/control_plane/mrr/services has none; cli/ has no audit
+  module); numpy/scipy not a dependency and not needed.
+objective: >-
+  After this packet, `mrr audit citations --manifest <path> --snapshot <path>`
+  renders a deterministic report (JSON and Markdown) over a committed citation
+  manifest and a committed resolution snapshot, classifying each citation as
+  resolved / not_found / title_mismatch / unverifiable / malformed and
+  summarising the counts. The report header states, in plain type: this verifies
+  a reference EXISTS and is correctly titled — NOT that the source supports the
+  claim it is cited for (N2-T02) and NOT that any attributed number is consistent
+  (N2-T03); and it carries the snapshot's sha256. Run against the committed
+  e2e-survey fixture it reports all eight citations resolved, zero not_found,
+  zero title_mismatch. It reads only committed files, opens no database and no
+  network connection, and writes only to the given output path (atomic os.replace).
+source_of_truth:
+  - docs/design/2026-07-24-n2-derivation.md                          # this packet's derivation
+  - corpora/e2e-survey/citations.manifest.json                       # the declared citations (audit input)
+  - corpora/e2e-survey/verification/resolution-snapshot.json         # the committed real resolution (oracle)
+  - corpora/model-collapse/corpus-entries.json                       # MRR identifier convention (doi / repository_id)
+  - services/control_plane/mrr/services/report/service.py            # projection/render pattern (read-only, atomic write)
+  - services/control_plane/mrr/services/cli/report_main.py           # CLI pattern (NFR-012 ordering, exit 0/2/3, atomic os.replace)
+  - services/control_plane/mrr/services/cli/main.py                  # +2 lines: register + dispatch the new subcommand
+  - packages/domain/mrr/domain/agreement.py                          # N1-T01 precedent: pure no-dependency domain core, null-with-reason discipline
+  - packages/domain/mrr/domain/agreement_report.py                   # N1-T01 precedent: Pydantic projection with an honesty header
+requirements:
+  - >-
+    R1 (pure audit core, packages/domain/mrr/domain/citation_audit.py): hand-rolled,
+    no new dependency, pure and no-network. Identifier well-formedness:
+    is_wellformed_arxiv (YYMM.NNNNN, 4-digit YYMM with a plausible month plus a
+    4-5 digit sequence, optional vN), is_wellformed_doi (starts "10." then a
+    registrant "/" suffix), is_wellformed_url. Title comparison: normalise_title
+    (casefold, collapse whitespace, strip surrounding punctuation) and a
+    title_matches(claimed, resolved) that is an exact normalised match OR a
+    normalised prefix match (a label that is the work's title prefix counts as a
+    match), returning a typed result, never a bare bool guessed from a fuzzy
+    ratio. classify_citation(manifest_entry, resolution) -> one of the Literal
+    statuses: "malformed" if no declared identifier is well-formed (checked
+    BEFORE consulting the snapshot); else if the snapshot marks it not resolved,
+    "not_found"; else if the snapshot resolved it but marks it metadata-only /
+    paywalled-unverifiable, "unverifiable"; else if a claimed_title is declared
+    and does NOT match the resolved_title, "title_mismatch"; else "resolved".
+    These five are a closed set and are NEVER collapsed into a generic
+    pass/fail (AGENTS prohibited shortcut). A manifest entry with no matching
+    resolution in the snapshot raises a typed MissingResolutionError naming the
+    citation_id — never silently treated as not_found. Determinism: no wall
+    clock, output ordered by citation_id.
+  - >-
+    R2 (report projection, packages/domain/mrr/domain/citation_audit_report.py):
+    a Pydantic v2 MRRModel (extra="forbid") assembling per citation: citation_id,
+    cited_as, identifier, status, resolved_title (when present), and a short
+    reason; plus a summary (counts per status), the audit_target string, the
+    snapshot's sha256, and a FIXED honesty header: verifies_existence_not_support
+    = True with a note that a resolved citation is NOT evidence the source
+    supports the claim, and that support-checking (N2-T02) and number-consistency
+    (N2-T03) are out of scope. It is NOT a BaseObject, has NO schemas/*.schema.json
+    mirror, and is NEVER written to the object store.
+  - >-
+    R3 (fixtures already committed — read only, do NOT regenerate): the audit
+    reads corpora/e2e-survey/citations.manifest.json and corpora/e2e-survey/
+    verification/resolution-snapshot.json, both committed at derivation with real
+    data. The build MUST NOT edit them, MUST NOT re-fetch anything, and MUST NOT
+    fabricate a resolution. If the manifest and snapshot disagree structurally
+    (a citation_id in one absent from the other), that is R1's typed error, not a
+    silent fix.
+  - >-
+    R4 (CitationAuditService, services/control_plane/mrr/services/citation_audit/
+    service.py): read-only, no-network orchestration. Given --manifest and
+    --snapshot paths, it loads both, validates every manifest citation has a
+    matching resolution (else typed refusal naming the gap), classifies each via
+    the R1 core, builds the R2 report, and renders JSON + Markdown deterministically.
+    It opens NO network connection and NO database connection. Markdown shows the
+    per-citation table (cited_as, identifier, status, resolved_title), the summary
+    counts, and the honesty header verbatim.
+  - >-
+    R5 (CLI, services/control_plane/mrr/services/cli/citation_audit_main.py + 2
+    lines in cli/main.py): `mrr audit citations` with --manifest <path> and
+    --snapshot <path> (both required), --format md|json (default md), --output
+    <path> (default stdout). NFR-012 ordering: cheap local checks first (output
+    conflict, existence/parse of the two inputs) before classification; exit 0
+    success, exit 2 for an input missing/unreadable/unparseable, exit 3 for a
+    refusal (a manifest citation with no resolution — a structural gap, not a
+    per-citation verdict). Atomic os.replace for --output. Standalone
+    build_parser()/main() for `python -m mrr.services.cli.citation_audit_main`.
+    main.py gains exactly one register_audit_subcommand(subparsers) call and one
+    `if args.command == "audit": return citation_audit_main.run_command(args)`.
+  - >-
+    R6 (tests every tier + security-check). unit (DB-free, no-network): R1
+    identifier well-formedness (valid + malformed arxiv/doi/url incl. edge cases);
+    title normalisation and prefix-match; classify_citation over hand-built inputs
+    hitting ALL FIVE statuses — resolved, not_found (snapshot resolved=false),
+    title_mismatch (claimed_title differs), unverifiable (metadata-only flag),
+    malformed (bad identifier) — and MissingResolutionError; R2 report shape incl.
+    the honesty header and per-status counts; determinism (two renders
+    byte-identical, stable content hash). contract: the R2 model validates its own
+    instances (extra="forbid" rejects an unknown field). architecture
+    (lint-imports): citation_audit.py and citation_audit_report.py import no
+    framework/service module. acceptance (DB-free, reads the REAL committed
+    fixtures): running the service over corpora/e2e-survey reports all eight
+    resolved, zero not_found, zero title_mismatch; the snapshot sha256 in the
+    report equals the file's actual hash; the honesty header is present. All
+    existing suites pass UNMODIFIED. Every make tier green INCLUDING make
+    security-check.
+allowed_paths:
+  - packages/domain/mrr/domain/citation_audit.py
+  - packages/domain/mrr/domain/citation_audit_report.py
+  - services/control_plane/mrr/services/citation_audit/__init__.py
+  - services/control_plane/mrr/services/citation_audit/service.py
+  - services/control_plane/mrr/services/cli/citation_audit_main.py
+  - services/control_plane/mrr/services/cli/main.py                  # +2 lines only (register + dispatch)
+  - tests/unit/
+  - tests/contract/
+  - docs/design/
+  - task-packets/N2-T01.yaml
+forbidden_changes:
+  - schemas/**                                                       # no persisted audit object in T01
+  - packages/contracts/**
+  - migrations/**
+  - pyproject.toml                                                   # no new dependency; hand-rolled
+  - uv.lock
+  - corpora/e2e-survey/**                                            # fixtures committed at derivation — read only, never regenerated
+  - corpora/model-collapse/**
+  - services/node_runtime/**
+  - services/control_plane/mrr/services/export/**
+  - services/control_plane/mrr/services/report/**
+  - services/control_plane/mrr/services/release/**
+  - services/control_plane/mrr/services/validation/**               # N1's service — not touched
+  - packages/persistence/**                                         # T01 is DB-free and network-free
+derived_decisions:
+  - >-
+    (a) Existence is not support. The audit verifies a reference resolves to a
+    real registered work and is correctly titled; it does NOT verify the source
+    carries the claim it is cited for (N2-T02) or that a number is consistent
+    (N2-T03). The report header says so. This is the single most important
+    honesty boundary of the packet — the N2 analogue of N1's reliability-not-
+    validity.
+  - >-
+    (b) Network is separated from the audit. Resolving identifiers touches the
+    open metadata APIs (arXiv, Crossref); that gated fetch was run once at
+    derivation and committed as resolution-snapshot.json. The audit tool is
+    deterministic and no-network — it reads the committed snapshot, matching the
+    repo pattern (pipelines fetch, the runtime reads committed) and MRR's no-live-
+    egress stance. Regenerating the snapshot reproducibly is N2-T02.
+  - >-
+    (c) Five distinct statuses, never collapsed. resolved / not_found /
+    title_mismatch / unverifiable / malformed each mean something different
+    (a fabricated citation, a misattributed one, a paywalled-metadata-only one,
+    an ill-formed identifier); collapsing them into pass/fail is the exact AGENTS
+    prohibited shortcut. "unverifiable" in particular is never counted as either
+    a pass or a fail.
+  - >-
+    (d) Hand-rolled, no dependency. Identifier-pattern checks and title
+    comparison are short; the repo prefers hand-written domain logic, and this
+    keeps the dependency and security-check surface unchanged (as N1-T01 did).
+  - >-
+    (e) Report is a projection, not a persisted object. Pydantic-validated
+    (rule 6) but never entering the object store (rule 7). A persisted, schema-
+    mirrored audit object is deferred to N2-T02.
+  - >-
+    (f) The real snapshot is the oracle. All eight e2e-survey citations resolved
+    at derivation (7 arXiv + 1 Crossref DOI); the acceptance test asserts the
+    tool reproduces that (8 resolved, 0 not_found, 0 title_mismatch) over the
+    committed fixture. The tool's problem-catching (not_found/title_mismatch/
+    malformed) is proven on SYNTHETIC unit fixtures, since the real data is clean.
+invariants:
+  - No network connection and no database connection are opened anywhere in the runtime path.
+  - Nothing is written except the requested --output file (atomic os.replace); the archive is never touched.
+  - No wall-clock timestamp in any rendered byte; identical inputs yield a byte-identical report and a stable content hash.
+  - The five statuses are always reported distinctly; "unverifiable" is never counted as resolved or not_found.
+  - The report always carries the snapshot sha256 and the existence-not-support header; neither can be absent.
+  - A manifest citation with no matching resolution is a typed refusal, never a silent not_found.
+acceptance_tests:
+  - >-
+    AT1: over the committed corpora/e2e-survey fixture, the report reports all
+    eight citations `resolved`, zero not_found, zero title_mismatch, zero
+    malformed; asserted by count and by per-citation status.
+  - >-
+    AT2: the report header carries verifies_existence_not_support=True with the
+    note that a resolved citation is not evidence of support; support (N2-T02) and
+    number-consistency (N2-T03) are named as out of scope.
+  - >-
+    AT3: the snapshot sha256 printed in the report equals the actual sha256 of
+    resolution-snapshot.json; changing the snapshot changes the reported hash.
+  - >-
+    AT4: synthetic unit oracles hit every status — a made-up arxiv id with
+    resolved=false -> not_found; a real id with a differing claimed_title ->
+    title_mismatch; a metadata-only flag -> unverifiable; an ill-formed identifier
+    -> malformed (classified before the snapshot is consulted); a manifest entry
+    with no resolution -> MissingResolutionError.
+  - >-
+    AT5: determinism and refusals — two renders of the same inputs are
+    byte-identical; a missing/unparseable manifest or snapshot exits 2; a manifest
+    citation absent from the snapshot exits 3 naming the citation_id; existing
+    suites pass unmodified.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make security-check
+specification_gaps:
+  - >-
+    Support-checking — does the resolved source actually carry the claim it is
+    cited for — is NOT done here (existence is not support). It is N2-T02, and it
+    is LLM/human-touching (the hard part); it feeds Routine 2.
+  - >-
+    A gated fetch script that regenerates resolution-snapshot.json reproducibly
+    (network, pipeline-style), plus extending the audit to the ~47 research-record
+    citations and the model-collapse SourceRecords and their internal linkage
+    integrity (every EvidenceAnchor -> a real SourceRecord; no cite-without-anchor),
+    is N2-T02.
+  - >-
+    Number-consistency checking (is a figure attributed to a source consistent
+    with it) is N2-T03. A persisted, schema-mirrored audit object is also deferred.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding the exact
+    `mrr audit citations` invocation, the rendered Markdown report for the
+    e2e-survey fixture verbatim (the eight-row table, the summary counts, and the
+    existence-not-support header), and the snapshot sha256.
+stop_conditions:
+  - >-
+    If reproducing the 8/8-resolved result requires editing or re-fetching the
+    committed fixtures, STOP — the snapshot is the oracle and must not be
+    regenerated in this packet (AGENTS rule 3 / R3).
+  - >-
+    If any make tier requires collapsing two of the five statuses, or reporting
+    "unverifiable" as a pass or a fail, to go green, STOP — the never-collapse
+    contract may not be softened.
+  - >-
+    If the audit would need a network or database connection to be useful on this
+    target, STOP — that is N2-T02, not this packet.

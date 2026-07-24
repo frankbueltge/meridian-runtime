@@ -1,0 +1,17 @@
+{
+  "schema_version": "citation-manifest.v1",
+  "audit_target": "The /e2e-automation field survey published on frankbueltge.de",
+  "cited_by": "https://frankbueltge.de/e2e-automation",
+  "provenance": "The eight primary sources listed in the survey component (src/components/pages/E2EAutomationPage.astro, the `sources` array) on frankbueltge.de, transcribed verbatim 2026-07-24 — cited_as strings and cited_url are exactly as they appear on the page; the identifier (arxiv id / doi) is parsed from each cited_url. No entry is invented. The survey is itself the public rendering of a 106-agent research run, and its own subject is that AI research systems fabricate citations (a documented 40-80% field gap); auditing the survey's own citations is therefore the reflexive first use of N2 — a survey that warns of citation fabrication must itself survive its citations being checked.",
+  "note_on_titles": "The page cites by descriptive label + URL, not by paper title, so most citations carry no independently claimed_title to match against — the audit's primary verdict for this target is EXISTENCE (does the cited identifier resolve to a real registered work). claimed_title is set only where the citer's own label IS the work's title prefix; it is never back-filled from the resolved title (that would be circular).",
+  "citations": [
+    { "citation_id": "sakana-nature", "cited_as": "Sakana AI Scientist (Nature)", "cited_url": "https://www.nature.com/articles/s41586-026-10265-5", "identifiers": { "doi": "10.1038/s41586-026-10265-5" }, "claimed_title": null },
+    { "citation_id": "kosmos", "cited_as": "Kosmos", "cited_url": "https://arxiv.org/abs/2511.02824", "identifiers": { "arxiv": "2511.02824" }, "claimed_title": null },
+    { "citation_id": "agent-laboratory", "cited_as": "Agent Laboratory", "cited_url": "https://arxiv.org/abs/2501.04227", "identifiers": { "arxiv": "2501.04227" }, "claimed_title": null },
+    { "citation_id": "independent-ai-scientist-eval", "cited_as": "Independent AI-Scientist evaluation", "cited_url": "https://arxiv.org/abs/2502.14297", "identifiers": { "arxiv": "2502.14297" }, "claimed_title": null },
+    { "citation_id": "sciintegrity-bench", "cited_as": "SciIntegrity-Bench", "cited_url": "https://arxiv.org/abs/2605.10246", "identifiers": { "arxiv": "2605.10246" }, "claimed_title": null },
+    { "citation_id": "deeptrace", "cited_as": "DeepTRACE (citation accuracy)", "cited_url": "https://arxiv.org/abs/2509.04499", "identifiers": { "arxiv": "2509.04499" }, "claimed_title": null },
+    { "citation_id": "claim-level-auditability-aar", "cited_as": "Claim-level auditability / AAR", "cited_url": "https://arxiv.org/abs/2602.13855", "identifiers": { "arxiv": "2602.13855" }, "claimed_title": null },
+    { "citation_id": "inspectable-ai-for-science", "cited_as": "Inspectable AI for Science (AI-RO)", "cited_url": "https://arxiv.org/abs/2604.11261", "identifiers": { "arxiv": "2604.11261" }, "claimed_title": null }
+  ]
+}
