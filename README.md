@@ -1,23 +1,33 @@
 # Meridian Research Runtime
 
-Meridian Research Runtime (MRR) is the successor architecture to Meridian Classic: a
-research-orchestration system built around explicit provenance, policy-gated execution,
-and verifiable claims rather than trusted model output. It is implemented as vertical
-slices — identity, policy, execution, evidence, verification, and correction together,
-not a large agent framework with provenance added later. See `docs/spec/` for the
-governing specification, in particular `docs/spec/06_IMPLEMENTATION_PLAN.md` for the
-delivery strategy and epic sequence, and `AGENTS.md` for the rules binding any change in
-this repository.
+**A research system that refuses to take an AI's word for anything.**
 
-## Public-facing work & license
+An AI can now run a whole research project by itself — read the literature, analyse the
+data, write it up. The catch, documented across the field, is that these systems
+*fabricate*: they invent citations, make up data when the real data is missing, and
+quietly average away findings that disagree with each other. Meridian Research Runtime
+(MRR) is built so that can't happen unnoticed. Every claim it makes is tied to the exact
+evidence behind it, checked by something *other than* the part that produced it, and where
+the evidence conflicts, the conflict is kept on the record instead of smoothed over.
 
-This runtime feeds **On Record** (<https://frankbueltge.de/on-record>) — a
-claim-graph-rooted publication of the Hammond instantiation dispute with preserved
-dissent. The capability roadmap and the research records behind it live in `docs/design/`
-(start with `2026-07-24-capability-roadmap-entwurf.md`). The first real run — K1-T04,
-schema `mrr_k1t04_real_run_v2` — established two model-collapse claims with recorded
-verification disagreement: a deliberately small, honest scope, not a general-purpose
-research agent.
+You can see one result in public: **[On Record](https://frankbueltge.de/on-record)** shows
+a real dispute in which thirteen catalogue entries contradict each other — and the system
+keeps all thirteen visible rather than quietly picking a winner.
+
+Honest about scope: this is a young system. Its first real run produced two claims, with
+the disagreement between reviewers recorded. It is not a general-purpose research agent, and
+is not trying to be one.
+
+**In technical terms** — MRR is the successor architecture to Meridian Classic: research
+orchestration built around explicit provenance, policy-gated execution, and verifiable
+claims rather than trusted model output. It is implemented as vertical slices — identity,
+policy, execution, evidence, verification, and correction together, not a large agent
+framework with provenance added later. See `docs/spec/` for the governing specification
+(`06_IMPLEMENTATION_PLAN.md` for the delivery strategy and epic sequence), the capability
+roadmap and research records in `docs/design/`, and `AGENTS.md` for the rules binding any
+change in this repository.
+
+## License
 
 Code is licensed under **PolyForm Noncommercial 1.0.0**; works, texts and data under
 **CC BY-NC-SA 4.0** — see `LICENSE.md`. © Frank Bültge.
