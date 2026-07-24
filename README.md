@@ -66,6 +66,8 @@ meridian-runtime/
 ├── packages/            # mrr.domain, mrr.crypto, mrr.contracts, mrr.policy,
 │                        # mrr.provenance, mrr.observability — one PEP 420
 │                        # namespace package merged from six roots
+├── services/            # control_plane (the `mrr` CLI and orchestration), node_runtime
+├── adapters/            # provider-facing edges: llm, object_store, prompts
 ├── tests/               # unit, property, contract, integration, e2e, adversarial
 ├── scripts/             # run_test_tier.py and other repo tooling
 ├── docs/spec/           # the governing specification and ADRs
@@ -74,8 +76,8 @@ meridian-runtime/
 ```
 
 `packages/`, `services/`, `workers/`, and `adapters/` are the code roots the
-specification anticipates; only `packages/` exists so far — later epics add the rest as
-their tasks require it. Core packages (`mrr.domain`, `mrr.crypto`, `mrr.contracts`,
+specification anticipates; `workers/` is the only one that does not exist yet — a later
+epic adds it when its tasks require it. Core packages (`mrr.domain`, `mrr.crypto`, `mrr.contracts`,
 `mrr.policy`, `mrr.provenance`, `mrr.observability`) must not import FastAPI, Temporal,
 a model-provider SDK, or an object-store client SDK; this is enforced by the
 import-linter contract in `pyproject.toml` and checked in `make lint`.
