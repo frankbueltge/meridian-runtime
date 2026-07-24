@@ -50,7 +50,11 @@ read-only, gegen versiegelte/committete Datensätze).
 
 **Ehrlich zur Größenordnung:** n = 18 (15 + 3) liegt **unter** der dokumentierten
 Schwelle von 20–30 Labels/Kategorie (A4), und die Übereinstimmung ist auf diesem
-Sample perfekt — die Schlagzeilen-κ ist damit trivial 1,0. Der Wert von N1-T01 ist
+Sample perfekt — die Schlagzeilen-κ ist damit trivial 1,0 im Instanziierungs-Stratum
+und im Theorie-Stratum (n = 3, beide Rater nur eine Kategorie) **ehrlich undefiniert**
+(null-mit-Grund, keine fabrizierte 1,0; **post-build korrigiert 2026-07-24** — die
+erste Fassung „κ = 1,0 pro Stratum" überlebte die degenerierten Realdaten des
+Theorie-Stratums nicht). Der Wert von N1-T01 ist
 **nicht** eine überraschende Zahl, sondern (a) Auditierbarkeit/Reproduzierbarkeit
 einer bereits behaupteten Aussage, (b) der wiederverwendbare Evaluator-Kern, (c) das
 sichere read-only-Muster. Der nächste natürliche Eingang ist
@@ -89,7 +93,8 @@ Korpus geprüft:
   verwendet. Verknüpfbar über `item` (A1–A15, B1–B3) + `title` zu den
   `entry_id`s der corpus-entries; `comparison.md` ist die vorhandene manuelle
   Ausrichtungs-/Crosswalk-Tabelle und dient als **Orakel** (18/18) für den
-  Akzeptanztest (κ pro Stratum muss 1,0 ergeben).
+  Akzeptanztest (p_o pro Stratum = 1,0; κ = 1,0 im Instanziierungs-Stratum, im
+  Theorie-Stratum ehrlich undefiniert — s. „Größenordnung" oben).
 - **Kein Metrik-Code existiert** irgendwo (kein kappa/krippendorff/f1/sklearn);
   `numpy`/`scipy`/`scikit-learn`/`statsmodels` sind **keine** Abhängigkeiten. Das
   Repo bevorzugt handgeschriebene Domänenlogik → N1-T01 rechnet κ/α/F1 in
@@ -130,7 +135,8 @@ Korpus geprüft:
 
 - **N1-T01 (jetzt):** Agreement-Metrik-Kern + `mrr validate agreement`, read-only,
   stratifiziert, Crosswalk-als-Eingabe, Reliabilität explizit (nicht Validität),
-  Power-Marke. Orakel: `comparison.md` (κ = 1,0 pro Stratum).
+  Power-Marke. Orakel: `comparison.md` (p_o = 1,0 pro Stratum; κ = 1,0
+  Instanziierung, Theorie ehrlich undefiniert).
 - **N1-T02 (benannt, nicht abgeleitet):** menschliches Gold-Label-Objekt mit
   Finalisierungs-Gate als Objektzustand + Validitäts-Metriken gegen Gold. Braucht
   menschlichen Label-Aufwand → eigener Anlass.
