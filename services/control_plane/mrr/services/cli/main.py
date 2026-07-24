@@ -53,6 +53,7 @@ from mrr.services.cli import (
     release_main,
     report_main,
     synthesis_main,
+    validation_main,
     verification_main,
 )
 from mrr.services.cli.orchestration import DEFAULT_INPUT_BYTES, run_local_evidence_loop
@@ -215,6 +216,12 @@ def build_parser() -> argparse.ArgumentParser:
     # changes.
     release_main.register_release_subcommand(subparsers)
 
+    # Task-packets/N1-T01.yaml's one additive registration: a new "validate"
+    # subparser group ("mrr validate agreement") delegating entirely to
+    # mrr.services.cli.validation_main — mirrors the release registration
+    # immediately above; no other line in this file changes.
+    validation_main.register_validation_subcommand(subparsers)
+
     return parser
 
 
@@ -336,6 +343,8 @@ def main(argv: list[str] | None = None) -> int:
         return report_main.run_command(args)
     if args.command == "release":
         return release_main.run_command(args)
+    if args.command == "validate":
+        return validation_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
