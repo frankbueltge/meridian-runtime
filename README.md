@@ -23,11 +23,6 @@ framework with provenance added later. See `docs/spec/` for the governing specif
 roadmap and research records in `docs/design/`, and `AGENTS.md` for the rules binding any
 change in this repository.
 
-## License
-
-Code is licensed under **PolyForm Noncommercial 1.0.0**; works, texts and data under
-**CC BY-NC-SA 4.0** — see `LICENSE.md`. © Frank Bültge.
-
 ## Quality commands
 
 All commands run through `uv` and are wired up in the `Makefile`:
@@ -84,6 +79,12 @@ their tasks require it. Core packages (`mrr.domain`, `mrr.crypto`, `mrr.contract
 `mrr.policy`, `mrr.provenance`, `mrr.observability`) must not import FastAPI, Temporal,
 a model-provider SDK, or an object-store client SDK; this is enforced by the
 import-linter contract in `pyproject.toml` and checked in `make lint`.
+
+## Field context
+
+The state of the field this runtime responds to — what end-to-end AI research automation
+can and can't reliably do, and the open verification gap — is surveyed at
+**[The State of End-to-End AI Research Automation](https://frankbueltge.de/e2e-automation)**.
 
 ## License
 
