@@ -9,6 +9,19 @@ governing specification, in particular `docs/spec/06_IMPLEMENTATION_PLAN.md` for
 delivery strategy and epic sequence, and `AGENTS.md` for the rules binding any change in
 this repository.
 
+## Public-facing work & license
+
+This runtime feeds **On Record** (<https://frankbueltge.de/on-record>) — a
+claim-graph-rooted publication of the Hammond instantiation dispute with preserved
+dissent. The capability roadmap and the research records behind it live in `docs/design/`
+(start with `2026-07-24-capability-roadmap-entwurf.md`). The first real run — K1-T04,
+schema `mrr_k1t04_real_run_v2` — established two model-collapse claims with recorded
+verification disagreement: a deliberately small, honest scope, not a general-purpose
+research agent.
+
+Code is licensed under **PolyForm Noncommercial 1.0.0**; works, texts and data under
+**CC BY-NC-SA 4.0** — see `LICENSE.md`. © Frank Bültge.
+
 ## Quality commands
 
 All commands run through `uv` and are wired up in the `Makefile`:
