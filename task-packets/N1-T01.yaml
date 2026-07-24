@@ -1,0 +1,317 @@
+task_id: N1-T01
+title: >-
+  Agreement-metrics core and `mrr validate agreement` (read-only): compute a
+  reproducible, hash-anchored inter-instance agreement statistic over the
+  K1-T04/K1-T06 blind-vs-pipeline classification of the model-collapse corpus —
+  confusion, observed agreement, Cohen's and weighted kappa, Krippendorff's
+  nominal alpha, per-category precision/recall/F1, a majority-class baseline and
+  a below-power flag — stratified by analysis, defined relative to a declared,
+  committed label crosswalk, labelled as reliability (NOT validity), touching no
+  database and writing nothing to the archive.
+status: approved
+epic: N1
+reviewer_resolution: >-
+  Approved 2026-07-24 by the main session as reviewing instance, under the
+  owner's delegation of the roadmap ordering the same day ("mach einfach wie du
+  denkst") recorded in docs/design/2026-07-24-n1-derivation.md, and under the
+  standing use-first decision (docs/design/2026-07-22-nutzungsentscheidung-e9-
+  vertagt.md). N1 is decomposed; ONLY N1-T01 is built now, on a real,
+  today-satisfiable use case (make the asserted "18/18 agreement" of
+  comparison.md auditable). Load-bearing design choices CONFIRMED at derivation:
+  (1) reliability, NOT validity — the blind pass is an independent instance
+  (K1-T06), not a human gold standard, so kappa here measures inter-instance
+  reproducibility; the report labels itself so and claims no validity (validity
+  vs human gold is N1-T02); (2) the label crosswalk (blind
+  {instantiates/references-only/qualifies} <-> pipeline {supports/contradicts})
+  is made an EXPLICIT, committed, hashed INPUT, not baked into code — agreement
+  is defined relative to it and is therefore contestable; (3) STRATIFIED by
+  analysis (instantiation n=15; theory n=3), never pooled — pooling two distinct
+  label tasks into one kappa is methodologically wrong, and comparison.md's
+  pooled "18/18" is exactly what this hardens; (4) metrics are hand-rolled
+  closed-form in pure domain code (no numpy/scipy/scikit-learn) — matches the
+  repo's hand-written-domain-logic preference and adds no dependency / no new
+  security-check surface; (5) the report is a Pydantic-validated PROJECTION
+  (rule 7), NOT a persisted object — no schemas/**, no migration, no object-store
+  write; a persisted ValidationReport with a JSON-Schema mirror is deferred to
+  N1-T02; (6) read-only and DB-free at runtime — both raters are read from
+  committed, hash-pinned corpus files; the corpus<->sealed-object faithfulness
+  was spot-verified at derivation (theory-shumailov -> supports in both), not
+  asserted as a CI test (CI has no real schema).
+depends_on: []
+derivation: >-
+  Derived 2026-07-24 from docs/design/2026-07-24-n1-derivation.md and the
+  capability-roadmap draft (docs/design/2026-07-24-capability-roadmap-entwurf.md,
+  section N1), grounded in the empirical-methods record
+  (docs/design/2026-07-24-nachrecherche-empirische-methoden.md, A3/A4/A5). Fact
+  base verified first-hand at derivation. Live DB
+  postgresql://mrr@127.0.0.1:54329/mrr_test, schema mrr_k1t04_real_run_v2:
+  ConceptCharter entry `instantiate-vs-reference-v1` is a FINALIZED criteria
+  object (the "validate only after finalization" precondition already holds as
+  object state); EvidenceMatrix.rows[].extraction.classification_basis carries
+  the pipeline classification. Committed corpus: corpora/model-collapse/
+  corpus-entries.json has 18 entries with evidence_relation in
+  {supports, contradicts} and applies_to_analysis splitting theory (3) from
+  instantiation (15); corpora/model-collapse/verification/blind-returns.json has
+  {works: 15, papers: 3} with verdicts in {instantiates, references-only,
+  qualifies}, `qualifies` used 0x; verification/comparison.md is the existing
+  manual alignment + crosswalk (18/18 agreement) and is the ORACLE for the
+  acceptance test. Join key: blind `item` (A1..A15, B1..B3) + `title` <->
+  corpus `entry_id`. No metrics code exists anywhere in the tree; numpy/scipy/
+  scikit-learn/statsmodels are NOT dependencies (pyproject.toml, uv.lock).
+objective: >-
+  After this packet, `mrr validate agreement --analysis-set <path>` renders a
+  deterministic agreement report (JSON and Markdown) over two independent
+  classifications of the same items, STRATIFIED by analysis, computing per
+  stratum: confusion matrix in the declared common label space, observed
+  agreement, per-category prevalence, a majority-class baseline, Cohen's kappa,
+  linear- and quadratic-weighted kappa, Krippendorff's nominal alpha, and
+  per-category precision/recall/F1 (with the designated reference rater named,
+  since without human gold these are asymmetric, not validity). The report
+  header states, in plain type: (a) this is inter-instance RELIABILITY, not
+  validity vs human gold; (b) agreement is defined relative to declared crosswalk
+  <sha256>; (c) each stratum's n and a below-power flag when n/category < 20.
+  Run against the committed K1-T04/K1-T06 model-collapse verification set, it
+  reproduces comparison.md exactly: observed agreement = 1.0 and Cohen's kappa =
+  1.0 per stratum. It reads only committed files, opens no database connection,
+  and writes only to the given output path (atomic os.replace).
+source_of_truth:
+  - docs/design/2026-07-24-n1-derivation.md                       # this packet's derivation
+  - docs/design/2026-07-24-nachrecherche-empirische-methoden.md   # A3/A4/A5 — the validation protocol
+  - corpora/model-collapse/corpus-entries.json                    # pipeline classification (evidence_relation)
+  - corpora/model-collapse/verification/blind-returns.json        # independent second classification
+  - corpora/model-collapse/verification/comparison.md             # the oracle (18/18) this hardens
+  - services/control_plane/mrr/services/report/service.py         # projection/render pattern to mirror (read-only, atomic write)
+  - services/control_plane/mrr/services/cli/report_main.py        # CLI pattern (NFR-012 ordering, exit 0/2/3, atomic os.replace)
+  - services/control_plane/mrr/services/cli/main.py               # +2 lines: register + dispatch the new subcommand
+  - packages/domain/mrr/domain/research_report.py                 # domain projection-model precedent
+requirements:
+  - >-
+    R1 (pure agreement core, packages/domain/mrr/domain/agreement.py): hand-rolled
+    closed-form functions, no numpy/scipy/scikit-learn, pure and DB-free. For two
+    aligned rater sequences over a fixed category set: confusion_matrix;
+    observed_agreement (p_o); category prevalence per rater; majority_baseline
+    (agreement a constant most-frequent-category classifier would reach);
+    cohen_kappa; weighted_kappa(weights: "linear"|"quadratic") over an EXPLICIT
+    ordered category list (the caller supplies the order; no implicit ordering);
+    krippendorff_alpha with nominal distance; per_category prf (precision, recall,
+    F1) given a NAMED reference rater. Edge cases are explicit, never silent
+    (AGENTS rule 12 / rule prohibiting collapsing statuses): a category with zero
+    support is retained in the confusion matrix with zeros and its F1 is reported
+    as null with reason "no support", never 0.0 and never a division error;
+    p_e = 1 (a single category used by both raters) yields kappa = null with
+    reason "undefined: no expected-chance variation", never a ZeroDivisionError;
+    raters of unequal length or mismatched item sets raise a typed error naming
+    the offending items. Determinism: identical inputs yield identical outputs
+    (no wall clock, no set-iteration nondeterminism — sort categories explicitly).
+  - >-
+    R2 (report projection model, packages/domain/mrr/domain/agreement_report.py):
+    a Pydantic v2 MRRModel (extra="forbid") assembling, PER STRATUM, the R1
+    metrics plus: stratum id, n, category set, the two rater ids, the declared
+    crosswalk's sha256, a below_power flag (True when any category's n < 20) with
+    the documented threshold (20-30/category, A4), and a fixed honesty header
+    string set: measures_reliability_not_validity=True, reference_note naming the
+    reference rater for the asymmetric P/R/F1. It is NOT a BaseObject, has NO
+    schemas/*.schema.json mirror, and is NEVER written to the object store. A
+    top-level report carries an ORDERED list of strata (sorted by stratum id) and
+    NO pooled cross-stratum kappa; a `pooled_note` field carries only the string
+    explaining why pooling is withheld.
+  - >-
+    R3 (declared alignment + crosswalk fixture): add ONE committed file,
+    corpora/model-collapse/verification/agreement-crosswalk.v1.json, encoding
+    (a) the item alignment (blind item A1..B3 <-> corpus entry_id, transcribed
+    verbatim from comparison.md, not invented), (b) the label crosswalk mapping
+    each rater's raw labels into a common per-analysis label space
+    (instantiation stratum: instantiates<->supports as "instantiates",
+    references-only<->contradicts as "references", qualifies as "qualifies";
+    theory stratum: supports as "supports", contradicts as "contradicts"), and
+    (c) the per-stratum ordered category list used for weighted kappa. The file
+    is self-describing (a `provenance` field citing comparison.md and the freeze
+    commits it names) and is the SOLE place the crosswalk lives; its sha256 is
+    echoed in every report so agreement is auditable against exactly this mapping.
+  - >-
+    R4 (ValidationService, services/control_plane/mrr/services/validation/
+    service.py): read-only orchestration. Given an analysis-set spec (the two
+    corpus files + the R3 crosswalk file), it loads all three, validates the
+    alignment is total (every aligned item present in both raters, else typed
+    refusal naming the gap — never a silent partial), maps each rater into the
+    common label space per stratum, invokes the R1 core, builds the R2 report,
+    and renders JSON + Markdown deterministically. It opens NO database
+    connection and constructs no repository. Markdown shows, per stratum, the
+    confusion matrix, the metric table, the majority baseline beside p_o (so the
+    skew is visible), and the honesty header verbatim.
+  - >-
+    R5 (CLI, services/control_plane/mrr/services/cli/validation_main.py + 2 lines
+    in cli/main.py): `mrr validate agreement` with --analysis-set <path to a
+    committed set descriptor or the crosswalk file> (required), --format
+    md|json (default md), --output <path> (default stdout). NFR-012 ordering:
+    cheapest local checks first (output-path conflict, file existence/parse of
+    the three inputs) before any computation; exit 0 success, exit 2 for an
+    input file missing/unreadable/unparseable (dependency-unavailable analogue),
+    exit 3 for a refusal (incomplete alignment, undefined-kappa-with-no-signal
+    treated as a reported result NOT a refusal — see R1). Atomic os.replace for
+    --output. A standalone build_parser()/main() enables
+    `python -m mrr.services.cli.validation_main`. main.py gains exactly one
+    register_validation_subcommand(subparsers) call and one
+    `if args.command == "validate": return validation_main.run_command(args)`.
+  - >-
+    R6 (tests every tier + security-check). unit (DB-free): R1 metric correctness
+    against HAND-COMPUTED known-value cases incl. a classic non-trivial kappa
+    (e.g. a 2x2 with p_o=0.7, p_e=0.5 -> kappa=0.4) and a weighted-kappa worked
+    example; zero-support category -> F1 null-with-reason; single-category ->
+    kappa null-with-reason (no crash); unequal/mismatched raters -> typed error;
+    R2 report shape incl. below_power=True at n=15/3 and the honesty header;
+    determinism (two renders byte-identical, stable content hash). property
+    (hypothesis): kappa in [-1, 1]; kappa == 1.0 iff perfect agreement with >1
+    category used; kappa symmetric under swapping the two raters; alpha == kappa
+    relationship holds for the 2-rater nominal case within tolerance; observed
+    agreement in [0, 1]. acceptance (the point of the packet, DB-free, reads the
+    REAL committed files): running the service over the K1-T04/K1-T06 set
+    reproduces comparison.md — per stratum observed agreement = 1.0 and Cohen's
+    kappa = 1.0; the report flags below_power on both strata; NO pooled kappa is
+    emitted; the crosswalk sha256 in the report equals the file's actual hash.
+    contract: the R2 model validates its own instances (extra="forbid" rejects an
+    unknown field). architecture (lint-imports): domain/agreement.py and
+    agreement_report.py import no framework/service modules; no forbidden import
+    introduced. All existing suites pass UNMODIFIED. Every make tier green
+    INCLUDING make security-check.
+allowed_paths:
+  - packages/domain/mrr/domain/agreement.py
+  - packages/domain/mrr/domain/agreement_report.py
+  - services/control_plane/mrr/services/validation/__init__.py
+  - services/control_plane/mrr/services/validation/service.py
+  - services/control_plane/mrr/services/cli/validation_main.py
+  - services/control_plane/mrr/services/cli/main.py                # +2 lines only (register + dispatch)
+  - corpora/model-collapse/verification/agreement-crosswalk.v1.json  # NEW declared crosswalk (transcribed from comparison.md)
+  - tests/unit/
+  - tests/property/
+  - tests/contract/
+  - docs/design/
+  - task-packets/N1-T01.yaml
+forbidden_changes:
+  - schemas/**                                                     # no persisted ValidationReport object in T01
+  - packages/contracts/**
+  - migrations/**
+  - pyproject.toml                                                 # no new dependency; metrics hand-rolled
+  - uv.lock
+  - corpora/model-collapse/corpus-entries.json                    # sealed input — read only
+  - corpora/model-collapse/verification/blind-returns.json        # sealed input — read only
+  - corpora/model-collapse/verification/comparison.md             # the oracle — read only, never edited
+  - corpora/model-collapse/works-atlas.snapshot.json
+  - corpora/model-collapse/theory-atlas.snapshot.json
+  - services/node_runtime/**
+  - services/control_plane/mrr/services/export/**
+  - services/control_plane/mrr/services/report/**
+  - services/control_plane/mrr/services/release/**
+  - packages/persistence/**                                        # T01 is DB-free
+derived_decisions:
+  - >-
+    (a) Reliability, not validity. The blind pass is an independent INSTANCE
+    (K1-T06 verifying instance), not a human gold standard; kappa here is
+    inter-instance reproducibility. The report says so in its header and claims
+    no validity. Validity vs human gold requires human labels and is N1-T02.
+    This is the single most important honesty boundary of the packet.
+  - >-
+    (b) The crosswalk is an explicit, committed, hashed INPUT (R3), not code.
+    "18/18 agreement" is true ONLY relative to a mapping of two different label
+    vocabularies onto a common axis; making that mapping a first-class,
+    contestable artifact is the whole point. Its lines are transcribed verbatim
+    from comparison.md — a fact-locked mapping, never a guessed one (AGENTS rule 3).
+  - >-
+    (c) Stratified, never pooled. Instantiation (15 works) and theory (3 papers)
+    are different label tasks; one pooled kappa over both is methodologically
+    wrong. comparison.md's pooled "18/18" is precisely what T01 corrects; the
+    pooled number is withheld, with a stated reason, not silently emitted.
+  - >-
+    (d) Hand-rolled metrics, no numeric dependency. Cohen's/weighted kappa and
+    Krippendorff's nominal alpha are short closed-form computations; the repo
+    prefers hand-written domain logic over pulling ML/stats frameworks, and this
+    keeps the dependency footprint and the security-check surface unchanged.
+  - >-
+    (e) Report is a projection, not a persisted object. It is Pydantic-validated
+    (rule 6 satisfied for an externally visible structure) but never enters the
+    object store and is never authoritative (rule 7). A persisted, JSON-Schema-
+    mirrored ValidationReport is deferred to N1-T02, alongside the human gold
+    contract and the finalization gate.
+  - >-
+    (f) DB-free at runtime. Both raters are read from committed, hash-pinned
+    corpus files; git is authoritative for these committed inputs. The corpus
+    <-> sealed-EvidenceMatrix faithfulness was spot-verified at derivation
+    (theory-shumailov -> supports in both), documented here rather than asserted
+    as a CI integration test, since CI has no access to the real archival schema.
+  - >-
+    (g) The below-power flag is mandatory, not cosmetic. n = 15 and n = 3 are
+    below the documented 20-30/category threshold (A4); the report marks this so
+    the perfect-agreement result is never read as publication-grade evidence.
+invariants:
+  - No database connection is opened and no repository is constructed anywhere in the runtime path.
+  - Nothing is written except the requested --output file (atomic os.replace); the archive is never touched.
+  - No wall-clock timestamp in any rendered byte; identical inputs yield a byte-identical report and a stable content hash.
+  - Agreement is always reported per stratum and always beside its majority-class baseline; no pooled cross-stratum kappa is ever emitted.
+  - The report always carries the crosswalk sha256 and the reliability-not-validity header; neither can be absent.
+  - A zero-support category and an undefined kappa are REPORTED as typed null-with-reason, never a crash and never a fabricated 0.
+acceptance_tests:
+  - >-
+    AT1: over the committed K1-T04/K1-T06 model-collapse verification set, the
+    report reproduces comparison.md — per stratum observed agreement = 1.0 and
+    Cohen's kappa = 1.0; asserted numerically, and the item-by-item common-space
+    labels match comparison.md's Agreement column exactly.
+  - >-
+    AT2: the report flags below_power = True on both strata (n = 15, n = 3),
+    names the 20-30/category threshold, and emits NO pooled kappa (pooled_note
+    present and explanatory instead).
+  - >-
+    AT3: the crosswalk sha256 printed in the report equals the actual sha256 of
+    corpora/model-collapse/verification/agreement-crosswalk.v1.json; changing the
+    crosswalk file changes the reported hash (auditability of the mapping).
+  - >-
+    AT4: hand-computed metric oracles — a 2x2 confusion with p_o=0.7, p_e=0.5
+    gives kappa=0.4; a supplied weighted-kappa worked example matches; a
+    single-category input gives kappa=null-with-reason (no crash); a zero-support
+    category gives F1=null-with-reason.
+  - >-
+    AT5: determinism and refusals — two renders of the same set are byte-identical;
+    an incomplete alignment (an item in one rater absent from the crosswalk)
+    exits 3 naming the item; a missing/unparseable input file exits 2; existing
+    suites pass unmodified.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make security-check
+specification_gaps:
+  - >-
+    Validity vs a human gold standard is NOT measured here — the blind pass is an
+    independent instance, so T01 reports reliability only. Human gold-label
+    ingestion + a finalization gate as object state + validity metrics are N1-T02,
+    named and deferred (own use case, human labeling effort).
+  - >-
+    Prompt-stability over paraphrases (Krippendorff's alpha across prompt
+    variants) is N1-T03 — it re-runs the classifier and touches the LLM adapter;
+    it is the piece that later feeds Routine 2's frozen-evaluator optimization
+    loop. Out of scope here.
+  - >-
+    A persisted, JSON-Schema-mirrored ValidationReport object (so a validation
+    result can enter the governed record and be cited) is deferred to N1-T02;
+    T01's report is a projection.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding the exact
+    `mrr validate agreement` invocation, the rendered Markdown report for the
+    instantiation stratum verbatim (confusion matrix, kappa, majority baseline,
+    below-power flag, reliability header), and the crosswalk sha256.
+stop_conditions:
+  - >-
+    If reproducing comparison.md requires anything beyond the declared crosswalk
+    (R3) — i.e. an item that cannot be aligned from comparison.md's own table, or
+    a label that has no honest common-space mapping — STOP and report it as a
+    crosswalk question, never widen the mapping by guessing (AGENTS rule 14).
+  - >-
+    If any make tier requires weakening an edge-case rule (a crash "fixed" by
+    returning 0 for an undefined kappa, a mismatched-rater case silenced) to go
+    green, STOP — rule 12 and the null-with-reason contract may not be softened.
+  - >-
+    If the corpus <-> sealed-object faithfulness spot-checked at derivation does
+    not hold for an item the acceptance test touches (the committed label
+    disagrees with the sealed EvidenceMatrix), STOP and report — T01 must
+    validate the run's real classification, not a drifted file.
