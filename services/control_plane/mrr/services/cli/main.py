@@ -49,6 +49,7 @@ from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
 from mrr.crypto.exceptions import CryptoError
 from mrr.domain.exceptions import DomainError
 from mrr.services.cli import (
+    citation_audit_main,
     export_main,
     release_main,
     report_main,
@@ -222,6 +223,12 @@ def build_parser() -> argparse.ArgumentParser:
     # immediately above; no other line in this file changes.
     validation_main.register_validation_subcommand(subparsers)
 
+    # Task-packets/N2-T01.yaml's one additive registration: a new "audit"
+    # subparser group ("mrr audit citations") delegating entirely to
+    # mrr.services.cli.citation_audit_main — mirrors the validate registration
+    # immediately above; no other line in this file changes.
+    citation_audit_main.register_audit_subcommand(subparsers)
+
     return parser
 
 
@@ -345,6 +352,8 @@ def main(argv: list[str] | None = None) -> int:
         return release_main.run_command(args)
     if args.command == "validate":
         return validation_main.run_command(args)
+    if args.command == "audit":
+        return citation_audit_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
