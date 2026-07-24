@@ -14,10 +14,6 @@ You can see one result in public: **[On Record](https://frankbueltge.de/on-recor
 a real dispute in which thirteen catalogue entries contradict each other — and the system
 keeps all thirteen visible rather than quietly picking a winner.
 
-Honest about scope: this is a young system. Its first real run produced two claims, with
-the disagreement between reviewers recorded. It is not a general-purpose research agent, and
-is not trying to be one.
-
 **In technical terms** — MRR is the successor architecture to Meridian Classic: research
 orchestration built around explicit provenance, policy-gated execution, and verifiable
 claims rather than trusted model output. It is implemented as vertical slices — identity,
