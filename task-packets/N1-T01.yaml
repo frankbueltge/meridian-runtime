@@ -71,9 +71,17 @@ objective: >-
   validity vs human gold; (b) agreement is defined relative to declared crosswalk
   <sha256>; (c) each stratum's n and a below-power flag when n/category < 20.
   Run against the committed K1-T04/K1-T06 model-collapse verification set, it
-  reproduces comparison.md exactly: observed agreement = 1.0 and Cohen's kappa =
-  1.0 per stratum. It reads only committed files, opens no database connection,
-  and writes only to the given output path (atomic os.replace).
+  reproduces comparison.md's per-item agreement (18/18): observed agreement = 1.0
+  per stratum. Cohen's kappa = 1.0 for the instantiation stratum (n=15); for the
+  theory stratum (n=3) both raters use a single category, so p_e = 1 exactly and
+  kappa/weighted-kappa/alpha are HONESTLY UNDEFINED (null with reason "no
+  expected-chance variation"), never a fabricated 1.0 — perfect observed agreement
+  with no chance-corrected signal. (Corrected 2026-07-24 post-build: the original
+  "kappa = 1.0 per stratum" wording did not survive the theory stratum's real
+  degenerate data; R1's null-with-reason contract governs it — see
+  docs/design/2026-07-24-n1-t01-report.md.) It reads only committed files, opens
+  no database connection, and writes only to the given output path (atomic
+  os.replace).
 source_of_truth:
   - docs/design/2026-07-24-n1-derivation.md                       # this packet's derivation
   - docs/design/2026-07-24-nachrecherche-empirische-methoden.md   # A3/A4/A5 — the validation protocol
@@ -166,9 +174,12 @@ requirements:
     relationship holds for the 2-rater nominal case within tolerance; observed
     agreement in [0, 1]. acceptance (the point of the packet, DB-free, reads the
     REAL committed files): running the service over the K1-T04/K1-T06 set
-    reproduces comparison.md — per stratum observed agreement = 1.0 and Cohen's
-    kappa = 1.0; the report flags below_power on both strata; NO pooled kappa is
-    emitted; the crosswalk sha256 in the report equals the file's actual hash.
+    reproduces comparison.md — per stratum observed agreement = 1.0; Cohen's
+    kappa = 1.0 for the instantiation stratum and honestly undefined
+    (null-with-reason) for the theory stratum (n=3, one category used, p_e=1),
+    never fabricated 1.0; the report flags below_power on both strata; NO pooled
+    kappa is emitted; the crosswalk sha256 in the report equals the file's actual
+    hash.
     contract: the R2 model validates its own instances (extra="forbid" rejects an
     unknown field). architecture (lint-imports): domain/agreement.py and
     agreement_report.py import no framework/service modules; no forbidden import
@@ -252,9 +263,12 @@ invariants:
 acceptance_tests:
   - >-
     AT1: over the committed K1-T04/K1-T06 model-collapse verification set, the
-    report reproduces comparison.md — per stratum observed agreement = 1.0 and
-    Cohen's kappa = 1.0; asserted numerically, and the item-by-item common-space
-    labels match comparison.md's Agreement column exactly.
+    report reproduces comparison.md — per stratum observed agreement = 1.0;
+    Cohen's kappa = 1.0 for the instantiation stratum (n=15) and honestly
+    undefined (null-with-reason "no expected-chance variation") for the theory
+    stratum (n=3, both raters use one category, p_e=1), never a fabricated 1.0;
+    asserted numerically, and the item-by-item common-space labels match
+    comparison.md's Agreement column exactly.
   - >-
     AT2: the report flags below_power = True on both strata (n = 15, n = 3),
     names the 20-30/category threshold, and emits NO pooled kappa (pooled_note

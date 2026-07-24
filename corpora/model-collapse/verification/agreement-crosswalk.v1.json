@@ -1,0 +1,182 @@
+{
+  "provenance": {
+    "description": "Item alignment (blind item <-> corpus entry_id <-> title) and the per-stratum label crosswalk, transcribed verbatim from comparison.md's own Item/Title/Blind verdict/Pipeline relation table (18/18 agreement oracle) for task-packets/N1-T01.yaml R3. No item, title, or mapping here is invented: every row mirrors a row comparison.md itself states. comparison.md documents it was produced AFTER the freeze commits dab655c (blind-brief.md) and f4136f1 (blind-returns.json) — the blind pass demonstrably had no access to the pipeline classification at return time.",
+    "freeze_commits": {
+      "blind_brief": "dab655c",
+      "blind_returns": "f4136f1"
+    },
+    "raw_label_note": "Raw labels (pipeline: corpus-entries.json[].evidence_relation; blind: blind-returns.json[].verdict) are NOT duplicated in this file — they are read live from those two committed files at validation time, so this crosswalk can never drift from them by silently going stale. This file supplies only the ALIGNMENT (which blind item corresponds to which corpus entry) and the LABEL MAP (raw label -> common-space label), per stratum.",
+    "source": "corpora/model-collapse/verification/comparison.md"
+  },
+  "raters": {
+    "blind": "K1-T06 blind, independent verifying-instance classification (blind-returns.json[].verdict) — an independent INSTANCE, not a human gold standard; see reliability_not_validity in the rendered report.",
+    "pipeline": "K1-T04 pipeline classification (corpus-entries.json[].evidence_relation)"
+  },
+  "reference_rater": "pipeline",
+  "reference_rater_note": "Named per R1/R2: without human gold, per-category precision/recall/F1 and the majority-class baseline are asymmetric, not a validity measurement. 'pipeline' (the K1-T04 run's own classification) is named the reference rater by convention for this report; 'blind' (the K1-T06 verifying instance) is equally not a gold standard — swapping the two changes which side's marginal grounds precision/recall, never which one is 'correct'.",
+  "schema_version": "agreement-crosswalk.v1",
+  "source_files": {
+    "_resolution_note": "Both paths are relative to this crosswalk file's own directory (corpora/model-collapse/verification/), not to any caller's current working directory — resolved as (this_file.parent / relative_path).",
+    "blind_returns": "blind-returns.json",
+    "corpus_entries": "../corpus-entries.json"
+  },
+  "strata": {
+    "instantiation-vs-reference-classification": {
+      "items": [
+        {
+          "blind_item": "A1",
+          "corpus_entry_id": "works-hailesilassie-6500-alphabets",
+          "title": "6,500 Alphabets Make a Map"
+        },
+        {
+          "blind_item": "A2",
+          "corpus_entry_id": "works-chronus-ai-delivered-abject",
+          "title": "AI Delivered: The Abject"
+        },
+        {
+          "blind_item": "A3",
+          "corpus_entry_id": "works-salu-ginzburg-cybernetics-or-ghosts",
+          "title": "Cybernetics, or Ghosts?"
+        },
+        {
+          "blind_item": "A4",
+          "corpus_entry_id": "works-baudelaire-en-attendant-le-recit",
+          "title": "En attendant le récit / Tales of Narrativelessness"
+        },
+        {
+          "blind_item": "A5",
+          "corpus_entry_id": "works-heaney-ent-non-earthly-delights",
+          "title": "Ent- (non-earthly delights)"
+        },
+        {
+          "blind_item": "A6",
+          "corpus_entry_id": "works-kurant-errorism",
+          "title": "Errorism"
+        },
+        {
+          "blind_item": "A7",
+          "corpus_entry_id": "works-raikhy-hallucinations-of-an-artifact",
+          "title": "Hallucinations of an Artifact"
+        },
+        {
+          "blind_item": "A8",
+          "corpus_entry_id": "works-dominguez-matrix-vegetal",
+          "title": "Matrix Vegetal"
+        },
+        {
+          "blind_item": "A9",
+          "corpus_entry_id": "works-rahal-mythmachine",
+          "title": "Mythmachine"
+        },
+        {
+          "blind_item": "A10",
+          "corpus_entry_id": "works-giraud-feral-epoch-1",
+          "title": "The Feral: Epoch 1"
+        },
+        {
+          "blind_item": "A11",
+          "corpus_entry_id": "works-ubermorgen-next-biennial-machine",
+          "title": "The Next Biennial Should Be Curated by a Machine"
+        },
+        {
+          "blind_item": "A12",
+          "corpus_entry_id": "works-mavropoulou-sleight-of-the-machine",
+          "title": "The Sleight of the Machine"
+        },
+        {
+          "blind_item": "A13",
+          "corpus_entry_id": "works-cheng-thousand-lives-bob",
+          "title": "Thousand Lives (BOB lineage)"
+        },
+        {
+          "blind_item": "A14",
+          "corpus_entry_id": "works-hammond-v3-model-collapse",
+          "title": "V3: Model Collapse"
+        },
+        {
+          "blind_item": "A15",
+          "corpus_entry_id": "works-wilding-ai-lab",
+          "title": "Wilding AI Lab"
+        }
+      ],
+      "label_map": {
+        "blind": {
+          "map_to_common": {
+            "instantiates": "instantiates",
+            "qualifies": "qualifies",
+            "references-only": "references"
+          },
+          "raw_label_space": [
+            "instantiates",
+            "references-only",
+            "qualifies"
+          ]
+        },
+        "pipeline": {
+          "map_to_common": {
+            "contradicts": "references",
+            "supports": "instantiates"
+          },
+          "raw_label_space": [
+            "supports",
+            "contradicts"
+          ]
+        }
+      },
+      "n": 15,
+      "ordered_categories": [
+        "instantiates",
+        "qualifies",
+        "references"
+      ],
+      "ordered_categories_note": "Alphabetical, which here also reads as an ordinal hedge scale for weighted kappa: 'qualifies' (ConceptCharter instantiate-vs-reference-v1's own explicit hedge verdict) sits between full 'instantiates' and mere 'references' — a disclosed choice, not asserted as the only defensible order."
+    },
+    "model-collapse-mechanism-theory-confirmation": {
+      "items": [
+        {
+          "blind_item": "B1",
+          "corpus_entry_id": "theory-shumailov-curse-of-recursion",
+          "title": "The Curse of Recursion: Training on Generated Data Makes Models Forget"
+        },
+        {
+          "blind_item": "B2",
+          "corpus_entry_id": "theory-alemohammad-self-consuming-mad",
+          "title": "Self-Consuming Generative Models Go MAD"
+        },
+        {
+          "blind_item": "B3",
+          "corpus_entry_id": "theory-gerstgrasser-model-collapse-inevitable",
+          "title": "Is Model Collapse Inevitable? Breaking the Curse of Recursion by Accumulating Real and Synthetic Data"
+        }
+      ],
+      "label_map": {
+        "blind": {
+          "map_to_common": {
+            "contradicts": "contradicts",
+            "supports": "supports"
+          },
+          "raw_label_space": [
+            "supports",
+            "contradicts"
+          ]
+        },
+        "pipeline": {
+          "map_to_common": {
+            "contradicts": "contradicts",
+            "supports": "supports"
+          },
+          "raw_label_space": [
+            "supports",
+            "contradicts"
+          ]
+        }
+      },
+      "n": 3,
+      "ordered_categories": [
+        "contradicts",
+        "supports"
+      ],
+      "ordered_categories_note": "Alphabetical; both categories are declared even though 'contradicts' has zero support in this sample (n=3, below the 20-30/category power threshold)."
+    }
+  }
+}
