@@ -1,0 +1,300 @@
+task_id: E5-T08
+title: >-
+  First concrete federation adapter — a local filesystem transport for the offline
+  store-and-forward path (`LocalFilesystemBundleTransport`) plus the first operator
+  surface `mrr federation outbox write` / `mrr federation inbox accept`: writes a
+  signed OfflineBundle to a file, reads one back and validates it fail-closed through
+  the UNCHANGED E5-T06 core, with a committed, file-backed replay ledger. Closes the
+  physical transfer medium E5-T06 explicitly deferred. No network, no database, no
+  invented identity.
+status: approved
+epic: E5
+reviewer_resolution: >-
+  Approved 2026-07-25 by the main session as reviewing instance, under the owner's
+  delegation the same day ("alles was sinnvoll ist und das Projekt voranbringt,
+  kannst du gerne umsetzen"), recorded in
+  docs/design/2026-07-25-e5-t08-derivation.md, and under the standing use-first
+  decision (docs/design/2026-07-22-nutzungsentscheidung-e9-vertagt.md). Load-bearing
+  choices CONFIRMED at derivation against the real code: (1) the diagnosis "unused
+  federation" is imprecise — E5/E6 built the complete object AND port layer across 17
+  packets and ZERO concrete adapters (mrr.domain.envelope_transport declares "NO
+  concrete implementation"; E5-T06 explicitly deferred "the physical air-gap transfer
+  medium (file/USB/media byte I/O)"; no CLI command reaches federation at all), so the
+  smallest real gap is an outer edge, not an occasion; (2) the FILE path is the
+  correct medium for this ecology, not a lesser substitute for mTLS — the two
+  practices demonstrably exchange via git repositories (the 2026-07-22 Hammond
+  exchange was carried as literal "verbatim carriage" out of the other repo's
+  REQUESTS.md), and research-ecology's dated decision D-JI-03 (2026-07-19) designates
+  E5/E6 as the backbone it will not rebuild; (3) TRANSPORT is not TRUST — an accepted
+  bundle proves it was signed by a key the receiver ALREADY declared trusted, never
+  that the sender is who they claim in the world; the trust decision stays with the
+  caller and must not be defaulted or hidden; (4) no database is needed — the E5-T06
+  core takes a CALLER-SUPPLIED already_processed predicate, so a committed JSON ledger
+  satisfies replay protection and fits "git is the archive"; (5) Meridian may NOT mint
+  an identity or key for another practice — that is the forgery of exactly the
+  independence this system asserts, so the real exchange with Ulysses is E5-T09, a
+  governance act requiring the other practice, deliberately not built here.
+depends_on: []
+derivation: >-
+  Derived 2026-07-25 from docs/design/2026-07-25-e5-t08-derivation.md, closing the
+  transfer medium E5-T06 named and deferred. Fact base verified first-hand at
+  derivation by reading the real modules: mrr.domain.offline_bundle exposes exactly
+  build_outbox_bundle(envelopes, *, bundle_id, bundle_nonce, sender_node_id,
+  sender_practice_id, recipient_node_id, created_at, expires_at, signing_key, key_id,
+  encryption=None, signed_at=None, algorithm="Ed25519") -> OfflineBundle;
+  validate_inbound_bundle(bundle, *, this_node_id, trusted_sender_practice_id, ring,
+  already_processed, at=None) -> list[NodeMessageEnvelope]; and
+  coarse_bundle_rejection_reason(exc) -> BundleRejectionReason. Both are pure and
+  take every identity, nonce and timestamp from the caller, so a build is
+  reproducible. validate_inbound_bundle raises a DISTINCT typed error per failing
+  condition (BundleRecipientMismatchError, BundleNotWithinValidityWindowError,
+  BundleAlreadyProcessedError, BundleSignerMismatchError, UnknownKeyIdError,
+  BundleKeyNotValidError, SignatureVerificationError) and its returned envelopes each
+  still require their own validate_inbound_envelope call before their payload is
+  acted on. No file I/O for OfflineBundle exists anywhere; services/.../cli/ has no
+  federation module; `mrr --help` lists run/synthesis/verification/export/report/
+  release/validate/audit/observe only. The adapter precedent is
+  adapters/object_store/mrr/adapters/object_store/local.py
+  (LocalFilesystemArtifactStore). No practice or node identity for any other practice
+  exists in the runtime. json/hashlib/pathlib are stdlib and cryptography is already a
+  dependency — no new dependency is needed.
+objective: >-
+  After this packet, a signed OfflineBundle can leave and enter this runtime as a
+  file, and the operator can do it from the command line. `mrr federation outbox
+  write` serialises an OfflineBundle built by the UNCHANGED E5-T06 core to a
+  canonical-JSON file (atomic os.replace, never overwriting silently) and reports its
+  sha256. `mrr federation inbox accept` reads such a file, runs the UNCHANGED
+  validate_inbound_bundle against a caller-declared trusted sender practice, this
+  node's id and a committed replay ledger, and either (a) records the bundle id in the
+  ledger and reports the accepted envelopes — each still explicitly marked as NOT yet
+  envelope-validated — or (b) refuses with the specific typed reason, having recorded
+  NOTHING. It opens no network and no database connection, adds no dependency, and
+  never mints an identity or key for another practice.
+source_of_truth:
+  - docs/design/2026-07-25-e5-t08-derivation.md                          # this packet's derivation
+  - task-packets/E5-T06.yaml                                             # the packet whose deferred transfer medium this closes
+  - packages/domain/mrr/domain/offline_bundle.py                         # the FROZEN core — reused by import, never modified
+  - packages/contracts/mrr/contracts/offline_bundle.py                   # the OfflineBundle contract — read only
+  - packages/domain/mrr/domain/envelope_validation.py                    # the second-stage check the adapter must NOT skip or fake
+  - packages/domain/mrr/domain/manifest_trust.py                         # practice_key_ring — how a trusted KeyRing is built
+  - adapters/object_store/mrr/adapters/object_store/local.py             # the adapter precedent to mirror (layout, atomicity, typed errors)
+  - services/control_plane/mrr/services/cli/field_observation_main.py    # CLI pattern (NFR-012 ordering, exit 0/2/3, atomic os.replace)
+  - services/control_plane/mrr/services/cli/main.py                      # +2 lines: register + dispatch the new subcommand
+  - AGENTS.md                                                            # rules 9 (signature+hash before acceptance), 11, 12
+requirements:
+  - >-
+    R1 (filesystem transport adapter, adapters/federation/mrr/adapters/federation/
+    local.py — NEW): a LocalFilesystemBundleTransport mirroring
+    LocalFilesystemArtifactStore's shape (a root Path, typed errors, no global state).
+    It offers exactly two operations plus the ledger below: write_bundle(bundle,
+    path) serialising the OfflineBundle to CANONICAL JSON bytes (the ADR-0004
+    exclude_none form the core already signs over — reuse the existing canonicalisation
+    helper, do NOT hand-roll a second serialisation, or the signature will not
+    re-verify) written atomically via os.replace and NEVER over an existing file; and
+    read_bundle(path) parsing bytes back into an OfflineBundle. A file that is missing,
+    not valid UTF-8, not valid JSON, or does not validate as an OfflineBundle is a
+    typed BundleTransportError naming the path and the reason — never a silent
+    None/skip. read_bundle performs NO trust evaluation whatsoever: parsing and
+    validating are strictly separate steps, so a caller can never accidentally treat a
+    parsed bundle as an accepted one.
+  - >-
+    R2 (replay ledger, same adapter package): a file-backed ledger implementing the
+    core's already_processed(bundle_id) -> bool predicate. It reads a committed JSON
+    document (a sorted list of processed bundle ids plus a schema_version), answers the
+    predicate, and appends an id ONLY on a fully successful acceptance. Writes are
+    atomic (os.replace) and the file is rewritten sorted + sort_keys + trailing
+    newline, so it stays a reviewable, byte-stable archive artefact ("git is the
+    archive"). A malformed ledger is a typed error, NEVER an empty default — silently
+    treating an unreadable ledger as "nothing processed yet" would disable replay
+    protection exactly when it matters. Recording is strictly AFTER acceptance: a
+    refused bundle must leave the ledger byte-identical.
+  - >-
+    R3 (reuse, not reimplementation): the adapter and CLI call
+    mrr.domain.offline_bundle.build_outbox_bundle and validate_inbound_bundle
+    UNCHANGED. This packet re-implements no signing, no hash check, no expiry rule and
+    no accept condition, and modifies no file under packages/**. The five accept
+    conditions and their DISTINCT typed errors are surfaced individually — the CLI maps
+    each to its own message naming which condition failed, and NEVER collapses them
+    into one generic "rejected" (AGENTS.md prohibited shortcut). Use
+    coarse_bundle_rejection_reason only where the core itself intends it, never as a
+    substitute for the specific error.
+  - >-
+    R4 (the second stage is not skipped or faked): validate_inbound_bundle returns
+    envelopes that each still require their own validate_inbound_envelope before their
+    payload may be acted on. This packet does NOT act on any payload. The CLI's output
+    must state explicitly, in plain words, that the listed envelopes are bundle-verified
+    but NOT yet envelope-validated, and no code path here may deserialise or interpret
+    an envelope's nested payload beyond what the core already did.
+  - >-
+    R5 (CLI, services/control_plane/mrr/services/cli/federation_main.py + 2 lines in
+    cli/main.py): a new `federation` subcommand group with two sub-subcommands.
+    `mrr federation outbox write` takes --envelope <path> (repeatable, each an
+    already-signed NodeMessageEnvelope JSON file), the bundle identity flags
+    (--bundle-id, --bundle-nonce, --sender-node-id, --sender-practice-id,
+    --recipient-node-id, --created-at, --expires-at, --key-file, --key-id) and
+    --output <path>; every identity, nonce and timestamp is EXPLICIT — none is minted,
+    guessed, or defaulted to a wall clock, so the same inputs reproduce the same bundle
+    bytes. `mrr federation inbox accept` takes --bundle <path>, --this-node-id,
+    --trusted-sender-practice <path to that practice's Practice document>, --ledger
+    <path>, and optional --at <iso instant> (defaulting to now, since receipt time is
+    genuinely a real-world instant), and prints the accepted envelope ids or the
+    specific refusal. NFR-012 ordering: cheapest local checks first (--output must not
+    exist; files must be readable) before any cryptography. Exit 0 accepted / 2
+    dependency-or-input problem / 3 refusal. A standalone build_parser()/main() enables
+    `python -m mrr.services.cli.federation_main ...`. main.py gains exactly one
+    register call and one dispatch branch, mirroring the existing registrations.
+  - >-
+    R6 (no invented identity — a hard stop): this packet MUST NOT generate, mint, or
+    write a key or identity for any practice other than the one whose private key the
+    operator supplies via --key-file. There is no --generate-key convenience anywhere,
+    not even for tests of the real path: test keys are created inside the test module
+    and never written into corpora/ or any committed fixture that could later be
+    mistaken for a real practice identity. Committing a keypair for a practice that has
+    not published it is a stop condition, not a shortcut.
+  - >-
+    R7 (tests every tier + security-check). unit (no-network, no-DB): round-trip —
+    a bundle built by the unchanged core, written and read back, is byte-identical and
+    its signature still verifies (this is the load-bearing test that the adapter's
+    serialisation matches the signed form); write refuses an existing output path;
+    each malformed-input case raises its typed error. Fail-closed per condition:
+    a bundle addressed to another node, one outside its validity window, one whose id
+    is already in the ledger, one signed by an untrusted practice, one with a tampered
+    byte — each is refused with its OWN distinct typed error, and after every refusal
+    the ledger file is byte-identical to before (assert on bytes, not on a count).
+    Ledger: a malformed ledger raises rather than defaulting to empty; acceptance
+    appends exactly one id and keeps the file sorted and byte-stable. architecture
+    (lint-imports + a test mirroring tests/unit/architecture/): the adapter imports no
+    service module, and NOTHING in this packet imports a socket/TLS/HTTP/FastAPI module
+    or sqlalchemy. contract: the CLI's exit codes and the "not yet envelope-validated"
+    statement are asserted. All existing suites pass UNMODIFIED. Every make tier green
+    INCLUDING make security-check.
+allowed_paths:
+  - adapters/federation/mrr/adapters/federation/__init__.py
+  - adapters/federation/mrr/adapters/federation/local.py
+  - adapters/federation/pyproject.toml                                   # ONLY if the adapters/ layout requires a per-adapter project file — mirror object_store exactly
+  - services/control_plane/mrr/services/cli/federation_main.py
+  - services/control_plane/mrr/services/cli/main.py                      # +2 lines only (register + dispatch)
+  - tests/unit/
+  - tests/contract/
+  - docs/design/
+  - task-packets/E5-T08.yaml
+forbidden_changes:
+  - packages/domain/mrr/domain/offline_bundle.py                         # the FROZEN E5-T06 core — reuse by import only
+  - packages/domain/mrr/domain/envelope_validation.py                    # second-stage check — reuse by import only
+  - packages/domain/mrr/domain/envelope_transport.py                     # the mTLS port — untouched, still deliberately unimplemented
+  - packages/contracts/**                                                # contracts imported read-only
+  - packages/persistence/**                                              # this packet is database-free
+  - packages/domain/mrr/domain/citation_audit.py                         # N2 — untouched
+  - packages/domain/mrr/domain/anchoring_integrity.py                    # N2-T02b — untouched
+  - packages/domain/mrr/domain/field_observation.py                      # R2-T01 — untouched
+  - services/control_plane/mrr/services/citation_audit/**
+  - services/control_plane/mrr/services/anchoring_integrity/**
+  - services/control_plane/mrr/services/field_observation/**
+  - services/control_plane/mrr/services/transfer/**                      # E6 service — not touched by the transport adapter
+  - schemas/**                                                           # no new persisted object
+  - migrations/**
+  - archive/**
+  - corpora/**                                                           # NO key, identity, or bundle fixture committed here
+  - pyproject.toml                                                       # no new dependency
+  - uv.lock
+derived_decisions:
+  - >-
+    (a) The gap is an outer edge, not an occasion. 17 federation packets built the
+    object and port layer and no concrete adapter — each deferral explicitly documented
+    at the time. Naming that honestly changes the next step from "wait for a partner"
+    to "build the missing edge", which is small, testable, and available today.
+  - >-
+    (b) The file path is the right medium here, not a fallback. These practices
+    exchange via git repositories — the one exchange that already happened was carried
+    by hand out of the other repo. Building mTLS instead would serve a deployment that
+    does not exist; building the file adapter mechanises what is actually done.
+  - >-
+    (c) Transport is not trust. Acceptance proves the bundle was signed by a key the
+    receiver already declared trusted, addressed here, in-window and unseen — never
+    that the sender is who they claim to be in the world. The trust decision stays an
+    explicit operator input (--trusted-sender-practice), never a default.
+  - >-
+    (d) No database. The core takes a caller-supplied already_processed predicate, so
+    replay protection is a committed, reviewable JSON ledger — consistent with "git is
+    the archive" and with this repo's habit of committing what it relies on.
+  - >-
+    (e) No invented identity. Meridian may not mint a key for another practice; doing
+    so would forge exactly the independence the system asserts. The real exchange
+    therefore waits on E5-T09, a governance act between two practices, and this packet
+    stops cleanly short of it rather than simulating it.
+  - >-
+    (f) Parse and validate stay separate. read_bundle performs no trust evaluation, so
+    no caller can mistake a parsed bundle for an accepted one — the same discipline
+    R2-T01 established with its gate-before-evaluator ordering.
+invariants:
+  - No network connection, no socket, no TLS/mTLS, no HTTP client or server, and no database connection anywhere in this packet.
+  - The E5-T06 core is imported and called unchanged; no signing, hashing, expiry or accept rule is re-implemented.
+  - A written bundle read back is byte-identical and its signature still verifies.
+  - Each of the five accept conditions surfaces its OWN distinct typed error; they are never collapsed into one generic rejection.
+  - After ANY refusal the replay ledger file is byte-identical to before; an id is recorded only after full acceptance.
+  - A malformed ledger raises; it never defaults to "nothing processed yet".
+  - No payload is acted on; the output states plainly that accepted envelopes are not yet envelope-validated.
+  - No key or identity is generated for any practice; no key material is written into corpora/ or any committed path.
+acceptance_tests:
+  - >-
+    AT1: round-trip — a bundle built by the unchanged core, written by the adapter and
+    read back, is byte-identical and re-verifies; asserted on bytes and on signature.
+  - >-
+    AT2: five refusals, five distinct errors — wrong recipient, outside validity window,
+    already in ledger, untrusted sender practice, tampered byte; each raises its own
+    typed error and exits 3, and none is reported as a generic failure.
+  - >-
+    AT3: ledger discipline — after each of the five refusals the ledger file is
+    byte-identical to before; a successful acceptance appends exactly one id, sorted and
+    byte-stable; a malformed ledger raises instead of defaulting to empty.
+  - >-
+    AT4: the second stage is not faked — the CLI output states that accepted envelopes
+    are bundle-verified but NOT yet envelope-validated, and no code path deserialises a
+    nested payload.
+  - >-
+    AT5: boundaries — an architecture test proves nothing in this packet imports a
+    socket/TLS/HTTP/FastAPI module or sqlalchemy, and that the adapter imports no
+    service module; existing suites pass unmodified; every make tier green including
+    make security-check.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make security-check
+specification_gaps:
+  - >-
+    The key/identity exchange with the other practice is E5-T09 — a governance act
+    between two practices, not a build step, and deliberately not performed here.
+    Until the other practice publishes its own public key, no real exchange can or
+    should happen.
+  - >-
+    The first real joint inquiry over this edge (on the open, preserved Hammond dissent)
+    is R1-T01 — named, requiring both E5-T08 and E5-T09.
+  - >-
+    Envelope encryption / KMS remains deferred as E5-T06 marked it. Between two public
+    repositories confidentiality is not the protection goal; integrity and authorship
+    are, and those the signature already carries. If a future exchange carries
+    restricted material, that is its own packet.
+  - >-
+    The concrete mTLS online transport remains unimplemented behind
+    mrr.domain.envelope_transport's port, exactly as E5-T03 left it.
+required_output:
+  - Packet report per AGENTS.md "Required delivery format", embedding the exact
+    `mrr federation outbox write` and `mrr federation inbox accept` invocations, the
+    round-trip evidence (bundle sha256 before and after), and one refusal transcript per
+    accept condition showing the distinct typed reason.
+stop_conditions:
+  - >-
+    If making the round-trip verify requires hand-rolling a second serialisation instead
+    of the canonical form the core signs over, STOP — the mismatch is the bug, not the
+    core.
+  - >-
+    If any step appears to require generating or committing a key or identity for a
+    practice that has not published it, STOP — that is forgery of independence, and the
+    packet is designed to stop short of it (R6).
+  - >-
+    If a tier can only go green by opening a socket or a database connection, by
+    modifying the frozen E5-T06 core, by adding a dependency, or by collapsing two
+    accept-condition errors into one, STOP.
