@@ -1,0 +1,353 @@
+task_id: N2-T02b
+title: >-
+  Archive anchoring-integrity audit and `mrr audit anchoring` (read-only, no-network,
+  NO-DATABASE): over the two committed archive dumps behind a fail-closed file-hash
+  gate, resolve every EvidenceAnchor to its SourceRecord and every Claim reference to
+  its EvidenceAnchor, and report dangling references (integrity VIOLATIONS) strictly
+  apart from unanchored sources and unreferenced anchors (OBSERVATIONS) — never
+  collapsing the two. Verifies that an anchor points at a really archived source, NOT
+  that the source supports the claim.
+status: approved
+epic: N2
+reviewer_resolution: >-
+  Approved 2026-07-25 by the main session as reviewing instance, under the owner's
+  instruction the same day to derive and build N2-T02 (record citations + anchoring
+  integrity, decomposed if warranted) recorded in
+  docs/design/2026-07-25-n2-t02-derivation.md, and under the standing use-first
+  decision (docs/design/2026-07-22-nutzungsentscheidung-e9-vertagt.md). This is the
+  offline half of the decomposition; the network half is N2-T02a. Load-bearing choices
+  CONFIRMED at derivation against the real dumps: (1) ANCHORING is not SUPPORT — a
+  resolvable anchor proves the anchor points at a really archived SourceRecord, never
+  that the source carries the claim (N2-T03); (2) VIOLATIONS and OBSERVATIONS are
+  never collapsed — anchor_dangling / claim_reference_dangling are integrity
+  violations (the machine form of AGENTS.md's "letting an agent cite a source it did
+  not retrieve and anchor"), while source_unanchored / anchor_unreferenced are
+  observations and NOT errors; collapsing them would immediately report 1 resp. 2
+  false violations in the real archive; (3) the input is the COMMITTED DUMPS, not the
+  local database — the local instance was reachable at derivation (127.0.0.1:54329)
+  but is the declared throwaway (Befund 1), while the dumps are committed,
+  hash-anchorable, and readable with no database connection at all; (4) the fail-closed
+  file-hash gate mirrors R2-T01 but does NOT reuse its check_anchor, because that
+  takes a closed BatchRole of {"manifest","snapshot"} — widening another packet's
+  closed set for convenience is forbidden, so T02b mirrors the pattern with its own
+  open dump set; (5) the dump parser is strict — columns indexed by the COPY header's
+  names, \N mapped to None, anything unexpected a typed refusal, never a silent skip;
+  (6) the real archive numbers computed offline at derivation are the acceptance
+  oracle.
+depends_on: []
+derivation: >-
+  Derived 2026-07-25 from docs/design/2026-07-25-n2-t02-derivation.md, closing the
+  "interne Verknüpfungs-Integrität (jeder EvidenceAnchor -> realer SourceRecord)" half
+  of the "N2-T02 (benannt)" slot in docs/design/2026-07-24-n2-derivation.md. Fact base
+  verified first-hand at derivation by parsing both committed dumps offline: there are
+  NO source_record/evidence_anchor tables — persistence is a generic objects table
+  (id, revision, api_version, kind, practice_id, created_at, created_by, content_hash,
+  supersedes, labels, body) with the domain object in the JSONB body, exported as a
+  postgres COPY block. mrr_k1t04_real_run_v2: 67 object rows, 18 SourceRecord, 17
+  EvidenceAnchor, 4 Claim; 0 anchors with an unresolvable source_record_id; 45
+  claim->anchor references, 0 unresolvable; 1 SourceRecord referenced by no anchor
+  ("The Next Biennial Should Be Curated by a Machine"); 0 anchors referenced by no
+  claim. mrr_run2_corroboration_floor_v1: 125 object rows, 36 SourceRecord, 34
+  EvidenceAnchor, 8 Claim; 0 dangling anchors; 90 claim->anchor references, 0
+  unresolvable; 2 unanchored SourceRecords; 0 unreferenced anchors. Every anchor
+  carries content_hash and snapshot_hash and anchor_validation_status "validated".
+  The descriptor corpora/archive-integrity/anchoring-batch.v1.json is committed at the
+  governance commit with both real file anchors (sha256:273db207... and
+  sha256:79338a59..., both verified to match via descriptor-relative resolution) and is
+  READ-ONLY for this build. hashlib and the parser are stdlib; no new dependency.
+objective: >-
+  After this packet, `mrr audit anchoring --batch corpora/archive-integrity/
+  anchoring-batch.v1.json` renders a deterministic anchoring-integrity report (JSON and
+  Markdown) over the committed archive dumps. It (a) resolves each declared dump path
+  relative to the descriptor's own directory, (b) reads each dump's bytes and computes
+  its sha256, (c) compares each against the descriptor's pinned anchor and, on ANY
+  mismatch, raises a typed IntegrityGateError naming the dump and both hashes and HALTS
+  before any dump is parsed (fail-closed), (d) on a clean gate parses each dump's
+  objects COPY block strictly and resolves every EvidenceAnchor.source_record_id to a
+  SourceRecord and every Claim evidence_relations/counterevidence_relations entry to an
+  EvidenceAnchor, and (e) assembles a report that counts VIOLATIONS (anchor_dangling,
+  claim_reference_dangling) strictly apart from OBSERVATIONS (source_unanchored,
+  anchor_unreferenced), under a header stating in plain type that a resolvable anchor
+  proves archival presence, NOT that the source supports the claim (N2-T03), and that
+  unanchored sources and unreferenced anchors are observations, not errors. Run against
+  the committed batch it reports 0 violations of both kinds across both dumps, with 1
+  resp. 2 unanchored sources named. It opens NO database and NO network connection and
+  writes only to the given output path (atomic os.replace).
+source_of_truth:
+  - docs/design/2026-07-25-n2-t02-derivation.md                          # this packet's derivation
+  - docs/design/2026-07-24-n2-derivation.md                              # the "N2-T02 (benannt)" slot this closes
+  - corpora/archive-integrity/anchoring-batch.v1.json                    # the committed descriptor — created at derivation, READ ONLY
+  - archive/dumps/mrr_k1t04_real_run_v2.sql                              # anchored input — read only
+  - archive/dumps/mrr_run2_corroboration_floor_v1.sql                    # anchored input — read only
+  - packages/domain/mrr/domain/field_observation.py                      # R2-T01 gate PATTERN to mirror (not to widen or import)
+  - packages/domain/mrr/domain/citation_audit.py                         # closed-status-set + typed-error precedent
+  - packages/domain/mrr/domain/citation_audit_report.py                  # projection + honesty-header + renderer precedent
+  - services/control_plane/mrr/services/field_observation/service.py     # service shape: descriptor -> hash -> gate -> evaluate
+  - services/control_plane/mrr/services/cli/field_observation_main.py    # CLI pattern (NFR-012 ordering, exit 0/2/3, atomic os.replace)
+  - services/control_plane/mrr/services/cli/main.py                      # +2 lines: register + dispatch the new subcommand
+  - AGENTS.md                                                            # prohibited shortcut: never collapse distinct statuses; "cite what you anchored"
+requirements:
+  - >-
+    R1 (strict dump parser, packages/domain/mrr/domain/archive_dump.py): pure, no-IO,
+    stdlib only — takes ALREADY-READ dump text and returns typed rows (reading the file
+    is the SERVICE's job, mirroring mrr.domain.citation_audit's "takes already-loaded
+    values"). It locates the postgres COPY block for the objects table (COPY
+    <schema>.objects (<columns>) FROM stdin; ... terminated by a line containing only
+    \.), indexes fields by the COLUMN NAMES parsed from that header — never by fixed
+    positions — splits data lines on tab, and unescapes postgres COPY text escapes
+    (\t, \n, \r, \\). The NULL marker \N maps to None, never to the literal string
+    "\N". Every deviation is a typed ArchiveDumpParseError naming what was expected and
+    where: no objects COPY block, a required column absent from the header, a data row
+    whose field count differs from the header's, or a body that is not valid JSON. No
+    row is ever silently skipped and no missing field is ever defaulted. Returns frozen
+    dataclasses: ArchivedObject(object_id, kind, body) plus the derived, typed views
+    the integrity core consumes.
+  - >-
+    R2 (pure integrity core, packages/domain/mrr/domain/anchoring_integrity.py):
+    hand-rolled, no new dependency, pure and no-IO. TWO closed Literal sets, kept
+    apart by type and never unified: AnchorLinkStatus {"anchor_resolved",
+    "anchor_dangling"} and ClaimReferenceStatus {"claim_reference_resolved",
+    "claim_reference_dangling"} for REFERENCE resolution (violations when dangling);
+    and SourceCoverage {"source_anchored","source_unanchored"} plus AnchorCoverage
+    {"anchor_referenced","anchor_unreferenced"} for COVERAGE (observations, never
+    violations). Frozen dataclasses for each verdict row carrying the ids involved.
+    Pure functions check_anchor_links(anchors, source_record_ids), check_claim_
+    references(claims, anchor_ids), source_coverage(sources, anchors), anchor_coverage
+    (anchors, claims) — each returning a tuple sorted by its primary id, so results are
+    caller-order-independent. A typed AnchoringIntegrityError base class. Determinism:
+    no wall clock, no unordered iteration, no set-iteration leaking into output order.
+  - >-
+    R3 (report projection, packages/domain/mrr/domain/anchoring_integrity_report.py): a
+    Pydantic v2 MRRModel (extra="forbid") assembling, per dump: schema_name, the file
+    anchor rows (path, declared_sha256, actual_sha256, matched: bool), object counts by
+    kind, the ORDERED verdict rows, and separate count blocks for VIOLATIONS
+    (anchor_dangling, claim_reference_dangling) and OBSERVATIONS (source_unanchored,
+    anchor_unreferenced) — the two blocks are distinct fields and are never summed into
+    one "problems" number. A FIXED honesty header from a single module-level constant:
+    anchoring_is_not_support = Literal[True], plus a note string stating verbatim that
+    (i) a resolvable anchor proves the anchor points at a really archived SourceRecord,
+    (ii) it does NOT establish that the source supports the claim it is cited for — that
+    is N2-T03, (iii) unanchored sources and unreferenced anchors are OBSERVATIONS, not
+    errors, and (iv) no external resolution of the archive's own sources is performed
+    here. It is NOT a BaseObject, has NO schemas/*.schema.json mirror, and is NEVER
+    written to the object store. Pure render_markdown/render_json (sort_keys=True, no
+    wall clock) mirroring citation_audit_report's renderers, and a build_anchoring_
+    integrity_report(...) factory taking already-computed values.
+  - >-
+    R4 (descriptor fixture already committed — read only, do NOT regenerate): the
+    service reads corpora/archive-integrity/anchoring-batch.v1.json, committed at
+    derivation with both REAL file anchors and descriptor-relative dump paths. The build
+    MUST NOT edit it, MUST NOT recompute or replace its anchors, and MUST NOT fabricate
+    one. Dump paths inside the descriptor resolve relative to the descriptor file's OWN
+    directory, never the process CWD. Unlike R2-T01's fixed two-role batch, the dumps[]
+    list is OPEN (it grows with each new run); the service must handle any length >= 1
+    and reject an empty list as a typed input error.
+  - >-
+    R5 (AnchoringIntegrityService, services/control_plane/mrr/services/
+    anchoring_integrity/service.py): read-only, NO-NETWORK, NO-DATABASE orchestration —
+    it must not import sqlalchemy, construct an engine, or build a repository. Given a
+    --batch descriptor path it: parses the descriptor (wrong shape / missing key / bad
+    JSON / empty dumps[] -> typed AnchoringIntegrityInputError -> exit 2); resolves each
+    dump path relative to the descriptor dir; reads each dump's bytes and computes
+    "sha256:" + hashlib.sha256(bytes).hexdigest() (a missing/unreadable dump ->
+    AnchoringIntegrityInputError -> exit 2); compares each against its pinned anchor and
+    raises a typed IntegrityGateError naming the dump, both hashes, and halting BEFORE
+    any dump is parsed (fail-closed — the gate is strictly before the evaluation, and no
+    parse result may exist when it fires); on a clean gate parses each dump via R1,
+    evaluates via R2, and builds the R3 report. Markdown shows, per dump, the anchor
+    row, the kind counts, the violation block and — visually separate — the observation
+    block with the unanchored sources named.
+  - >-
+    R6 (CLI, services/control_plane/mrr/services/cli/anchoring_integrity_main.py + 2
+    lines in cli/main.py): `mrr audit anchoring` with --batch <descriptor path>
+    (required), --format md|json (default md), --output <path> (default stdout).
+    NFR-012 ordering: cheapest local checks first — (1) --output must not already exist;
+    (2) the service reads/parses descriptor and dumps; a file-level problem
+    (AnchoringIntegrityInputError) -> exit 2; a fail-closed anchor mismatch
+    (IntegrityGateError) or a dump-structure refusal (ArchiveDumpParseError) -> exit 3
+    (a REFUSAL, never a crash, never a silent pass). Exit 0 on success — INCLUDING when
+    violations are found: this packet audits and reports, it does not gate a run (a
+    non-zero-on-violation gate belongs to the nightly R2-T02, which does not exist).
+    Atomic os.replace for --output. A standalone build_parser()/main() enables `python -m
+    mrr.services.cli.anchoring_integrity_main anchoring ...`. IMPORTANT: `audit` is an
+    EXISTING subcommand group (N2-T01's `mrr audit citations`); this packet adds the
+    `anchoring` sub-subcommand to that same group without changing citations' parser,
+    dispatch, or behaviour in any way.
+  - >-
+    R7 (tests every tier + security-check). unit (DB-free, no-network): R1 parses a
+    small synthetic COPY block correctly (column-name indexing proven by reordering the
+    header columns and getting the same result), maps \N to None, and raises the typed
+    parse error for each named deviation (no objects block, missing column, wrong field
+    count, invalid JSON body); R2 resolves and detects a dangling anchor and a dangling
+    claim reference, and reports unanchored/unreferenced coverage — with an explicit
+    test that a dangling reference and an unanchored source produce DIFFERENT statuses
+    and land in DIFFERENT count blocks (the never-collapse invariant); R3 report shape
+    incl. the honesty header (anchoring_is_not_support is Literal[True], the note names
+    N2-T03) and determinism (two renders byte-identical, stable content hash).
+    A fail-closed test proving the gate short-circuits: a descriptor whose declared
+    anchor is wrong makes the service raise IntegrityGateError and the dump parser is
+    provably NOT reached (monkeypatch the parser to raise AssertionError and assert
+    IntegrityGateError is raised instead). architecture (lint-imports): the two domain
+    modules import no framework/service module; the service imports no sqlalchemy.
+    contract: the R3 model validates its own instances (extra="forbid" rejects an
+    unknown field). acceptance (DB-free, no-network, over the REAL committed batch):
+    both dump anchors match; k1t04 reports 18 SourceRecord / 17 EvidenceAnchor / 4
+    Claim, 0 dangling anchors, 45 claim references with 0 dangling, 1 unanchored source;
+    run2 reports 36 / 34 / 8, 0 dangling anchors, 90 claim references with 0 dangling,
+    2 unanchored sources — asserted numerically. All existing suites pass UNMODIFIED.
+    Every make tier green INCLUDING make security-check.
+allowed_paths:
+  - packages/domain/mrr/domain/archive_dump.py
+  - packages/domain/mrr/domain/anchoring_integrity.py
+  - packages/domain/mrr/domain/anchoring_integrity_report.py
+  - services/control_plane/mrr/services/anchoring_integrity/__init__.py
+  - services/control_plane/mrr/services/anchoring_integrity/service.py
+  - services/control_plane/mrr/services/cli/anchoring_integrity_main.py
+  - services/control_plane/mrr/services/cli/main.py                      # +2 lines only (register + dispatch)
+  - tests/unit/
+  - tests/contract/
+  - docs/design/
+  - task-packets/N2-T02b.yaml
+forbidden_changes:
+  - corpora/archive-integrity/anchoring-batch.v1.json                    # descriptor — created at derivation, read only, anchors never recomputed
+  - archive/**                                                           # the dumps are ARCHIVE — read only, never regenerated in this packet
+  - corpora/research-records/**                                          # N2-T02a's target — untouched here
+  - corpora/e2e-survey/**
+  - corpora/model-collapse/**
+  - packages/domain/mrr/domain/citation_audit.py                         # frozen N2-T01 core — precedent only, never modified
+  - packages/domain/mrr/domain/citation_audit_report.py
+  - services/control_plane/mrr/services/citation_audit/**                # frozen N2-T01 evaluator — `mrr audit citations` behaviour unchanged
+  - packages/domain/mrr/domain/field_observation.py                      # R2-T01 — pattern to mirror, NEVER widened (BatchRole stays closed)
+  - packages/domain/mrr/domain/field_observation_report.py
+  - services/control_plane/mrr/services/field_observation/**
+  - services/control_plane/mrr/services/validation/**                    # N1 — untouched
+  - services/node_runtime/**
+  - packages/persistence/**                                              # this packet is database-free
+  - schemas/**                                                           # no persisted anchoring object
+  - packages/contracts/**                                                # MRRModel imported read-only
+  - migrations/**
+  - pyproject.toml                                                       # no new dependency; hashlib/json/re are stdlib
+  - uv.lock
+derived_decisions:
+  - >-
+    (a) Anchoring is not support. A resolvable anchor proves the anchor points at a
+    really archived SourceRecord; it says nothing about whether that source carries the
+    claim (N2-T03). This is the packet's single most important honesty boundary — the
+    T02b analogue of N1's reliability-not-validity, N2-T01's existence-not-support and
+    R2-T01's observation-not-optimization.
+  - >-
+    (b) Violations and observations are never collapsed. anchor_dangling and
+    claim_reference_dangling are integrity violations (the machine form of AGENTS.md's
+    "letting an agent cite a source it did not retrieve and anchor"); source_unanchored
+    and anchor_unreferenced are observations — a corpus source that ended up carrying no
+    evidence is not an error. Folding them into one "problems" count would report 1
+    resp. 2 false violations against the real archive on day one, and is the exact
+    prohibited shortcut in AGENTS.md.
+  - >-
+    (c) The committed dumps are the input, not the database. The local instance was
+    reachable at derivation but is the declared throwaway (Befund 1); auditing it would
+    audit an ephemeral artefact nobody else can reproduce. The dumps are committed
+    bytes (git authoritative), hash-anchorable, and readable with no database
+    connection — which also keeps the whole audit offline and deterministic.
+  - >-
+    (d) The R2-T01 gate is mirrored, not reused, and its closed set is not widened.
+    check_anchor takes role: BatchRole with the closed set {"manifest","snapshot"}; a
+    dump is neither. Widening another packet's closed Literal to make reuse convenient
+    would soften an invariant that packet deliberately established. T02b mirrors the
+    pattern with its own OPEN dumps list (their number grows with each run). Reuse where
+    it is real, mirror where the shape differs.
+  - >-
+    (e) The parser is strict by design. Column-name indexing (never fixed positions),
+    \N -> None, and a typed refusal for every deviation. A lenient parser that skipped an
+    unexpected row would under-report exactly the integrity failures this audit exists to
+    find — a silent skip here is indistinguishable from a clean result.
+  - >-
+    (f) Report is a projection, not a persisted object. Pydantic-validated (rule 6) but
+    never entering the object store (rule 7). No schemas/** mirror, no migration.
+  - >-
+    (g) No non-zero exit on violations. The audit reports; it does not judge a run. A
+    gate exit belongs to the nightly routine R2-T02, which does not exist — adding it now
+    would build for a caller that has not been named (use-first).
+invariants:
+  - No network connection and no database connection is opened anywhere; sqlalchemy is never imported by this packet's code.
+  - Nothing is written except the requested --output file (atomic os.replace); the dumps and the descriptor are never modified.
+  - No wall-clock timestamp in any rendered byte; identical inputs yield a byte-identical report and a stable content hash.
+  - On ANY dump-anchor mismatch the run raises IntegrityGateError and NO dump is parsed — the gate is strictly before the evaluation (fail-closed).
+  - Violation counts and observation counts are separate fields in the report and are never summed or presented as one number.
+  - No row is silently skipped and no missing field silently defaulted; every parse deviation is a typed refusal.
+  - The existing `mrr audit citations` parser, dispatch, and behaviour are unchanged.
+acceptance_tests:
+  - >-
+    AT1: over the committed corpora/archive-integrity/anchoring-batch.v1.json, both dump
+    anchors match (declared == actual), and the report states for mrr_k1t04_real_run_v2:
+    18 SourceRecord, 17 EvidenceAnchor, 4 Claim, 0 anchor_dangling, 45 claim references
+    with 0 claim_reference_dangling, 1 source_unanchored, 0 anchor_unreferenced —
+    asserted numerically.
+  - >-
+    AT2: the same run states for mrr_run2_corroboration_floor_v1: 36 SourceRecord, 34
+    EvidenceAnchor, 8 Claim, 0 anchor_dangling, 90 claim references with 0
+    claim_reference_dangling, 2 source_unanchored, 0 anchor_unreferenced — asserted
+    numerically.
+  - >-
+    AT3: never-collapsed — a synthetic archive containing BOTH a dangling anchor and an
+    unanchored source yields two DIFFERENT statuses landing in DIFFERENT report count
+    blocks (violations vs observations); no field of the report sums them.
+  - >-
+    AT4: fail-closed — a descriptor with a wrong declared dump anchor makes the service
+    raise IntegrityGateError (naming the dump and both hashes), and the dump parser is
+    provably NOT reached (monkeypatch it to raise AssertionError; IntegrityGateError is
+    raised instead).
+  - >-
+    AT5: the report header carries anchoring_is_not_support=True with the note that a
+    resolvable anchor proves archival presence and NOT support (N2-T03), and that
+    unanchored sources and unreferenced anchors are observations, not errors.
+  - >-
+    AT6: strict parsing and refusals — column-name indexing survives a reordered COPY
+    header; \N becomes None; no-objects-block, missing column, wrong field count and
+    invalid JSON body each raise the typed parse error (exit 3 at the CLI); a missing or
+    unparseable descriptor exits 2; two renders are byte-identical; existing suites pass
+    unmodified.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make security-check
+specification_gaps:
+  - >-
+    Support-checking (does the anchored source carry the claim?) and number-consistency
+    are N2-T03 — named, not built. This packet establishes that the anchor points at a
+    really archived source, and says so and no more.
+  - >-
+    External resolution of the archive's OWN SourceRecords is deliberately absent: of
+    the 18 distinct records, 3 are arXiv papers and 1 carries a DOI, while 15 are
+    curated-artwork-records with ordinary web URLs no metadata API knows. Such a run
+    would be overwhelmingly "unverifiable" and would simulate a check that does not take
+    place.
+  - >-
+    Verifying an anchor's own content_hash/snapshot_hash against the referenced snapshot
+    BYTES would require those snapshot artefacts to be committed alongside the dumps;
+    they are not, so this packet checks reference RESOLUTION and hash PRESENCE, not hash
+    recomputation — stated in the report rather than implied.
+  - >-
+    A nightly gate exit on violations belongs to R2-T02 (which does not exist); this
+    packet exits 0 on a successfully built report regardless of findings.
+required_output:
+  - Packet report per AGENTS.md "Required delivery format", embedding the exact
+    `mrr audit anchoring` invocation, the rendered Markdown report verbatim (both dumps'
+    anchor rows, kind counts, the violation block and the separate observation block
+    with the unanchored sources named), and the honesty header.
+stop_conditions:
+  - >-
+    If reproducing the expected result requires editing or regenerating the committed
+    descriptor or either dump, STOP — they are the oracle and the archive (AGENTS.md
+    rule 3; committed archive JSON/dumps are never edited).
+  - >-
+    If making a tier green requires collapsing violations and observations into one
+    count, softening a status set, or reporting a dangling reference as anything but a
+    violation, STOP — that is the prohibited shortcut this packet exists to avoid.
+  - >-
+    If the gate can only pass by parsing a dump before the hash check, or if any step
+    appears to require a database connection, a network call, a new dependency, or
+    widening R2-T01's closed BatchRole, STOP.

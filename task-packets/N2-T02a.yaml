@@ -1,0 +1,281 @@
+task_id: N2-T02a
+title: >-
+  Reproducible gated citation-resolution fetch (`scripts/fetch_citation_resolutions.py`)
+  and the audit of the three research records' own 21 inline citations: run once
+  against the two open, keyless metadata APIs (arXiv, Crossref) behind a hard host
+  allowlist, commit the resulting resolution snapshot as archive, and audit the
+  committed record-citation manifest with the UNCHANGED frozen N2-T01 evaluator.
+  Builds the pipeline N2-T02 was named for; changes no runtime code at all.
+status: approved
+epic: N2
+reviewer_resolution: >-
+  Approved 2026-07-25 by the main session as reviewing instance, under the owner's
+  instruction the same day to derive and build N2-T02 (citation audit over the record
+  citations + anchoring integrity, decomposed if warranted) recorded in
+  docs/design/2026-07-25-n2-t02-derivation.md, and under the standing use-first
+  decision (docs/design/2026-07-22-nutzungsentscheidung-e9-vertagt.md). Decomposed
+  into T02a (this packet, the only half that touches the network) and T02b (offline
+  anchoring integrity) because the two halves have different risk profiles and a
+  single packet would blur exactly the boundary that must stay separately
+  reviewable. Load-bearing choices CONFIRMED at derivation: (1) the "~47 record
+  citations" DO NOT EXIST as an auditable set — 47 is a FETCH count (24+23, stated in
+  the record headers) and those fetch lists were never committed; the records make
+  exactly 21 distinct identifiers machine-checkable inline, and the manifest says so
+  rather than implying coverage it does not have; (2) EXISTENCE is not SUPPORT still
+  holds unchanged — this packet verifies references resolve and (where a title is
+  actually claimed) are correctly titled, never that a source carries the claim it is
+  cited for (N2-T03); (3) network egress is a GATED PIPELINE, not a runtime
+  capability — the script lives outside packages/** and services/**, enforces an
+  https + host allowlist (export.arxiv.org, api.crossref.org) as a typed refusal, uses
+  NO key/token/credential of any kind, runs once, and commits its snapshot (git =
+  archive); (4) the frozen N2-T01 evaluator is reused BYTE-FOR-BYTE — the manifest was
+  verified at derivation to parse cleanly through the real _parse_manifest (21 entries,
+  0 malformed, exactly 1 claimed_title), so this packet changes no runtime code; (5) a
+  short system name is NOT a title claim (documented at derivation: "Darwin Gödel
+  Machine" vs arXiv's registered "Darwin Godel Machine" would yield a false
+  title_mismatch from a resolver-side transliteration); (6) the real fetch result
+  (21/21 resolve, performed independently at derivation) is the acceptance oracle the
+  built script must reproduce.
+depends_on: []
+derivation: >-
+  Derived 2026-07-25 from docs/design/2026-07-25-n2-t02-derivation.md, which closes
+  the "N2-T02 (benannt)" slot of docs/design/2026-07-24-n2-derivation.md. Fact base
+  verified first-hand at derivation: the three committed research records
+  (2026-07-23-recherche-e2e-research-automation.md,
+  2026-07-24-nachrecherche-empirische-methoden.md,
+  2026-07-24-primaerquellen-selbstoptimierung.md) carry 21 distinct inline
+  identifiers — 20 arXiv ids and the Nature article id s41586-026-10265-5 — all 21 of
+  which RESOLVE (one batched arXiv id_list query plus one Crossref query, keyless, run
+  at derivation); 8 of the 21 are already covered by N2-T01's snapshot, 13 are new,
+  and the overlap is a deliberate cross-check. Record III section B2 (AlphaEvolve)
+  carries NO machine-checkable identifier and is excluded by name, never by silence.
+  Versioned arXiv ids are real and echo back with their version (2502.14297v3 verified
+  against the live API). No HTTP client is in the dependency tree (no httpx, no
+  requests), so the fetch uses stdlib urllib.request and adds no dependency. The
+  citation manifest corpora/research-records/citations.manifest.json is committed at
+  the governance commit and is READ-ONLY for this build.
+objective: >-
+  After this packet, `python scripts/fetch_citation_resolutions.py --manifest
+  corpora/research-records/citations.manifest.json --output corpora/research-records/
+  verification/resolution-snapshot.json` performs exactly one gated, keyless
+  resolution pass — one batched arXiv id_list request and one Crossref request per DOI,
+  against an enforced https host allowlist — and writes a deterministic snapshot in the
+  committed citation-resolution-snapshot.v1 shape. That snapshot is committed as
+  archive. `mrr audit citations --manifest corpora/research-records/
+  citations.manifest.json --snapshot corpora/research-records/verification/
+  resolution-snapshot.json` then renders, through the UNCHANGED frozen evaluator, a
+  report over all 21 record citations: 21 resolved, 0 not_found, 0 title_mismatch, 0
+  malformed, 0 unverifiable. The script writes only its --output path; the audit tool
+  remains no-network and no-database; no runtime module changes.
+source_of_truth:
+  - docs/design/2026-07-25-n2-t02-derivation.md                          # this packet's derivation
+  - docs/design/2026-07-24-n2-derivation.md                              # the "N2-T02 (benannt)" slot this closes
+  - corpora/research-records/citations.manifest.json                     # the audit target — committed at derivation, READ ONLY
+  - corpora/e2e-survey/verification/resolution-snapshot.json             # the snapshot SHAPE to reproduce exactly (schema_version, resolvers, resolutions[])
+  - packages/domain/mrr/domain/citation_audit.py                         # frozen N2-T01 core — reused by import, never modified
+  - services/control_plane/mrr/services/citation_audit/service.py        # frozen N2-T01 evaluator — the snapshot must satisfy its parser
+  - AGENTS.md                                                            # rule 11 (no unrestricted egress, no secrets), rule 12 (no silent handling)
+requirements:
+  - >-
+    R1 (gated fetch script, scripts/fetch_citation_resolutions.py — NEW, outside the
+    runtime): a standalone Python module under scripts/, NOT importable from
+    packages/** or services/** and importing nothing from mrr.* — the runtime must stay
+    no-network by construction. Stdlib only (urllib.request, urllib.parse,
+    xml.etree.ElementTree, json, argparse, hashlib); NO new dependency. It MUST enforce,
+    as a typed refusal before any socket is opened, that every request URL is https AND
+    its host is in a hard-coded allowlist of exactly {"export.arxiv.org",
+    "api.crossref.org"} — any other URL raises, never warns, never proceeds. It MUST
+    NOT read, accept, or send any API key, token, credential, or Authorization header
+    (both APIs are open); it sends only a descriptive User-Agent. It MUST NOT interpret,
+    score, enrich, or "repair" anything: an identifier the API does not return is
+    recorded as resolved=false, never silently dropped and never back-filled from
+    another source.
+  - >-
+    R2 (fetch behaviour, exact): read the manifest's citations[]; group by resolver —
+    every entry with identifiers.arxiv goes to arXiv, every entry with identifiers.doi
+    (and no arxiv) goes to Crossref; an entry with neither is written out as a typed
+    refusal, never guessed at. arXiv: ONE batched request to
+    https://export.arxiv.org/api/query with id_list = the comma-joined requested ids and
+    max_results = their count (one round trip for all of them, not one per id), parsing
+    the Atom response; a requested id ABSENT from the response is resolved=false (the
+    documented not-found semantics already recorded in the e2e-survey snapshot).
+    Requested ids MUST be matched INCLUDING their version suffix (2502.14297v3 comes
+    back as .../abs/2502.14297v3 — verified live at derivation); the script must never
+    normalise a version away or match a versioned request to an unversioned response.
+    Crossref: one GET per DOI to https://api.crossref.org/works/<url-quoted doi>; HTTP
+    404 is resolved=false; any other non-200 is a typed refusal naming the status, never
+    a silent resolved=false. Every request has an explicit timeout.
+  - >-
+    R3 (snapshot output shape — must satisfy the frozen parser unchanged): write JSON in
+    exactly the committed citation-resolution-snapshot.v1 shape, mirroring
+    corpora/e2e-survey/verification/resolution-snapshot.json: top-level schema_version,
+    manifest (relative path back to the manifest), fetched_on, resolvers (the two
+    documented resolver descriptions incl. the not-found semantics), note (stating
+    verbatim that this records EXISTENCE and the canonical title, and NOT that a source
+    supports the claim it was cited for — N2-T03), and resolutions[]: one object per
+    manifest citation with citation_id, identifier (resolver-tagged, e.g.
+    "arxiv:2511.02824"), resolver, resolved (JSON boolean), resolved_title, and, where
+    the API gives them, resolved_container/resolved_detail. resolutions[] MUST be sorted
+    by citation_id and the JSON written with sort_keys=True and a trailing newline, so
+    re-running over unchanged upstream metadata reproduces a byte-identical file. It
+    MUST cover EVERY manifest citation — a manifest entry with no resolution would make
+    the frozen evaluator raise MissingResolutionError, which is the correct refusal but
+    must not be triggered by the script's own omission.
+  - >-
+    R4 (run once, commit the result): execute the script exactly once against the
+    committed manifest and commit its output as
+    corpora/research-records/verification/resolution-snapshot.json. The snapshot is
+    ARCHIVE from that moment (CLAUDE.md/AGENTS.md: git is authoritative for committed
+    bytes) — it is not hand-edited afterwards, not partially patched, and not
+    regenerated to make a test pass. If the real fetch disagrees with the derivation's
+    oracle (21/21 resolve), the DISAGREEMENT IS THE RESULT: commit what the APIs
+    actually returned and report the difference — do not adjust the manifest, the
+    script, or the snapshot to reach the expected number.
+  - >-
+    R5 (audit run, no code change): run `mrr audit citations` over the committed
+    manifest + the new snapshot using the UNCHANGED frozen evaluator, and record the
+    rendered report in the packet report. This packet changes NO file under
+    packages/** or services/**. If the audit appears to require a change there, that is
+    a finding to report, not a change to make.
+  - >-
+    R6 (tests + security-check): unit (no-network, no-DB): the allowlist/https guard
+    REFUSES a non-allowlisted host, a non-https scheme, and an unexpected URL, as a
+    typed error, with no socket opened (assert via a monkeypatched opener that fails the
+    test if called); the arXiv Atom parser maps a response to resolutions correctly,
+    including (a) a requested id ABSENT from the response becoming resolved=false and
+    (b) a versioned id matching only its versioned response id; the Crossref parser maps
+    a 404 to resolved=false and a 500 to a typed refusal; the snapshot writer is
+    deterministic (two writes of the same parsed input are byte-identical) and covers
+    every manifest citation. All parser tests run against FIXTURE payloads checked into
+    tests/, never by calling the network — the test suite MUST remain fully offline.
+    acceptance (offline, over the two committed files): `mrr audit citations` over the
+    committed manifest + snapshot reports 21 citations, 21 resolved, 0 not_found, 0
+    title_mismatch, 0 malformed, 0 unverifiable, asserted numerically; and the 8
+    citations shared with the e2e-survey manifest resolve to the SAME titles in both
+    committed snapshots (the cross-check). All existing suites pass UNMODIFIED. Every
+    make tier green INCLUDING make security-check (the https+allowlist guard is the
+    honest answer to bandit B310 — do not silence it with a bare nosec).
+allowed_paths:
+  - scripts/fetch_citation_resolutions.py
+  - corpora/research-records/verification/resolution-snapshot.json       # created by running R1 once; never hand-edited
+  - tests/unit/
+  - tests/contract/
+  - docs/design/
+  - task-packets/N2-T02a.yaml
+forbidden_changes:
+  - corpora/research-records/citations.manifest.json                     # the audit target — committed at derivation, READ ONLY
+  - packages/domain/mrr/domain/citation_audit.py                         # frozen N2-T01 core — reuse by import only
+  - packages/domain/mrr/domain/citation_audit_report.py                  # frozen N2-T01 projection — reuse by import only
+  - services/control_plane/mrr/services/citation_audit/**                # frozen N2-T01 evaluator — NEVER modified
+  - services/control_plane/mrr/services/cli/**                           # no CLI change in this packet
+  - packages/domain/mrr/domain/field_observation.py                      # R2-T01 — untouched
+  - packages/domain/mrr/domain/field_observation_report.py               # R2-T01 — untouched
+  - services/control_plane/mrr/services/field_observation/**             # R2-T01 — untouched
+  - services/control_plane/mrr/services/validation/**                    # N1 — untouched
+  - corpora/e2e-survey/**                                                # N2-T01/R2-T01 oracle — read only, never regenerated
+  - corpora/model-collapse/**
+  - archive/**
+  - schemas/**
+  - packages/contracts/**
+  - migrations/**
+  - pyproject.toml                                                       # no new dependency; stdlib only
+  - uv.lock
+derived_decisions:
+  - >-
+    (a) The 47 do not exist; the honest number is 21. 47 is the records' own FETCH
+    count (24+23) and those lists were never committed — they cannot be audited and the
+    manifest must not imply they were. The gap between 47 fetched and 21 identified is
+    itself a finding about the records, recorded in the manifest rather than smoothed
+    over. Reporting a smaller, true number beats reporting a larger, unearned one.
+  - >-
+    (b) Network egress is a gated pipeline, never a runtime capability. Script under
+    scripts/, importing nothing from mrr.*; https + hard host allowlist as a typed
+    refusal; keyless (no token can leak into a note or log); run once, snapshot
+    committed. The audit tool stays no-network — the separation N2-T01 established is
+    strengthened here, not relaxed.
+  - >-
+    (c) The frozen evaluator is reused byte-for-byte; this packet changes no runtime
+    code. Verified at derivation by parsing the manifest through the real
+    _parse_manifest. AGENTS.md rule 8 ("no executor verifies its own result") holds
+    doubly: the audit is performed by the unchanged N2-T01 evaluator this packet did not
+    write, and the acceptance oracle came from an INDEPENDENT derivation-time fetch the
+    built script must reproduce rather than define.
+  - >-
+    (d) A short system name is not a title claim. claimed_title is declared for exactly
+    one citation (the only one a record puts in quotation marks). Treating "Darwin Gödel
+    Machine" as a claimed title would produce title_mismatch against arXiv's registered
+    "Darwin Godel Machine" — a false accusation of misattribution caused by a
+    resolver-side transliteration. Existence remains the primary verdict for this
+    target, as it was for N2-T01's.
+  - >-
+    (e) A disagreement with the oracle is a result, not a bug. If the real fetch does not
+    reproduce 21/21, the committed snapshot records what the APIs returned and the packet
+    report states the difference. Adjusting inputs to reach an expected number is exactly
+    the fabrication this capability exists to detect.
+invariants:
+  - The runtime path (packages/**, services/**) is unchanged and remains no-network and no-database.
+  - No API key, token, credential, or Authorization header exists anywhere in this packet.
+  - Every outbound request is https and to an allowlisted host, enforced as a typed refusal before any socket is opened.
+  - The test suite is fully offline; parser tests run against checked-in fixture payloads only.
+  - The committed snapshot covers every manifest citation and is byte-reproducible (sorted, sort_keys, trailing newline).
+  - An unresolvable identifier is recorded as resolved=false; it is never dropped, never back-filled, never "repaired".
+acceptance_tests:
+  - >-
+    AT1: `mrr audit citations` over the committed manifest + the newly committed
+    snapshot reports 21 citations with 21 resolved, 0 not_found, 0 title_mismatch,
+    0 malformed, 0 unverifiable — asserted numerically, through the unchanged evaluator.
+  - >-
+    AT2: cross-check — for the 8 citations shared with corpora/e2e-survey, the
+    resolved_title in the new snapshot equals the resolved_title in the committed
+    e2e-survey snapshot; two independent fetches, same answers.
+  - >-
+    AT3: egress guard — a non-allowlisted host, a non-https scheme, and an unexpected
+    URL each raise a typed refusal with NO socket opened (monkeypatched opener fails the
+    test if it is ever called).
+  - >-
+    AT4: parser correctness on fixtures — a requested arXiv id absent from the Atom
+    response yields resolved=false; a versioned id matches only its versioned response
+    id; Crossref 404 yields resolved=false while 500 yields a typed refusal.
+  - >-
+    AT5: determinism — writing the snapshot twice from the same parsed input is
+    byte-identical; existing suites pass unmodified; every make tier green including
+    make security-check.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make security-check
+specification_gaps:
+  - >-
+    Support-checking (does the source carry the claim it is cited for?) and
+    number-consistency are N2-T03 — named, not built, and the heavy LLM/human piece.
+    This packet verifies existence and, once, a title.
+  - >-
+    The ~26 sources the records fetched but never identified inline remain unauditable.
+    Closing that gap means the research harness committing its fetch list — a separate
+    question, not this packet's business, and deliberately not papered over.
+  - >-
+    A nightly re-run of this fetch (detecting a withdrawn or retitled paper after the
+    fact) belongs to R2-T02, the gated nightly routine, which does not exist. This
+    packet is run-once-commit.
+required_output:
+  - Packet report per AGENTS.md "Required delivery format", embedding the exact script
+    invocation and the exact `mrr audit citations` invocation, the rendered Markdown
+    report verbatim, the snapshot's own sha256, and an explicit statement of whether
+    the real fetch reproduced the derivation oracle (21/21) or differed — and how.
+stop_conditions:
+  - >-
+    If reproducing the expected audit result requires editing the committed manifest,
+    hand-editing the snapshot, or adjusting the script's matching rules to make an
+    identifier resolve, STOP — the manifest is the oracle and the snapshot is archive
+    (AGENTS.md rule 3/4).
+  - >-
+    If any step appears to require an API key, a non-allowlisted host, a plain-http
+    request, or reaching the network from packages/** or services/**, STOP — each would
+    break the packet's reason for existing (AGENTS.md rule 11).
+  - >-
+    If a make tier can only go green by modifying the frozen N2-T01 core/service, adding
+    a dependency, silencing bandit with a bare nosec, or making a test reach the
+    network, STOP.

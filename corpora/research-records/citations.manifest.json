@@ -1,0 +1,223 @@
+{
+  "schema_version": "citation-manifest.v1",
+  "audit_target": "The three research records committed under docs/design/ (2026-07-23 e2e research automation, 2026-07-24 empirical methods, 2026-07-24 primary-source self-optimisation) — the evidence base the capability roadmap draft cites as \"47 Quellen, 45 adversarial verifizierte Claims\".",
+  "cited_by": "docs/design/2026-07-23-recherche-e2e-research-automation.md, docs/design/2026-07-24-nachrecherche-empirische-methoden.md, docs/design/2026-07-24-primaerquellen-selbstoptimierung.md",
+  "provenance": "Transcribed 2026-07-25 at the N2-T02 derivation, by hand, from the three committed record files. Every entry corresponds to an identifier written INLINE in a record; cited_as is the record's own surrounding label, quoted as it stands, and cited_in names the record file and line the identifier appears on. No entry is invented and no source is added that the records do not identify.",
+  "note_on_the_47": "The roadmap draft's \"47 Quellen\" is a FETCH count, not a citation count: record I's header states \"24 Quellen gefetcht\", record II's \"23 Quellen\" (24+23=47). Those fetched source lists were never committed to this repository and do not exist as data anywhere in it — they cannot be audited, and this manifest does not pretend to cover them. What the records actually make machine-checkable is the set below: 21 distinct identifiers written inline (20 arXiv ids + 1 Nature article id). The gap between 47 fetched and 21 identified is a real, named limitation of the records, recorded here rather than smoothed over; closing it would mean the research harness committing its fetch list, which is a separate question and not this packet's business.",
+  "note_on_exclusions": "Record III section B2 (AlphaEvolve, Google DeepMind) is cited with NO machine-checkable identifier at all — no arXiv id, no DOI, no URL. It is therefore outside this audit's reach and is deliberately NOT listed below: inventing an identifier for it would be exactly the fabrication this audit exists to detect. The exclusion is named, not silent.",
+  "note_on_titles": "The records cite by system/short name plus identifier, not by paper title, so claimed_title is declared for exactly ONE entry — inspectable-ai-for-science, the only citation a record puts in quotation marks as a title. A short system name is NOT treated as a title claim, for a documented reason found at derivation: record III writes \"Darwin Gödel Machine\", while arXiv's own registered title transliterates to \"Darwin Godel Machine\"; treating the name as a claimed title would produce a title_mismatch verdict for a resolver-side transliteration, i.e. a false accusation of misattribution. As with the /e2e-automation survey, the primary verdict for this target is therefore EXISTENCE. claimed_title is never back-filled from a resolved title (that would be circular).",
+  "note_on_derived_urls": "The records cite by identifier, not by URL, so cited_url here is DERIVED deterministically from the cited identifier (arXiv id -> https://arxiv.org/abs/<id>; the Nature article id -> https://www.nature.com/articles/<id>) and is NOT a verbatim transcription. It is recorded as a declared identifier because the frozen N2-T01 core treats cited_url as one; the audit's substantive verdict for every entry rests on the arXiv id or DOI, which ARE transcribed.",
+  "note_on_the_nature_doi": "Record I cites the Nature paper by its article id \"s41586-026-10265-5\" without a DOI prefix. The doi below (10.1038/s41586-026-10265-5) is the article id with Nature's registrant prefix applied — a parse, exactly as the /e2e-automation manifest parsed identifiers out of cited URLs, not a string the record contains verbatim.",
+  "citations": [
+    {
+      "citation_id": "sakana-nature",
+      "cited_as": "Sakana AI Scientist (Nature 651:914–919, 25.03.2026, s41586-026-10265-5)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:29",
+      "cited_url": "https://www.nature.com/articles/s41586-026-10265-5",
+      "identifiers": {
+        "doi": "10.1038/s41586-026-10265-5"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "kosmos",
+      "cited_as": "Kosmos (FutureHouse/Edison, arXiv 2511.02824, Nov. 2025)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:37",
+      "cited_url": "https://arxiv.org/abs/2511.02824",
+      "identifiers": {
+        "arxiv": "2511.02824"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "agent-laboratory",
+      "cited_as": "Agent Laboratory (arXiv 2501.04227, EMNLP Findings 2025)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:45",
+      "cited_url": "https://arxiv.org/abs/2501.04227",
+      "identifiers": {
+        "arxiv": "2501.04227"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "beel-ai-scientist-eval",
+      "cited_as": "AI Scientist, unabhängig evaluiert (Beel et al., arXiv 2502.14297v3, ACM SIGIR …)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:51",
+      "cited_url": "https://arxiv.org/abs/2502.14297v3",
+      "identifiers": {
+        "arxiv": "2502.14297v3"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "deeptrace",
+      "cited_as": "DeepTRACE (arXiv 2509.04499, Preprint Sep. 2025)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:57",
+      "cited_url": "https://arxiv.org/abs/2509.04499",
+      "identifiers": {
+        "arxiv": "2509.04499"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "zhu-implementation-capability",
+      "cited_as": "… methodischen Mängeln (Zhu et al., arXiv 2506.01372 — Achtung, in Sekundärquellen …)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:59",
+      "cited_url": "https://arxiv.org/abs/2506.01372",
+      "identifiers": {
+        "arxiv": "2506.01372"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "neurips-fabricated-citations",
+      "cited_as": "… arXiv 2602.05930). [3-0 ×2]",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:62",
+      "cited_url": "https://arxiv.org/abs/2602.05930",
+      "identifiers": {
+        "arxiv": "2602.05930"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "sciintegrity-bench",
+      "cited_as": "SciIntegrity-Bench (arXiv 2605.10246, 2026; 7 Frontier-LLMs, 231 Läufe)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:63",
+      "cited_url": "https://arxiv.org/abs/2605.10246",
+      "identifiers": {
+        "arxiv": "2605.10246"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "sciintbench",
+      "cited_as": "korroboriert arXiv 2605.29468",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:79",
+      "cited_url": "https://arxiv.org/abs/2605.29468",
+      "identifiers": {
+        "arxiv": "2605.29468"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "citation-hallucination-multi-agent",
+      "cited_as": "(arXiv 2605.08583) — genau die mechanische Prüfklasse, die MRR-artig funktioniert.",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:82",
+      "cited_url": "https://arxiv.org/abs/2605.08583",
+      "identifiers": {
+        "arxiv": "2605.08583"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "aar-position-paper",
+      "cited_as": "AAR-Positionspapier, arXiv 2602.13855, Feb. 2026",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:88",
+      "cited_url": "https://arxiv.org/abs/2602.13855",
+      "identifiers": {
+        "arxiv": "2602.13855"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "cited-but-not-verified",
+      "cited_as": "(arXiv 2605.06635) und DeepTRACE.",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:90",
+      "cited_url": "https://arxiv.org/abs/2605.06635",
+      "identifiers": {
+        "arxiv": "2605.06635"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "inspectable-ai-for-science",
+      "cited_as": "\"Inspectable AI for Science\" (Binkyte et al., CISPA u. a., arXiv 2604.11261)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:98",
+      "cited_url": "https://arxiv.org/abs/2604.11261",
+      "identifiers": {
+        "arxiv": "2604.11261"
+      },
+      "claimed_title": "Inspectable AI for Science"
+    },
+    {
+      "citation_id": "pangakis-validation",
+      "cited_as": "Pangakis/Wolken/Fasching, arXiv 2306.00176",
+      "cited_in": "docs/design/2026-07-24-nachrecherche-empirische-methoden.md:19",
+      "cited_url": "https://arxiv.org/abs/2306.00176",
+      "identifiers": {
+        "arxiv": "2306.00176"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "llm-hacking",
+      "cited_as": "(arXiv 2509.08825: 37 Tasks aus 21 publizierten Studien, 13 Mio. Labels — …)",
+      "cited_in": "docs/design/2026-07-24-nachrecherche-empirische-methoden.md:25",
+      "cited_url": "https://arxiv.org/abs/2509.08825",
+      "identifiers": {
+        "arxiv": "2509.08825"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "liu-inter-prompt-reliability",
+      "cited_as": "Liu, arXiv 2604.16413, April 2026",
+      "cited_in": "docs/design/2026-07-24-nachrecherche-empirische-methoden.md:42",
+      "cited_url": "https://arxiv.org/abs/2604.16413",
+      "identifiers": {
+        "arxiv": "2604.16413"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "barrie-prompt-stability",
+      "cited_as": "Paraphrasen mit Krippendorffs Alpha (Barrie et al., arXiv 2407.02039).",
+      "cited_in": "docs/design/2026-07-24-nachrecherche-empirische-methoden.md:50",
+      "cited_url": "https://arxiv.org/abs/2407.02039",
+      "identifiers": {
+        "arxiv": "2407.02039"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "silicon",
+      "cited_as": "SILICON (Cheng/Mayya/Sedoc, arXiv 2412.14461, v4 Mai 2026)",
+      "cited_in": "docs/design/2026-07-24-nachrecherche-empirische-methoden.md:61",
+      "cited_url": "https://arxiv.org/abs/2412.14461",
+      "identifiers": {
+        "arxiv": "2412.14461"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "statabench",
+      "cited_as": "StatABench (Zhu et al., arXiv 2606.22977, 22.06.2026)",
+      "cited_in": "docs/design/2026-07-24-nachrecherche-empirische-methoden.md:83",
+      "cited_url": "https://arxiv.org/abs/2606.22977",
+      "identifiers": {
+        "arxiv": "2606.22977"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "darwin-goedel-machine",
+      "cited_as": "B1. Darwin Gödel Machine (Sakana AI, arXiv 2505.22954, 2025)",
+      "cited_in": "docs/design/2026-07-24-primaerquellen-selbstoptimierung.md:11",
+      "cited_url": "https://arxiv.org/abs/2505.22954",
+      "identifiers": {
+        "arxiv": "2505.22954"
+      },
+      "claimed_title": null
+    },
+    {
+      "citation_id": "gepa",
+      "cited_as": "GEPA (arXiv 2507.19457, ICLR 2026 Oral)",
+      "cited_in": "docs/design/2026-07-24-primaerquellen-selbstoptimierung.md:53",
+      "cited_url": "https://arxiv.org/abs/2507.19457",
+      "identifiers": {
+        "arxiv": "2507.19457"
+      },
+      "claimed_title": null
+    }
+  ]
+}
