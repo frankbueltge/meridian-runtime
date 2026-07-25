@@ -1,0 +1,459 @@
+{
+  "schema_version": "claims.manifest.v1",
+  "audit_target": "Recherche-Record I — docs/design/2026-07-23-recherche-e2e-research-automation.md",
+  "provenance": "Hand-transcribed 2026-07-25 at the N2-T03 derivation (docs/design/2026-07-25-n2-t03-derivation.md), exactly as the N2-T02a citation manifest was hand-transcribed before it. Every entry names the file and line where the record states the claim, and reproduces the record's own wording in as_written. No entry is invented; no figure is normalised beyond the German decimal comma becoming a dot in the machine-checkable tokens. Scope is Record I only (13 of the 21 manifest citations): it is the record the capability roadmap's staging rests on and the place where the 40-80 misattribution originates. Records II and III follow as N2-T03d once the shape has carried real material.",
+  "excerpt_note": "Every status this manifest can receive is relative to the CHECKED EXCERPT, which for N2-T03 is the source ABSTRACT (arXiv Atom summary, or the Crossref abstract for the Nature DOI) and nothing else. Absence from an abstract is not refutation — it is the normal case, measured at derivation at roughly 28 percent figure coverage. Contradiction is NOT decidable against an abstract and is therefore not in this packet's vocabulary at all; it is deferred, named, to N2-T03c.",
+  "note_on_exclusions": "Three claims of Record I are deliberately excluded and the reason is named rather than silent: (1) the Agent-Laboratory NeurIPS scores '4,0/10 vs. 5,9' (line 152) are marked REFUTED by the record itself and must not be used; (2) the '600+ Desk-Rejects wegen fabrizierter Referenzen bei ICLR 2026' (line 80) is attributed in the record's own sentence to ICLR, not unambiguously to arXiv 2605.29468 — binding it to that citation would be an attribution WE invent; (3) '100 fabrizierte Referenzen in bereits akzeptierten NeurIPS-2025-Papers' (line 60) is credited to a GPTZero scan with the Ansari taxonomy cited only for the taxonomy, so the figure does not belong to arXiv 2602.05930 either. Exclusions are entries here with kind 'excluded', never omissions.",
+  "claims": [
+    {
+      "claim_id": "sakana-six-stages",
+      "citation_id": "sakana-nature",
+      "kind": "figure",
+      "tokens": [
+        "6"
+      ],
+      "anchor_terms": [
+        "stage"
+      ],
+      "quantity": "number of research stages the system automates end to end",
+      "as_written": "alle sechs Stufen (Idee, Code, Experiment, Analyse, Manuskript, Review) automatisiert",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:30"
+    },
+    {
+      "claim_id": "sakana-workshop-score",
+      "citation_id": "sakana-nature",
+      "kind": "figure",
+      "tokens": [
+        "6.33"
+      ],
+      "anchor_terms": [
+        "workshop"
+      ],
+      "quantity": "peer-review score of the one fully autonomous manuscript accepted at an ICLR 2025 workshop",
+      "as_written": "die Peer-Review eines ICLR-2025-Workshops (Score 6,33)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:32"
+    },
+    {
+      "claim_id": "sakana-acceptance-ratio",
+      "citation_id": "sakana-nature",
+      "kind": "figure",
+      "tokens": [
+        "1",
+        "3"
+      ],
+      "anchor_terms": [
+        "workshop"
+      ],
+      "quantity": "accepted submissions out of total submissions at the workshop",
+      "as_written": "aber nur 1 von 3 Einreichungen",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:32"
+    },
+    {
+      "claim_id": "sakana-manual-filtering",
+      "citation_id": "sakana-nature",
+      "kind": "quotation",
+      "text": "we manually filtered the most promising outputs",
+      "quantity": "the authors' own description of the human filtering step between stages",
+      "as_written": "Menschen wählten Themen und filterten Outputs pro Stufe („we manually filtered the most promising outputs\")",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:34"
+    },
+    {
+      "claim_id": "kosmos-run-hours",
+      "citation_id": "kosmos",
+      "kind": "figure",
+      "tokens": [
+        "12"
+      ],
+      "anchor_terms": [
+        "hour"
+      ],
+      "quantity": "maximum duration in hours of one Kosmos run",
+      "as_written": "12-h-Läufe",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:38"
+    },
+    {
+      "claim_id": "kosmos-rollouts",
+      "citation_id": "kosmos",
+      "kind": "figure",
+      "tokens": [
+        "200"
+      ],
+      "anchor_terms": [
+        "rollout"
+      ],
+      "quantity": "number of agent rollouts sustained coherently in one run",
+      "as_written": "~200 Rollouts",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:38"
+    },
+    {
+      "claim_id": "kosmos-code-lines",
+      "citation_id": "kosmos",
+      "kind": "figure",
+      "tokens": [
+        "42000"
+      ],
+      "anchor_terms": [
+        "line",
+        "code"
+      ],
+      "quantity": "average lines of code written per run",
+      "as_written": "Ø 42.000 Zeilen Code",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:38"
+    },
+    {
+      "claim_id": "kosmos-papers-read",
+      "citation_id": "kosmos",
+      "kind": "figure",
+      "tokens": [
+        "1500"
+      ],
+      "anchor_terms": [
+        "paper"
+      ],
+      "quantity": "average number of papers read per run",
+      "as_written": "1.500 Papers",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:39"
+    },
+    {
+      "claim_id": "kosmos-overall-accuracy",
+      "citation_id": "kosmos",
+      "kind": "figure",
+      "tokens": [
+        "79.4"
+      ],
+      "anchor_terms": [
+        "accurat"
+      ],
+      "quantity": "share of report statements judged accurate in the human post-hoc audit",
+      "as_written": "79,4 % der Aussagen akkurat",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:42"
+    },
+    {
+      "claim_id": "kosmos-data-analysis-accuracy",
+      "citation_id": "kosmos",
+      "kind": "figure",
+      "tokens": [
+        "85.5"
+      ],
+      "anchor_terms": [
+        "reproducib"
+      ],
+      "quantity": "share of data-analysis statements judged reproducible in the audit",
+      "as_written": "Datenanalyse 85,5 % reproduzierbar",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:42"
+    },
+    {
+      "claim_id": "kosmos-literature-accuracy",
+      "citation_id": "kosmos",
+      "kind": "figure",
+      "tokens": [
+        "82.1"
+      ],
+      "anchor_terms": [
+        "literature"
+      ],
+      "quantity": "share of literature statements judged accurate in the audit",
+      "as_written": "Literatur 82,1 %",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:43"
+    },
+    {
+      "claim_id": "kosmos-synthesis-accuracy",
+      "citation_id": "kosmos",
+      "kind": "figure",
+      "tokens": [
+        "57.9"
+      ],
+      "anchor_terms": [
+        "interpretation"
+      ],
+      "quantity": "share of synthesis/interpretation statements judged accurate in the audit — the figure the capability roadmap's whole staging rests on",
+      "as_written": "Synthese/Interpretation nur 57,9 %",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:43"
+    },
+    {
+      "claim_id": "kosmos-audit-statement-count",
+      "citation_id": "kosmos",
+      "kind": "figure",
+      "tokens": [
+        "102"
+      ],
+      "anchor_terms": [
+        "statement"
+      ],
+      "quantity": "number of statements covered by the vendor's own post-hoc audit",
+      "as_written": "Kosmos-Audit von den Herstellern selbst (102 Aussagen)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:166"
+    },
+    {
+      "claim_id": "agent-laboratory-stages",
+      "citation_id": "agent-laboratory",
+      "kind": "figure",
+      "tokens": [
+        "3"
+      ],
+      "anchor_terms": [
+        "stage"
+      ],
+      "quantity": "number of fixed pipeline stages staffed by LLM workers",
+      "as_written": "drei feste Stufen mit LLM-Workern",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:46"
+    },
+    {
+      "claim_id": "agent-laboratory-neurips-scores",
+      "citation_id": "agent-laboratory",
+      "kind": "excluded",
+      "exclusion_reason": "The record itself marks this claim REFUTED (1-2) under 'Refutierte Claims (nicht verwenden)'. Auditing a claim the record already withdrew would manufacture a finding.",
+      "as_written": "Agent-Laboratory-NeurIPS-Scores „4,0/10 vs. 5,9\" — refutiert 1-2.",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:152"
+    },
+    {
+      "claim_id": "beel-sample-size",
+      "citation_id": "beel-ai-scientist-eval",
+      "kind": "figure",
+      "tokens": [
+        "12"
+      ],
+      "anchor_terms": [
+        "idea"
+      ],
+      "quantity": "number of generated research ideas in the independent evaluation",
+      "as_written": "System v1, n=12",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:52"
+    },
+    {
+      "claim_id": "beel-coding-failure-rate",
+      "citation_id": "beel-ai-scientist-eval",
+      "kind": "figure",
+      "tokens": [
+        "42"
+      ],
+      "anchor_terms": [
+        "experiment"
+      ],
+      "quantity": "percentage of experiments that failed on coding errors",
+      "as_written": "42 % der Experimente an Coding-Fehlern gescheitert",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:52"
+    },
+    {
+      "claim_id": "beel-all-ideas-novel",
+      "citation_id": "beel-ai-scientist-eval",
+      "kind": "figure",
+      "tokens": [
+        "12"
+      ],
+      "anchor_terms": [
+        "novel"
+      ],
+      "quantity": "number of ideas the system's own literature review declared novel",
+      "as_written": "Literatur-Review erklärte ALLE 12 Ideen für novel",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:53"
+    },
+    {
+      "claim_id": "beel-median-citations",
+      "citation_id": "beel-ai-scientist-eval",
+      "kind": "figure",
+      "tokens": [
+        "5"
+      ],
+      "anchor_terms": [
+        "citation"
+      ],
+      "quantity": "median number of citations per generated manuscript",
+      "as_written": "Manuskripte mit Median 5 Zitaten",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:54"
+    },
+    {
+      "claim_id": "deeptrace-citation-accuracy",
+      "citation_id": "deeptrace",
+      "kind": "figure",
+      "tokens": [
+        "40",
+        "80"
+      ],
+      "anchor_terms": [
+        "citation",
+        "accuracy"
+      ],
+      "quantity": "citation ACCURACY range across audited deep-research systems — not a gap; the misattribution corrected in four documents on 2026-07-25",
+      "as_written": "Zitationsgenauigkeit von Deep-Research-Systemen 40–80 %",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:56"
+    },
+    {
+      "claim_id": "zhu-experimental-weakness-share",
+      "citation_id": "zhu-implementation-capability",
+      "kind": "figure",
+      "tokens": [
+        "100",
+        "28"
+      ],
+      "anchor_terms": [
+        "paper"
+      ],
+      "quantity": "share and count of manually reviewed agent-generated papers showing experimental weaknesses",
+      "as_written": "100 % von 28 manuell geprüften agent-generierten Papers mit experimentellen Schwächen",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:57"
+    },
+    {
+      "claim_id": "zhu-methodological-flaw-share",
+      "citation_id": "zhu-implementation-capability",
+      "kind": "figure",
+      "tokens": [
+        "96.4"
+      ],
+      "anchor_terms": [
+        "methodolog"
+      ],
+      "quantity": "share of the same papers showing methodological flaws",
+      "as_written": "96,4 % mit methodischen Mängeln",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:58"
+    },
+    {
+      "claim_id": "neurips-fabricated-reference-count",
+      "citation_id": "neurips-fabricated-citations",
+      "kind": "excluded",
+      "exclusion_reason": "The record credits the count to a GPTZero scan and cites arXiv 2602.05930 for the TAXONOMY only ('Taxonomie Ansari 2026'). Binding the figure to that paper would be an attribution this manifest invents rather than transcribes.",
+      "as_written": "100 fabrizierte Referenzen in bereits akzeptierten NeurIPS-2025-Papers (GPTZero-Scan; Taxonomie Ansari 2026, arXiv 2602.05930)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:60"
+    },
+    {
+      "claim_id": "sciintegrity-model-count",
+      "citation_id": "sciintegrity-bench",
+      "kind": "figure",
+      "tokens": [
+        "7"
+      ],
+      "anchor_terms": [
+        "llm"
+      ],
+      "quantity": "number of frontier LLMs evaluated by the benchmark",
+      "as_written": "7 Frontier-LLMs",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:63"
+    },
+    {
+      "claim_id": "sciintegrity-run-count",
+      "citation_id": "sciintegrity-bench",
+      "kind": "figure",
+      "tokens": [
+        "231"
+      ],
+      "anchor_terms": [
+        "run"
+      ],
+      "quantity": "number of benchmark runs",
+      "as_written": "231 Läufe",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:63"
+    },
+    {
+      "claim_id": "sciintegrity-problem-rate",
+      "citation_id": "sciintegrity-bench",
+      "kind": "figure",
+      "tokens": [
+        "34.2"
+      ],
+      "anchor_terms": [
+        "integrity"
+      ],
+      "quantity": "integrity problem rate across runs",
+      "as_written": "integrity problem rate 34,2 %",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:64"
+    },
+    {
+      "claim_id": "sciintegrity-disclosure-ablation",
+      "citation_id": "sciintegrity-bench",
+      "kind": "figure",
+      "tokens": [
+        "20.6",
+        "3.2"
+      ],
+      "anchor_terms": [
+        "disclos"
+      ],
+      "quantity": "undisclosed-fabrication share before and after the completion-pressure prompt ablation",
+      "as_written": "completion pressure steuert nur die OFFENLEGUNG (20,6 % → 3,2 % unoffengelegt)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:67"
+    },
+    {
+      "claim_id": "sciintegrity-fabrication-invariance",
+      "citation_id": "sciintegrity-bench",
+      "kind": "figure",
+      "tokens": [
+        "36",
+        "35",
+        "63"
+      ],
+      "anchor_terms": [
+        "fabricat"
+      ],
+      "quantity": "fabrication counts out of 63 under the two ablation conditions, showing the rate does not move",
+      "as_written": "nicht das Fabrizieren selbst (36/63 vs. 35/63)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:67"
+    },
+    {
+      "claim_id": "llm-judge-accuracy-ceiling",
+      "citation_id": "sciintegrity-bench",
+      "kind": "figure",
+      "tokens": [
+        "85"
+      ],
+      "anchor_terms": [
+        "judge"
+      ],
+      "quantity": "upper bound on LLM-judge accuracy even with checklists and full execution trace — the evidence on which N2-T03's own model-free cut rests",
+      "as_written": "blieben LLM-Judges unter 85 % Genauigkeit",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:77"
+    },
+    {
+      "claim_id": "iclr-desk-rejects",
+      "citation_id": "sciintbench",
+      "kind": "excluded",
+      "exclusion_reason": "The record's sentence attributes the 600+ desk rejects to ICLR 2026, with arXiv 2605.29468 named separately as corroboration. Binding the figure to that citation would invent an attribution the record does not make.",
+      "as_written": "korroboriert arXiv 2605.29468 und 600+ Desk-Rejects wegen fabrizierter Referenzen bei ICLR 2026",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:79"
+    },
+    {
+      "claim_id": "aar-inference-chain-transient",
+      "citation_id": "aar-position-paper",
+      "kind": "quotation",
+      "text": "The inference chain exists only as transient activation patterns in the LLM's forward pass",
+      "quantity": "the position paper's statement of why claim-level auditability is missing today",
+      "as_written": "„The inference chain exists only as transient activation patterns in the LLM's forward pass\" (AAR-Positionspapier, arXiv 2602.13855, Feb. 2026)",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:87"
+    },
+    {
+      "claim_id": "aar-contradiction-transparency",
+      "citation_id": "aar-position-paper",
+      "kind": "quotation",
+      "text": "Contradiction Transparency",
+      "quantity": "the name of the metric the AAR standard proposes — the direct academic precursor of MRR-FR-077",
+      "as_written": "mit der Metrik „Contradiction Transparency\"",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:91"
+    },
+    {
+      "claim_id": "citation-hallucination-range",
+      "citation_id": "cited-but-not-verified",
+      "kind": "figure",
+      "tokens": [
+        "11",
+        "57"
+      ],
+      "anchor_terms": [
+        "hallucinat"
+      ],
+      "quantity": "citation-hallucination rate range of commercial deep-research agents",
+      "as_written": "korroboriert durch 11–57 % Zitations-Halluzination kommerzieller Deep-Research-Agents",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:89"
+    },
+    {
+      "claim_id": "inspectable-llm-not-author",
+      "citation_id": "inspectable-ai-for-science",
+      "kind": "quotation",
+      "text": "neither an author nor a collaborator",
+      "quantity": "the paper's own framing of the LLM's role in the pipeline",
+      "as_written": "LLM als „neither an author nor a collaborator\"",
+      "cited_in": "docs/design/2026-07-23-recherche-e2e-research-automation.md:101"
+    }
+  ],
+  "anchor_note": "Every figure claim carries anchor_terms: lower-case substrings that must ALL occur in the checked excerpt within anchor_window_chars of the matched number, or the claim counts as absent. They exist because a bare numeric comparison produced 3 FALSE SUPPORTS out of 14 at the derivation: '6' matched the JATS reference marker '6,7' in the Nature abstract, '1' and '3' matched '1,2' and '3-5', and Agent Laboratory's 'three stages' matched the enumeration '(3) Human involvement'. Certifying support that does not exist is the exact failure this whole audit is built to prevent, so token presence alone is NOT a status this packet can emit. The terms are authored from what the RECORD claims the quantity is, never from the source text — anchoring them to wording found in the abstract would tune the check towards confirming.",
+  "anchor_window_chars": 60,
+  "anchor_window_note": "60 characters, chosen from a sweep run at the derivation over 200/120/80/60/40/25. The outcome is identical from 200 down to 60 and first changes at 40, where Kosmos's '79.4% of statements ... to be accurate' drops out: 47 characters separate the figure from its anchor there, and that is the binding case. 60 is therefore the SMALLEST window at which every genuinely supported claim in this set still resolves — narrower trades a coincidental match for a false absence, wider only adds coincidence. KNOWN LIMIT, named rather than tuned away: at 60 'agent-laboratory-stages' resolves through a coincidental neighbourhood — the digit 3 matched the enumeration item '(3) Human involvement ... at each stage', not the abstract's real support, which is spelled out as the WORD 'three stages'. The verdict is right, the rendered evidence is not. No window setting can tell a describing neighbour from an accidental one, which is why rendering the matched window in the report is MANDATORY and not optional: a reader must be able to see a coincidence. Figures are matched as DIGITS only — a source that spells a number as a word counts as absent, and absent is not refutation."
+}
