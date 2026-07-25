@@ -50,6 +50,7 @@ from mrr.crypto.exceptions import CryptoError
 from mrr.domain.exceptions import DomainError
 from mrr.services.cli import (
     anchoring_integrity_main,
+    artifact_presence_main,
     citation_audit_main,
     export_main,
     federation_main,
@@ -256,6 +257,15 @@ def build_parser() -> argparse.ArgumentParser:
     # anchoring_integrity_main's own parsers and dispatch are untouched.
     support_audit_main.register_support_subcommand(subparsers)
 
+    # Task-packets/A2-T01.yaml's one additive registration: attaches
+    # "artifacts" onto the EXISTING "audit" group ("mrr audit artifacts",
+    # alongside the unchanged "mrr audit citations" / "mrr audit anchoring" /
+    # "mrr audit support") — delegates entirely to
+    # mrr.services.cli.artifact_presence_main; no other line in this file
+    # changes, and the three siblings' own parsers and dispatch are
+    # untouched.
+    artifact_presence_main.register_artifacts_subcommand(subparsers)
+
     # Task-packets/E5-T08.yaml's one additive registration: a new
     # "federation" subparser group ("mrr federation outbox write" / "mrr
     # federation inbox accept") delegating entirely to
@@ -316,6 +326,11 @@ def _run_command(args: argparse.Namespace) -> int:
     kwargs: dict[str, Any] = {
         "engine": engine,
         "artifact_store": artifact_store,
+        # task-packets/A2-T01.yaml: the same --artifact-root already used
+        # to construct artifact_store two lines above, so the RunManifest
+        # this run records carries status="recorded" naming exactly the
+        # root this run actually wrote bytes to.
+        "artifact_root": args.artifact_root,
         "origin_signing_key": origin_key,
         "node_signing_key": node_key,
         "policy_version": args.policy_version,
@@ -399,6 +414,11 @@ def main(argv: list[str] | None = None) -> int:
         # above is unchanged.
         if args.audit_command == "support":
             return support_audit_main.run_command(args)
+        # Task-packets/A2-T01.yaml's one additive dispatch branch: route
+        # "artifacts" to its own module — "citations"/"anchoring"/"support"
+        # dispatch above is unchanged.
+        if args.audit_command == "artifacts":
+            return artifact_presence_main.run_command(args)
         return citation_audit_main.run_command(args)
     if args.command == "observe":
         return field_observation_main.run_command(args)

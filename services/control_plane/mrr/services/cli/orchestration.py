@@ -76,6 +76,7 @@ import json
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -439,6 +440,7 @@ def run_local_evidence_loop(
     *,
     engine: Engine,
     artifact_store: ArtifactStore,
+    artifact_root: Path | None = None,
     origin_signing_key: Ed25519PrivateKey,
     node_signing_key: Ed25519PrivateKey,
     actor: Urn | None = None,
@@ -475,6 +477,21 @@ def run_local_evidence_loop(
     (MRR-FR-050).
 
     Args:
+        artifact_root: the filesystem root ``artifact_store`` was
+            constructed with (task-packets/A2-T01.yaml) — passed straight
+            through to ``RunManifestRecorder.record``'s own
+            ``artifact_root`` keyword, unexamined and unmodified, so the
+            recorded ``RunManifest.artifact_store_reference`` names exactly
+            the root the caller actually wrote bytes to. ``mrr.services.cli
+            .main`` passes its own ``--artifact-root`` here (the same
+            ``Path`` used to construct ``artifact_store`` two lines
+            earlier), closing docs/design/2026-07-26-a1-fact-lock-artifact-
+            bytes.md's defect end-to-end. Defaults to ``None`` — "no root
+            was given to this call" — which records ``status=
+            "not_recorded"``, the honest statement for a caller that omits
+            it (e.g. an existing test fixture that supplies only
+            ``artifact_store`` directly, never touching a real
+            ``--artifact-root`` at all).
         approve_score: when ``False``, the score is left ``IN_REVIEW`` (never
             approved) — ``TaskBundleService.create`` then raises
             ``mrr.domain.exceptions.ScoreNotApprovedError`` before anything
@@ -752,6 +769,8 @@ def run_local_evidence_loop(
     ended_at = datetime.now(UTC)
 
     # --- 6. Record the Run Manifest — sealed for every terminal outcome (MRR-FR-042/043).
+    #        artifact_root (task-packets/A2-T01.yaml) is passed straight
+    #        through, unexamined — see this function's own docstring.
     run_manifest_stored = run_manifest_recorder.record(
         execution_result,
         accepted_bundle,
@@ -763,6 +782,7 @@ def run_local_evidence_loop(
         actor=resolved_node_id,
         policy_version=policy_version,
         correlation_id=resolved_correlation_id,
+        artifact_root=artifact_root,
     )
     run_manifest = RunManifest.model_validate(run_manifest_stored.body)
 

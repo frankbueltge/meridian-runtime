@@ -36,15 +36,43 @@ optional fields. These five are the fields the domain model implies are
 absent for an active (unsealed) run and present once terminal/sealed; the
 reference recording service in ``mrr.services.node_runtime.run_manifest``
 only ever builds already-sealed manifests, so it always supplies all five.
+
+--- artifact_store_reference: never a bare None (task-packets/A2-T01.yaml) ---
+
+Where THIS run wrote its artifact bytes — the root a caller passed to
+``mrr run --artifact-root`` — is not modeled as an ``str | None`` field.
+docs/design/2026-07-26-a1-fact-lock-artifact-bytes.md's fact-lock found that
+``--artifact-root`` is used (``cli/main.py:283/292``) and then forgotten:
+``RunManifest`` never recorded it anywhere, so none of the 51
+``EvidenceAnchor``\\s of the two real runs committed to this repository have
+findable bytes. docs/design/2026-07-26-a2-derivation-artifact-store-
+reference.md's fix is a single new field, :class:`ArtifactStoreReference`
+(see its own docstring for the closed status and the biconditional it
+enforces at construction) — "not recorded" is itself a value, never a gap a
+caller could confuse with "not yet checked". ``artifact_store_reference``
+therefore has a Python-level default of ``ArtifactStoreReference(
+status="not_recorded")`` (built via ``default_factory``, not listed in
+``schemas/run-manifest.schema.json``'s top-level ``required`` — the same
+"required-but-nullable" round-trip reasoning above, one step further: this
+field is not merely absent-when-unsealed, it is absent from EVERY RunManifest
+ever committed before this packet). That default is not a convenience — for
+the two RunManifests already committed in ``archive/dumps/*.sql``, whose raw
+JSON bodies carry no ``artifact_store_reference`` key at all,
+``"not_recorded"`` is the TRUE statement about them, and this packet must
+never back-fill a root into either (that would be fabrication in the
+archive; see the A2 derivation doc's own "the honesty boundary" section).
+The reference recording service, ``mrr.services.node_runtime.run_manifest
+.RunManifestRecorder.record``, supplies ``status="recorded"`` the moment a
+caller gives it the artifact-store root it wrote to.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from mrr.contracts.common import BaseObject, MRRModel, Sha256, Urn
 from mrr.contracts.evidence_crate import RunState
-from pydantic import AwareDatetime, Field
+from pydantic import AwareDatetime, Field, model_validator
 
 
 class RunResourceUsage(MRRModel):
@@ -68,6 +96,51 @@ class RunCost(MRRModel):
     currency: str = Field(min_length=3, max_length=3)
 
 
+class ArtifactStoreReference(MRRModel):
+    """Mirrors ``schemas/run-manifest.schema.json``'s
+    ``artifact_store_reference`` property (task-packets/A2-T01.yaml): where
+    THIS run's artifact bytes were written, if anywhere. See the module
+    docstring's "artifact_store_reference: never a bare None" section for
+    why this is a small closed model rather than a nullable ``root`` string.
+
+    ``root`` is present if and only if ``status == "recorded"`` — mirrors
+    ``mrr.domain.model_adapter.ModelInvocationOutcome.response_hash``'s own
+    "present if and only if" pattern exactly. Enforced HERE, at
+    construction, by :meth:`_root_iff_recorded`: both violating shapes (
+    ``"recorded"`` with no ``root``; ``"not_recorded"`` carrying one) raise
+    before an instance can ever exist — the invariant is enforced in the
+    model, never merely documented (task-packets/A2-T01.yaml acceptance
+    criteria).
+
+    The store this ``root`` names is content-addressed
+    (``adapters/object_store/.../local.py``:
+    ``<root>/<hex[0:2]>/<hex[2:4]>/<hex>``), so ``root`` plus an
+    ``EvidenceAnchor``'s own ``snapshot_hash`` already determine every blob
+    path this run could have written — which is why this field lives on
+    ``RunManifest`` once per run, not on every ``EvidenceAnchor`` (task-
+    packets/A2-T01.yaml derivation: "the store is content-addressed, so root
+    plus the anchor's own hash already determines the path").
+    """
+
+    status: Literal["recorded", "not_recorded"]
+    root: str | None = None
+
+    @model_validator(mode="after")
+    def _root_iff_recorded(self) -> Self:
+        """``root is not None`` iff ``status == "recorded"`` — fail closed on
+        either violating shape (task-packets/A2-T01.yaml acceptance
+        criteria: "both violating shapes raise on construction").
+        """
+        recorded = self.status == "recorded"
+        has_root = self.root is not None
+        if recorded != has_root:
+            raise ValueError(
+                "ArtifactStoreReference.root must be set if and only if status == 'recorded' "
+                f"(got status={self.status!r}, root={self.root!r})"
+            )
+        return self
+
+
 class RunManifest(BaseObject):
     """Mirrors schemas/run-manifest.schema.json.
 
@@ -75,7 +148,14 @@ class RunManifest(BaseObject):
     five explicitly-nullable fields documented in this module's docstring
     (`ended_at`, `run_state`, `code_commit`, `cost`, `logs_ref`), which
     default to `None` here exactly like `mrr.contracts.task_bundle.
-    ExecutionSpec.code_revision` or `mrr.contracts.common.Budget`'s fields.
+    ExecutionSpec.code_revision` or `mrr.contracts.common.Budget`'s fields —
+    PLUS `artifact_store_reference` (task-packets/A2-T01.yaml), which is
+    ALSO absent from the schema's `required` list but for a different
+    reason: it is never legitimately JSON `null` (see
+    `ArtifactStoreReference`'s own docstring — it is a small closed model,
+    not a nullable scalar), it is simply absent from every RunManifest body
+    committed before this packet, and `status="not_recorded"` is the true,
+    default statement about all of them.
 
     `environment` mirrors `{"type": "object", "additionalProperties":
     {"type": "string"}}` — a flat string-to-string map (interpreter/OS/
@@ -121,3 +201,6 @@ class RunManifest(BaseObject):
     error_refs: list[str]
     policy_decision_refs: list[Urn]
     produced_artifact_hashes: list[Sha256]
+    artifact_store_reference: ArtifactStoreReference = Field(
+        default_factory=lambda: ArtifactStoreReference(status="not_recorded")
+    )
