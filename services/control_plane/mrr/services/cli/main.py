@@ -52,6 +52,7 @@ from mrr.services.cli import (
     anchoring_integrity_main,
     citation_audit_main,
     export_main,
+    federation_main,
     field_observation_main,
     release_main,
     report_main,
@@ -246,6 +247,13 @@ def build_parser() -> argparse.ArgumentParser:
     # and dispatch are untouched.
     anchoring_integrity_main.register_anchoring_subcommand(subparsers)
 
+    # Task-packets/E5-T08.yaml's one additive registration: a new
+    # "federation" subparser group ("mrr federation outbox write" / "mrr
+    # federation inbox accept") delegating entirely to
+    # mrr.services.cli.federation_main — mirrors the anchoring registration
+    # immediately above; no other line in this file changes.
+    federation_main.register_federation_subcommand(subparsers)
+
     return parser
 
 
@@ -380,6 +388,8 @@ def main(argv: list[str] | None = None) -> int:
         return citation_audit_main.run_command(args)
     if args.command == "observe":
         return field_observation_main.run_command(args)
+    if args.command == "federation":
+        return federation_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
