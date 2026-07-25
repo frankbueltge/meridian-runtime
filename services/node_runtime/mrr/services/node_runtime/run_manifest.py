@@ -99,8 +99,10 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 
 from mrr.contracts import RunCost, RunManifest, RunResourceUsage, TaskBundle, Urn
+from mrr.contracts.run_manifest import ArtifactStoreReference
 from mrr.domain.hashing_policy import compute_content_hash
 from mrr.domain.identity import new_urn
 from mrr.domain.repositories import StoredObject
@@ -184,6 +186,7 @@ class RunManifestRecorder:
         logs_ref: Urn | None = None,
         error_refs: Sequence[str] = (),
         policy_decision_refs: Sequence[Urn] = (),
+        artifact_root: str | Path | None = None,
     ) -> StoredObject:
         """Build a schema-valid, already-sealed ``RunManifest`` from
         ``execution_result``/``task_bundle`` and persist it as revision 1
@@ -231,6 +234,24 @@ class RunManifestRecorder:
         available" — empty/``None`` — for the reference executor, which
         does not itself produce any of these).
 
+        ``artifact_store_reference`` (task-packets/A2-T01.yaml) <-
+        ``artifact_root``: when a caller supplies the root its artifact
+        store was constructed with, the recorded manifest carries
+        ``ArtifactStoreReference(status="recorded", root=str(artifact_root))``
+        — never re-derived or guessed, only ever what the caller itself
+        wrote to disk. When ``artifact_root`` is omitted (the default, and
+        the only possibility before this packet), the manifest carries
+        ``ArtifactStoreReference(status="not_recorded")`` — itself a value,
+        not a gap (see ``mrr.contracts.run_manifest.ArtifactStoreReference``'s
+        own docstring). Note this recorder alone cannot close
+        docs/design/2026-07-26-a1-fact-lock-artifact-bytes.md's defect
+        end-to-end: the one caller that reaches this method today,
+        ``mrr.services.cli.orchestration.run_local_evidence_loop``, does not
+        yet pass ``artifact_root`` through from ``mrr run --artifact-root``
+        (that file is outside this packet's own allowed_paths — see this
+        packet's delivery report for the blocking-dependency note, AGENTS.md
+        rule 13).
+
         Raises:
             ValueError: ``execution_result.task_id``/``.task_revision``
                 does not match ``task_bundle.id``/``.revision`` (the caller
@@ -257,6 +278,11 @@ class RunManifestRecorder:
         now = datetime.now(UTC)
         produced_artifact_hashes = (
             [execution_result.output_hash] if execution_result.output_hash is not None else []
+        )
+        artifact_store_reference = (
+            ArtifactStoreReference(status="recorded", root=str(artifact_root))
+            if artifact_root is not None
+            else ArtifactStoreReference(status="not_recorded")
         )
 
         draft = RunManifest(
@@ -296,6 +322,7 @@ class RunManifestRecorder:
             error_refs=list(error_refs),
             policy_decision_refs=list(policy_decision_refs),
             produced_artifact_hashes=produced_artifact_hashes,
+            artifact_store_reference=artifact_store_reference,
         )
 
         body = json.loads(draft.model_dump_json(exclude_none=True))

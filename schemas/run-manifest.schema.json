@@ -2,6 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/mrr/schemas/run-manifest.schema.json",
   "title": "MRR RunManifest",
+  "$defs": {
+    "artifactStoreReferenceRecorded": {
+      "required": ["root"],
+      "properties": {"root": {"not": {"type": "null"}}}
+    },
+    "artifactStoreReferenceNotRecorded": {
+      "anyOf": [
+        {"not": {"required": ["root"]}},
+        {"properties": {"root": {"type": "null"}}}
+      ]
+    }
+  },
   "allOf": [
     {"$ref": "common.schema.json#/$defs/baseObject"},
     {
@@ -97,6 +109,32 @@
         "produced_artifact_hashes": {
           "type": "array",
           "items": {"$ref": "common.schema.json#/$defs/sha256"}
+        },
+        "artifact_store_reference": {
+          "description": "task-packets/A2-T01.yaml: where this run wrote its artifact bytes, if anywhere. 'root' is present if and only if status == 'recorded' — enforced below by the two if/then conditionals, mirroring evidence-anchor.schema.json's own biconditional pattern. Absent entirely from every RunManifest committed before this packet; mrr.contracts.run_manifest.RunManifest defaults it to {\"status\": \"not_recorded\"} in that case, which is the true statement about them.",
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": {"type": "string", "enum": ["recorded", "not_recorded"]},
+            "root": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+          },
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {"status": {"const": "recorded"}},
+                "required": ["status"]
+              },
+              "then": {"$ref": "#/$defs/artifactStoreReferenceRecorded"}
+            },
+            {
+              "if": {
+                "properties": {"status": {"const": "not_recorded"}},
+                "required": ["status"]
+              },
+              "then": {"$ref": "#/$defs/artifactStoreReferenceNotRecorded"}
+            }
+          ]
         }
       }
     }
