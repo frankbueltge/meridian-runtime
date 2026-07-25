@@ -1,0 +1,202 @@
+{
+  "excerpt_kind": "abstract",
+  "excerpts": [
+    {
+      "citation_id": "aar-position-paper",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:aebab274c6b2068ad6d8c48f5eb183239bfa62248b93cdffd76493a676ce586a",
+      "excerpt_text": "A deep research agent produces a fluent scientific report in minutes; a careful reader then tries to verify the main claims and discovers the real cost is not reading, but tracing: which sentence is supported by which passage, what was ignored, and where evidence conflicts. We argue that as research generation becomes cheap, auditability becomes the bottleneck, and the dominant risk shifts from isolated factual errors to scientifically styled outputs whose claim-evidence links are weak, missing, or misleading. This perspective proposes claim-level auditability as a first-class design and evaluation target for deep research agents, distills recurring long-horizon failure modes (objective drift, transient constraints, and unverifiable inference), and introduces the Auditable Autonomous Research (AAR) standard, a compact measurement framework that makes auditability testable via provenance coverage, provenance soundness, contradiction transparency, and audit effort. We then argue for semantic provenance with protocolized validation: persistent, queryable provenance graphs that encode claim--evidence relations (including conflicts) and integrate continuous validation during synthesis rather than after publication, with practical instrumentation patterns to support deployment at scale.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "agent-laboratory",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:2533a39161b2f61c3b5f84aea4a5aea0f7272ebc3325940adf5d673b5759c2bb",
+      "excerpt_text": "Historically, scientific discovery has been a lengthy and costly process, demanding substantial time and resources from initial conception to final results. To accelerate scientific discovery, reduce research costs, and improve research quality, we introduce Agent Laboratory, an autonomous LLM-based framework capable of completing the entire research process. This framework accepts a human-provided research idea and progresses through three stages--literature review, experimentation, and report writing to produce comprehensive research outputs, including a code repository and a research report, while enabling users to provide feedback and guidance at each stage. We deploy Agent Laboratory with various state-of-the-art LLMs and invite multiple researchers to assess its quality by participating in a survey, providing human feedback to guide the research process, and then evaluate the final paper. We found that: (1) Agent Laboratory driven by o1-preview generates the best research outcomes; (2) The generated machine learning code is able to achieve state-of-the-art performance compared to existing methods; (3) Human involvement, providing feedback at each stage, significantly improves the overall quality of research; (4) Agent Laboratory significantly reduces research expenses, achieving an 84% decrease compared to previous autonomous research methods. We hope Agent Laboratory enables researchers to allocate more effort toward creative ideation rather than low-level coding and writing, ultimately accelerating scientific discovery.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "barrie-prompt-stability",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:49746563ae310d30ca2be4869c86e96fc8167c1059360d6be4e0a0c00bc1ec36",
+      "excerpt_text": "Researchers are increasingly using language models (LMs) for text annotation. These approaches rely only on a prompt telling the model to return a given output according to a set of instructions. The reproducibility of LM outputs may nonetheless be vulnerable to small changes in the prompt design. This calls into question the replicability of classification routines. To tackle this problem, researchers have typically tested a variety of semantically similar prompts to determine what we call ``prompt stability.\" These approaches remain ad-hoc and task specific. In this article, we propose a general framework for diagnosing prompt stability by adapting traditional approaches to intra- and inter-coder reliability scoring. We call the resulting metric the Prompt Stability Score (PSS) and provide a Python package \\texttt{promptstability} for its estimation. Using six different datasets and twelve outcomes, we classify $\\sim$3.1m rows of data and $\\sim$300m input tokens to: a) diagnose when prompt stability is low; and b) demonstrate the functionality of the package. We conclude by providing best practice recommendations for applied researchers.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "beel-ai-scientist-eval",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:46f9702dca2cbfd93e21493fd435a322b85a9a6f54e7e6c7d44dc748a104e04a",
+      "excerpt_text": "A major step toward Artificial General Intelligence (AGI) and Super Intelligence is AI's ability to autonomously conduct research - what we term Artificial Research Intelligence (ARI). If machines could generate hypotheses, conduct experiments, and write research papers without human intervention, it would transform science. Sakana recently introduced the 'AI Scientist', claiming to conduct research autonomously, i.e. they imply to have achieved what we term Artificial Research Intelligence (ARI). The AI Scientist gained much attention, but a thorough independent evaluation has yet to be conducted. Our evaluation of the AI Scientist reveals critical shortcomings. The system's literature reviews produced poor novelty assessments, often misclassifying established concepts (e.g., micro-batching for stochastic gradient descent) as novel. It also struggles with experiment execution: 42% of experiments failed due to coding errors, while others produced flawed or misleading results. Code modifications were minimal, averaging 8% more characters per iteration, suggesting limited adaptability. Generated manuscripts were poorly substantiated, with a median of five citations, most outdated (only five of 34 from 2020 or later). Structural errors were frequent, including missing figures, repeated sections, and placeholder text like 'Conclusions Here'. Some papers contained hallucinated numerical results. Despite these flaws, the AI Scientist represents a leap forward in research automation. It generates full research manuscripts with minimal human input, challenging expectations of AI-driven science. Many reviewers might struggle to distinguish its work from human researchers. While its quality resembles a rushed undergraduate paper, its speed and cost efficiency are unprecedented, producing a full paper for USD 6 to 15 with 3.5 hours of human involvement, far outpacing traditional researchers.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "citation-hallucination-multi-agent",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:620d3e05675e8dcf2d3ab70046304a646f42d795178a8d85584a1201999b998a",
+      "excerpt_text": "Large language models are increasingly used in scientific writing, yet they can fabricate citation-shaped references that appear plausible but fail bibliographic verification. Existing detectors often reduce verification to binary found/not-found decisions and rely on brittle parsing or incomplete retrieval, offering little field-level signal to auditors. We reframe citation hallucination detection as taxonomy-aligned field-level adjudication and introduce a 12-code taxonomy spanning Real, Potential, and Hallucinated citations. Based on this taxonomy, we build CiteTracer, a cascading multi-agent detector that extracts structured citations from PDF and BibTeX, retrieves evidence through cache lookup, URL fetch, scholar connectors, and web search, applies deterministic field matching, and routes ambiguous cases to class-specialist judgers. We release a benchmark of 2,450 synthetic citations built from real seeds with controlled LLM mutations, paired with 957 real-world fabricated citations drawn from ICLR 2026 and an anonymous conference desk-rejected submissions. CiteTracer reaches 97.1% accuracy on the synthetic benchmark, with class-level F1 scores of 97.0, 95.8, and 98.5 for Real, Potential, and Hallucinated, respectively, and detects 97.1% of fabrications on the real-world set without abstaining. Code: https://github.com/aaFrostnova/CiteTracer.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "cited-but-not-verified",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:8762420556c33e0e32c8fbb471731a3dceb19eb71b436521b8c3a1884eb13cec",
+      "excerpt_text": "Large language models (LLMs) power deep research agents that synthesize information from hundreds of web sources into cited reports, yet these citations cannot be reliably verified. Current approaches either trust models to self-cite accurately, risking bias, or employ retrieval-augmented generation (RAG) that does not validate source accessibility, relevance, or factual consistency. We introduce the first source attribution evaluation framework that uses a reproducible AST parser to extract and evaluate inline citations from LLM-generated Markdown reports at scale. Unlike methods that verify claims in isolation, our framework closes the loop by retrieving the actual cited content, enabling human or model evaluators to judge each citation against its source. Citations are evaluated along three dimensions. (1) Link Works verifies URL accessibility, (2) Relevant Content measures topical alignment, and (3) Fact Check validates factual accuracy against source content. We benchmark 14 closed-source and open-source LLMs across three evaluation dimensions using rubric-based LLM-as-a-judge evaluators calibrated through human review. Our results reveal that even the strongest frontier models maintain link validity above 94% and relevance above 80%, yet achieve only 39-77% factual accuracy, while fewer than half of open-source models successfully generate cited reports in a one-shot setting. Ablation studies on research depth show that Fact Check accuracy drops by approximately 42% on average across two frontier models as tool calls scale from 2 to 150, demonstrating that more retrieval does not produce more accurate citations. These findings reveal a critical disconnect between surface-level citation quality and factual reliability, and our framework provides the evaluation infrastructure to assess the disconnect.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "darwin-goedel-machine",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:8f6dd1fa963b7a56e48f004281276be5cca2a6bad93a5581d6e4ac7e48f84cc8",
+      "excerpt_text": "Today's AI systems have human-designed, fixed architectures and cannot autonomously and continuously improve themselves. The advance of AI could itself be automated. If done safely, that would accelerate AI development and allow us to reap its benefits much sooner. Meta-learning can automate the discovery of novel algorithms, but is limited by first-order improvements and the human design of a suitable search space. The G\u00f6del machine proposed a theoretical alternative: a self-improving AI that repeatedly modifies itself in a provably beneficial manner. Unfortunately, proving that most changes are net beneficial is impossible in practice. We introduce the Darwin G\u00f6del Machine (DGM), a self-improving system that iteratively modifies its own code (thereby also improving its ability to modify its own codebase) and empirically validates each change using coding benchmarks. Inspired by Darwinian evolution and open-endedness research, the DGM maintains an archive of generated coding agents. It grows the archive by sampling an agent from it and using a foundation model to create a new, interesting, version of the sampled agent. This open-ended exploration forms a growing tree of diverse, high-quality agents and allows the parallel exploration of many different paths through the search space. Empirically, the DGM automatically improves its coding capabilities (e.g., better code editing tools, long-context window management, peer-review mechanisms), increasing performance on SWE-bench from 20.0% to 50.0%, and on Polyglot from 14.2% to 30.7%. Furthermore, the DGM significantly outperforms baselines without self-improvement or open-ended exploration. All experiments were done with safety precautions (e.g., sandboxing, human oversight). The DGM is a significant step toward self-improving AI, capable of gathering its own stepping stones along paths that unfold into endless innovation.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "deeptrace",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:2583d7350af3661c8c2c89148badc90edb2cc72fc3b937706878417321291795",
+      "excerpt_text": "Generative search engines and deep research LLM agents promise trustworthy, source-grounded synthesis, yet users regularly encounter overconfidence, weak sourcing, and confusing citation practices. We introduce DeepTRACE, a novel sociotechnically grounded audit framework that turns prior community-identified failure cases into eight measurable dimensions spanning answer text, sources, and citations. DeepTRACE uses statement-level analysis (decomposition, confidence scoring) and builds citation and factual-support matrices to audit how systems reason with and attribute evidence end-to-end. Using automated extraction pipelines for popular public models (e.g., GPT-4.5/5, You.com, Perplexity, Copilot/Bing, Gemini) and an LLM-judge with validated agreement to human raters, we evaluate both web-search engines and deep-research configurations. Our findings show that generative search engines and deep research agents frequently produce one-sided, highly confident responses on debate queries and include large fractions of statements unsupported by their own listed sources. Deep-research configurations reduce overconfidence and can attain high citation thoroughness, but they remain highly one-sided on debate queries and still exhibit large fractions of unsupported statements, with citation accuracy ranging from 40--80% across systems.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "gepa",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:85ae5fbe1c9224cbb385eb0f077c64042e35f9a18f17009cca7319fb1ecbd337",
+      "excerpt_text": "Large language models (LLMs) are increasingly adapted to downstream tasks via reinforcement learning (RL) methods like Group Relative Policy Optimization (GRPO), which often require thousands of rollouts to learn new tasks. We argue that the interpretable nature of language often provides a much richer learning medium for LLMs, compared to policy gradients derived from sparse, scalar rewards. To test this, we introduce GEPA (Genetic-Pareto), a prompt optimizer that thoroughly incorporates natural language reflection to learn high-level rules from trial and error. Given any AI system containing one or more LLM prompts, GEPA samples trajectories (e.g., reasoning, tool calls, and tool outputs) and reflects on them in natural language to diagnose problems, propose and test prompt updates, and combine complementary lessons from the Pareto frontier of its own attempts. As a result of GEPA's design, it can often turn even just a few rollouts into a large quality gain. Across six tasks, GEPA outperforms GRPO by 6% on average and by up to 20%, while using up to 35x fewer rollouts. GEPA also outperforms the leading prompt optimizer, MIPROv2, by over 10% (e.g., +12% accuracy on AIME-2025), and demonstrates promising results as an inference-time search strategy for code optimization. We release our code at https://github.com/gepa-ai/gepa .",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "inspectable-ai-for-science",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:416f1f7edb7fb288f99a1b299ab3c52ec9717e39b3b902db8c527a99321c2543",
+      "excerpt_text": "This paper introduces AI as a Research Object (AI-RO), a paradigm for governing the use of generative AI in scientific research. Instead of debating whether AI is an author or merely a tool, we propose treating AI interactions as structured, inspectable components of the research process. Under this view, the legitimacy of an AI-assisted scientific paper depends on how model use is integrated into the workflow, documented, and made accountable. Drawing on Research Object theory and FAIR principles, we propose a framework for recording model configuration, prompts, and outputs through interaction logs and metadata packaging. These properties are particularly consequential in security and privacy (S&P) research, where provenance artifacts must satisfy confidentiality constraints, integrity guarantees, and auditability requirements that generic disclosure practices do not address. We implement a lightweight writing pipeline in which a language model synthesizes human-authored structured literature review notes under explicit constraints and produces a verifiable provenance record. We present this work as a position supported by an initial demonstrative workflow, arguing that governance of generative AI in science can be implemented as structured documentation, controlled disclosure, and integrity-preserving provenance capture. Based on this example, we outline and motivate a set of necessary future developments required to make such practices practical and widely adoptable.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "kosmos",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:6926a671b9cbd1807c3b40720a27f84604f7d44e7dd70c4d9b901af03c45558f",
+      "excerpt_text": "Data-driven scientific discovery requires iterative cycles of literature search, hypothesis generation, and data analysis. Substantial progress has been made towards AI agents that can automate scientific research, but all such agents remain limited in the number of actions they can take before losing coherence, thus limiting the depth of their findings. Here we present Kosmos, an AI scientist that automates data-driven discovery. Given an open-ended objective and a dataset, Kosmos runs for up to 12 hours performing cycles of parallel data analysis, literature search, and hypothesis generation before synthesizing discoveries into scientific reports. Unlike prior systems, Kosmos uses a structured world model to share information between a data analysis agent and a literature search agent. The world model enables Kosmos to coherently pursue the specified objective over 200 agent rollouts, collectively executing an average of 42,000 lines of code and reading 1,500 papers per run. Kosmos cites all statements in its reports with code or primary literature, ensuring its reasoning is traceable. Independent scientists found 79.4% of statements in Kosmos reports to be accurate, and collaborators reported that a single 20-cycle Kosmos run performed the equivalent of 6 months of their own research time on average. Furthermore, collaborators reported that the number of valuable scientific findings generated scales linearly with Kosmos cycles (tested up to 20 cycles). We highlight seven discoveries made by Kosmos that span metabolomics, materials science, neuroscience, and statistical genetics. Three discoveries independently reproduce findings from preprinted or unpublished manuscripts that were not accessed by Kosmos at runtime, while four make novel contributions to the scientific literature.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "liu-inter-prompt-reliability",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:7f0722df0a01db8dbe2e4f7e92e030bf22cee4748b353c10778b064d7c7ec8c1",
+      "excerpt_text": "Large language models (LLMs) are increasingly used for annotation in computational social science, yet their methodological reliability under prompt variation remains unclear. This paper introduces Inter-Prompt Reliability (IPR), a framework for evaluating the stability of LLM outputs across semantically equivalent but linguistically varied prompts. Drawing on Inter-Rater Reliability, IPR is measured by Pairwise Agreement Rate (PAR) and its distribution to capture both consistency and stochasticity in model behavior. We evaluate this framework on two tasks with distinct properties: TREC (interpretative) and Politifact (knowledge-anchored). Results show that LLM annotation exhibits substantial stochastic variation in interpretative tasks, while appearing more stable in knowledge-based tasks. We further show that majority voting across prompts significantly improves reproducibility and reduces variance. These findings suggest that LLM prompt acts as an instrumental measurement while its wording exhibits methodological uncertainty. For future LLM-based CSS studies, we suggest that researchers move beyond single-prompt evaluation toward distributional stability and prompt aggregation within our IPR framework.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "llm-hacking",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:18d04e69a41aee0fedd83674e2c2a93b3c873285c6baaad8657aa27787396b4c",
+      "excerpt_text": "Large language models are rapidly transforming social science research by enabling the automation of labor-intensive tasks like data annotation and text analysis. However, LLM outputs vary significantly depending on the implementation choices made by researchers (e.g., model selection or prompting strategy). Such variation can introduce systematic biases and random errors, which propagate to downstream analyses and cause Type I (false positive), Type II (false negative), Type S (wrong sign), or Type M (exaggerated effect) errors. We call this phenomenon where configuration choices lead to incorrect conclusions LLM hacking. We find that intentional LLM hacking is strikingly simple. By replicating 37 data annotation tasks from 21 published social science studies, we show that, with just a handful of prompt paraphrases, virtually anything can be presented as statistically significant. Beyond intentional manipulation, our analysis of 13 million labels from 18 different LLMs across 2361 realistic hypotheses shows that there is also a high risk of accidental LLM hacking, even when following standard research practices. We find incorrect conclusions in approximately 31% of hypotheses for state-of-the-art LLMs, and in half the hypotheses for smaller language models. While higher task performance and stronger general model capabilities reduce LLM hacking risk, even highly accurate models remain susceptible. The risk of LLM hacking decreases as effect sizes increase, indicating the need for more rigorous verification of LLM-based findings near significance thresholds. We analyze 21 mitigation techniques and find that human annotations provide crucial protection against false positives. Common regression estimator correction techniques can restore valid inference but trade off Type I vs. Type II errors. We publish a list of practical recommendations to prevent LLM hacking.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "neurips-fabricated-citations",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:8af50c0ed89a1178421170009437c3c97108ea33ffcd4924f9dd0df1839020e6",
+      "excerpt_text": "Large language models (LLMs) are increasingly used in academic writing workflows, yet they frequently hallucinate by generating citations to sources that do not exist. This study analyzes 100 AI-generated hallucinated citations that appeared in papers accepted by the 2025 Conference on Neural Information Processing Systems (NeurIPS), one of the world's most prestigious AI conferences. Despite review by 3-5 expert researchers per paper, these fabricated citations evaded detection, appearing in 53 published papers (approx. 1% of all accepted papers). We develop a five-category taxonomy that classifies hallucinations by their failure mode: Total Fabrication (66%), Partial Attribute Corruption (27%), Identifier Hijacking (4%), Placeholder Hallucination (2%), and Semantic Hallucination (1%). Our analysis reveals a critical finding: every hallucination (100%) exhibited compound failure modes. The distribution of secondary characteristics was dominated by Semantic Hallucination (63%) and Identifier Hijacking (29%), which often appeared alongside Total Fabrication to create a veneer of plausibility and false verifiability. These compound structures exploit multiple verification heuristics simultaneously, explaining why peer review fails to detect them. The distribution exhibits a bimodal pattern: 92% of contaminated papers contain 1-2 hallucinations (minimal AI use) while 8% contain 4-13 hallucinations (heavy reliance). These findings demonstrate that current peer review processes do not include effective citation verification and that the problem extends beyond NeurIPS to other major conferences, government reports, and professional consulting. We propose mandatory automated citation verification at submission as an implementable solution to prevent fabricated citations from becoming normalized in scientific literature.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "pangakis-validation",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:62ce4a2a18f3553055f2edc7c5c528f02a4a84b2ef5537e7c1920fd5f8408954",
+      "excerpt_text": "Generative large language models (LLMs) can be a powerful tool for augmenting text annotation procedures, but their performance varies across annotation tasks due to prompt quality, text data idiosyncrasies, and conceptual difficulty. Because these challenges will persist even as LLM technology improves, we argue that any automated annotation process using an LLM must validate the LLM's performance against labels generated by humans. To this end, we outline a workflow to harness the annotation potential of LLMs in a principled, efficient way. Using GPT-4, we validate this approach by replicating 27 annotation tasks across 11 datasets from recent social science articles in high-impact journals. We find that LLM performance for text annotation is promising but highly contingent on both the dataset and the type of annotation task, which reinforces the necessity to validate on a task-by-task basis. We make available easy-to-use software designed to implement our workflow and streamline the deployment of LLMs for automated annotation.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "sakana-nature",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:329fbb3d88e715346bceb4a6888224908444014dfd2e731f7cb008c9a1f42739",
+      "excerpt_text": "The automation of science is a long-standing ambition in artificial intelligence (AI) research 1,2 . Although the community has made substantial progress in automating individual components of the scientific process, a system that autonomously navigates the entire research life cycle\u2014from conception to publication\u2014has remained out of reach. Here we present a pipeline for automating the entire scientific process end to end. We present The AI Scientist, which creates research ideas, writes code, runs experiments, plots and analyses data, writes the entire scientific manuscript, and performs its own peer review. Its ideas, execution and presentation are of sufficient quality that the manuscript generated by this AI system passed the first round of peer review for a workshop of a top-tier machine learning conference. The workshop had an acceptance rate of 70%. Our system leverages modern foundation models 3\u20135 within a complex agentic system. We evaluate The AI Scientist in two settings: a focused mode using human-provided code templates as an initial scaffold for conducting research on a specific topic and a template-free, open-ended mode that leverages agentic search for wider scientific exploration 6,7 . Both settings produce diverse ideas and automatically test, report on and evaluate them. This achievement demonstrates the growing capacity of AI for making scientific contributions and signifies a potential paradigm shift in how research is conducted. As with any impactful new technology, there could be important risks, including taxing overwhelmed review systems and adding noise to the scientific literature. However, if developed responsibly, such autonomous systems could greatly accelerate scientific discovery.",
+      "resolver": "crossref",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "sciintbench",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:d9699404005410c29b57cbbc501d89949b3a15bee09ce0237480ed280089216f",
+      "excerpt_text": "Large language models (LLMs) are increasingly used to support scientific work, but it is unclear whether they uphold responsible conduct of research (RCR) norms or help undermine them. We introduce SciIntBench, an adversarial benchmark of 810 prompts across ten RCR categories and three scientific domains. Each scenario appears as an Overt Adversarial, Covert Adversarial, and Benign version, allowing us to jointly measure framing-sensitive refusal of misconduct and helpfulness on legitimate requests. We evaluate 16 commercial and open-weight LLMs from six providers (2024--2026), producing 12,960 responses. We find that scientific integrity alignment is strongly framing-sensitive: models refuse explicit misconduct far more reliably than covert violations, especially failing when misconduct is presented as a pressure-driven shortcut. Refusals vary by RCR category, with weaker boundaries around transparency, plagiarism, and fabrication.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "sciintegrity-bench",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:cf592bd6748288edc19c640be2d67a2e6b1badc5348fe338501939f520f52385",
+      "excerpt_text": "AI scientist systems are increasingly deployed for autonomous research, yet their academic integrity has never been systematically evaluated. We introduce SCIINTEGRITY-BENCH, the first benchmark designed around a dilemmatic evaluation paradigm: each of its 33 scenarios across 11 trap categories is constructed so that honest acknowledgment of failure is the only correct response, while task completion requires misconduct. Across 231 evaluation runs spanning 7 state-of-the-art LLMs, the overall integrity problem rate reaches 34.2%, and no model achieves zero failures. Most strikingly, across missing-data scenarios, all seven models generate synthetic data rather than acknowledging infeasibility, differing only in whether they disclose the substitution. A further prompt ablation study separates two drivers: removing explicit completion pressure sharply reduces undisclosed fabrication from 20.6% to 3.2%, while the underlying synthesis rate remains unchanged, revealing an intrinsic completion bias that persists independent of prompt-level instructions. These findings point to the absence of honest refusal as a trained disposition as the primary driver of observed failures. We release SCIINTEGRITY-BENCH at https://github.com/liuxingtong/Sci-Integrity-Bench.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "silicon",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:75d8a373d411ad0a5ed135900fc516d7f2a5389ef6fff7cc1d17284449e44425",
+      "excerpt_text": "Unstructured text data annotation is foundational to management research. LLMs offer a cost-effective and scalable alternative to human annotation, but they introduce a novel challenge: the annotator itself can be retired. Proprietary models undergo regular deprecation cycles, threatening long-term reproducibility. Hence, the ability to reproduce annotation results when the original model becomes unavailable, i.e., robust reproducibility, is a central methodological challenge for LLM-based annotation. Achieving robust reproducibility requires first controlling measurement error. We develop an analytical framework that decomposes measurement error into four sources: guideline-induced error from inconsistent annotation criteria, baseline-induced error from unreliable human references, prompt-induced error from suboptimal meta-instruction, and model-induced error from architectural differences across LLMs. We develop the SILICON workflow that instantiates the analytical framework, prescribing targeted interventions at each error source. Empirical validation across nine management research tasks confirms that these interventions reduce measurement error, and simulations show that the resulting error reduction yields more accurate downstream statistical estimates. With measurement error controlled, we address two further aspects of robust reproducibility. First, we propose a regression-based methodology to establish backup open-weight models, which are permanently accessible. Every tested task has at least one open-weight model with no statistically detectable performance difference. Second, we quantify the upper bound of annotation quality attainable from the current set of available models by proposing a routing procedure that selectively sends low-confidence items to auxiliary models, revealing when model aggregation improves performance and when that may adversely affect labeling quality.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "statabench",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:d5d9c0af76d0460a350adcd1fac9b487d1e5eda531dbfdf1d663d8109dee8fd3",
+      "excerpt_text": "Statistical analysis is a broad, complex field requiring both domain knowledge and tool proficiency. While prior work has evaluated large language models (LLMs) in this domain, existing benchmarks remain limited in scope and format. To bridge this gap, we introduce StatABench (Statistical AnalysisBenchmark), a benchmark designed to systematically assess LLMs' statistical analysis capabilities. StatABench comprises two complementary components: Stat-Closed, containing 404 questions across 18 statistical topics in multiple formats (multiple-choice, fill-in-the-blank, decision-making, and practical application), and Stat-Open, featuring 30 complex open-ended modeling tasks adapted from professional competitions. We evaluate diverse LLMs using the LangChain MCP framework and multiple data science agents, and assess Stat-Open solutions via a validated LLM-as-Judge protocol. Experiments show that even GPT-5.1 achieves only 68.6% on Stat-Closed, while the best open-source model reaches 60.6%. On Stat-Open, the top agent framework scores 61.86 on average. These results reveal the gap between current LLMs and reliable statistical analysis, highlighting persistent challenges in tool-grounded reasoning, methodological decision-making, and end-to-end statistical modeling.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "zhu-implementation-capability",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:d7b1f0d554ad399f6e51cecfad987855df0273bd1d4c77edab530b7a4d496ba3",
+      "excerpt_text": "The emergence of Artificial Intelligence (AI) Scientist represents a paradigm shift in scientific discovery, with large language models (LLMs) taking the lead as the primary executor in the entire scientific workflow from idea generation to experiment implementation. Recent AI Scientist studies demonstrate sufficient capabilities for independent scientific discovery, with the generated research reports gaining acceptance at the ICLR 2025 workshop and ACL 2025, arguing that a human-level AI Scientist, capable of uncovering phenomena previously unknown to humans, may be imminent. Despite this substantial progress, AI Scientist has yet to produce a groundbreaking achievement in the domain of computer science on par with automated scientific tools. Based on extensive quantitative evidence from existing benchmarks in complex engineering tasks and a systematic evaluation assess 28 research papers generated by five advanced AI Scientist systems, we argue that \\textbf{the fundamental bottleneck for AI Scientists lies in their capability to execute the requisite verification procedures.} Current AI Scientist systems lack the execution capabilities needed to execute rigorous experiments and produce high-quality scientific papers. To better illustrate the root cause of this \\textbf{implementation gap}, we provide an in-depth discussion on the fundamental limitations of AI Scientist. This position paper aims to call for the participants in the community to bridge the implementation gap.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    }
+  ],
+  "fetched_on": "2026-07-25",
+  "manifest": "../citations.manifest.json",
+  "note": "Point-in-time capture of the ABSTRACT ONLY for each cited identifier in citations.manifest.json (task-packets/N2-T03a.yaml) \u2014 the arXiv Atom 'summary' element, or the Crossref 'abstract' field (JATS-tag-stripped, a declared deterministic transformation) for the one Nature DOI. Re-runnable: the same batched id_list / per-DOI queries reproduce these results, so this snapshot is verifiable, not asserted. It records EXACTLY what the two APIs returned, after the declared JATS-stripping and whitespace-normalisation transformations only \u2014 no scoring, no supplementation, no repair of a missing abstract, no full-text retrieval of any kind (no PDF, no scraping). An abstract covers only a fraction of a paper's own claims (measured at the N2-T03 derivation at roughly 28 percent numeric-token coverage across this corpus) \u2014 this snapshot is the input a separate, offline, no-network audit (N2-T03b, 'mrr audit support') checks claims against; presence in the abstract is not substantive support, and absence from the abstract is not refutation. A citation whose abstract could not be retrieved is recorded here with excerpt_available=false and a typed unavailable_reason \u2014 never omitted, never filled with a placeholder.",
+  "resolvers": {
+    "arxiv": "arXiv API \u2014 https://export.arxiv.org/api/query?id_list=<id> (Atom 'summary' element; a requested id absent from the response, or an entry with no usable summary text, is recorded as excerpt_available=false with a typed reason)",
+    "crossref": "Crossref REST \u2014 https://api.crossref.org/works/<doi> (JSON 'abstract' field, JATS tags stripped per strip_jats_tags(); 404, or a work with no usable abstract field, is recorded as excerpt_available=false with a typed reason)"
+  },
+  "schema_version": "source-content-snapshot.v1"
+}

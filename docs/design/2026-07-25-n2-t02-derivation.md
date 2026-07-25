@@ -54,7 +54,8 @@ ebenso `Claim.evidence_relations` / `counterevidence_relations` →
   keyless Abruf an der Ableitung (arXiv-API `id_list`, ein Batch-Query; Crossref
   REST für die Nature-DOI). Titel passen zu den Labels.
 - **Kein Zitat der Records ist fabriziert.** Für Records, deren Gegenstand die
-  dokumentierte 40–80-%-Fabrikationslücke ist, ist das der reflexive Befund —
+  dokumentierte Zitationslücke ist (Zitations*genauigkeit* 40–80 %, mithin
+  20–60 % fehlerhafte Zitate), ist das der reflexive Befund —
   dieselbe Bewegung wie N2-T01 an der /e2e-automation-Survey, eine Ebene weiter:
   jetzt hält die **Evidenzbasis der Roadmap** ihre eigenen Zitate aus.
 - **8 der 21 sind bereits durch N2-T01 abgedeckt** (die Survey zitiert dieselben
@@ -224,3 +225,16 @@ als Routine-1-Anlass (E5/E6), K2-Tor-Wiedervorlage, erstes A4-Release, Befund 1
 (Artefakt-Blob-Dauerhaftigkeit), N1-T02/T03, **N2-T03** (Support-Prüfung — das
 schwere, LLM/menschliche Stück), R2-T02 (Fetch + Vorschlags-Emitter), R2-T03
 (GEPA-Schleife, substrat-gated).
+
+---
+
+**Korrektur 2026-07-25 (aus der N2-T03-Ableitung).** Die Zahl 40–80 % war an
+einer Stelle als *Lücke* bzw. Fabrikationsrate zugeschrieben. DeepTRACE
+(arXiv 2509.04499) misst sie laut Abstract wörtlich als „citation **accuracy**
+ranging from 40--80% across systems" — die **Genauigkeit**, nicht die Lücke; die
+Lücke wäre 20–60 %. Die Stelle ist richtiggestellt. Herleitung, alle Fundstellen
+und der Quellbeleg stehen in `docs/design/2026-07-25-n2-t03-derivation.md`.
+Die Fundstelle in `corpora/e2e-survey/citations.manifest.json` bleibt auf
+Owner-Entscheidung vom 2026-07-25 **unverändert**, weil ihr sha256 in
+`corpora/e2e-survey/observation-batch.v1.json` als Integritäts-Anker gepinnt ist —
+die Abweichung ist dort bewusst stehen gelassen und hier vermerkt, nicht behoben.

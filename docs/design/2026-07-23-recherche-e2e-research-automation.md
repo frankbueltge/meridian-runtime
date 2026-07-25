@@ -131,7 +131,8 @@ wäre ein natürliches MRR-Eigenexperiment (siehe offene Fragen). [medium]
   truth: (1) **kriteriengeleitete quantitative Inhaltsanalyse** (der bereits
   demonstrierte Lauf-Typ; Kollektiv-Archive + Kunst-/Kulturdaten);
   (2) **Citation-/Claim-Verification-Audits externer Forschungsoutputs** (füllt
-  die dokumentierte 40–80-%-Lücke, am besten automatisierbare Prüfklasse, bedient
+  die dokumentierte Zitationslücke — Zitations*genauigkeit* 40–80 %, mithin
+  20–60 % fehlerhafte Zitate; am besten automatisierbare Prüfklasse, bedient
   „KI-Forschung selbst" UND Routine 2); (3) **reproduzierbare deskriptive
   Sekundär-Datenanalyse mit Code-als-Evidenz-Anker** (zuverlässigste Schicht im
   Feld) für offene/gesellschaftliche Daten. **Interpretative Synthese als LETZTE
@@ -178,3 +179,21 @@ wäre ein natürliches MRR-Eigenexperiment (siehe offene Fragen). [medium]
    MRR-Eigenexperiment wäre er selbst ein publikationsfähiger Beitrag.
 4. Unabhängige (nicht Hersteller-)Evaluationen von AI Co-Scientist, Robin,
    OpenAI/Anthropic research agents.
+
+---
+
+**Korrektur 2026-07-25 (aus der N2-T03-Ableitung).** Die Zahl 40–80 % war an
+einer Stelle (Abschnitt 7, Synthese) als *Lücke* bzw. Fabrikationsrate zugeschrieben. DeepTRACE
+(arXiv 2509.04499) misst sie laut Abstract wörtlich als „citation **accuracy**
+ranging from 40--80% across systems" — die **Genauigkeit**, nicht die Lücke; die
+Lücke wäre 20–60 %. Die Stelle ist richtiggestellt. Herleitung, alle Fundstellen
+und der Quellbeleg stehen in `docs/design/2026-07-25-n2-t03-derivation.md`.
+Die Fundstelle in `corpora/e2e-survey/citations.manifest.json` bleibt auf
+Owner-Entscheidung vom 2026-07-25 **unverändert**, weil ihr sha256 in
+`corpora/e2e-survey/observation-batch.v1.json` als Integritäts-Anker gepinnt ist —
+die Abweichung ist dort bewusst stehen gelassen und hier vermerkt, nicht behoben.
+
+**Die Primärstelle dieses Records (Abschnitt 2, „Zitationsgenauigkeit von
+Deep-Research-Systemen 40–80 %") war und ist korrekt** — gekippt ist die Zahl
+erst in der Weitergabe, hier zuerst in der eigenen Synthese. Genau diese
+Fehlerform ist der Gegenstand von N2-T04.

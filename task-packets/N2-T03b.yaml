@@ -1,0 +1,190 @@
+task_id: N2-T03b
+title: >-
+  Deterministic, MODEL-FREE support audit and `mrr audit support` (read-only,
+  no-network, no-database): over the hand-transcribed claim manifest and the committed
+  content snapshot, behind a fail-closed file-hash gate, decide for every figure and
+  every verbatim quotation whether the CHECKED EXCERPT carries it — and report absence
+  as an OBSERVATION, never as refutation. Verifies presence in an abstract, NOT that the
+  source supports the claim in substance.
+status: approved
+epic: N2
+reviewer_resolution: >-
+  Approved 2026-07-25 by the main session as reviewing instance, under the owner's
+  decision the same day to build N2-T03 model-free. Load-bearing choices CONFIRMED at
+  derivation (docs/design/2026-07-25-n2-t03-derivation.md): (1) NO MODEL — on the
+  decidable level a support check needs none, and on the paraphrase level the evidence
+  of the very records under audit says a model does not carry (LLM judges under 85 %,
+  kappa 0.19-0.51); the model step is named and declined as N2-T03c, and no concrete
+  ModelAdapter exists in the repository to call anyway. (2) ABSENCE IS NOT REFUTATION —
+  figure_absent_from_checked_excerpt and quotation_absent_from_checked_excerpt are
+  OBSERVATIONS; collapsing them into a violation bucket would report 18 false violations
+  on the very first run. (3) CONTRADICTION IS NOT IN THE VOCABULARY — it is not
+  decidable against an abstract and is deferred, named, to N2-T03c; the only violation
+  this packet can emit is quotation_altered, where the excerpt carries the passage in
+  DIFFERENT words. (4) ANCHOR TERMS ARE MANDATORY — a bare numeric comparison produced 3
+  FALSE SUPPORTS out of 14 at the derivation (the digit 6 matched the JATS reference
+  marker "6,7", 1 and 3 matched "1,2" and "3-5"); certifying support that does not exist
+  is the exact failure this audit exists to prevent, so token presence alone is not a
+  status this packet may emit. (5) THE MATCHED WINDOW IS RENDERED, ALWAYS — no window
+  size can distinguish a describing neighbour from an accidental one (agent-laboratory-
+  stages resolves through a coincidence at every setting that keeps the genuine cases),
+  so a human reader must be able to see the evidence. (6) The fail-closed hash gate
+  mirrors R2-T01 but does NOT reuse its check_anchor, whose BatchRole is a closed
+  {"manifest","snapshot"} two-set — widening another packet's closed set for convenience
+  is forbidden, exactly as N2-T02b already refused it.
+depends_on: [N2-T02a, N2-T03a]
+derivation: >-
+  Derived 2026-07-25 from docs/design/2026-07-25-n2-t03-derivation.md. The claim
+  manifest corpora/research-records/claims.manifest.json is committed at the governance
+  commit, hand-transcribed from Record I (13 of the 21 citations) with file+line and the
+  record's own wording per entry, and is READ-ONLY for this build. Scope is Record I
+  because it is the record the capability roadmap's staging rests on and the origin of
+  the 40-80 misattribution corrected the same day; Records II and III follow as N2-T03d.
+  anchor_window_chars is 60, chosen from a sweep over 200/120/80/60/40/25 run at the
+  derivation - the outcome is identical from 200 down to 60 and first changes at 40,
+  where Kosmos's "79.4% of statements ... to be accurate" drops out because exactly 40
+  characters separate figure from anchor. (The derivation first wrote 47 there: a figure
+  estimated off a context printout and then stated as measured. Corrected 2026-07-25 at
+  the review after the builder flagged the discrepancy - the two fetched abstracts are
+  bit-identical, so no source revision was involved. No status is affected, and the
+  sweep's flip at exactly 40 is now explained rather than coincidental.) Figures are
+  matched as DIGITS only; a source spelling a number as a word counts as absent.
+objective: >-
+  After this packet, `mrr audit support --batch corpora/research-records/support-batch.v1.json`
+  renders a deterministic support report (JSON and Markdown). It (a) resolves each
+  declared input path relative to the descriptor's own directory, (b) reads each input's
+  bytes and computes its sha256, (c) compares each against the descriptor's pinned
+  anchor and, on ANY mismatch, raises a typed IntegrityGateError naming the input and
+  both hashes and HALTS before anything is parsed, (d) on a clean gate decides each
+  claim's status from its closed set, and (e) assembles a report that counts VIOLATIONS
+  strictly apart from OBSERVATIONS, renders the matched excerpt window for every
+  resolved figure, and carries a fixed header stating in plain type that the checked
+  excerpt is the ABSTRACT, that presence is not substantive support, and that absence is
+  not refutation.
+status_vocabulary:
+  figures:
+    figure_supported_in_excerpt: >-
+      every declared token occurs in the excerpt with ALL anchor_terms inside
+      anchor_window_chars of that occurrence. A hit.
+    figure_absent_from_checked_excerpt: >-
+      at least one token has no such anchored occurrence. OBSERVATION, never a violation.
+  quotations:
+    quotation_verbatim: normalised exact substring match. A hit.
+    quotation_altered: >-
+      best normalised window similarity at or above the declared threshold without an
+      exact match - the excerpt carries the passage in different words. VIOLATION.
+    quotation_absent_from_checked_excerpt: below threshold. OBSERVATION, never a violation.
+  excluded:
+    claim_excluded: >-
+      the manifest declares the claim unavailable to this check with a named reason.
+      Neither a hit nor a violation; counted and listed separately so an exclusion can
+      never read as a pass.
+acceptance_oracle:
+  note: >-
+    Fixed BEFORE the build, computed at the derivation by a separate implementation from
+    the one the builder will write (AGENTS rule 8). The build must reproduce these 34
+    statuses exactly.
+  totals:
+    figure_supported_in_excerpt: 12
+    figure_absent_from_checked_excerpt: 15
+    quotation_verbatim: 1
+    quotation_absent_from_checked_excerpt: 3
+    quotation_altered: 0
+    claim_excluded: 3
+    total: 34
+    violations: 0
+    observations: 18
+  expected:
+    sakana-six-stages: figure_absent_from_checked_excerpt
+    sakana-workshop-score: figure_absent_from_checked_excerpt
+    sakana-acceptance-ratio: figure_absent_from_checked_excerpt
+    sakana-manual-filtering: quotation_absent_from_checked_excerpt
+    kosmos-run-hours: figure_supported_in_excerpt
+    kosmos-rollouts: figure_supported_in_excerpt
+    kosmos-code-lines: figure_supported_in_excerpt
+    kosmos-papers-read: figure_supported_in_excerpt
+    kosmos-overall-accuracy: figure_supported_in_excerpt
+    kosmos-data-analysis-accuracy: figure_absent_from_checked_excerpt
+    kosmos-literature-accuracy: figure_absent_from_checked_excerpt
+    kosmos-synthesis-accuracy: figure_absent_from_checked_excerpt
+    kosmos-audit-statement-count: figure_absent_from_checked_excerpt
+    agent-laboratory-stages: figure_supported_in_excerpt
+    agent-laboratory-neurips-scores: claim_excluded
+    beel-sample-size: figure_absent_from_checked_excerpt
+    beel-coding-failure-rate: figure_supported_in_excerpt
+    beel-all-ideas-novel: figure_absent_from_checked_excerpt
+    beel-median-citations: figure_absent_from_checked_excerpt
+    deeptrace-citation-accuracy: figure_supported_in_excerpt
+    zhu-experimental-weakness-share: figure_absent_from_checked_excerpt
+    zhu-methodological-flaw-share: figure_absent_from_checked_excerpt
+    neurips-fabricated-reference-count: claim_excluded
+    sciintegrity-model-count: figure_supported_in_excerpt
+    sciintegrity-run-count: figure_supported_in_excerpt
+    sciintegrity-problem-rate: figure_supported_in_excerpt
+    sciintegrity-disclosure-ablation: figure_supported_in_excerpt
+    sciintegrity-fabrication-invariance: figure_absent_from_checked_excerpt
+    llm-judge-accuracy-ceiling: figure_absent_from_checked_excerpt
+    iclr-desk-rejects: claim_excluded
+    aar-inference-chain-transient: quotation_absent_from_checked_excerpt
+    aar-contradiction-transparency: quotation_verbatim
+    citation-hallucination-range: figure_absent_from_checked_excerpt
+    inspectable-llm-not-author: quotation_absent_from_checked_excerpt
+  sharp_cases:
+    - >-
+      deeptrace-citation-accuracy MUST be figure_supported_in_excerpt. The abstract
+      carries it verbatim ("citation accuracy ranging from 40--80% across systems"). This
+      is the case that proves the audit does not simply answer "absent" to everything -
+      and it is the very figure four design documents misattributed as a gap until the
+      correction of 2026-07-25.
+    - >-
+      kosmos-synthesis-accuracy MUST be figure_absent_from_checked_excerpt. The 57.9 %
+      the capability roadmap's whole staging rests on is NOT in the Kosmos abstract. The
+      report must say so as an observation, not as a refutation.
+    - >-
+      No run may count an absent status as a violation. Violation and observation totals
+      appear separately in the report.
+allowed_paths:
+  - packages/domain/mrr/domain/support_audit.py
+  - packages/domain/mrr/domain/support_audit_report.py
+  - services/control_plane/mrr/services/support_audit/__init__.py
+  - services/control_plane/mrr/services/support_audit/service.py
+  - services/control_plane/mrr/services/cli/support_audit_main.py
+  - services/control_plane/mrr/services/cli/main.py
+  - corpora/research-records/support-batch.v1.json
+  - tests/unit/domain/test_support_audit.py
+  - tests/unit/services/test_support_audit_service.py
+  - tests/contract/test_support_audit_report.py
+forbidden_changes:
+  - packages/domain/mrr/domain/field_observation.py
+  - packages/domain/mrr/domain/citation_audit.py
+  - packages/domain/mrr/domain/anchoring_integrity.py
+  - corpora/research-records/claims.manifest.json
+  - corpora/research-records/citations.manifest.json
+  - corpora/research-records/verification/**
+  - corpora/e2e-survey/**
+  - scripts/**
+  - schemas/**
+acceptance_criteria:
+  - The gate is fail-closed and provably ordered - a test corrupts one input's bytes and
+    asserts the typed IntegrityGateError names that input and both hashes, and that NO
+    claim was evaluated.
+  - The two closed status sets are never collapsed; a test asserts the report's violation
+    total is 0 and its observation total is 18 on the real committed inputs.
+  - The full 34-entry acceptance oracle above is reproduced exactly.
+  - Every resolved figure renders its matched excerpt window in both report formats.
+  - The report header states the checked excerpt is the abstract, that presence is not
+    substantive support, and that absence is not refutation.
+  - Determinism - no wall clock anywhere in the domain module; sorting is explicit, never
+    dict or set iteration order; two runs over equal inputs render identical bytes.
+  - Exit semantics mirror N2-T01 - 0 success, 2 input error, 3 refusal. Found violations
+    do NOT change the exit code; the audit reports, it does not judge the run.
+  - make format-check, lint, typecheck, test, test-contract and security-check all pass.
+explicitly_not:
+  - No model, no LLM, no provider adapter, no network, no database, no new dependency,
+    no persisted object, no schemas/** mirror, no migration.
+  - No figure_contradicted status - not decidable against an abstract; deferred to N2-T03c.
+  - No widening of R2-T01's BatchRole closed set.
+  - No tolerance band on numeric comparison - exact match after German decimal-comma
+    normalisation only; a tolerance would be invented domain behaviour (AGENTS rule 3).
+  - No edit to any committed corpus artifact, including the claim manifest this packet
+    reads.

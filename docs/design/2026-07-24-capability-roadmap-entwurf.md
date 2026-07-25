@@ -47,7 +47,8 @@ Dissens-Erhaltung ist die dokumentiert korrekte Behandlung genau dieser Zone.
 
 Externe Forschungsoutputs (auch KI-generierte) mechanisch prüfen: existieren die
 Referenzen, tragen die Quellen die Behauptung, sind Zahlen konsistent? Füllt die
-dokumentierte 40–80-%-Zitationslücke des Feldes; mechanisch prüfbare Klasse
+dokumentierte Zitationslücke des Feldes (Zitations*genauigkeit* 40–80 %, mithin
+20–60 % fehlerhafte Zitate); mechanisch prüfbare Klasse
 (extern verifizierbar, MRR-artig); bedient den Gegenstand „KI-Forschung selbst"
 UND liefert Routine 2 ihr Material. Erster natürlicher Anwendungsfall: die
 eigenen Recherche-Records auditieren (Selbstanwendung als Demonstration).
@@ -118,3 +119,16 @@ experimentell offen — genau das adressiert das Stufe-3-Eigenexperiment.
    Hammond-Adjudikation, erstes A4-Release, Artefakt-Blob-Dauerhaftigkeit
    (Befund 1), Öffnung des Repos (berührt die „source code open"-Byline der
    Site — On Record wartet darauf).
+
+---
+
+**Korrektur 2026-07-25 (aus der N2-T03-Ableitung).** Die Zahl 40–80 % war an
+der N2-Stelle als *Lücke* bzw. Fabrikationsrate zugeschrieben. DeepTRACE
+(arXiv 2509.04499) misst sie laut Abstract wörtlich als „citation **accuracy**
+ranging from 40--80% across systems" — die **Genauigkeit**, nicht die Lücke; die
+Lücke wäre 20–60 %. Die Stelle ist richtiggestellt. Herleitung, alle Fundstellen
+und der Quellbeleg stehen in `docs/design/2026-07-25-n2-t03-derivation.md`.
+Die Fundstelle in `corpora/e2e-survey/citations.manifest.json` bleibt auf
+Owner-Entscheidung vom 2026-07-25 **unverändert**, weil ihr sha256 in
+`corpora/e2e-survey/observation-batch.v1.json` als Integritäts-Anker gepinnt ist —
+die Abweichung ist dort bewusst stehen gelassen und hier vermerkt, nicht behoben.

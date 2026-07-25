@@ -1,0 +1,90 @@
+task_id: N2-T03a
+title: >-
+  Reproducible gated source-content fetch (OUTSIDE the runtime, https + a hard two-host
+  allowlist, keyless, run-once-commit): capture the ABSTRACT of all 21 research-record
+  citations plus its sha256 into a committed content snapshot, so the offline support
+  audit (N2-T03b) has a checkable excerpt at all. Captures what the APIs return and
+  interprets nothing.
+status: approved
+epic: N2
+reviewer_resolution: >-
+  Approved 2026-07-25 by the main session as reviewing instance, under the owner's
+  decision the same day to build N2-T03 in the model-free cut derived in
+  docs/design/2026-07-25-n2-t03-derivation.md, and under the standing use-first
+  decision (docs/design/2026-07-22-nutzungsentscheidung-e9-vertagt.md). This is the
+  network half of the decomposition; the offline half is N2-T03b. Load-bearing choices
+  CONFIRMED at derivation against the real APIs: (1) the substrate does NOT exist today
+  — the committed T02a resolution snapshot carries only resolved/resolved_title/
+  resolved_detail/resolver, and scripts/fetch_citation_resolutions.py never reads the
+  Atom summary at all; (2) the substrate IS obtainable for 21/21 — all 20 arXiv
+  abstracts return in ONE id_list batch query and Crossref carries a JATS abstract for
+  the Nature DOI; (3) a SEPARATE script writing a SEPARATE snapshot, because extending
+  the frozen T02a script would change the reproducibility of an already committed
+  archive artifact — resolution-snapshot.json must stay bit-identical; (4) the excerpt
+  is the ABSTRACT and nothing else, and the snapshot says so in plain type: at
+  derivation the abstracts covered only ~28 percent of the record figures, so a
+  snapshot that did not name its own narrowness would invite exactly the pretended
+  check N2-T02b refused; (5) JATS tag stripping for the Crossref abstract is a declared
+  deterministic transformation, never a silent cleanup.
+depends_on: [N2-T02a]
+derivation: >-
+  Derived 2026-07-25 from docs/design/2026-07-25-n2-t03-derivation.md, opening the
+  "N2-T03 (benannt)" slot left by docs/design/2026-07-25-n2-t02-derivation.md. Fact base
+  verified first-hand at derivation by calling both APIs keyless: 20/20 arXiv summaries
+  returned in one batch; the Crossref record for 10.1038/s41586-026-10265-5 carries an
+  abstract field in JATS XML. Measured coverage of the record's own claims by those
+  abstracts: 18 of 64 numeric tokens at sentence-level heuristic attribution (~28 %),
+  and 1 of 11 English verbatim-quotation candidates. Those figures are an
+  order-of-magnitude finding, NOT the acceptance oracle — the oracle belongs to N2-T03b
+  and derives from the hand-transcribed claim manifest. No HTTP client exists in the
+  dependency tree, so the fetch uses stdlib urllib.request exactly as T02a does; no new
+  dependency.
+objective: >-
+  After this packet, `python scripts/fetch_source_content.py --manifest
+  corpora/research-records/citations.manifest.json --out
+  corpora/research-records/verification/content-snapshot.json` produces a deterministic
+  snapshot carrying, per citation_id: the excerpt text, its sha256, the excerpt kind
+  ("abstract"), the resolver that produced it ("arxiv" | "crossref"), and a boolean for
+  whether an excerpt was obtained at all. A citation whose abstract cannot be retrieved
+  is recorded with excerpt_available false and a typed reason — never omitted, never
+  filled with a placeholder.
+egress_frame:
+  - The script lives under scripts/, never under packages/** or services/**; no runtime
+    path can import it, so the audit tool stays no-network.
+  - Hard host allowlist, https enforced before any socket opens - export.arxiv.org and
+    api.crossref.org only. Any other URL is a typed refusal, never a warning.
+  - Keyless. Both APIs are open. No secret, no token, nothing that could leak into a
+    note or a log.
+  - Run-once-commit. Executed once, result committed as a snapshot (Git is the archive).
+    Same queries produce the same snapshot.
+  - Nothing is interpreted. The script records what the APIs return. No model, no
+    scoring, no supplementation, no repair of a missing abstract.
+allowed_paths:
+  - scripts/fetch_source_content.py
+  - corpora/research-records/verification/content-snapshot.json
+  - tests/unit/scripts/test_fetch_source_content.py
+forbidden_changes:
+  - scripts/fetch_citation_resolutions.py
+  - corpora/research-records/verification/resolution-snapshot.json
+  - corpora/research-records/citations.manifest.json
+  - corpora/e2e-survey/**
+  - packages/domain/mrr/domain/citation_audit.py
+  - packages/domain/mrr/domain/citation_audit_report.py
+  - services/control_plane/mrr/services/citation_audit/**
+acceptance_criteria:
+  - The allowlist gate is real, not cosmetic - a unit test monkeypatches
+    urllib.request.urlopen to fail if it is ever called, and asserts that a non-https
+    URL and a non-allowlisted host each raise a typed refusal BEFORE any socket opens.
+  - JATS stripping is a pure, separately testable function over already-read text.
+  - The snapshot is byte-stable for equal input - rendering is deterministic (sorted
+    keys, fixed separators, trailing newline), asserted by a test.
+  - Every one of the 21 manifest citations appears in the snapshot, including any whose
+    excerpt could not be obtained (excerpt_available false plus a typed reason).
+  - resolution-snapshot.json is bit-identical before and after, asserted by its sha256.
+  - Exit semantics mirror N2-T01 - 0 success, 2 input error, 3 refusal.
+explicitly_not:
+  - No full-text retrieval of any kind - no PDF download, no scraping, no arxiv.org/pdf.
+    The excerpt is the abstract and its narrowness is reported, not circumvented.
+  - No model, no scoring, no judgement, no new dependency, no database, no persisted
+    object, no schemas/** mirror, no migration.
+  - No change to the frozen N2-T01 evaluator or to any N2-T02a artifact.

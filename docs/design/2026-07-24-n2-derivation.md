@@ -31,7 +31,8 @@ realem Anlass.
 
 Die öffentliche `/e2e-automation`-Survey (heute live) zitiert **8 Primärquellen**.
 Ihr eigener Gegenstand ist, dass KI-Forschungssysteme Zitate fabrizieren (die
-dokumentierte 40–80-%-Feldlücke). **Eine Survey, die vor Zitat-Fabrikation warnt,
+dokumentierte Feldlücke: Zitations*genauigkeit* 40–80 %, mithin 20–60 %
+fehlerhafte Zitate). **Eine Survey, die vor Zitat-Fabrikation warnt,
 muss ihre eigenen Zitate aushalten** — das ist der reflexive erste Einsatz von N2.
 
 **Fact-Lock (diese Session real durchgeführt):** alle 8 Identifier gegen die
@@ -53,7 +54,7 @@ LLM/menschlich), und **NICHT**, ob eine ihr zugeschriebene Zahl konsistent ist
 — **nicht**, dass die Behauptungen der Survey gedeckt sind. Der Report beschriftet
 sich entsprechend und behauptet keine Support-Verifikation. Existenz ist die
 mechanisch prüfbare Klasse (extern verifizierbar, MRR-artig); genau sie füllt die
-40–80-%-Lücke.
+Zitationslücke (Zitations*genauigkeit* 40–80 %).
 
 ## Architektur-Platzierung (an bestehende Konvention + N1-Muster angedockt)
 
@@ -116,3 +117,16 @@ Danach: **Hammond-Adjudikation** (run2: blind-pass vs. Ulysses-fail — adjudizi
 oder Dissens stehen lassen, wie On Record es tut). Weiterhin offen: Routine 2 als
 erstes Nachtdeployment, erste Joint Inquiry (Routine 1 / E5/E6), K2-Tor, erstes
 A4-Release, Artefakt-Blob-Dauerhaftigkeit (Befund 1).
+
+---
+
+**Korrektur 2026-07-25 (aus der N2-T03-Ableitung).** Die Zahl 40–80 % war an
+zwei Stellen als *Lücke* bzw. Fabrikationsrate zugeschrieben. DeepTRACE
+(arXiv 2509.04499) misst sie laut Abstract wörtlich als „citation **accuracy**
+ranging from 40--80% across systems" — die **Genauigkeit**, nicht die Lücke; die
+Lücke wäre 20–60 %. Die Stelle ist richtiggestellt. Herleitung, alle Fundstellen
+und der Quellbeleg stehen in `docs/design/2026-07-25-n2-t03-derivation.md`.
+Die Fundstelle in `corpora/e2e-survey/citations.manifest.json` bleibt auf
+Owner-Entscheidung vom 2026-07-25 **unverändert**, weil ihr sha256 in
+`corpora/e2e-survey/observation-batch.v1.json` als Integritäts-Anker gepinnt ist —
+die Abweichung ist dort bewusst stehen gelassen und hier vermerkt, nicht behoben.
