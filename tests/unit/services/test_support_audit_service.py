@@ -26,6 +26,7 @@ _CLAIMS = {
     "schema_version": "claims.manifest.v1",
     "audit_target": "a synthetic test record",
     "anchor_window_chars": 60,
+    "quotation_similarity_threshold": 0.75,
     "claims": [
         {
             "claim_id": "fig-supported",
@@ -92,6 +93,7 @@ def _write_batch(
     """Write a minimal, valid support-batch descriptor + its two declared
     inputs under ``tmp_path`` and return the descriptor's own path.
     """
+    tmp_path.mkdir(parents=True, exist_ok=True)
     claims_path = tmp_path / "claims.manifest.json"
     claims_path.write_text(json.dumps(claims if claims is not None else _CLAIMS), encoding="utf-8")
 
@@ -163,6 +165,69 @@ def test_report_honesty_header_is_structurally_present(tmp_path: Path) -> None:
     assert "abstract" in report.note.lower()
 
 
+def test_report_carries_the_quotation_similarity_threshold_read_from_the_manifest(
+    tmp_path: Path,
+) -> None:
+    """task-packets/N2-T03b.yaml post-review correction: the threshold is
+    READ FROM THE MANIFEST, not from any module constant — this is the
+    exact value the committed ``_CLAIMS`` fixture declares.
+    """
+    batch_path = _write_batch(tmp_path)
+    report = SupportAuditService().build_report(batch_path)
+    assert report.quotation_similarity_threshold == 0.75
+
+
+def test_changing_the_manifests_threshold_changes_a_quotation_verdict(tmp_path: Path) -> None:
+    """Proves the threshold is not merely PRESENT but actually USED: the
+    same near-paraphrase excerpt resolves differently depending on the
+    threshold declared in the manifest — a low threshold in the manifest
+    certifies 'quotation_altered', a high one the same claim as absent.
+    """
+    near_paraphrase_claims: dict[str, object] = {
+        **_CLAIMS,
+        "claims": [
+            {
+                "claim_id": "near-paraphrase",
+                "citation_id": "cit-a",
+                "kind": "quotation",
+                "text": "runs for twelve hours performing cycles",
+            },
+        ],
+    }
+    near_paraphrase_snapshot: dict[str, object] = {
+        **_SNAPSHOT,
+        "excerpts": [
+            {
+                "citation_id": "cit-a",
+                "resolver": "arxiv",
+                "excerpt_kind": "abstract",
+                "excerpt_available": True,
+                "excerpt_text": "Kosmos runs for up to 12 hours performing cycles of analysis.",
+                "excerpt_sha256": "sha256:" + "a" * 64,
+                "unavailable_reason": None,
+            }
+        ],
+    }
+
+    low_threshold_claims = {**near_paraphrase_claims, "quotation_similarity_threshold": 0.3}
+    high_threshold_claims = {**near_paraphrase_claims, "quotation_similarity_threshold": 0.999}
+
+    low_batch = _write_batch(
+        tmp_path / "low", claims=low_threshold_claims, snapshot=near_paraphrase_snapshot
+    )
+    high_batch = _write_batch(
+        tmp_path / "high", claims=high_threshold_claims, snapshot=near_paraphrase_snapshot
+    )
+
+    low_report = SupportAuditService().build_report(low_batch)
+    high_report = SupportAuditService().build_report(high_batch)
+
+    assert low_report.quotation_similarity_threshold == 0.3
+    assert high_report.quotation_similarity_threshold == 0.999
+    assert low_report.quotations[0].status == "quotation_altered"
+    assert high_report.quotations[0].status == "quotation_absent_from_checked_excerpt"
+
+
 def test_unavailable_excerpt_in_snapshot_is_a_normal_absent_evaluation_not_an_error(
     tmp_path: Path,
 ) -> None:
@@ -223,6 +288,47 @@ def test_batch_missing_required_key_raises_support_audit_input_error(tmp_path: P
     batch_path.write_text(json.dumps(document))
     with pytest.raises(SupportAuditInputError):
         SupportAuditService().build_report(batch_path)
+
+
+def test_claims_manifest_missing_quotation_similarity_threshold_raises_support_audit_input_error(
+    tmp_path: Path,
+) -> None:
+    """Post-review correction: the threshold has NO fallback anywhere — a
+    manifest that omits it is a typed refusal, never a silent default.
+    """
+    claims = dict(_CLAIMS)
+    del claims["quotation_similarity_threshold"]
+    batch_path = _write_batch(tmp_path, claims=claims)
+    with pytest.raises(SupportAuditInputError, match="quotation_similarity_threshold"):
+        SupportAuditService().build_report(batch_path)
+
+
+@pytest.mark.parametrize(
+    "invalid_threshold",
+    [0.0, -0.1, 1.0001, 2, "0.75", True, None, [0.75]],
+)
+def test_claims_manifest_invalid_quotation_similarity_threshold_raises_support_audit_input_error(
+    tmp_path: Path, invalid_threshold: object
+) -> None:
+    """Not a number, a boolean, or outside (0, 1] — every one of these is a
+    typed refusal, never clamped, coerced, or silently defaulted.
+    """
+    claims = {**_CLAIMS, "quotation_similarity_threshold": invalid_threshold}
+    batch_path = _write_batch(tmp_path, claims=claims)
+    with pytest.raises(SupportAuditInputError, match="quotation_similarity_threshold"):
+        SupportAuditService().build_report(batch_path)
+
+
+def test_claims_manifest_threshold_of_exactly_one_is_valid(tmp_path: Path) -> None:
+    """The boundary is inclusive on the high end: 1.0 is a valid threshold
+    (only an EXACT similarity of 1.0 — i.e. a verbatim match, which is
+    already caught earlier — could ever reach it, but declaring it is not
+    itself an error).
+    """
+    claims = {**_CLAIMS, "quotation_similarity_threshold": 1.0}
+    batch_path = _write_batch(tmp_path, claims=claims)
+    report = SupportAuditService().build_report(batch_path)
+    assert report.quotation_similarity_threshold == 1.0
 
 
 def test_batch_missing_content_snapshot_input_declaration_raises_support_audit_input_error(

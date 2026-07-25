@@ -118,24 +118,40 @@ the excerpt (lower-case, whitespace-collapsed) and checks for an exact
 substring match FIRST (``quotation_verbatim`` — a hit). Only if that fails
 does it slide a WORD-length window (matching the quote's own word count)
 across the excerpt and take the single best ``difflib.SequenceMatcher``
-ratio (stdlib only, no new dependency) — at or above
-:data:`DEFAULT_QUOTATION_SIMILARITY_THRESHOLD` is ``quotation_altered`` (the
-excerpt carries the passage in different words — a VIOLATION), below is
-``quotation_absent_from_checked_excerpt`` (an OBSERVATION). UNLIKE the 60-
-character anchor window, this specific threshold (0.75) has NO sweep behind
-it in the derivation record — none of the four real quotation claims in the
-committed manifest ever resolves to ``quotation_altered`` (the acceptance
-oracle's own total for it is 0), so there is no real case to calibrate
-against. It is a deliberately conservative, documented choice, verified at
-build time against the real committed excerpts to sit with wide margin below
-every genuinely-unrelated pairing in this corpus (the closest, aar-
-inference-chain-transient against the AAR abstract's own unrelated "transient
-constraints"/"unverifiable inference" phrasing, scores ~0.45 — well under
-0.75) and to still catch an exact match's own trivial neighbours (an exact
-match is caught earlier anyway, via the substring check, so this threshold
-only ever governs genuine near-paraphrases). This is a builder judgement
-call within the packet's remit, not a value handed down by the packet
-itself, and is reported as such rather than presented as pre-registered.
+ratio (stdlib only, no new dependency) — at or above the caller-supplied
+``similarity_threshold`` is ``quotation_altered`` (the excerpt carries the
+passage in different words — a VIOLATION), below is ``quotation_absent_
+from_checked_excerpt`` (an OBSERVATION).
+
+``similarity_threshold`` is a REQUIRED keyword argument here, with NO
+default anywhere in this module (post-review correction, task-packets/
+N2-T03b.yaml: "a review found the ONLY parameter in this packet's
+vocabulary that can produce a VIOLATION was living in an unhashed module
+constant, invisible to the fail-closed gate — unlike ``anchor_window_chars``,
+which is pinned and gated, a change to a bare module constant would shift
+verdicts silently"). The value now lives in the committed, hashed
+``corpora/research-records/claims.manifest.json`` (``quotation_similarity_
+threshold``, alongside ``anchor_window_chars``) and is read, validated, and
+threaded through by ``mrr.services.support_audit.service
+.SupportAuditService`` — a missing or out-of-``(0, 1]`` value there is a
+typed :class:`~mrr.services.support_audit.service.SupportAuditInputError`,
+never a silent fallback to any value this module might otherwise have
+supplied. UNLIKE the 60-character anchor window, this specific value (0.75
+in the committed manifest) has NO sweep behind it in the derivation record —
+none of the four real quotation claims in the committed manifest ever
+resolves to ``quotation_altered`` (the acceptance oracle's own total for it
+is 0), so there is no real case to calibrate against. It is a deliberately
+conservative, documented choice (see ``claims.manifest.json``'s own
+``quotation_similarity_threshold_note``), verified at build time against the
+real committed excerpts to sit with wide margin below every genuinely-
+unrelated pairing in this corpus (the closest, aar-inference-chain-transient
+against the AAR abstract's own unrelated "transient constraints"/
+"unverifiable inference" phrasing, scores ~0.45 — well under 0.75) and to
+still catch an exact match's own trivial neighbours (an exact match is
+caught earlier anyway, via the substring check, so this threshold only ever
+governs genuine near-paraphrases). It remains a builder judgement call
+within the packet's remit, not a value swept and handed down like the
+anchor window — now anchored and reported rather than merely documented.
 
 --- The fail-closed hash gate (mirrors, does NOT reuse, R2-T01's OR
     N2-T02b's) -----------------------------------------------------------------
@@ -585,10 +601,12 @@ _QUOTATION_VERBATIM: QuotationStatus = "quotation_verbatim"
 _QUOTATION_ALTERED: QuotationStatus = "quotation_altered"
 _QUOTATION_ABSENT: QuotationStatus = "quotation_absent_from_checked_excerpt"
 
-#: See the module docstring's "Quotations" section for the full rationale
-#: and the empirical margin check against the real committed corpus. A
-#: builder judgement call, not a pre-registered value — flagged as such.
-DEFAULT_QUOTATION_SIMILARITY_THRESHOLD: float = 0.75
+# NOTE: there is deliberately NO module-level default threshold here anymore
+# (post-review correction). The value lives in the committed, hashed claim
+# manifest (``quotation_similarity_threshold``) and is a REQUIRED argument
+# on :func:`evaluate_quotation_claim` below — see the module docstring's
+# "Quotations" section for why a bare module constant was exactly the
+# unanchored risk a review of this packet found.
 
 
 @dataclass(frozen=True, slots=True)
@@ -619,7 +637,7 @@ def evaluate_quotation_claim(
     citation_id: str,
     quote_text: str,
     excerpt_text: str | None,
-    similarity_threshold: float = DEFAULT_QUOTATION_SIMILARITY_THRESHOLD,
+    similarity_threshold: float,
 ) -> QuotationVerdict:
     """Decide one quotation claim's status against an already-read excerpt.
 
@@ -631,6 +649,11 @@ def evaluate_quotation_claim(
     ``similarity_threshold`` -> ``"quotation_altered"`` (a VIOLATION: the
     excerpt carries the passage in different words). (3) Otherwise ->
     ``"quotation_absent_from_checked_excerpt"`` (an OBSERVATION).
+
+    ``similarity_threshold`` has NO default — a caller (in practice, only
+    ``mrr.services.support_audit.service.SupportAuditService``, which reads
+    it from the committed claim manifest) must always supply it explicitly.
+    See the module docstring's "Quotations" section for why.
     """
     if excerpt_text is None:
         return QuotationVerdict(

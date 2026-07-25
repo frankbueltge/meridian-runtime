@@ -42,9 +42,13 @@ derivation: >-
   the 40-80 misattribution corrected the same day; Records II and III follow as N2-T03d.
   anchor_window_chars is 60, chosen from a sweep over 200/120/80/60/40/25 run at the
   derivation - the outcome is identical from 200 down to 60 and first changes at 40,
-  where Kosmos's "79.4% of statements ... to be accurate" drops out because 47
-  characters separate figure from anchor. Figures are matched as DIGITS only; a source
-  spelling a number as a word counts as absent.
+  where Kosmos's "79.4% of statements ... to be accurate" drops out because exactly 40
+  characters separate figure from anchor. (The derivation first wrote 47 there: a figure
+  estimated off a context printout and then stated as measured. Corrected 2026-07-25 at
+  the review after the builder flagged the discrepancy - the two fetched abstracts are
+  bit-identical, so no source revision was involved. No status is affected, and the
+  sweep's flip at exactly 40 is now explained rather than coincidental.) Figures are
+  matched as DIGITS only; a source spelling a number as a word counts as absent.
 objective: >-
   After this packet, `mrr audit support --batch corpora/research-records/support-batch.v1.json`
   renders a deterministic support report (JSON and Markdown). It (a) resolves each

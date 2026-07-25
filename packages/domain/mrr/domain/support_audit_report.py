@@ -53,6 +53,25 @@ they ever collapsed into one "problems" total, the very first run would
 misreport 18 false violations (AGENTS.md's "collapsing distinct statuses
 into one generic outcome" prohibited shortcut).
 
+--- The used quotation-similarity threshold is part of the honesty header ---
+
+``quotation_similarity_threshold`` is a required field on
+:class:`SupportAuditReport` (``Field(gt=0.0, le=1.0)``, so it cannot even be
+constructed as 0, negative, or above 1) and is rendered in BOTH
+:func:`render_markdown` and :func:`render_json` alongside ``presence_is_not_
+support``/``checked_excerpt_is_abstract_only``. A review of this packet
+found that this value — the ONLY parameter in this packet's vocabulary able
+to produce a VIOLATION (``quotation_altered``) — was originally a bare
+module constant in ``mrr.domain.support_audit``: invisible to the fail-
+closed hash gate and to any report reader, so a future code change could
+shift every ``quotation_altered``/``quotation_absent_from_checked_excerpt``
+verdict without any anchor noticing and without any reader being able to
+tell which threshold was actually used. It now lives in the committed,
+hashed claim manifest (``quotation_similarity_threshold``, gated exactly
+like ``anchor_window_chars``) and is carried through to this exact field, so
+a reader can always see which value decided every quotation verdict in the
+report they are looking at.
+
 --- The matched window is rendered for every resolved figure ----------------
 
 Every :class:`FigureVerdictRow` with status ``"figure_supported_in_excerpt"``
@@ -190,6 +209,7 @@ class SupportAuditReport(MRRModel):
     note: str = _NOTE
     batch_id: str
     audit_target: str
+    quotation_similarity_threshold: float = Field(gt=0.0, le=1.0)
     figures: tuple[FigureVerdictRow, ...]
     quotations: tuple[QuotationVerdictRow, ...]
     exclusions: tuple[ExclusionVerdictRow, ...]
@@ -200,6 +220,7 @@ def build_support_audit_report(
     *,
     batch_id: str,
     audit_target: str,
+    quotation_similarity_threshold: float,
     figure_verdicts: Sequence[FigureVerdict],
     quotation_verdicts: Sequence[QuotationVerdict],
     exclusion_verdicts: Sequence[ExclusionVerdict],
@@ -211,6 +232,17 @@ def build_support_audit_report(
     from those same ordered sequences — ``violations``/``observations`` are
     DERIVED sums of already-distinct per-status counts, never independently
     supplied and never summed with each other (see the module docstring).
+
+    ``quotation_similarity_threshold`` is carried through UNCHANGED onto the
+    report header — the SAME value the caller already used to produce
+    ``quotation_verdicts`` via ``mrr.domain.support_audit
+    .evaluate_quotation_claim`` (this function does not re-derive or
+    validate it; that happens once, at the manifest-parsing boundary in
+    ``mrr.services.support_audit.service``). A reader of the rendered report
+    can therefore always see exactly which threshold decided every
+    ``quotation_altered``/``quotation_absent_from_checked_excerpt`` verdict
+    in it, in both JSON and Markdown (task-packets/N2-T03b.yaml post-review
+    correction).
     """
     ordered_figures = tuple(sorted(figure_verdicts, key=lambda verdict: verdict.claim_id))
     ordered_quotations = tuple(sorted(quotation_verdicts, key=lambda verdict: verdict.claim_id))
@@ -254,6 +286,7 @@ def build_support_audit_report(
     return SupportAuditReport(
         batch_id=batch_id,
         audit_target=audit_target,
+        quotation_similarity_threshold=quotation_similarity_threshold,
         figures=tuple(
             FigureVerdictRow(
                 claim_id=verdict.claim_id,
@@ -387,6 +420,12 @@ def render_markdown(report: SupportAuditReport) -> str:
     lines.append(f"- {report.note}")
     lines.append(f"- **batch id:** {report.batch_id}")
     lines.append(f"- **audit target:** {report.audit_target}")
+    lines.append(
+        f"- **quotation_similarity_threshold:** {report.quotation_similarity_threshold} "
+        "(the exact value a quotation's best-window similarity is compared against to decide "
+        "quotation_altered vs. quotation_absent_from_checked_excerpt — pinned in the committed "
+        "claim manifest, not a bare code constant)"
+    )
     lines.append("")
     lines.extend(_render_counts_section(report.counts))
     lines.extend(_render_figures_section(report.figures))

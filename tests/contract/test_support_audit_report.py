@@ -71,6 +71,7 @@ def _report() -> SupportAuditReport:
     return build_support_audit_report(
         batch_id="test-batch",
         audit_target="a test target",
+        quotation_similarity_threshold=0.75,
         figure_verdicts=figure_verdicts,
         quotation_verdicts=quotation_verdicts,
         exclusion_verdicts=exclusion_verdicts,
@@ -104,6 +105,32 @@ def test_support_audit_report_presence_is_not_support_cannot_be_false() -> None:
 def test_support_audit_report_checked_excerpt_is_abstract_only_cannot_be_false() -> None:
     payload = _report().model_dump()
     payload["checked_excerpt_is_abstract_only"] = False
+    with pytest.raises(ValidationError):
+        SupportAuditReport.model_validate(payload)
+
+
+@pytest.mark.parametrize("invalid_threshold", [0.0, -0.1, 1.0001, 2.0])
+def test_support_audit_report_rejects_a_quotation_similarity_threshold_outside_0_1(
+    invalid_threshold: float,
+) -> None:
+    """Post-review correction: the threshold is a required, bounded field —
+    it cannot be constructed as 0, negative, or above 1.
+    """
+    payload = _report().model_dump()
+    payload["quotation_similarity_threshold"] = invalid_threshold
+    with pytest.raises(ValidationError):
+        SupportAuditReport.model_validate(payload)
+
+
+def test_support_audit_report_accepts_quotation_similarity_threshold_of_exactly_one() -> None:
+    payload = _report().model_dump()
+    payload["quotation_similarity_threshold"] = 1.0
+    SupportAuditReport.model_validate(payload)  # must not raise
+
+
+def test_support_audit_report_requires_quotation_similarity_threshold() -> None:
+    payload = _report().model_dump()
+    del payload["quotation_similarity_threshold"]
     with pytest.raises(ValidationError):
         SupportAuditReport.model_validate(payload)
 
@@ -235,6 +262,22 @@ def test_rendered_markdown_shows_a_resolved_figures_matched_window() -> None:
     assert "runs for 12 hours" in rendered
 
 
+def test_rendered_markdown_shows_the_quotation_similarity_threshold_used() -> None:
+    """task-packets/N2-T03b.yaml post-review correction: a reader must be
+    able to see, in the rendered report itself, which threshold decided
+    every quotation_altered/quotation_absent_from_checked_excerpt verdict.
+    """
+    rendered = render_markdown(_report())
+    assert "quotation_similarity_threshold" in rendered
+    assert "0.75" in rendered
+
+
+def test_rendered_json_carries_the_quotation_similarity_threshold_used() -> None:
+    report = _report()
+    rendered = render_json(report)
+    assert '"quotation_similarity_threshold": 0.75' in rendered
+
+
 # ---------------------------------------------------------------------------
 # Acceptance: the REAL committed corpora/research-records/support-batch.v1.json
 # reproduces the full 34-entry oracle fixed in task-packets/N2-T03b.yaml
@@ -286,6 +329,21 @@ def _build_real_report() -> SupportAuditReport:
 
 def test_real_committed_batch_descriptor_exists() -> None:
     assert BATCH_PATH.exists()
+
+
+def test_real_report_carries_the_committed_quotation_similarity_threshold() -> None:
+    """The value pinned in corpora/research-records/claims.manifest.json's
+    own ``quotation_similarity_threshold`` — 0.75, chosen at build time and
+    now hashed/gated exactly like ``anchor_window_chars``.
+    """
+    report = _build_real_report()
+    assert report.quotation_similarity_threshold == 0.75
+
+
+def test_real_rendered_report_shows_the_threshold_in_both_formats() -> None:
+    report = _build_real_report()
+    assert "0.75" in render_markdown(report)
+    assert '"quotation_similarity_threshold": 0.75' in render_json(report)
 
 
 def test_real_inputs_reproduce_the_full_34_entry_acceptance_oracle_exactly() -> None:

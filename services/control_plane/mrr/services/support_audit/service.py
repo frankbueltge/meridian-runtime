@@ -28,18 +28,25 @@ bytes and asserts ... that NO claim was evaluated").
 
 :class:`SupportAuditInputError` covers every "this input cannot even be
 read as data" failure — a missing/unreadable descriptor or declared input
-file, invalid UTF-8, unparseable JSON, the wrong top-level shape, or a
-claim manifest entry whose ``citation_id`` has no corresponding entry in the
+file, invalid UTF-8, unparseable JSON, the wrong top-level shape, a claim
+manifest entry whose ``citation_id`` has no corresponding entry in the
 content snapshot at all (a structural mismatch between the two committed
 inputs, never silently treated as "excerpt unavailable" — that legitimate
 case is instead ``excerpt_available: false`` INSIDE a present snapshot
 entry, which this service maps to ``excerpt_text=None`` and hands to the
-domain layer as a normal absent-excerpt evaluation, not an error). Mirrors
-``mrr.services.anchoring_integrity.service.AnchoringIntegrityInputError``;
-``mrr.services.cli.support_audit_main`` maps this to exit 2. Every OTHER
-typed error here — ``mrr.domain.support_audit.IntegrityGateError`` (a
-declared-vs-actual sha256 mismatch) — is a REFUSAL about the DATA's own
-integrity, not about file I/O (``support_audit_main`` maps it to exit 3).
+domain layer as a normal absent-excerpt evaluation, not an error), or a
+declared ``quotation_similarity_threshold`` that is missing, not a number,
+a boolean, or outside ``(0, 1]`` (see :func:`_parse_quotation_similarity_
+threshold` — post-review correction: this value used to be an unhashed
+module constant in ``mrr.domain.support_audit``, invisible to the fail-
+closed gate; it now lives in the claim manifest, gated exactly like
+``anchor_window_chars``, with NO silent fallback of any kind if it is
+absent or malformed). Mirrors ``mrr.services.anchoring_integrity.service
+.AnchoringIntegrityInputError``; ``mrr.services.cli.support_audit_main``
+maps this to exit 2. Every OTHER typed error here — ``mrr.domain
+.support_audit.IntegrityGateError`` (a declared-vs-actual sha256 mismatch)
+— is a REFUSAL about the DATA's own integrity, not about file I/O
+(``support_audit_main`` maps it to exit 3).
 """
 
 from __future__ import annotations
@@ -70,11 +77,12 @@ class SupportAuditInputError(DomainError):
     """Raised when the ``--batch`` descriptor, or one of its two declared
     inputs (the claim manifest, the content snapshot), cannot even be read
     as data — missing, unreadable, not valid UTF-8, not valid JSON, the
-    wrong top-level shape, or a claim whose ``citation_id`` has no matching
-    entry in the content snapshot at all. Carries ``path`` and a human-
-    readable ``detail``; mapped to exit 2 at the CLI, never exit 3 — this is
-    not a refusal about the DATA's own integrity, it is "this input does not
-    exist as usable data at all".
+    wrong top-level shape, a claim whose ``citation_id`` has no matching
+    entry in the content snapshot at all, or a declared ``quotation_
+    similarity_threshold`` that is missing/not a number/outside ``(0, 1]``.
+    Carries ``path`` and a human-readable ``detail``; mapped to exit 2 at the
+    CLI, never exit 3 — this is not a refusal about the DATA's own
+    integrity, it is "this input does not exist as usable data at all".
     """
 
     def __init__(self, path: Path, detail: str) -> None:
@@ -193,16 +201,40 @@ def _require_string_array(value: Any, *, path: Path, what: str) -> tuple[str, ..
 
 _ParsedClaims = tuple[
     int,
+    float,
     tuple[_ParsedFigureClaim, ...],
     tuple[_ParsedQuotationClaim, ...],
     tuple[_ParsedExclusion, ...],
 ]
 
 
+def _parse_quotation_similarity_threshold(document: Mapping[str, Any], *, path: Path) -> float:
+    """Read ``quotation_similarity_threshold`` from the claim manifest —
+    REQUIRED, with NO fallback to any module constant (post-review
+    correction, task-packets/N2-T03b.yaml: this is the only parameter in the
+    packet's vocabulary able to produce a VIOLATION, and a bare module
+    constant left it invisible to the fail-closed gate). Missing, non-
+    numeric, boolean, or outside ``(0, 1]`` is a typed
+    :class:`SupportAuditInputError` — never a silent default.
+    """
+    raw_threshold = _require_key(document, "quotation_similarity_threshold", path=path)
+    if isinstance(raw_threshold, bool) or not isinstance(raw_threshold, int | float):
+        raise SupportAuditInputError(path, "'quotation_similarity_threshold' must be a number")
+    threshold = float(raw_threshold)
+    if not (0.0 < threshold <= 1.0):
+        raise SupportAuditInputError(
+            path,
+            f"'quotation_similarity_threshold' must be in (0, 1], got {threshold!r}",
+        )
+    return threshold
+
+
 def _parse_claims_manifest(document: Mapping[str, Any], *, path: Path) -> _ParsedClaims:
     raw_window = _require_key(document, "anchor_window_chars", path=path)
     if not isinstance(raw_window, int) or isinstance(raw_window, bool):
         raise SupportAuditInputError(path, "'anchor_window_chars' must be an integer")
+
+    quotation_similarity_threshold = _parse_quotation_similarity_threshold(document, path=path)
 
     raw_claims = _require_key(document, "claims", path=path)
     if not isinstance(raw_claims, list):
@@ -257,7 +289,13 @@ def _parse_claims_manifest(document: Mapping[str, Any], *, path: Path) -> _Parse
                 f"claims[{claim_id!r}].kind {kind!r} is not one of 'figure'/'quotation'/'excluded'",
             )
 
-    return raw_window, tuple(figure_claims), tuple(quotation_claims), tuple(exclusion_claims)
+    return (
+        raw_window,
+        quotation_similarity_threshold,
+        tuple(figure_claims),
+        tuple(quotation_claims),
+        tuple(exclusion_claims),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -391,9 +429,13 @@ class SupportAuditService:
         claims_mapping = _require_mapping(
             claims_document, path=claims_manifest_path, what="the claim manifest"
         )
-        anchor_window_chars, figure_claims, quotation_claims, exclusion_claims = (
-            _parse_claims_manifest(claims_mapping, path=claims_manifest_path)
-        )
+        (
+            anchor_window_chars,
+            quotation_similarity_threshold,
+            figure_claims,
+            quotation_claims,
+            exclusion_claims,
+        ) = _parse_claims_manifest(claims_mapping, path=claims_manifest_path)
 
         snapshot_mapping = _require_mapping(
             snapshot_document, path=content_snapshot_path, what="the content snapshot"
@@ -421,6 +463,7 @@ class SupportAuditService:
                 excerpt_text=_resolve_excerpt(
                     claim.citation_id, excerpt_by_citation, path=content_snapshot_path
                 ),
+                similarity_threshold=quotation_similarity_threshold,
             )
             for claim in quotation_claims
         ]
@@ -436,6 +479,7 @@ class SupportAuditService:
         return build_support_audit_report(
             batch_id=batch.batch_id,
             audit_target=batch.audit_target,
+            quotation_similarity_threshold=quotation_similarity_threshold,
             figure_verdicts=figure_verdicts,
             quotation_verdicts=quotation_verdicts,
             exclusion_verdicts=exclusion_verdicts,

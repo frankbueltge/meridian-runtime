@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import pytest
 from mrr.domain.support_audit import (
-    DEFAULT_QUOTATION_SIMILARITY_THRESHOLD,
     IntegrityGateError,
     build_exclusion_verdict,
     check_anchor,
@@ -22,6 +21,12 @@ from mrr.domain.support_audit import (
 
 _OK_HASH = "sha256:" + "a" * 64
 _OTHER_HASH = "sha256:" + "b" * 64
+
+#: The value pinned in the real committed claim manifest
+#: (``quotation_similarity_threshold``) — used here only as a realistic
+#: test value; this module has NO default of its own to fall back to (post-
+#: review correction, see the module docstring's "Quotations" section).
+_THRESHOLD = 0.75
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +346,11 @@ class TestEvaluateFigureClaim:
 class TestEvaluateQuotationClaim:
     def test_excerpt_none_is_absent(self) -> None:
         verdict = evaluate_quotation_claim(
-            claim_id="q1", citation_id="cit1", quote_text="anything", excerpt_text=None
+            claim_id="q1",
+            citation_id="cit1",
+            quote_text="anything",
+            excerpt_text=None,
+            similarity_threshold=_THRESHOLD,
         )
         assert verdict.status == "quotation_absent_from_checked_excerpt"
         assert verdict.matched_text is None
@@ -355,6 +364,7 @@ class TestEvaluateQuotationClaim:
                 "... testable via provenance coverage, contradiction transparency, "
                 "and audit effort."
             ),
+            similarity_threshold=_THRESHOLD,
         )
         assert verdict.status == "quotation_verbatim"
         assert verdict.matched_text == "contradiction transparency"
@@ -365,6 +375,7 @@ class TestEvaluateQuotationClaim:
             citation_id="cit1",
             quote_text="we   MANUALLY filtered\nthe outputs",
             excerpt_text="the team we manually filtered the outputs before publishing",
+            similarity_threshold=_THRESHOLD,
         )
         assert verdict.status == "quotation_verbatim"
 
@@ -377,6 +388,7 @@ class TestEvaluateQuotationClaim:
                 "The automation of science is a long-standing ambition in artificial "
                 "intelligence research. The workshop had an acceptance rate of 70%."
             ),
+            similarity_threshold=_THRESHOLD,
         )
         assert verdict.status == "quotation_absent_from_checked_excerpt"
         assert verdict.matched_text is None
@@ -395,8 +407,18 @@ class TestEvaluateQuotationClaim:
         assert verdict.status == "quotation_altered"
         assert verdict.matched_text is not None
 
-    def test_default_threshold_constant_is_the_one_actually_used_by_default(self) -> None:
-        assert DEFAULT_QUOTATION_SIMILARITY_THRESHOLD == 0.75
+    def test_similarity_threshold_has_no_default_and_must_be_supplied(self) -> None:
+        """Post-review correction: there is deliberately NO module constant
+        this function could fall back to — omitting ``similarity_threshold``
+        is a ``TypeError`` at the call site, never a silent default.
+        """
+        with pytest.raises(TypeError):
+            evaluate_quotation_claim(  # type: ignore[call-arg]
+                claim_id="q1",
+                citation_id="cit1",
+                quote_text="anything",
+                excerpt_text="anything",
+            )
 
     def test_higher_threshold_can_turn_an_altered_case_into_absent(self) -> None:
         quote = "the inference chain exists only as transient activation patterns"
@@ -424,6 +446,7 @@ class TestEvaluateQuotationClaim:
             "citation_id": "cit1",
             "quote_text": "Contradiction Transparency",
             "excerpt_text": "testable via contradiction transparency and audit effort",
+            "similarity_threshold": _THRESHOLD,
         }
         assert evaluate_quotation_claim(**kwargs) == evaluate_quotation_claim(**kwargs)  # type: ignore[arg-type]
 
