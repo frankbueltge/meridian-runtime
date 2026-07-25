@@ -51,6 +51,7 @@ from mrr.domain.exceptions import DomainError
 from mrr.services.cli import (
     citation_audit_main,
     export_main,
+    field_observation_main,
     release_main,
     report_main,
     synthesis_main,
@@ -229,6 +230,12 @@ def build_parser() -> argparse.ArgumentParser:
     # immediately above; no other line in this file changes.
     citation_audit_main.register_audit_subcommand(subparsers)
 
+    # Task-packets/R2-T01.yaml's one additive registration: a new "observe"
+    # subparser group ("mrr observe field") delegating entirely to
+    # mrr.services.cli.field_observation_main — mirrors the audit registration
+    # immediately above; no other line in this file changes.
+    field_observation_main.register_observe_subcommand(subparsers)
+
     return parser
 
 
@@ -354,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
         return validation_main.run_command(args)
     if args.command == "audit":
         return citation_audit_main.run_command(args)
+    if args.command == "observe":
+        return field_observation_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
