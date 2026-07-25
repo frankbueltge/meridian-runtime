@@ -1,0 +1,16 @@
+{
+  "schema_version": "support-batch.v1",
+  "batch_id": "research-records-support-2026-07-25",
+  "audit_target": "Recherche-Record I (docs/design/2026-07-23-recherche-e2e-research-automation.md) — the 34 hand-transcribed claims in corpora/research-records/claims.manifest.json, checked against the abstract-only excerpt captured by N2-T03a.",
+  "provenance": "N2-T03b's own fail-closed integrity anchor (task-packets/N2-T03b.yaml), mirroring corpora/e2e-survey/observation-batch.v1.json's pattern: pins the two inputs already committed — claims.manifest.json (at the N2-T03 governance commit) and verification/content-snapshot.json (the N2-T03a run-once-commit) — by their sha256. The audit halts deterministically (mrr.domain.support_audit.IntegrityGateError) if either file's bytes no longer match the anchor below, BEFORE any claim is evaluated. Both sha256 values were computed at build time (2026-07-25) from the real committed files; neither is invented. Paths are resolved relative to THIS descriptor file's own directory, exactly as corpora/e2e-survey/observation-batch.v1.json's own 'citations.manifest.json' / 'verification/resolution-snapshot.json' convention does, so the batch is location-independent.",
+  "inputs": {
+    "claims_manifest": {
+      "path": "claims.manifest.json",
+      "sha256": "sha256:2766c0249ef9d82635590cf82479a10119baacf300503a8ac8f9eb233e12c821"
+    },
+    "content_snapshot": {
+      "path": "verification/content-snapshot.json",
+      "sha256": "sha256:85e9173cc91f445891dcbebb569d793653213d47119d0f09ec7fc14b5a491a0e"
+    }
+  }
+}
