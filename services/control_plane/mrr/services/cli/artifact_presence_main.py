@@ -43,8 +43,8 @@ path's presence and hash. A file-level problem there
 is reported as a dependency-unavailable failure (exit 2); a structural
 refusal about the DUMP's own data
 (:class:`mrr.domain.archive_dump.ArchiveDumpParseError`,
-:class:`mrr.domain.artifact_presence.AmbiguousArtifactStoreRootError`) is a
-REFUSAL (exit 3), never a crash.
+:class:`mrr.domain.artifact_presence.AmbiguousArtifactStoreReferenceError`)
+is a REFUSAL (exit 3), never a crash.
 
 --- The exit-code map ---------------------------------------------------------
 
@@ -59,9 +59,9 @@ REFUSAL (exit 3), never a crash.
   No in-memory or partial fallback exists for this (MRR-NFR-012).
 - ``3``: the audit was REFUSED — an existing ``--output`` (checked FIRST,
   before the dump is even read), a structurally malformed dump
-  (``mrr.domain.archive_dump.ArchiveDumpParseError``), or an ambiguous
-  recorded root across the dump's RunManifest objects
-  (``mrr.domain.artifact_presence.AmbiguousArtifactStoreRootError``) —
+  (``mrr.domain.archive_dump.ArchiveDumpParseError``), or the dump's
+  RunManifest objects disagreeing on status or recorded root
+  (``mrr.domain.artifact_presence.AmbiguousArtifactStoreReferenceError``) —
   never a silent pass.
 - argparse's own built-in failures (a bad flag, a missing required
   argument, an invalid ``--format`` choice) use argparse's own exit code, 2
@@ -86,7 +86,7 @@ import tempfile
 from pathlib import Path
 
 from mrr.domain.archive_dump import ArchiveDumpParseError
-from mrr.domain.artifact_presence import AmbiguousArtifactStoreRootError
+from mrr.domain.artifact_presence import AmbiguousArtifactStoreReferenceError
 from mrr.domain.artifact_presence_report import render_json, render_markdown
 from mrr.domain.exceptions import DomainError
 from mrr.services.artifact_presence.service import (
@@ -205,7 +205,12 @@ def run_command(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return _EXIT_DEPENDENCY_UNAVAILABLE
-    except (ArchiveDumpParseError, AmbiguousArtifactStoreRootError, DomainError, ValueError) as exc:
+    except (
+        ArchiveDumpParseError,
+        AmbiguousArtifactStoreReferenceError,
+        DomainError,
+        ValueError,
+    ) as exc:
         print(
             f"mrr audit artifacts: refused — {type(exc).__name__}: {exc}",
             file=sys.stderr,

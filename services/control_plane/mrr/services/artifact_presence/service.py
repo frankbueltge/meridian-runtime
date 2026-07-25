@@ -37,9 +37,9 @@ this to exit 2). Every OTHER typed error here —
 ``mrr.domain.archive_dump.ArchiveDumpParseError`` (the dump's ``objects``
 COPY block, a RunManifest's ``artifact_store_reference``, or an
 EvidenceAnchor's ``snapshot_hash`` is structurally malformed) and
-``mrr.domain.artifact_presence.AmbiguousArtifactStoreRootError`` (the
-dump's RunManifest objects disagree on the recorded root) — is a REFUSAL
-about the DATA's own structure or consistency, not about file I/O
+``mrr.domain.artifact_presence.AmbiguousArtifactStoreReferenceError`` (the
+dump's RunManifest objects disagree on status or recorded root) — is a
+REFUSAL about the DATA's own structure or consistency, not about file I/O
 (``artifact_presence_main`` maps both to exit 3).
 """
 
@@ -110,9 +110,10 @@ class ArtifactPresenceService:
                 ``objects`` COPY block is structurally malformed, or a
                 RunManifest's ``artifact_store_reference``/an
                 EvidenceAnchor's ``snapshot_hash`` has the wrong shape.
-            mrr.domain.artifact_presence.AmbiguousArtifactStoreRootError:
-                the dump's RunManifest objects declare more than one
-                distinct recorded root.
+            mrr.domain.artifact_presence.AmbiguousArtifactStoreReferenceError:
+                the dump's RunManifest objects disagree on status (some
+                recorded, some not), or all agree on "recorded" but declare
+                more than one distinct root.
         """
         try:
             raw_bytes = dump_path.read_bytes()
@@ -128,8 +129,8 @@ class ArtifactPresenceService:
         manifests = extract_run_manifest_store_references(objects)
         anchors_with_hash, anchors_without_hash = extract_artifact_anchors(objects)
 
-        # AmbiguousArtifactStoreRootError propagates (refusal) — see the
-        # module docstring's "typed refusals" section.
+        # AmbiguousArtifactStoreReferenceError propagates (refusal) — see
+        # the module docstring's "typed refusals" section.
         store_root = resolve_dump_store_root(manifests)
 
         verdicts: list[ArtifactPresenceVerdict] = []

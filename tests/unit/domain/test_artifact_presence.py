@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from mrr.domain.archive_dump import ArchivedObject, ArchiveDumpParseError
 from mrr.domain.artifact_presence import (
-    AmbiguousArtifactStoreRootError,
+    AmbiguousArtifactStoreReferenceError,
     ArtifactAnchorRow,
     RunManifestStoreReferenceRow,
     check_artifact_presence,
@@ -182,12 +182,52 @@ def test_resolve_dump_store_root_dedupes_the_same_root_across_two_runs() -> None
     assert resolve_dump_store_root(manifests) == "/data/a"
 
 
-def test_resolve_dump_store_root_ignores_not_recorded_manifests_alongside_a_recorded_one() -> None:
+def test_resolve_dump_store_root_raises_on_a_mixed_recorded_and_not_recorded_dump() -> None:
+    """The review's own provoked counter-example (docs/design/2026-07-26-
+    a2-t01-review.md, finding 1): a dump mixing one recorded and one
+    not-recorded run used to silently resolve to the recorded run's root,
+    which would then falsely report the not-recorded run's own anchors
+    ``artifact_missing`` — a VIOLATION where an OBSERVATION belongs, because
+    EvidenceAnchor carries no run reference to tell the two runs' anchors
+    apart. This is the expected NEXT state, not a corner case: it occurs the
+    moment any run recorded under this packet sits in a dump beside an
+    older, pre-packet run.
+    """
     manifests = (
-        RunManifestStoreReferenceRow(run_id="r1", status="recorded", root="/data/a"),
-        RunManifestStoreReferenceRow(run_id="r2", status="not_recorded", root=None),
+        RunManifestStoreReferenceRow(run_id="r-old", status="not_recorded", root=None),
+        RunManifestStoreReferenceRow(run_id="r-new", status="recorded", root="/tmp/neuer-store"),
     )
-    assert resolve_dump_store_root(manifests) == "/data/a"
+    with pytest.raises(AmbiguousArtifactStoreReferenceError) as excinfo:
+        resolve_dump_store_root(manifests)
+    assert excinfo.value.statuses == ("not_recorded", "recorded")
+    assert excinfo.value.roots == ()
+
+
+def test_resolve_dump_store_root_raises_on_a_mixed_dump_regardless_of_row_order() -> None:
+    manifests = (
+        RunManifestStoreReferenceRow(run_id="r-new", status="recorded", root="/tmp/neuer-store"),
+        RunManifestStoreReferenceRow(run_id="r-old", status="not_recorded", root=None),
+    )
+    with pytest.raises(AmbiguousArtifactStoreReferenceError) as excinfo:
+        resolve_dump_store_root(manifests)
+    assert excinfo.value.statuses == ("not_recorded", "recorded")
+
+
+def test_resolve_dump_store_root_status_disagreement_is_checked_before_root_disagreement() -> None:
+    """A mixed-status dump raises naming the STATUS disagreement even when
+    the recorded manifests among them would ALSO have disagreed on root —
+    status agreement is the first gate, root comparison never runs at all
+    once it fails.
+    """
+    manifests = (
+        RunManifestStoreReferenceRow(run_id="r1", status="not_recorded", root=None),
+        RunManifestStoreReferenceRow(run_id="r2", status="recorded", root="/data/a"),
+        RunManifestStoreReferenceRow(run_id="r3", status="recorded", root="/data/b"),
+    )
+    with pytest.raises(AmbiguousArtifactStoreReferenceError) as excinfo:
+        resolve_dump_store_root(manifests)
+    assert excinfo.value.statuses == ("not_recorded", "recorded")
+    assert excinfo.value.roots == ()
 
 
 def test_resolve_dump_store_root_raises_on_two_distinct_recorded_roots() -> None:
@@ -195,9 +235,10 @@ def test_resolve_dump_store_root_raises_on_two_distinct_recorded_roots() -> None
         RunManifestStoreReferenceRow(run_id="r1", status="recorded", root="/data/a"),
         RunManifestStoreReferenceRow(run_id="r2", status="recorded", root="/data/b"),
     )
-    with pytest.raises(AmbiguousArtifactStoreRootError) as excinfo:
+    with pytest.raises(AmbiguousArtifactStoreReferenceError) as excinfo:
         resolve_dump_store_root(manifests)
     assert excinfo.value.roots == ("/data/a", "/data/b")
+    assert excinfo.value.statuses == ()
 
 
 # ---------------------------------------------------------------------------

@@ -35,16 +35,37 @@ store-reference.md). A text-kind ``EvidenceAnchor`` carries no ``run_id``
 (task-packets/A2-T01.yaml explicitly forbids adding one — "the store is
 content-addressed, so root plus the anchor's own hash already determines
 the path"), so this module cannot attribute an individual anchor to a
-specific run's manifest. :func:`resolve_dump_store_root` collects the
-DISTINCT set of recorded roots across every ``RunManifest`` in the dump:
-zero roots means every anchor in the dump is ``store_reference_not_recorded``
-(both real committed dumps — this packet's own acceptance oracle); exactly
-one distinct root is applied to every anchor in the dump (the common,
-single/consistent-root case); MORE than one distinct root is a genuine
-ambiguity this closed design cannot silently resolve — it is refused
-(:class:`AmbiguousArtifactStoreRootError`), never guessed (AGENTS.md rule
-14). Flagged explicitly in this packet's own delivery report as a derived
-design decision the task packet itself does not spell out, not a
+specific run's manifest. :func:`resolve_dump_store_root` therefore requires
+EVERY ``RunManifest`` in the dump to agree, in two stages:
+
+1. **Status agreement, first.** If the dump's manifests do not all carry
+   the SAME ``status`` — some ``"recorded"``, some ``"not_recorded"`` — the
+   dump is refused (:class:`AmbiguousArtifactStoreReferenceError`,
+   ``statuses`` naming the disagreement). This is not a narrower case of
+   "several roots": a dump holding one recorded run next to one
+   not-recorded run (the ordinary next state once ANY run after this
+   packet lands beside an older, pre-packet run — not a corner case) would
+   otherwise see its one distinct recorded root applied to every anchor,
+   including the not-recorded run's — reporting that run's anchors
+   ``artifact_missing``, a VIOLATION, when the true answer is "unknown", an
+   OBSERVATION. Collapsing that distinction is exactly the mistake this
+   packet exists to prevent (see "Four closed statuses" below), so it is
+   refused rather than silently resolved to the one root that happens to
+   exist. (Review record: docs/design/2026-07-26-a2-t01-review.md, finding
+   1 — provoked directly: ``[not_recorded, recorded('/tmp/x')]`` used to
+   silently resolve to ``'/tmp/x'``.)
+2. **Root agreement, second — only once every manifest already agrees on
+   status.** If status is uniformly ``"not_recorded"`` (or the dump has no
+   ``RunManifest`` at all), every anchor is ``store_reference_not_recorded``
+   (both real committed dumps — this packet's own acceptance oracle). If
+   status is uniformly ``"recorded"``, the DISTINCT set of recorded roots
+   must also be exactly one; more than one distinct root is refused the
+   same way (:class:`AmbiguousArtifactStoreReferenceError`, ``roots``
+   naming the disagreement).
+
+Either disagreement is refused, never guessed (AGENTS.md rule 14) — flagged
+explicitly in this packet's own delivery report as a derived design
+decision the task packet itself does not spell out, not a
 specification-given rule.
 
 --- Four closed statuses, one per EvidenceAnchor, kept apart by TYPE -------
@@ -125,21 +146,39 @@ class ArtifactPresenceError(Exception):
     """Base class for every typed error this module raises."""
 
 
-class AmbiguousArtifactStoreRootError(ArtifactPresenceError):
+class AmbiguousArtifactStoreReferenceError(ArtifactPresenceError):
     """Raised by :func:`resolve_dump_store_root` when a dump's RunManifest
-    objects declare MORE THAN ONE distinct recorded root — see the module
-    docstring's "one dump, possibly several runs" section for why this is
-    refused rather than guessed. Carries the sorted tuple of the
-    conflicting roots so a caller can report exactly what disagreed.
+    objects disagree about the ``artifact_store_reference`` that applies to
+    every anchor in the dump — either in STATUS (some ``"recorded"``, some
+    ``"not_recorded"``) or, once every manifest already agrees on
+    ``"recorded"``, in ROOT (more than one distinct root). See the module
+    docstring's "one dump, possibly several runs" section for why either
+    disagreement is refused rather than guessed — ``EvidenceAnchor`` carries
+    no run reference to disambiguate them.
+
+    Exactly one of ``statuses``/``roots`` is populated per raise (the stage
+    that actually disagreed): a status disagreement is raised BEFORE roots
+    are ever compared, so ``roots`` is empty in that case. Both are sorted
+    tuples, so a caller can report exactly what disagreed without parsing
+    the message string.
     """
 
-    def __init__(self, roots: Sequence[str]) -> None:
+    def __init__(self, *, statuses: Sequence[str] = (), roots: Sequence[str] = ()) -> None:
+        self.statuses = tuple(sorted(statuses))
         self.roots = tuple(sorted(roots))
-        joined = ", ".join(repr(root) for root in self.roots)
+        if self.statuses:
+            joined_statuses = ", ".join(repr(status) for status in self.statuses)
+            reason = f"disagreeing status values across its RunManifest objects: {joined_statuses}"
+        else:
+            joined_roots = ", ".join(repr(root) for root in self.roots)
+            reason = (
+                "every RunManifest agrees status='recorded', but they declare more than one "
+                f"distinct recorded artifact-store root: {joined_roots}"
+            )
         super().__init__(
-            "this dump's RunManifest objects declare more than one distinct recorded "
-            f"artifact-store root, and no anchor carries a run reference to disambiguate "
-            f"them (roots: {joined})"
+            f"this dump's RunManifest objects disagree about the artifact_store_reference "
+            f"that applies to every anchor in the dump ({reason}), and no anchor carries a "
+            "run reference to disambiguate them"
         )
 
 
@@ -264,24 +303,36 @@ def resolve_dump_store_root(manifests: Sequence[RunManifestStoreReferenceRow]) -
     """The single recorded root that applies to every anchor in this dump —
     see the module docstring's "one dump, possibly several runs" section.
     ``None`` means every anchor in the dump is
-    ``store_reference_not_recorded``.
+    ``store_reference_not_recorded`` (either no ``RunManifest`` at all, or
+    every one of them agrees ``status == "not_recorded"``).
 
     Raises:
-        AmbiguousArtifactStoreRootError: more than one distinct recorded
-            root is declared across ``manifests``.
+        AmbiguousArtifactStoreReferenceError: ``manifests`` do not all agree
+            on ``status`` (checked FIRST — a dump mixing a recorded and a
+            not-recorded run is refused before any root is even compared),
+            or every manifest agrees on ``status == "recorded"`` but more
+            than one distinct root is declared.
     """
-    recorded_roots = sorted(
-        {
-            manifest.root
-            for manifest in manifests
-            if manifest.status == "recorded" and manifest.root is not None
-        }
-    )
-    if not recorded_roots:
+    if not manifests:
         return None
+
+    statuses = sorted({manifest.status for manifest in manifests})
+    if len(statuses) > 1:
+        raise AmbiguousArtifactStoreReferenceError(statuses=statuses)
+
+    if statuses[0] == "not_recorded":
+        return None
+
+    # Every manifest agrees status == "recorded" — the biconditional
+    # mrr.contracts.run_manifest.ArtifactStoreReference enforces (and
+    # extract_run_manifest_store_references re-checks on the way in from a
+    # raw dump body) already guarantees every one of them has a non-None
+    # root; the `is not None` filter below is defensive typing, not a
+    # runtime possibility this branch can actually reach with a None root.
+    recorded_roots = sorted({manifest.root for manifest in manifests if manifest.root is not None})
     if len(recorded_roots) == 1:
         return recorded_roots[0]
-    raise AmbiguousArtifactStoreRootError(recorded_roots)
+    raise AmbiguousArtifactStoreReferenceError(roots=recorded_roots)
 
 
 def derive_blob_path(root: str, content_hash: str) -> Path:

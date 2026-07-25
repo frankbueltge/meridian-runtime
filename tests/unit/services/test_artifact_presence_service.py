@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 from mrr.domain.archive_dump import ArchiveDumpParseError
-from mrr.domain.artifact_presence import AmbiguousArtifactStoreRootError
+from mrr.domain.artifact_presence import AmbiguousArtifactStoreReferenceError
 from mrr.services.artifact_presence.service import (
     ArtifactPresenceInputError,
     ArtifactPresenceService,
@@ -297,8 +297,41 @@ def test_dump_with_two_distinct_recorded_roots_raises_ambiguous_error(tmp_path: 
     ]
     dump_path = tmp_path / "ambiguous-root.sql"
     dump_path.write_text(_build_dump_text(rows), encoding="utf-8")
-    with pytest.raises(AmbiguousArtifactStoreRootError):
+    with pytest.raises(AmbiguousArtifactStoreReferenceError):
         ArtifactPresenceService().build_report(dump_path)
+
+
+def test_dump_mixing_a_recorded_and_a_not_recorded_run_raises_ambiguous_error(
+    tmp_path: Path,
+) -> None:
+    """The review's own provoked counter-example (docs/design/2026-07-26-
+    a2-t01-review.md, finding 1), exercised end-to-end through the service:
+    a dump holding one older, not-recorded run next to one new, recorded
+    run must refuse — not silently apply the new run's root to the old
+    run's anchors and report them artifact_missing (a VIOLATION where an
+    OBSERVATION belongs).
+    """
+    store_root = tmp_path / "store"
+    store_root.mkdir()
+    rows = [
+        _copy_row("urn:mrr:run:01SYNTH0000000000000000007", "RunManifest", {}),
+        _copy_row(
+            "urn:mrr:run:01SYNTH0000000000000000008",
+            "RunManifest",
+            {"artifact_store_reference": {"status": "recorded", "root": str(store_root)}},
+        ),
+        _copy_row(
+            "urn:mrr:evidence-anchor:from-the-old-run",
+            "EvidenceAnchor",
+            {"snapshot_hash": _content_hash(b"whatever")},
+        ),
+    ]
+    dump_path = tmp_path / "mixed-status.sql"
+    dump_path.write_text(_build_dump_text(rows), encoding="utf-8")
+
+    with pytest.raises(AmbiguousArtifactStoreReferenceError) as excinfo:
+        ArtifactPresenceService().build_report(dump_path)
+    assert excinfo.value.statuses == ("not_recorded", "recorded")
 
 
 # ---------------------------------------------------------------------------

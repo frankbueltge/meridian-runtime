@@ -326,6 +326,11 @@ def _run_command(args: argparse.Namespace) -> int:
     kwargs: dict[str, Any] = {
         "engine": engine,
         "artifact_store": artifact_store,
+        # task-packets/A2-T01.yaml: the same --artifact-root already used
+        # to construct artifact_store two lines above, so the RunManifest
+        # this run records carries status="recorded" naming exactly the
+        # root this run actually wrote bytes to.
+        "artifact_root": args.artifact_root,
         "origin_signing_key": origin_key,
         "node_signing_key": node_key,
         "policy_version": args.policy_version,

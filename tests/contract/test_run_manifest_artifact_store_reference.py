@@ -26,32 +26,70 @@ Four concerns, task-packets/A2-T01.yaml's own acceptance criteria, in order:
    own established convention is exactly this (see that module's own
    docstring note on ``_bundle()``: "deliberate local duplicate, not a
    shared import").
+5. End-to-end: ``mrr.services.cli.orchestration.run_local_evidence_loop``
+   (the function ``mrr run`` itself calls) forwards a caller's
+   ``artifact_root`` all the way to ``RunManifestRecorder.record`` unchanged
+   — closing docs/design/2026-07-26-a1-fact-lock-artifact-bytes.md's defect
+   for real, not merely at the recorder's own boundary (docs/design/
+   2026-07-26-a2-t01-review.md finding 2). This needs a real PostgreSQL —
+   every earlier step of the loop (Research Score, Capability, Task Bundle)
+   persists through ``mrr.persistence.repositories.PostgresObjectRepository``/
+   ``PostgresEventLog``, with no in-memory substitute anywhere in this
+   codebase (AGENTS.md rule 12: no fake implementations) — so the
+   ``postgres_engine`` fixture below is a DELIBERATE LOCAL DUPLICATE of
+   tests/integration/conftest.py's/tests/e2e/conftest.py's own (same
+   skip-outside-CI/fail-hard-in-CI discipline; that module's own docstring
+   already documents this exact duplication convention for exactly this
+   reason: no shared ``tests/conftest.py`` exists, and this repository
+   prefers a small, self-contained duplicate over reaching for one).
+   Skips visibly without ``MRR_TEST_DATABASE_URL`` — never a fake DB, never
+   a silent pass.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pytest
+import sqlalchemy as sa
+from alembic import command
+from alembic.config import Config
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
 from mrr.contracts import RunManifest, TaskBundle
 from mrr.contracts.run_manifest import ArtifactStoreReference
 from mrr.domain.archive_dump import parse_objects_copy_block
 from mrr.domain.identity import new_urn
 from mrr.domain.repositories import StoredObject
+from mrr.persistence.repositories import PostgresObjectRepository
 from mrr.provenance.events import DomainEvent
 from mrr.provenance.log import AppendedEvent
+from mrr.services.cli.orchestration import run_local_evidence_loop
 from mrr.services.node_runtime.executor import ExecutionResult, ResourceUsage
 from mrr.services.node_runtime.run_manifest import RunManifestRecorder
 from pydantic import ValidationError
+from sqlalchemy import Engine
 
 from scripts.check_contracts import SCHEMAS_DIR, build_registry, build_validator_for_schema
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DUMPS_DIR = REPO_ROOT / "archive" / "dumps"
 _POLICY_VERSION = "policy-2026-07-26"
+
+#: End-to-end (postgres_engine) fixture setup — mirrors tests/integration
+#: /conftest.py's own constants exactly (see the module docstring's point 5).
+_ALEMBIC_INI = REPO_ROOT / "alembic.ini"
+_MIGRATIONS_DIR = REPO_ROOT / "migrations"
+_TEST_DATABASE_URL_ENV_VAR = "MRR_TEST_DATABASE_URL"
+_ATTRIBUTES_URL_KEY = "sqlalchemy_url"
+_TEST_CODE_REVISION = "git:a2-t01-wiring-test-fixture"
 
 
 # ---------------------------------------------------------------------------
@@ -397,3 +435,120 @@ def test_recorded_manifest_is_schema_and_pydantic_valid_with_a_recorded_root() -
     manifest = RunManifest.model_validate(stored.body)
     assert manifest.artifact_store_reference.status == "recorded"
     assert manifest.artifact_store_reference.root == "/var/data/artifacts"
+
+
+# ---------------------------------------------------------------------------
+# 5. End-to-end: mrr run's real call path (run_local_evidence_loop) records
+#    the given root — docs/design/2026-07-26-a2-t01-review.md finding 2.
+#    Requires a real PostgreSQL; see the module docstring's point 5.
+# ---------------------------------------------------------------------------
+
+
+def _require_test_database_url_or_skip() -> str:
+    base_url = os.environ.get(_TEST_DATABASE_URL_ENV_VAR)
+    if base_url:
+        return base_url
+    if os.environ.get("CI"):
+        pytest.fail(
+            f"{_TEST_DATABASE_URL_ENV_VAR} is unset in CI — a test run without a real "
+            "PostgreSQL database must never look green."
+        )
+    pytest.skip(reason=f"no PostgreSQL available ({_TEST_DATABASE_URL_ENV_VAR} unset)")
+
+
+def _schema_scoped_url(base_url: str, schema: str) -> str:
+    options_value = quote(f"-c search_path={schema}", safe="")
+    separator = "&" if "?" in base_url else "?"
+    return f"{base_url}{separator}options={options_value}"
+
+
+def _run_alembic_upgrade_head(database_url: str) -> None:
+    alembic_cfg = Config(str(_ALEMBIC_INI))
+    alembic_cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
+    alembic_cfg.attributes[_ATTRIBUTES_URL_KEY] = database_url
+    command.upgrade(alembic_cfg, "head")
+
+
+@pytest.fixture
+def postgres_engine() -> Iterator[Engine]:
+    base_url = _require_test_database_url_or_skip()
+
+    schema = f"mrr_test_{uuid.uuid4().hex}"
+    admin_engine = sa.create_engine(base_url)
+    try:
+        with admin_engine.begin() as conn:
+            conn.execute(sa.text(f'CREATE SCHEMA "{schema}"'))
+
+        scoped_url = _schema_scoped_url(base_url, schema)
+        _run_alembic_upgrade_head(scoped_url)
+
+        engine = sa.create_engine(scoped_url)
+        try:
+            yield engine
+        finally:
+            engine.dispose()
+    finally:
+        with admin_engine.begin() as conn:
+            conn.execute(sa.text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        admin_engine.dispose()
+
+
+def test_run_local_evidence_loop_records_the_given_artifact_root(
+    postgres_engine: Engine, tmp_path: Path
+) -> None:
+    """The literal claim task-packets/A2-T01.yaml was commissioned for: a
+    run started with ``--artifact-root`` records that root on the
+    RunManifest it produces, with status "recorded" — proven here through
+    the SAME function ``mrr.services.cli.main`` calls
+    (``run_local_evidence_loop``), not merely at ``RunManifestRecorder``'s
+    own boundary (which the other tests in this module already cover).
+    """
+    artifact_root = tmp_path / "artifacts"
+    store = LocalFilesystemArtifactStore(artifact_root)
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+
+    result = run_local_evidence_loop(
+        engine=postgres_engine,
+        artifact_store=store,
+        artifact_root=artifact_root,
+        origin_signing_key=origin_key,
+        node_signing_key=node_key,
+        code_revision=_TEST_CODE_REVISION,
+    )
+
+    object_repository = PostgresObjectRepository(postgres_engine)
+    manifest_stored = object_repository.get_latest(result.run_manifest_id)
+    run_manifest = RunManifest.model_validate(manifest_stored.body)
+
+    assert run_manifest.artifact_store_reference.status == "recorded"
+    assert run_manifest.artifact_store_reference.root == str(artifact_root)
+
+
+def test_run_local_evidence_loop_without_artifact_root_records_not_recorded(
+    postgres_engine: Engine, tmp_path: Path
+) -> None:
+    """The complementary case: a caller of ``run_local_evidence_loop`` that
+    omits ``artifact_root`` (every call site before this packet) still
+    produces a valid, honest RunManifest — status="not_recorded", exactly
+    as ``RunManifestRecorder.record``'s own default already proved in
+    isolation, now proven through the real call path too.
+    """
+    store = LocalFilesystemArtifactStore(tmp_path / "artifacts")
+    origin_key = Ed25519PrivateKey.generate()
+    node_key = Ed25519PrivateKey.generate()
+
+    result = run_local_evidence_loop(
+        engine=postgres_engine,
+        artifact_store=store,
+        origin_signing_key=origin_key,
+        node_signing_key=node_key,
+        code_revision=_TEST_CODE_REVISION,
+    )
+
+    object_repository = PostgresObjectRepository(postgres_engine)
+    manifest_stored = object_repository.get_latest(result.run_manifest_id)
+    run_manifest = RunManifest.model_validate(manifest_stored.body)
+
+    assert run_manifest.artifact_store_reference.status == "not_recorded"
+    assert run_manifest.artifact_store_reference.root is None
