@@ -1,0 +1,181 @@
+{
+  "fetched_on": "2026-07-25",
+  "manifest": "../citations.manifest.json",
+  "note": "Point-in-time resolution of each cited identifier against the open metadata APIs (task-packets/N2-T02a.yaml). Re-runnable: the same batched id_list / per-DOI queries reproduce these results, so this snapshot is verifiable, not asserted. It records EXISTENCE and the canonical title each identifier resolves to. It does NOT establish that the resolved source SUPPORTS the claim it was cited for, nor that any number attributed to it is consistent with it \u2014 both are N2-T03, support-checking and number-consistency, not yet built. Existence is not support.",
+  "resolutions": [
+    {
+      "citation_id": "aar-position-paper",
+      "identifier": "arxiv:2602.13855",
+      "resolved": true,
+      "resolved_detail": "first author Razeen A Rasheed",
+      "resolved_title": "From Fluent to Verifiable: Claim-Level Auditability for Deep Research Agents",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "agent-laboratory",
+      "identifier": "arxiv:2501.04227",
+      "resolved": true,
+      "resolved_detail": "first author Samuel Schmidgall",
+      "resolved_title": "Agent Laboratory: Using LLM Agents as Research Assistants",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "barrie-prompt-stability",
+      "identifier": "arxiv:2407.02039",
+      "resolved": true,
+      "resolved_detail": "first author Christopher Barrie",
+      "resolved_title": "Prompt Stability Scoring for Text Annotation with Large Language Models",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "beel-ai-scientist-eval",
+      "identifier": "arxiv:2502.14297v3",
+      "resolved": true,
+      "resolved_detail": "first author Joeran Beel",
+      "resolved_title": "Evaluating Sakana's AI Scientist: Bold Claims, Mixed Results, and a Promising Future?",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "citation-hallucination-multi-agent",
+      "identifier": "arxiv:2605.08583",
+      "resolved": true,
+      "resolved_detail": "first author Mingzhe Li",
+      "resolved_title": "Source or It Didn't Happen: A Multi-Agent Framework for Citation Hallucination Detection",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "cited-but-not-verified",
+      "identifier": "arxiv:2605.06635",
+      "resolved": true,
+      "resolved_detail": "first author Hailey Onweller",
+      "resolved_title": "Cited but Not Verified: Parsing and Evaluating Source Attribution in LLM Deep Research Agents",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "darwin-goedel-machine",
+      "identifier": "arxiv:2505.22954",
+      "resolved": true,
+      "resolved_detail": "first author Jenny Zhang",
+      "resolved_title": "Darwin Godel Machine: Open-Ended Evolution of Self-Improving Agents",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "deeptrace",
+      "identifier": "arxiv:2509.04499",
+      "resolved": true,
+      "resolved_detail": "first author Pranav Narayanan Venkit",
+      "resolved_title": "DeepTRACE: Auditing Deep Research AI Systems for Tracking Reliability Across Citations and Evidence",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "gepa",
+      "identifier": "arxiv:2507.19457",
+      "resolved": true,
+      "resolved_detail": "first author Lakshya A Agrawal",
+      "resolved_title": "GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "inspectable-ai-for-science",
+      "identifier": "arxiv:2604.11261",
+      "resolved": true,
+      "resolved_detail": "first author Ruta Binkyte",
+      "resolved_title": "Inspectable AI for Science: A Research Object Approach to Generative AI Governance",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "kosmos",
+      "identifier": "arxiv:2511.02824",
+      "resolved": true,
+      "resolved_detail": "first author Ludovico Mitchener",
+      "resolved_title": "Kosmos: An AI Scientist for Autonomous Discovery",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "liu-inter-prompt-reliability",
+      "identifier": "arxiv:2604.16413",
+      "resolved": true,
+      "resolved_detail": "first author Jingyuan Liu",
+      "resolved_title": "What Is Actually Being Annotated? Inter-Prompt Reliability as a Measurement Problem in LLM-Based Social Science Labeling",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "llm-hacking",
+      "identifier": "arxiv:2509.08825",
+      "resolved": true,
+      "resolved_detail": "first author Joachim Baumann",
+      "resolved_title": "Large Language Model Hacking: Quantifying the Hidden Risks of Using LLMs for Text Annotation",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "neurips-fabricated-citations",
+      "identifier": "arxiv:2602.05930",
+      "resolved": true,
+      "resolved_detail": "first author Samar Ansari",
+      "resolved_title": "Compound Deception in Elite Peer Review: A Failure Mode Taxonomy of 100 Fabricated Citations at NeurIPS 2025",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "pangakis-validation",
+      "identifier": "arxiv:2306.00176",
+      "resolved": true,
+      "resolved_detail": "first author Nicholas Pangakis",
+      "resolved_title": "Automated Annotation with Generative AI Requires Validation",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "sakana-nature",
+      "identifier": "doi:10.1038/s41586-026-10265-5",
+      "resolved": true,
+      "resolved_container": "Nature",
+      "resolved_detail": "vol 651 (8107), pp. 914-919, 2026; first author Chris Lu; published online 2026-03-25",
+      "resolved_title": "Towards end-to-end automation of AI research",
+      "resolver": "doi"
+    },
+    {
+      "citation_id": "sciintbench",
+      "identifier": "arxiv:2605.29468",
+      "resolved": true,
+      "resolved_detail": "first author Almene De Meran Meguimtsop",
+      "resolved_title": "SciIntBench: Measuring LLM Compliance with Research Integrity Norms Under Adversarial Framing",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "sciintegrity-bench",
+      "identifier": "arxiv:2605.10246",
+      "resolved": true,
+      "resolved_detail": "first author Zonglin Yang",
+      "resolved_title": "SciIntegrity-Bench: A Benchmark for Evaluating Academic Integrity in AI Scientist Systems",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "silicon",
+      "identifier": "arxiv:2412.14461",
+      "resolved": true,
+      "resolved_detail": "first author Xiang Cheng",
+      "resolved_title": "To Err Is Human; To Annotate, SILICON? Toward Robust Reproducibility in LLM Annotation",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "statabench",
+      "identifier": "arxiv:2606.22977",
+      "resolved": true,
+      "resolved_detail": "first author Youxin Zhu",
+      "resolved_title": "StatABench: Dataset and Framework for Evaluating Statistical Analysis Capabilities of LLMs",
+      "resolver": "arxiv"
+    },
+    {
+      "citation_id": "zhu-implementation-capability",
+      "identifier": "arxiv:2506.01372",
+      "resolved": true,
+      "resolved_detail": "first author Minjun Zhu",
+      "resolved_title": "AI Scientists Fail Without Strong Implementation Capability",
+      "resolver": "arxiv"
+    }
+  ],
+  "resolvers": {
+    "arxiv": "arXiv API \u2014 https://export.arxiv.org/api/query?id_list=<id> (Atom; a requested id absent from the response = NOT FOUND)",
+    "doi": "Crossref REST \u2014 https://api.crossref.org/works/<doi> (JSON; 404 = NOT FOUND)"
+  },
+  "schema_version": "citation-resolution-snapshot.v1"
+}

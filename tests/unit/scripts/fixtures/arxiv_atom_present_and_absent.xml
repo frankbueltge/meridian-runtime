@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/fixture/present-and-absent</id>
+  <title>arXiv Query: id_list=2511.02824,2502.14297v3,9999.00000&amp;start=0&amp;max_results=3</title>
+  <updated>2026-07-25T14:28:06Z</updated>
+  <opensearch:totalResults>2</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <opensearch:itemsPerPage>3</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/abs/2511.02824v2</id>
+    <title>Kosmos: An AI Scientist for Autonomous Discovery</title>
+    <updated>2025-11-05T18:26:43Z</updated>
+    <published>2025-11-04T18:50:52Z</published>
+    <summary>Fixture summary text, trimmed.</summary>
+    <author>
+      <name>Ludovico Mitchener</name>
+    </author>
+    <author>
+      <name>Angela Yiu</name>
+    </author>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2502.14297v3</id>
+    <title>Evaluating Sakana's AI Scientist: Bold Claims, Mixed Results, and a Promising Future?</title>
+    <updated>2025-10-15T18:03:49Z</updated>
+    <published>2025-02-20T06:22:03Z</published>
+    <summary>Fixture summary text, trimmed.</summary>
+    <author>
+      <name>Joeran Beel</name>
+    </author>
+    <author>
+      <name>Min-Yen Kan</name>
+    </author>
+  </entry>
+</feed>
