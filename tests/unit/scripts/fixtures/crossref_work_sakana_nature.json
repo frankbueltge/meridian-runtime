@@ -1,0 +1,23 @@
+{
+  "status": "ok",
+  "message-type": "work",
+  "message-version": "1.0.0",
+  "message": {
+    "DOI": "10.1038/s41586-026-10265-5",
+    "type": "journal-article",
+    "title": ["Towards end-to-end automation of AI research"],
+    "container-title": ["Nature"],
+    "short-container-title": ["Nature"],
+    "volume": "651",
+    "issue": "8107",
+    "page": "914-919",
+    "publisher": "Springer Science and Business Media LLC",
+    "published": { "date-parts": [[2026, 3, 25]] },
+    "published-online": { "date-parts": [[2026, 3, 25]] },
+    "published-print": { "date-parts": [[2026, 3, 26]] },
+    "author": [
+      { "given": "Chris", "family": "Lu", "sequence": "first" },
+      { "given": "Cong", "family": "Lu", "sequence": "additional" }
+    ]
+  }
+}

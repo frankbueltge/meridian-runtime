@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/fixture/error-entry</id>
+  <title>arXiv Query: id_list=not-a-real-id&amp;start=0&amp;max_results=1</title>
+  <updated>2026-07-25T14:28:06Z</updated>
+  <opensearch:totalResults>1</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <opensearch:itemsPerPage>1</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/api/errors#incorrect_id_format_for_not-a-real-id</id>
+    <title>Error</title>
+    <summary>incorrect id format for not-a-real-id</summary>
+  </entry>
+</feed>
