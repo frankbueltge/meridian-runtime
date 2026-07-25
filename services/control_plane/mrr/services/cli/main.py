@@ -49,6 +49,7 @@ from mrr.adapters.object_store.local import LocalFilesystemArtifactStore
 from mrr.crypto.exceptions import CryptoError
 from mrr.domain.exceptions import DomainError
 from mrr.services.cli import (
+    anchoring_integrity_main,
     citation_audit_main,
     export_main,
     field_observation_main,
@@ -236,6 +237,15 @@ def build_parser() -> argparse.ArgumentParser:
     # immediately above; no other line in this file changes.
     field_observation_main.register_observe_subcommand(subparsers)
 
+    # Task-packets/N2-T02b.yaml's one additive registration: attaches
+    # "anchoring" onto the EXISTING "audit" group citation_audit_main
+    # .register_audit_subcommand already created immediately above ("mrr
+    # audit anchoring", alongside the unchanged "mrr audit citations") —
+    # delegates entirely to mrr.services.cli.anchoring_integrity_main; no
+    # other line in this file changes, and citation_audit_main's own parser
+    # and dispatch are untouched.
+    anchoring_integrity_main.register_anchoring_subcommand(subparsers)
+
     return parser
 
 
@@ -360,6 +370,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validate":
         return validation_main.run_command(args)
     if args.command == "audit":
+        # Task-packets/N2-T02b.yaml's one additive dispatch branch: within
+        # the EXISTING "audit" group, route "anchoring" to its own module
+        # and leave every other audit_command (i.e. "citations") going to
+        # citation_audit_main.run_command exactly as before — that call
+        # itself is unchanged.
+        if args.audit_command == "anchoring":
+            return anchoring_integrity_main.run_command(args)
         return citation_audit_main.run_command(args)
     if args.command == "observe":
         return field_observation_main.run_command(args)
