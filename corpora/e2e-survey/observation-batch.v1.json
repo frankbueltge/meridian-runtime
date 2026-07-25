@@ -1,0 +1,17 @@
+{
+  "schema_version": "observation-batch.v1",
+  "batch_id": "e2e-survey-2026-07-24",
+  "observation_kind": "citation_audit",
+  "audit_target": "The /e2e-automation field survey published on frankbueltge.de",
+  "provenance": "Routine 2's first read-only field observation (docs/design/2026-07-25-r2-derivation.md, task-packets/R2-T01.yaml). This descriptor introduces NO new source — it pins the two inputs already committed at N2-T01's derivation (corpora/e2e-survey/citations.manifest.json and verification/resolution-snapshot.json) by their sha256 as a FAIL-CLOSED integrity anchor: the observation halts deterministically if either file's bytes no longer match the anchor below, BEFORE the frozen N2 evaluator is ever run over them. The two sha256 values were computed at derivation (2026-07-25) from the real committed files; neither is invented. Paths are resolved relative to THIS descriptor file's own directory (like resolution-snapshot.json's own '../citations.manifest.json' convention), so the batch is location-independent.",
+  "inputs": {
+    "manifest": {
+      "path": "citations.manifest.json",
+      "sha256": "sha256:8a706a96500fcd8177ed048f4a81ac605fa5aabc67cea7b5fe1ef1e90855691b"
+    },
+    "snapshot": {
+      "path": "verification/resolution-snapshot.json",
+      "sha256": "sha256:32b6b74f881a73b012c1d7ccd822f1090f1e4f3ecbd4b47c3af2a4db6472dfc0"
+    }
+  }
+}

@@ -1,0 +1,333 @@
+task_id: R2-T01
+title: >-
+  Field-observation intake + fail-closed integrity gate and `mrr observe field`
+  (read-only, no-network, no-model): over a committed, hash-anchored observation
+  batch descriptor, verify each declared input file's sha256 against its pinned
+  anchor and HALT deterministically on any mismatch BEFORE any downstream step,
+  then reuse the FROZEN N2 evaluator (CitationAuditService) to audit the batch and
+  render a deterministic observation report. This is Routine 2's read-only
+  observation cut only: it emits NO self-modification proposal (R2-T02) and runs
+  NO optimizer against the evaluator (R2-T03); it contains no model step at all.
+  First target: the committed corpora/e2e-survey batch (anchors match, 8/8
+  resolved — the acceptance oracle). Opens no network and no database connection
+  and writes nothing to the archive.
+status: approved
+epic: R2
+reviewer_resolution: >-
+  Approved 2026-07-25 by the main session as reviewing instance, under the owner's
+  explicit delegation the same day of BOTH the first-cut decision and the
+  observation occasion ("das musst du entscheiden, was sinn macht" / "musst auch du
+  entscheiden"), recorded in docs/design/2026-07-25-r2-derivation.md, and under the
+  standing use-first decision (docs/design/2026-07-22-nutzungsentscheidung-e9-
+  vertagt.md). Routine 2 is decomposed; ONLY R2-T01 is built now, on a real,
+  today-satisfiable, reflexive use case: Routine 2's first read-only field
+  observation is to integrity-verify and audit the already-committed e2e-survey
+  batch. Load-bearing choices CONFIRMED at derivation: (1) OBSERVATION is not
+  OPTIMIZATION — R2-T01 observes a hash-anchored batch fail-closed and runs the
+  frozen evaluator over it; it proposes nothing (R2-T02, behind the human gate) and
+  optimizes nothing (R2-T03, the GEPA loop, gated on N1-T03 AND a run with real
+  per-item spread, neither of which exists); this is the single most important
+  honesty boundary of the packet; (2) the integrity anchor is the sha256 of the
+  committed input FILES (the batch carries no per-source hash — git is
+  authoritative for the committed bytes), pinned in a committed descriptor and
+  checked fail-closed; (3) the frozen N2 evaluator is REUSED by import
+  (CitationAuditService.build_report), never reimplemented and never modified —
+  AGENTS.md rule 8's "no executor verifies its own result" holds because R2 does
+  not re-evaluate, it composes the unchanged evaluator; (4) NO model step exists in
+  this packet, so Record III's "a source failure ends deterministically before an
+  LLM sees it" is structurally guaranteed — the safest time to build the gate is
+  before anything dangerous stands behind it; (5) hand-rolled, no new dependency
+  (hashing is stdlib hashlib, already used by the N2 service); (6) the report is a
+  Pydantic-validated PROJECTION (rule 7), not a persisted object — no schemas/**,
+  no migration, no object-store write.
+depends_on: []
+derivation: >-
+  Derived 2026-07-25 from docs/design/2026-07-25-r2-derivation.md, the
+  capability-roadmap draft (docs/design/2026-07-24-capability-roadmap-entwurf.md,
+  §Die zwei Routinen / Routine 2) and Record III
+  (docs/design/2026-07-24-primaerquellen-selbstoptimierung.md, the binding Routine-2
+  governance). Fact base verified first-hand at derivation. The frozen N2 evaluator
+  is live and reusable: services/control_plane/mrr/services/citation_audit/service.py
+  exposes CitationAuditService().build_report(manifest_path, snapshot_path) ->
+  mrr.domain.citation_audit_report.CitationAuditReport, DB-free and no-network. The
+  observation batch corpora/e2e-survey/ carries NO per-source hashes — manifest and
+  snapshot are two committed JSON files; the only real integrity anchor is each
+  file's own sha256. Real anchors computed at derivation:
+  citations.manifest.json = sha256:8a706a96500fcd8177ed048f4a81ac605fa5aabc67cea7b5fe1ef1e90855691b;
+  verification/resolution-snapshot.json = sha256:32b6b74f881a73b012c1d7ccd822f1090f1e4f3ecbd4b47c3af2a4db6472dfc0.
+  The N2 service formats hashes as "sha256:<hex>"; the descriptor uses the same
+  convention. corpora/e2e-survey/observation-batch.v1.json was created at derivation
+  (this governance commit) with those real anchors and descriptor-relative input
+  paths — it is read-only for this build. No `observe`/`field`/`routine2` service or
+  CLI exists (services/control_plane/mrr/services has none; cli/ has no such module);
+  hashlib is stdlib and already imported by the N2 service; no new dependency needed.
+objective: >-
+  After this packet, `mrr observe field --batch <descriptor path>` renders a
+  deterministic field-observation report (JSON and Markdown) over a committed
+  observation-batch descriptor. It (a) resolves each declared input path relative to
+  the descriptor's own directory, (b) reads each input's bytes and computes its
+  sha256, (c) compares each against the descriptor's pinned anchor and, on ANY
+  mismatch, raises a typed IntegrityGateError naming the input and both hashes and
+  HALTS — before the N2 evaluator is ever invoked (fail-closed), (d) on a clean
+  gate, reuses CitationAuditService.build_report over the batch's manifest+snapshot
+  and embeds the resulting CitationAuditReport, and (e) assembles a report whose
+  header states, in plain type: this is a READ-ONLY field observation; the integrity
+  anchors were verified; NO self-modification proposal is emitted here (R2-T02) and
+  NO optimizer is run against the evaluator (R2-T03); this packet contains no model
+  step. Run against the committed corpora/e2e-survey batch it reports every anchor
+  MATCHED and the embedded audit all eight citations resolved, zero not_found. It
+  reads only committed files, opens no database and no network connection, and writes
+  only to the given output path (atomic os.replace).
+source_of_truth:
+  - docs/design/2026-07-25-r2-derivation.md                              # this packet's derivation
+  - docs/design/2026-07-24-primaerquellen-selbstoptimierung.md           # Record III — binding Routine-2 governance
+  - docs/design/2026-07-24-capability-roadmap-entwurf.md                 # §Routine 2
+  - corpora/e2e-survey/observation-batch.v1.json                         # the committed batch descriptor (read only, created at derivation)
+  - corpora/e2e-survey/citations.manifest.json                          # anchored input (read only)
+  - corpora/e2e-survey/verification/resolution-snapshot.json            # anchored input (read only)
+  - services/control_plane/mrr/services/citation_audit/service.py       # the FROZEN N2 evaluator — reused by import, never modified
+  - packages/domain/mrr/domain/citation_audit_report.py                 # embedded report type + honesty-header/render precedent to mirror
+  - services/control_plane/mrr/services/cli/citation_audit_main.py      # CLI pattern (NFR-012 ordering, exit 0/2/3, atomic os.replace)
+  - services/control_plane/mrr/services/cli/main.py                     # +2 lines: register + dispatch the new subcommand
+  - packages/domain/mrr/domain/agreement_report.py                     # N1 projection precedent (MRRModel, honesty header)
+requirements:
+  - >-
+    R1 (pure observation core, packages/domain/mrr/domain/field_observation.py):
+    hand-rolled, no new dependency, pure and no-IO (takes already-computed hashes,
+    never reads a file itself — mirrors mrr.domain.citation_audit's "takes
+    already-loaded values"). Dataclasses (frozen, slots): BatchInput(role, path,
+    declared_sha256), ObservationBatch(schema_version, batch_id, observation_kind,
+    audit_target, manifest: BatchInput, snapshot: BatchInput). An AnchorStatus
+    Literal closed set {"anchor_ok", "anchor_mismatch"} and an AnchorCheckResult
+    dataclass (role, path, declared_sha256, actual_sha256, status). A pure
+    check_anchor(role, path, declared_sha256, actual_sha256) -> AnchorCheckResult
+    that compares the two hash strings for exact equality (both already in
+    "sha256:<hex>" form; no normalisation guessed). A typed IntegrityGateError
+    (subclass of a module base error) carrying the role, path, declared_sha256 and
+    actual_sha256, raised by check_and_gate(results: Sequence[AnchorCheckResult]) ->
+    None the moment ANY result is "anchor_mismatch" — fail-closed, naming the FIRST
+    mismatch in a stable order (sorted by role). Determinism: no wall clock, no
+    unordered iteration.
+  - >-
+    R2 (report projection, packages/domain/mrr/domain/field_observation_report.py):
+    a Pydantic v2 MRRModel (extra="forbid") assembling: batch_id, observation_kind,
+    audit_target, an ORDERED tuple of anchor rows (role, path, declared_sha256,
+    actual_sha256, matched: bool — sorted by role), the EMBEDDED
+    mrr.domain.citation_audit_report.CitationAuditReport (a domain->domain import,
+    the frozen evaluator's own report unchanged), and a FIXED honesty header from a
+    single module-level constant: observation_is_not_optimization = Literal[True],
+    plus a note string stating verbatim that (i) this is a read-only field
+    observation, (ii) the integrity anchors were verified fail-closed, (iii) NO
+    self-modification proposal is emitted by this packet — that is R2-T02, behind the
+    human gate, (iv) NO optimizer is run against the evaluator — that is R2-T03,
+    gated on N1-T03 and a run with real per-item spread, and (v) this packet contains
+    no model/LLM step. It is NOT a BaseObject, has NO schemas/*.schema.json mirror,
+    and is NEVER written to the object store. Pure render_markdown/render_json
+    (sort_keys=True, no wall clock) mirroring citation_audit_report's renderers, and
+    a build_field_observation_report(...) factory taking already-computed values.
+  - >-
+    R3 (descriptor fixture already committed — read only, do NOT regenerate): the
+    service reads corpora/e2e-survey/observation-batch.v1.json, committed at
+    derivation with the two REAL anchors and descriptor-relative input paths. The
+    build MUST NOT edit it, MUST NOT recompute/replace its anchors, and MUST NOT
+    fabricate one. Input paths inside the descriptor are resolved relative to the
+    descriptor file's OWN directory (so batch_dir/manifest.path and
+    batch_dir/snapshot.path), never relative to the process CWD.
+  - >-
+    R4 (FieldObservationService,
+    services/control_plane/mrr/services/field_observation/service.py): read-only,
+    NO-NETWORK, NO-DATABASE orchestration. Given a --batch descriptor path it: parses
+    the descriptor into R1's ObservationBatch (a wrong top-level shape / missing key /
+    bad JSON is a typed FieldObservationInputError -> exit 2, mirroring
+    CitationAuditInputError); resolves each input path relative to the descriptor dir;
+    reads each input's bytes and computes "sha256:" + hashlib.sha256(bytes).hexdigest()
+    (a missing/unreadable input file is a FieldObservationInputError -> exit 2); runs
+    R1's check_anchor for each and then check_and_gate — on mismatch the
+    IntegrityGateError propagates and the CitationAuditService is NEVER constructed or
+    called (the gate is strictly before the evaluator); on a clean gate, calls the
+    REUSED CitationAuditService().build_report(manifest_path, snapshot_path) (its own
+    MissingResolutionError propagates as a refusal), and builds+returns the R2 report.
+    It opens NO database connection and NO network connection and constructs no
+    repository. Markdown shows the anchor table (role, matched, declared vs actual
+    sha256), the embedded citation-audit report, and the honesty header verbatim.
+  - >-
+    R5 (CLI, services/control_plane/mrr/services/cli/field_observation_main.py + 2
+    lines in cli/main.py): `mrr observe field` with --batch <descriptor path>
+    (required), --format md|json (default md), --output <path> (default stdout).
+    NFR-012 ordering: cheapest local checks first — (1) --output must not already
+    exist; (2) FieldObservationService reads/parses the descriptor and inputs; a
+    file-level problem (FieldObservationInputError) -> exit 2; a fail-closed anchor
+    mismatch (IntegrityGateError) OR a manifest/snapshot structural gap
+    (MissingResolutionError from the reused N2 core) -> exit 3 (a REFUSAL, never a
+    crash, never a silent pass). Exit 0 success. Atomic os.replace for --output.
+    A standalone build_parser()/main() enables `python -m
+    mrr.services.cli.field_observation_main field ...`. main.py gains exactly one
+    register_observe_subcommand(subparsers) call and one
+    `if args.command == "observe": return field_observation_main.run_command(args)`
+    — mirroring the N2 "audit" registration/dispatch exactly, no other line changed.
+  - >-
+    R6 (tests every tier + security-check). unit (DB-free, no-network): R1
+    check_anchor ok and mismatch; check_and_gate raises IntegrityGateError naming the
+    first mismatched role and carrying both hashes, and does NOT raise when all match;
+    R2 report shape incl. the honesty header (observation_is_not_optimization is
+    Literal[True], the note names R2-T02 and R2-T03 as out of scope) and the ordered
+    anchor rows; determinism (two renders byte-identical, stable content hash). A
+    fail-closed test proving the gate short-circuits: a descriptor whose declared
+    manifest anchor is wrong makes the service raise IntegrityGateError and the reused
+    CitationAuditService.build_report is provably NOT reached (e.g. monkeypatch
+    CitationAuditService.build_report to raise AssertionError and assert
+    IntegrityGateError is raised instead — the gate runs first). contract: the R2
+    model validates its own instances (extra="forbid" rejects an unknown field).
+    architecture (lint-imports): field_observation.py and field_observation_report.py
+    import no framework/service module (the report may import the domain
+    citation_audit_report type only); the service may import the N2 service. acceptance
+    (DB-free, no-network, reads the REAL committed descriptor + fixtures): running the
+    service over corpora/e2e-survey/observation-batch.v1.json reports BOTH anchors
+    matched (declared == actual for manifest and snapshot), the embedded audit reports
+    all eight citations resolved and zero not_found, the honesty header is present, and
+    the embedded report's snapshot_sha256 equals the snapshot file's actual hash. All
+    existing suites pass UNMODIFIED. Every make tier green INCLUDING make
+    security-check.
+allowed_paths:
+  - packages/domain/mrr/domain/field_observation.py
+  - packages/domain/mrr/domain/field_observation_report.py
+  - services/control_plane/mrr/services/field_observation/__init__.py
+  - services/control_plane/mrr/services/field_observation/service.py
+  - services/control_plane/mrr/services/cli/field_observation_main.py
+  - services/control_plane/mrr/services/cli/main.py                     # +2 lines only (register + dispatch)
+  - tests/unit/
+  - tests/contract/
+  - docs/design/
+  - task-packets/R2-T01.yaml
+forbidden_changes:
+  - schemas/**                                                          # no persisted observation object in T01
+  - packages/contracts/**                                              # MRRModel imported read-only, never modified
+  - migrations/**
+  - pyproject.toml                                                      # no new dependency; hashlib is stdlib
+  - uv.lock
+  - corpora/e2e-survey/observation-batch.v1.json                       # descriptor — created at derivation, read only, anchors never recomputed
+  - corpora/e2e-survey/citations.manifest.json                        # anchored input — read only
+  - corpora/e2e-survey/verification/resolution-snapshot.json          # anchored input — read only
+  - corpora/model-collapse/**
+  - packages/domain/mrr/domain/citation_audit.py                       # frozen N2 core — reuse by import only
+  - packages/domain/mrr/domain/citation_audit_report.py                # embedded report type — reuse by import only
+  - services/control_plane/mrr/services/citation_audit/**              # frozen N2 evaluator — reuse by import only, NEVER modified
+  - services/control_plane/mrr/services/validation/**                  # N1's service — not touched
+  - services/node_runtime/**
+  - services/control_plane/mrr/services/export/**
+  - services/control_plane/mrr/services/report/**
+  - services/control_plane/mrr/services/release/**
+  - packages/persistence/**                                            # T01 is DB-free and network-free
+derived_decisions:
+  - >-
+    (a) Observation is not optimization. R2-T01 observes a hash-anchored batch
+    fail-closed and runs the frozen evaluator over it; it proposes nothing (R2-T02,
+    behind the human gate) and optimizes nothing (R2-T03, the GEPA loop, gated on
+    N1-T03 AND a classification run with real per-item spread — neither exists). The
+    report header says so. This is the packet's single most important honesty
+    boundary — the R2 analogue of N1's reliability-not-validity and N2's
+    existence-not-support.
+  - >-
+    (b) The integrity anchor is the input FILE's sha256. The batch carries no
+    per-source hash; git is authoritative for the committed bytes, so the honest,
+    real anchor is each file's own hash, pinned in the committed descriptor and
+    checked fail-closed. This satisfies Record III's "hash-anchored sources,
+    fail-closed" against the anchor that actually exists, inventing none.
+  - >-
+    (c) The frozen N2 evaluator is reused, never rebuilt or re-scored. R2-T01 imports
+    and calls CitationAuditService.build_report; it does not re-implement citation
+    auditing and does not modify the N2 core or service. AGENTS.md rule 8 ("no
+    executor verifies its own result") holds because R2 composes the unchanged
+    evaluator rather than re-evaluating its own output.
+  - >-
+    (d) No model step, by construction. There is no LLM/model call anywhere in this
+    packet, so Record III's "a source failure ends deterministically before an LLM
+    sees it" is structurally guaranteed. The gate is built now, while nothing
+    dangerous stands behind it; R2-T02 (the proposal emitter + gated fetch) and
+    R2-T03 (the optimizer) are the packets that put something behind it, each with
+    its own gate.
+  - >-
+    (e) Report is a projection, not a persisted object. Pydantic-validated (rule 6)
+    but never entering the object store (rule 7). A persisted, schema-mirrored
+    observation object is out of scope and unneeded here.
+  - >-
+    (f) Descriptor-relative paths. The descriptor's input paths resolve against its
+    own directory, not the process CWD, so the batch is location-independent and the
+    acceptance test is CWD-independent — mirroring resolution-snapshot.json's own
+    "../citations.manifest.json" relative convention.
+invariants:
+  - No network connection and no database connection are opened anywhere in the runtime path.
+  - Nothing is written except the requested --output file (atomic os.replace); the archive is never touched.
+  - No wall-clock timestamp in any rendered byte; identical inputs yield a byte-identical report and a stable content hash.
+  - On ANY anchor mismatch the run raises IntegrityGateError and the N2 evaluator is never invoked — the gate is strictly before the evaluator (fail-closed).
+  - The report always carries the observation-is-not-optimization header naming R2-T02 and R2-T03 as out of scope, and the per-input anchor rows (declared vs actual); neither can be absent.
+  - No self-modification proposal is emitted and no optimizer is run; this packet contains no model/LLM step.
+acceptance_tests:
+  - >-
+    AT1: over the committed corpora/e2e-survey/observation-batch.v1.json, the report
+    reports BOTH anchors matched (declared sha256 == actual sha256 for manifest and
+    snapshot), the embedded citation-audit reports all eight citations resolved and
+    zero not_found, and the embedded report's snapshot_sha256 equals the actual
+    sha256 of resolution-snapshot.json; asserted numerically.
+  - >-
+    AT2: the report header carries observation_is_not_optimization=True with the note
+    that this is a read-only observation, that NO self-modification proposal is
+    emitted (R2-T02), and that NO optimizer runs against the evaluator (R2-T03);
+    both are named as out of scope.
+  - >-
+    AT3: fail-closed — a descriptor with a wrong declared manifest anchor makes the
+    service raise IntegrityGateError (naming the manifest role and both hashes), and
+    the reused CitationAuditService.build_report is provably NOT reached (monkeypatch
+    it to raise AssertionError; IntegrityGateError is raised instead).
+  - >-
+    AT4: determinism and refusals — two renders of the same batch are byte-identical;
+    a missing/unparseable descriptor or a missing declared input exits 2; an anchor
+    mismatch and a manifest citation absent from the snapshot both exit 3; existing
+    suites pass unmodified.
+  - >-
+    AT5: the descriptor's input paths are resolved relative to the descriptor's own
+    directory, verified by pointing --batch at the committed descriptor from a
+    different process CWD and getting the identical clean result.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make security-check
+specification_gaps:
+  - >-
+    The proposal emitter (observe -> draft task-packets before the human gate) and
+    the gated nightly network fetch that produces NEW batches (where N2-T02's gated
+    fetch feeds in) are R2-T02 — named, not built. Only R2-T02 makes Routine 2
+    actually nightly/new-source and is the first packet to put a downstream step
+    behind the gate.
+  - >-
+    The GEPA-style prompt/criteria optimization proposal generator against the frozen
+    N1 harness is R2-T03 — gated on N1-T03 (the classifier-rerun harness) AND a
+    classification run with real per-item spread, neither of which exists. No
+    optimizer evaluates its own evaluator; proposals only as task-packets before the
+    gate; no automatic adoption; no code self-modification.
+  - >-
+    Per-source (not per-file) content hashing would require the sources themselves to
+    carry content hashes, which this batch does not; that is a corpus-format question
+    for a future batch, out of scope here.
+required_output:
+  - Packet report per AGENTS.md "Required delivery format", embedding the exact
+    `mrr observe field` invocation, the rendered Markdown report for the committed
+    e2e-survey batch verbatim (the anchor table, the embedded citation-audit summary,
+    and the observation-is-not-optimization header), and both input anchors.
+stop_conditions:
+  - >-
+    If reproducing the clean-gate result requires editing, recomputing, or
+    re-fetching the committed descriptor or fixtures, STOP — they are the oracle and
+    must not be regenerated in this packet (AGENTS.md rule 3 / R3).
+  - >-
+    If making the gate pass requires reaching the N2 evaluator before the anchor
+    check, or reporting a mismatch as anything but a fail-closed refusal, STOP — the
+    gate-before-evaluator invariant may not be softened.
+  - >-
+    If any make tier requires modifying the frozen N2 core/service, adding a
+    dependency, opening a network or database connection, or introducing a model
+    step to go green, STOP — each is explicitly out of scope and would break the
+    packet's reason for existing.
