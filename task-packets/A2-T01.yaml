@@ -1,0 +1,131 @@
+task_id: A2-T01
+title: >-
+  Record where a run wrote its artifact bytes, and make it checkable: a closed-status
+  ArtifactStoreReference on RunManifest (written by `mrr run` from the already-required
+  --artifact-root), plus `mrr audit artifacts` (read-only, no-network, no-database) over
+  the committed archive dumps. Reports a run that recorded no root as an OBSERVATION,
+  never as a violation.
+status: approved
+epic: A2
+reviewer_resolution: >-
+  Approved 2026-07-26 by the main session as reviewing instance, on the owner's
+  instruction the same day to make sure the loss "cannot happen again on the next run",
+  and under the standing use-first decision. The use occasion is a DOCUMENTED DEFECT,
+  not a specification item: docs/design/2026-07-26-a1-fact-lock-artifact-bytes.md — 0 of
+  51 EvidenceAnchors across both real runs have findable bytes, because nothing records
+  where they were written. Load-bearing choices CONFIRMED at derivation against the real
+  code: (1) ONE FIELD ON RunManifest, not 51 locators on EvidenceAnchor — the store is
+  content-addressed, so root + hash fully determines every blob path; the root is a
+  property of the RUN, and a per-anchor locator would be redundant data that can drift
+  while touching an externally schema-validated object that appears 51 times across two
+  committed dumps. (2) "not recorded" IS A VALUE, never a bare None — a closed status
+  with a biconditional (status == "recorded" iff root is not None), mirroring
+  ModelInvocationOutcome.response_hash. For the two existing manifests "not_recorded" is
+  the TRUE statement, which is why it may be the default here. (3) The recording is only
+  useful if something reads it, so `mrr audit artifacts` ships with it, mirroring
+  `mrr audit anchoring`. (4) store_reference_not_recorded is an OBSERVATION, never a
+  violation — the first real run of this tool produces 51 observations and 0 violations,
+  and collapsing them would report 51 false errors where there are none.
+depends_on: []
+derivation: >-
+  Derived 2026-07-26 from docs/design/2026-07-26-a2-derivation-artifact-store-reference.md.
+  Fact base verified first-hand: --artifact-root is required=True at cli/main.py:129, is
+  used at :283 (mkdir) and :292 (LocalFilesystemArtifactStore construction) and then
+  reaches no persisted object; RunManifest's 20 fields (contracts/run_manifest.py:97-121)
+  include environment, parameters, image_digest, code_commit, input_hashes and seeds but
+  nothing for artifact storage; RunManifest has a schemas/run-manifest.schema.json mirror
+  that must be kept in step (AGENTS rule 6); the store layout is
+  <root>/<hex[0:2]>/<hex[2:4]>/<hex> plus a .meta.json sidecar
+  (adapters/object_store/.../local.py:7-8). The oracle below was computed at derivation
+  with the repository's own audited parser (mrr.domain.archive_dump), whose anchor counts
+  17 and 34 cross-check exactly against N2-T02b's independently derived figures.
+objective: >-
+  After this packet, (a) `mrr run --artifact-root <p>` records that root on the
+  RunManifest it produces, as an ArtifactStoreReference with status "recorded"; and
+  (b) `mrr audit artifacts --dump <path>` renders a deterministic report (JSON and
+  Markdown) that, for each EvidenceAnchor in a committed dump, derives the expected blob
+  path from the recorded root and the anchor's own hash, checks presence and hash, and
+  assigns exactly one status from the closed set — counting VIOLATIONS
+  (artifact_missing, artifact_hash_mismatch) strictly apart from OBSERVATIONS
+  (store_reference_not_recorded), under a header stating in plain type that a recorded
+  root proves where the bytes were meant to go, never that the evidence is sound.
+status_vocabulary:
+  artifact_present: blob at the derived path, hash matches. A hit.
+  artifact_missing: root recorded, blob absent at the derived path. VIOLATION.
+  artifact_hash_mismatch: blob present, hash differs. VIOLATION.
+  store_reference_not_recorded: >-
+    the run recorded no root. OBSERVATION, never a violation — nothing is broken,
+    nothing is known. Must never be read as "bytes are missing" nor as "all is well".
+acceptance_oracle:
+  note: >-
+    Fixed BEFORE the build, computed at the derivation with mrr.domain.archive_dump.
+    The first real run of this tool must mechanically reproduce the finding that was
+    made by hand on 2026-07-26.
+  mrr_k1t04_real_run_v2:
+    evidence_anchors: 17
+    store_reference_not_recorded: 17
+    artifact_present: 0
+    artifact_missing: 0
+    artifact_hash_mismatch: 0
+    violations: 0
+    observations: 17
+  mrr_run2_corroboration_floor_v1:
+    evidence_anchors: 34
+    store_reference_not_recorded: 34
+    artifact_present: 0
+    artifact_missing: 0
+    artifact_hash_mismatch: 0
+    violations: 0
+    observations: 34
+  sharp_case: >-
+    Zero violations across both runs. If a single line is counted as a violation the
+    status separation is broken — there are no missing bytes here, there is an absent
+    record of where to look, and those are different findings.
+allowed_paths:
+  - packages/contracts/mrr/contracts/run_manifest.py
+  - schemas/run-manifest.schema.json
+  - packages/domain/mrr/domain/artifact_presence.py
+  - packages/domain/mrr/domain/artifact_presence_report.py
+  - services/control_plane/mrr/services/artifact_presence/__init__.py
+  - services/control_plane/mrr/services/artifact_presence/service.py
+  - services/control_plane/mrr/services/cli/artifact_presence_main.py
+  - services/control_plane/mrr/services/cli/main.py
+  - services/node_runtime/mrr/services/node_runtime/run_manifest.py
+  - tests/unit/domain/test_artifact_presence.py
+  - tests/unit/services/test_artifact_presence_service.py
+  - tests/contract/test_artifact_presence_report.py
+  - tests/contract/test_run_manifest_artifact_store_reference.py
+forbidden_changes:
+  - packages/contracts/mrr/contracts/evidence_anchor.py
+  - packages/domain/mrr/domain/anchoring_integrity.py
+  - packages/domain/mrr/domain/citation_audit.py
+  - packages/domain/mrr/domain/support_audit.py
+  - packages/domain/mrr/domain/archive_dump.py
+  - archive/dumps/**
+  - corpora/**
+  - scripts/**
+acceptance_criteria:
+  - The biconditional is enforced in the model, not merely documented - status
+    "recorded" iff root is not None; both violating shapes raise on construction.
+  - Both committed dumps still parse unchanged through mrr.domain.archive_dump, and the
+    two existing RunManifests validate, carrying status "not_recorded" as the true
+    statement about them. Asserted by a test.
+  - schemas/run-manifest.schema.json is updated in step with the contract, and a test
+    asserts contract and schema agree.
+  - The 51-anchor acceptance oracle above is reproduced exactly, with violations 0.
+  - A test with a synthetic recorded root proves all three other statuses really occur -
+    a present blob, a deleted blob (artifact_missing), and a corrupted blob
+    (artifact_hash_mismatch). Without this the closed set is untested at its edges.
+  - Determinism - no wall clock in the domain module; explicit sorting; two runs over
+    equal inputs render identical bytes.
+  - Exit semantics mirror N2-T01 - 0 success, 2 input error, 3 refusal. Violations do
+    NOT change the exit code.
+  - make format-check, lint, typecheck, test, test-contract and security-check pass.
+explicitly_not:
+  - No change to EvidenceAnchor - the store is content-addressed, so root plus the
+    anchor's own hash already determines the path.
+  - No recovery or re-fetching of the lost bytes; no back-filling a root into the two
+    existing manifests. Both would be fabrication in the archive.
+  - No run-time gate that refuses a temp-directory artifact root - named in the
+    derivation as a separate owner decision, out of scope here.
+  - No model, no network, no database, no migration, no new dependency.
