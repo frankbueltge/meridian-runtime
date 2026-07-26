@@ -231,5 +231,7 @@ The underlying research records, with per-claim adversarial verification, are in
 
 ## License
 
-Code is licensed under **PolyForm Noncommercial License 1.0.0**. Non-code works, texts,
-and data are licensed under **CC BY-NC-SA 4.0**. See `LICENSE.md` for the full text.
+Code is licensed under the **Apache License 2.0**. Non-code works and texts are licensed
+under **CC BY 4.0**; data and archive snapshots are dedicated to the public domain under
+**CC0 1.0**. See `LICENSE.md` for the full text. (Open since 2026-07-26 — the
+AI-training reservation lives in the crawler policy, not the licence.)
