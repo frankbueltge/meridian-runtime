@@ -1,0 +1,110 @@
+task_id: S1-T01
+title: >-
+  Bring the script edge under the regular security gate: add scripts/ to
+  `make security-check`, refuse XML carrying a DOCTYPE or ENTITY declaration before
+  parsing (entity expansion is empirically vulnerable on this interpreter), cap the
+  response read, and suppress exactly the four proven-harmless findings locally with a
+  written reason — never a blanket exception for scripts/.
+status: approved
+epic: S1
+reviewer_resolution: >-
+  Approved 2026-07-26 by the main session as reviewing instance, on the owner's release
+  of the recommended order the same day, with the script edge first. The occasion is a
+  pre-existing gap that doubled today: make security-check scans "packages adapters
+  services" and not "scripts", where the repository's ONLY two network egress paths
+  live. Load-bearing choices CONFIRMED at derivation by running the tools and the
+  attacks, not by reading their warnings: (1) THE TWO HALVES OF THE XML WARNING HAVE
+  OPPOSITE ANSWERS — on Python 3.12.8 a 4-level billion-laughs document EXPANDS to
+  30000 characters (real DoS vector), while an external-entity document raises
+  ParseError "undefined entity" (XXE not reachable). Only the expansion half is fixed;
+  claiming to fix XXE would be theatre. (2) REFUSE, DO NOT "PARSE SAFELY" — the real
+  arXiv Atom response carries no DOCTYPE and no ENTITY declaration (verified against
+  the live API), Atom never needs a DTD, and the Crossref path is JSON. A document with
+  a DTD is therefore ALWAYS anomalous at this edge, so refusing it outright is both
+  stricter than defusedxml and free of a new dependency. (3) BANDIT DID NOT FIND THE
+  WORST ONE — both scripts have a 30s timeout but read the body with a bare
+  response.read(), unbounded; that came from the fact-lock, not the scanner, and is
+  fixed here. (4) FOUR LOCAL SUPPRESSIONS, NEVER A BLANKET ONE — 2x B310 (the
+  https + two-host allowlist runs BEFORE urlopen and is already under test), 1x B404
+  and 1x B603 (subprocess with no shell and a closed set of known test tiers). A
+  scripts/-wide exception would hide the real findings along with them.
+depends_on: []
+derivation: >-
+  Derived 2026-07-26 from docs/design/2026-07-26-s1-derivation-script-edge-security.md.
+  Fact base verified first-hand: `bandit -c pyproject.toml -r scripts` reports 8
+  findings (4 low, 4 medium, 0 high) across B310 x2, B314 x2, B405 x2, B404, B603; the
+  billion-laughs and external-entity probes were executed on the project interpreter
+  with the results above; a live keyless request to export.arxiv.org returned 5426
+  bytes containing neither "<!DOCTYPE" nor "<!ENTITY"; Makefile's security-check target
+  invokes bandit over "packages adapters services" only.
+objective: >-
+  After this packet, `make security-check` also scans scripts/ and exits 0; XML that
+  declares a DOCTYPE or an ENTITY is refused with a typed error before any parser sees
+  it; a response body larger than a declared maximum is refused with a typed error; and
+  exactly four findings carry a local, reasoned suppression naming its test id.
+allowed_paths:
+  # extended 2026-07-26 at the review: the bounded read changes _open_url's call
+  # shape, so the fake-response mocks in these two pre-existing test files need the
+  # same one-line, behaviour-preserving signature fix. Reported by the builder as a
+  # blocking dependency (rule 13) rather than edited out of scope.
+  - tests/unit/scripts/test_fetch_citation_resolutions_arxiv.py
+  - tests/unit/scripts/test_fetch_citation_resolutions_crossref.py
+  - Makefile
+  - scripts/fetch_citation_resolutions.py
+  - scripts/fetch_source_content.py
+  - scripts/run_test_tier.py
+  - tests/unit/scripts/test_fetch_citation_resolutions_egress.py
+  - tests/unit/scripts/test_fetch_source_content.py
+  - tests/unit/scripts/test_script_edge_hardening.py
+forbidden_changes:
+  - corpora/**
+  - archive/**
+  - packages/**
+  - services/**
+  - adapters/**
+  - pyproject.toml
+acceptance_criteria:
+  - make security-check covers scripts and exits 0.
+  - Exactly eight local suppressions, each naming its bandit test id AND carrying a
+    written reason on the line - 2x B310, 2x B314, 2x B405, 1x B404, 1x B603. A test
+    or a grep-based check asserts the count, so a ninth cannot appear unnoticed.
+    (Corrected 2026-07-26 from four - see the B314/B405 criterion below.)
+  - B314/B405 carry a local, reasoned suppression naming the guard function AND the
+    test that proves it, exactly like B310 does for the allowlist.
+    CORRECTED 2026-07-26 at the review. The packet originally demanded ZERO
+    suppressions here, "those are fixed, not silenced" - that rested on a false
+    premise and made the criteria mutually impossible, which the builder correctly
+    reported instead of picking a side (rule 14). Verified at the review: bandit's
+    B314/B405 are a purely static AST blacklist match on ET.fromstring / import
+    xml.etree.ElementTree, with no control-flow awareness, so a guard in front of the
+    call cannot clear the finding. Two things were conflated: the VULNERABILITY is
+    fixed and demonstrably so (the bomb is refused before any parser sees it), while
+    the FINDING remains because the scanner is static. A suppression is honest when a
+    real, tested guard stands behind it and dishonest when it merely silences - B310
+    and B314 are both the former, and treating them differently was inconsistent.
+    Dodging the blacklist by rewriting to ET.XML would be the theatre this packet
+    forbids elsewhere.
+  - No blanket exclusion of scripts/ anywhere (not in the Makefile, not in
+    pyproject.toml which is forbidden to touch anyway).
+  - The derivation's billion-laughs document is refused with a typed error, proven by a
+    test that also asserts no parser was reached.
+  - A document carrying only a DOCTYPE, with no bomb, is refused too - the guard is
+    structural, not bomb-shaped.
+  - A response body exceeding the declared maximum is refused with a typed error;
+    the limit is a named module constant, not a literal buried in a call.
+  - The real committed response shapes still parse - a test drives the changed parsers
+    over the actual arXiv Atom and Crossref JSON forms already in the repository.
+  - corpora/research-records/verification/content-snapshot.json and
+    resolution-snapshot.json are bit-identical before and after, asserted by sha256.
+  - The egress framing is unchanged in wording and effect - https, the same two-host
+    allowlist, keyless.
+  - make format-check, lint, typecheck, test, test-contract and security-check pass.
+explicitly_not:
+  - No defusedxml and no other new dependency.
+  - No blanket scripts/ exception.
+  - No redirect or DNS-rebinding handling - named in the derivation as its own smaller
+    packet, deliberately out of scope here.
+  - No re-running of either fetch script and no change to any committed snapshot.
+  - No restructuring of the fetch scripts and no change to their egress framing.
+  - No claim that XXE was fixed - it is not reachable on this parser, and saying
+    otherwise would be theatre.

@@ -149,7 +149,7 @@ def test_fetch_arxiv_batch_sends_exactly_one_request_for_all_ids(
         def __exit__(self, *_exc_info: object) -> None:
             return None
 
-        def read(self) -> bytes:
+        def read(self, amt: int | None = None) -> bytes:
             return raw
 
     def _fake_urlopen(request: urllib.request.Request, timeout: float) -> _FakeResponse:

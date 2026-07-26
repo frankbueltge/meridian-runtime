@@ -198,7 +198,7 @@ def test_request_sends_no_authorization_header(monkeypatch: pytest.MonkeyPatch) 
         def __exit__(self, *_exc_info: object) -> None:
             return None
 
-        def read(self) -> bytes:
+        def read(self, amt: int | None = None) -> bytes:
             return b"<feed xmlns='http://www.w3.org/2005/Atom'></feed>"
 
     def _fake_urlopen(request: urllib.request.Request, timeout: float) -> _FakeResponse:
@@ -331,7 +331,7 @@ class TestArxivSummaryExtraction:
             def __exit__(self, *_exc_info: object) -> None:
                 return None
 
-            def read(self) -> bytes:
+            def read(self, amt: int | None = None) -> bytes:
                 return _ARXIV_ATOM_TWO_ENTRIES.encode()
 
         def _fake_urlopen(request: urllib.request.Request, timeout: float) -> _FakeResponse:
@@ -625,7 +625,7 @@ class TestManifestCoverage:
             def __exit__(self, *_exc_info: object) -> None:
                 return None
 
-            def read(self) -> bytes:
+            def read(self, amt: int | None = None) -> bytes:
                 return self._body
 
         def _fake_urlopen(request: urllib.request.Request, timeout: float) -> _FakeResponse:
@@ -735,7 +735,7 @@ class TestCliExitSemantics:
             def __exit__(self, *_exc_info: object) -> None:
                 return None
 
-            def read(self) -> bytes:
+            def read(self, amt: int | None = None) -> bytes:
                 return self._body
 
         def _fake_urlopen(request: urllib.request.Request, timeout: float) -> _FakeResponse:
