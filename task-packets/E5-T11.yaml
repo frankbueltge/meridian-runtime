@@ -1,0 +1,126 @@
+task_id: E5-T11
+title: >-
+  The identity edge: a pure `build_self_signed_practice` in the domain that derives kid
+  and encoded_public_key FROM THE PRIVATE KEY ITSELF, plus `mrr practice init`, so
+  Meridian can publish the Practice file that `mrr federation inbox accept
+  --trusted-sender-practice` requires. A wrong kid is made structurally impossible,
+  not merely discouraged.
+status: approved
+epic: E5
+reviewer_resolution: >-
+  Approved 2026-07-26 by the main session as reviewing instance, on the owner's choice
+  of strand 1 the same evening. The occasion is a documented defect, not a specification
+  item: generate_ed25519_keypair() has ZERO non-test callers, there is no `keys` and no
+  `practice` subcommand among the fourteen registered, keys.py handles no PEM at all,
+  and `envelope sign` accepts --key-id as an unchecked opaque string. Load-bearing
+  choices CONFIRMED at derivation against the real code: (1) KID AND PUBLIC KEY ARE
+  DERIVED, NEVER PARAMETERS — the domain function takes the Ed25519PrivateKey and
+  obtains the public half itself via private_key.public_key(), then the UNCHANGED
+  encode_public_key and derive_key_id; there is no parameter through which a wrong kid
+  could enter, and PublicKeyDescriptor's own validator checks it a second time per the
+  contract's documented "enforced twice" precedent. This is the exact sibling of
+  E5-T10's rule that payload_content_hash is READ, never taken. (2) THE SELF-SIGNATURE
+  IS NOT OPTIONAL — a trust anchor that does not self-sign proves nothing about
+  possession of the private key, and possession is the whole point of the file Ulysses
+  loads; signed via the UNCHANGED mrr.domain.hashing_policy, never a second signing
+  implementation, exactly as practice.py's own docstring demands. (3) A NEW TOP-LEVEL
+  `mrr practice` SUBCOMMAND, not `mrr federation practice` — Practice is a first-class
+  entity (E5-T01) whose consumers are broader than transport (practice_key_ring feeds
+  manifest_trust, task_trust, crate_trust, transfer_trust); main.py already registers
+  fourteen subcommands through the same register_*_subcommand pattern. (4) ONE COMMAND,
+  NOT TWO — a separate `key-info` command was considered and rejected: the Practice JSON
+  already carries kid authoritatively at keys[0].kid, and a second command would create
+  a second source for one truth; `init` reports the kid in its result output, which
+  serves the real need (--key-id for envelope sign) without building surface on spec.
+  (5) CONTENT FIELDS ARE ARGUMENTS WITH NO DEFAULTS — name, description,
+  governance_contacts, supported_policy_versions, disclosure.*, the key validity window
+  and created_by are owner content; a missing one is a typed refusal, never a silently
+  filled slot (AGENTS rules 3 and 12). This decouples the build from the owner decision.
+depends_on: [E5-T01, E5-T10]
+derivation: >-
+  Derived 2026-07-26 from docs/design/2026-07-26-e5-t11-ableitung-praxis-identitaet.md,
+  fact-locked against docs/design/2026-07-26-fact-lock-praxis-identitaet-und-
+  schluessel.md. Fact base verified first-hand: Practice count is 0 in both real-run
+  dumps; `envelope sign` and `outbox write` take --sender-practice-id as a STRING while
+  only `inbox accept` takes --trusted-sender-practice as a FILE, so the missing object
+  blocks the RECEIVER, not Meridian's send; generate_ed25519_keypair has 35 test callers
+  and no others; the three PEM load paths are federation_main.py:296,
+  synthesis_main.py:90 and main.py:97, all using serialization.load_pem_private_key;
+  derive_key_id always returns "kid:" + base64(sha256(raw public bytes)); all nine
+  archive signatures carry the placeholder key ids "node-key-1" (6x) and "origin-key-1"
+  (3x) and are therefore unverifiable against any schema-valid Practice; and the real
+  runs minted a fresh practice ULID each, so no stable Meridian practice id exists to
+  reuse.
+objective: >-
+  After this packet, `mrr practice init --key-file <pem> --name … --description …
+  --governance-contact … (repeatable) --policy-version … (repeatable) --max-disclosure
+  {INTERNAL,PARTNER_RESTRICTED,PUBLIC} --trust-statement … --valid-from … --valid-until
+  … --created-by … [--capability-registry-endpoint …] --output <file>` writes a
+  schema-valid, self-signed Practice JSON whose single listed key is derived from
+  --key-file, and which the UNCHANGED `mrr federation inbox accept
+  --trusted-sender-practice` accepts for a bundle signed with that same key.
+allowed_paths:
+  - packages/domain/mrr/domain/practice_identity.py
+  - packages/domain/mrr/domain/exceptions.py
+  - services/control_plane/mrr/services/cli/practice_main.py
+  - services/control_plane/mrr/services/cli/main.py
+  - tests/unit/domain/test_practice_identity.py
+  - tests/unit/services/test_practice_cli.py
+  - tests/integration/services/test_practice_accepts_own_bundle.py
+forbidden_changes:
+  - packages/crypto/**
+  - packages/domain/mrr/domain/hashing_policy.py
+  - packages/domain/mrr/domain/envelope_validation.py
+  - packages/domain/mrr/domain/envelope_signing.py
+  - packages/domain/mrr/domain/offline_bundle.py
+  - packages/domain/mrr/domain/transfer_trust.py
+  - packages/domain/mrr/domain/key_management.py
+  - packages/contracts/**
+  - services/control_plane/mrr/services/cli/federation_main.py
+  - services/control_plane/mrr/services/correction/**
+  - schemas/**
+  - corpora/**
+  - archive/**
+acceptance_criteria:
+  - THE SHARP CASE - a Practice produced by this command is accepted by the UNCHANGED
+    receiver as --trusted-sender-practice - build a Practice from key K, sign an
+    envelope and an OfflineBundle with the same key K, write the bundle to a file, and
+    have the unchanged validate_inbound_bundle / validate_inbound_envelope path accept
+    it with a KeyRing built by the unchanged practice_key_ring from that Practice. This
+    is the first evidence that a Meridian-published identity actually functions as the
+    counterparty's input.
+  - THE COUNTER-CASE - a Practice built from key A does NOT legitimise an envelope
+    signed with key B; the receiver fails signature verification.
+  - No kid parameter exists - the domain function's signature is inspected in a test and
+    accepts no kid, no key id, and no encoded public key; the only key input is the
+    private key.
+  - The produced kid equals derive_key_id(private_key.public_key()) and keys[0]
+    .encoded_public_key equals encode_public_key(private_key.public_key()), both
+    computed independently in the test rather than read back from the output.
+  - The self-signature verifies against the UNCHANGED verify_object_signature using the
+    public half of --key-file, and signature.signer_practice_id equals the object's own
+    id, and signature.key_id is keys[0].kid.
+  - content_hash equals compute_content_hash of the written object, recomputed
+    independently in the test.
+  - NO PRIVATE KEY MATERIAL REACHES THE OUTPUT - the written bytes are scanned and
+    contain neither the PEM text, its base64 body, nor the raw private bytes in any
+    encoding; nothing is printed to stdout or stderr either.
+  - Reproducibility - identical inputs, including id and created_at, produce a
+    byte-identical file. No wall clock and no randomness inside the domain function;
+    both id minting and created_at are supplied by the caller.
+  - Every content field is required with no default - omitting any one of them is a
+    typed refusal and no file is written.
+  - An existing --output is refused without being touched, mirroring `envelope sign`'s
+    own discipline and exit semantics.
+  - make format-check, lint, typecheck, test, test-contract and security-check pass.
+explicitly_not:
+  - No identity for a foreign practice - no key, no node id, no Practice minted for
+    Ulysses. The E5-T08 boundary is unchanged.
+  - No exchange is performed - this packet produces a file and sends nothing.
+  - No second hashing or signing implementation; hashing_policy and keys.py are reused
+    unchanged and are forbidden paths.
+  - No change to the federation CLI or to any validating module.
+  - No healing of the archive's placeholder key ids - "node-key-1" and "origin-key-1"
+    remain unverifiable, a separate dated defect, neither fixed nor concealed here.
+  - No network, no database, no model, no new dependency, no migration, no schemas/**.
+  - No default, guessed, or example value for any owner content field.
