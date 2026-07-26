@@ -150,3 +150,35 @@ eigenes Ergebnis nicht (AGENTS Regel 8).
   und erbt sie nicht; sie bleibt als eigener offener Mangel stehen.
 - **Keine Entscheidung über Rohtext-Aufbewahrung im Adapter** — die Politik kommt
   vom Aufrufer.
+
+---
+
+## Korrektur 2026-07-26 (aus dem Bau, gemeldet vom Erbauer)
+
+Die Tabelle in Abschnitt „Die fünf Endzustände ehrlich abbilden" führte als
+dritte Zeile: „Modell verweigert inhaltlich, ohne Filter → `refused`".
+
+**Das war falsch.** Geminis Antwortform kann eine inhaltliche Weigerung
+(gewöhnlicher Text, `finishReason: STOP`, keine Sicherheitsmarkierung)
+**strukturell nicht** von einer gewöhnlichen Antwort unterscheiden — es gibt kein
+Signal dafür. Sie zu erkennen verlangte eine semantische Beurteilung des
+Ausgabetextes, also genau die Erfindung von Domänenverhalten, die AGENTS Regel 3
+verbietet, und eine Modellaussage als autoritativ zu behandeln, was Regel 7
+verbietet.
+
+Die zutreffende Zeile lautet:
+
+| Provider-Antwort | Zustand | warum |
+|---|---|---|
+| Kandidat vorhanden, nicht gefiltert, **ohne jeden Text** (oder `candidates` fehlt ohne `blockReason`) | `refused` | das ist der einzige Fall, den die Wire-Form als Weigerung erkennbar macht |
+
+Die Ableitung hatte mehr versprochen, als die Schnittstelle hergibt; der Bau hat
+es bemerkt und gemeldet. Nachgeprüft im Review
+(`2026-07-26-e4-t08-review.md`) mit einer eigens gebauten Antwort dieser Form.
+
+**Was daraus folgt, und was nicht:** Eine Weigerung, die als normaler Text
+daherkommt, wird von diesem Adapter als `completed` verzeichnet. Das ist keine
+Lücke, die sich hier schließen ließe — sie gehört auf die Ebene, die den Inhalt
+beurteilt, und dort unter ausdrückliche Verifikation. Für ein Experiment über
+Modellversagen ist die Unterscheidung **selbst ein Messgegenstand**, kein
+Vorverarbeitungsschritt.
