@@ -110,6 +110,63 @@ damage a compromised or spoofed allowlisted host could inflict before any
 check ran. A real arXiv response for one id is 5,426 bytes (measured at the
 S1-T01 derivation); the limit is a generous single-digit-megabyte module
 constant, not a literal buried in the call.
+
+--- Redirects are refused unconditionally, even to an allowlisted host (S1-T02) ---
+
+:func:`_check_allowlisted` gates the REQUESTED url only. Left unattended,
+that is not the whole promise: stdlib ``urllib`` follows HTTP redirects by
+default, so an allowlisted host could hand a request to any other host —
+including a SECOND allowlisted one — and the caller would never notice that
+the bytes it got back came from somewhere other than the recorded url. For a
+script whose output becomes source content behind an
+``EvidenceAnchor``-shaped commitment (see
+``scripts/fetch_source_content.py``'s own docstring for why that matters
+more here than in an ordinary fetcher), that divergence between "the url we
+recorded" and "the document we actually read" is itself the defect — not
+merely "a hop left the allowlist". So this module refuses EVERY redirect,
+unconditionally: :class:`_NoRedirectHandler` overrides
+``urllib.request.HTTPRedirectHandler.redirect_request`` to return ``None``
+unconditionally — the exact seam that method's own docstring names for
+"refuse this redirect" — and is installed, once, as the process's default
+opener (``urllib.request.install_opener``), so the plain
+``urllib.request.urlopen()`` call in :func:`_open_url` below never
+transparently follows a 301/302/303/307/308; each instead surfaces as an
+``urllib.error.HTTPError`` carrying the ORIGINAL redirect response, which
+:func:`_open_url` turns into a typed :class:`RedirectRefusedError` naming
+the status code and the ``Location`` target's host — never re-checked
+against :data:`ALLOWED_HOSTS` and re-followed, since re-checking-and-
+following would still leave the recorded url and the fetched document
+different documents, just both allowlisted ones.
+
+This is the same disabling mechanism as
+``adapters/llm/mrr/adapters/llm/transport.py::_NoRedirectHandler`` (E4-T08,
+built the night before this task, which names this exact gap as a real,
+open defect in this module and its ``fetch_source_content.py`` sibling) —
+declared independently HERE rather than imported, mirroring this module's
+own "byte-identical guard, declared independently" precedent for
+:func:`_check_allowlisted` itself, and for the reason
+``adapters/**`` is a forbidden path for this task (task-packets/
+S1-T02.yaml). Unlike that transport, though, :func:`_open_url` keeps calling
+the ordinary module-level ``urllib.request.urlopen()`` — not a locally
+built opener's own ``.open()`` — specifically so every EXISTING test in
+this repository that monkeypatches ``urllib.request.urlopen`` directly
+(``tests/unit/scripts/test_fetch_citation_resolutions_egress.py``,
+``test_fetch_citation_resolutions_arxiv.py``, ``_crossref.py``,
+``test_script_edge_hardening.py`` — none of them touchable by this task's
+``allowed_paths``) keeps intercepting exactly as before: only ``urlopen()``'s
+OWN default opener changes, never the call site those tests patch.
+:class:`RedirectRefusedError` is proven against the REAL, unpatched
+``urlopen()`` and the REAL installed opener instead, with only
+``urllib.request.AbstractHTTPHandler.do_open`` — the connection-layer seam
+— monkeypatched (mirrors ``tests/unit/adapters/llm/test_transport.py``'s
+identical technique for the E4-T08 precedent).
+
+:class:`RedirectRefusedError` is kept SEPARATE from :class:`EgressRefusedError`
+rather than folded into it (AGENTS.md: never collapse two distinct failure
+modes into one generic error) — the two name different facts:
+``EgressRefusedError`` means a socket was never opened at all;
+``RedirectRefusedError`` means one WAS opened, to an allowlisted host, and
+that host tried to send the request somewhere else.
 """
 
 from __future__ import annotations
@@ -126,8 +183,9 @@ import xml.etree.ElementTree as ET  # nosec B405 # every call below is preceded 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
+from http.client import HTTPMessage
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 # ---------------------------------------------------------------------------
 # The gate: https + a hard, two-host allowlist (task-packets/N2-T02a.yaml R1).
@@ -215,6 +273,40 @@ class EgressRefusedError(FetchScriptError):
         super().__init__(f"refusing to open {url!r}: {reason}")
 
 
+class RedirectRefusedError(FetchScriptError):
+    """Raised by :func:`_open_url` when an allowlisted host responds with an
+    HTTP redirect (301, 302, 303, 307, 308) — see the module docstring's
+    "Redirects are refused" section. Refused UNCONDITIONALLY, even when the
+    ``Location`` target is itself an allowlisted host (task-packets/
+    S1-T02.yaml: "the guarantee is 'no redirect', not 'no redirect off the
+    allowlist' — the recorded url and the fetched document can never
+    diverge").
+
+    Kept a SEPARATE class from :class:`EgressRefusedError`, never folded
+    into it (AGENTS.md: never collapse two distinct failure modes into one
+    generic error) — the two name genuinely different facts:
+    ``EgressRefusedError`` means "no socket was ever opened"; this class
+    means "a socket WAS opened, to an allowlisted host, and it tried to
+    send the request somewhere else". Carries the offending HTTP status
+    code and the redirect target's host (parsed from the response's own
+    ``Location`` header via ``urlsplit(...).hostname``, ``None`` if the
+    response carried no ``Location`` at all — never a fabricated
+    placeholder), so a refusal is diagnosable without the response body
+    ever being read (:func:`_open_url` never calls ``.read()`` on a
+    refused redirect's response).
+    """
+
+    def __init__(self, url: str, status_code: int, target_host: str | None) -> None:
+        self.url = url
+        self.status_code = status_code
+        self.target_host = target_host
+        super().__init__(
+            f"refusing to follow HTTP {status_code} redirect from {url!r} to host "
+            f"{target_host!r} — redirects are never followed, not even to another "
+            "allowlisted host (task-packets/S1-T02.yaml)"
+        )
+
+
 class ManifestInputError(FetchScriptError):
     """The manifest at ``--manifest`` cannot even be read as data — missing,
     unreadable, not valid UTF-8/JSON, or the wrong top-level shape.
@@ -294,6 +386,64 @@ def _check_allowlisted(url: str) -> None:
         )
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Installed below, once, in place of the stock
+    ``urllib.request.HTTPRedirectHandler`` (``urllib.request.build_opener``:
+    "If any of the handlers passed as arguments are subclasses of the
+    default handlers, the default handlers will not be used" — this class
+    IS such a subclass, so installing an opener built with it present
+    REPLACES, not supplements, the default redirect handler).
+
+    Overrides ONLY :meth:`redirect_request`, returning ``None``
+    unconditionally — exactly the seam ``HTTPRedirectHandler.
+    redirect_request``'s own docstring names for this purpose ("Return None
+    if you can't [redirect] but another handler might"). Since no other
+    handler in this opener registers a 301-308 handler either,
+    ``http_error_301/302/303/307/308`` (all aliased to the same
+    ``http_error_302`` on the base class, not overridden here) see
+    ``redirect_request`` return ``None`` and themselves return ``None`` in
+    turn — WITHOUT ever reading the response body (cpython's own
+    ``http_error_302`` only calls ``fp.read()``/``fp.close()`` AFTER
+    confirming ``redirect_request`` returned something other than
+    ``None``); ``urllib.request.OpenerDirector.error`` then falls through
+    to ``HTTPDefaultErrorHandler.http_error_default``, which raises
+    ``urllib.error.HTTPError`` carrying the ORIGINAL 30x response — never a
+    followed one, and never a read one. Identical mechanism to the E4-T08
+    precedent, ``adapters/llm/mrr/adapters/llm/transport.py::
+    _NoRedirectHandler`` — see this module's own docstring "Redirects are
+    refused" section for why it is declared independently here rather than
+    imported.
+    """
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        return None
+
+
+#: Installed ONCE, at import time, as the process's default opener —
+#: replacing the stock opener the plain ``urllib.request.urlopen()`` call in
+#: :func:`_open_url` below would otherwise use. ``_open_url`` deliberately
+#: keeps calling that module-level ``urlopen()`` (never a locally built
+#: opener's own ``.open()``) so every existing test that monkeypatches
+#: ``urllib.request.urlopen`` directly keeps intercepting exactly as before
+#: — see the module docstring's "Redirects are refused" section.
+urllib.request.install_opener(urllib.request.build_opener(_NoRedirectHandler))
+
+#: Every HTTP redirect status. Any ``urllib.error.HTTPError`` reaching
+#: :func:`_open_url` with one of these codes can only be the refusal
+#: :class:`_NoRedirectHandler` manufactures (the installed opener never
+#: follows a redirect to completion), never a genuine upstream response —
+#: real arXiv/Crossref success/failure responses never carry a 30x status.
+_REDIRECT_STATUS_CODES: frozenset[int] = frozenset({301, 302, 303, 307, 308})
+
+
 def _open_url(url: str) -> bytes:
     """The ONLY function in this module that opens a socket. Enforces the
     https + host allowlist first (:func:`_check_allowlisted`); sends a
@@ -302,14 +452,30 @@ def _open_url(url: str) -> bytes:
     bounded ``response.read(n)``, not an unbounded read followed by a
     length check, so the limit actually caps memory use rather than being
     checked only after the damage is done.
+
+    A redirect (301/302/303/307/308) is never followed — the process
+    opener installed above (:class:`_NoRedirectHandler`) refuses every one
+    unconditionally, even to another allowlisted host (task-packets/
+    S1-T02.yaml). Such a response reaches this function as an
+    ``urllib.error.HTTPError``, caught here and turned into a typed
+    :class:`RedirectRefusedError` naming the status and the ``Location``
+    target's host — the response body is never read on this path (no
+    ``.read()`` call appears anywhere between catching the error and
+    raising).
     """
     _check_allowlisted(url)
     # The allowlist check above is the honest guard against this being an
     # unrestricted, attacker-steerable fetch: the URL reaching this line is
     # already proven https and host-allowlisted.
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:  # nosec B310 # scheme+host checked by _check_allowlisted above, tested
-        body: bytes = response.read(MAX_RESPONSE_BYTES + 1)
+    try:
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:  # nosec B310 # scheme+host checked by _check_allowlisted above, AND the process opener installed above (_NoRedirectHandler) refuses every 301/302/303/307/308 outright — tested end-to-end through the real opener in tests/unit/scripts/test_fetch_citation_resolutions_egress.py
+            body: bytes = response.read(MAX_RESPONSE_BYTES + 1)
+    except urllib.error.HTTPError as exc:
+        if exc.code in _REDIRECT_STATUS_CODES:
+            target_host = urllib.parse.urlsplit(exc.headers.get("Location", "")).hostname
+            raise RedirectRefusedError(url, exc.code, target_host) from exc
+        raise
     if len(body) > MAX_RESPONSE_BYTES:
         raise ResponseTooLargeError(url, MAX_RESPONSE_BYTES)
     return body
@@ -862,6 +1028,7 @@ def main(argv: list[str] | None = None) -> int:
         UpstreamRefusedError,
         XmlDtdRefusedError,
         ResponseTooLargeError,
+        RedirectRefusedError,
     ) as exc:
         print(f"fetch_citation_resolutions: refused — {exc}", file=sys.stderr)
         return _EXIT_REFUSED

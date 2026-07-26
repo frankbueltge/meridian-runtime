@@ -1,30 +1,34 @@
-"""AT3 (task-packets/N2-T02a.yaml): the https + host allowlist guard in
-``scripts/fetch_citation_resolutions.py`` refuses a non-allowlisted host, a
-non-https scheme, and an unexpected (lookalike) URL, as a typed error
-(:class:`EgressRefusedError`), with NO socket ever opened. Every such test
-here monkeypatches ``urllib.request.urlopen`` with a function that fails the
-test outright if it is ever called, then asserts the refusal happens before
-that point — this is the module's own "no unrestricted network egress"
-guarantee (AGENTS.md rule 11), proven, not merely asserted in prose.
+"""task-packets/S1-T02.yaml: closes the redirect gap in
+``scripts/fetch_source_content.py``. ``_check_allowlisted`` (exercised by
+``TestEgressAllowlist`` in ``tests/unit/scripts/test_fetch_source_content.py``
+— untouched by this task, still passing independently) gates only the
+REQUESTED url; stdlib ``urllib`` follows HTTP redirects by default, so an
+allowlisted host could silently hand a request to any other host — even a
+SECOND allowlisted one. This module lives separately from that existing
+file (task-packets/S1-T02.yaml ``allowed_paths`` names this file, not that
+one) and covers exactly the redirect-refusal surface: :class:`RedirectRefusedError`
+fires for a redirect between two allowlisted hosts (the sharp case in
+task-packets/S1-T02.yaml's own acceptance_criteria, not merely a redirect
+off the allowlist), the refused response's body is never read, the new
+error stays distinct from :class:`EgressRefusedError`, and the pre-existing
+timeout/size-limit guarantees remain demonstrably intact.
 
-task-packets/S1-T02.yaml extends this module's egress coverage with the
-REDIRECT gap: the allowlist above gates only the REQUESTED url, and stdlib
-``urllib`` follows HTTP redirects by default, so an allowlisted host could
-silently hand a request to any other host — even a second allowlisted one.
-The tests below (from ``TestNoRedirectHandler`` onward) prove that gap is
-closed: :class:`RedirectRefusedError` fires for a redirect to ANOTHER
-allowlisted host, not just to a foreign one (the sharp case named in
-task-packets/S1-T02.yaml's own acceptance_criteria), the refused response's
-body is never read, and the existing guarantees above (allowlist, timeout)
-remain demonstrably intact. Unlike the allowlist tests above, which
-monkeypatch ``urllib.request.urlopen`` itself, these redirect tests drive
-the REAL, unpatched ``urlopen()`` and the REAL opener
-``scripts.fetch_citation_resolutions`` installs at import time, with only
-``urllib.request.AbstractHTTPHandler.do_open`` — the connection-layer seam —
-monkeypatched (mirrors ``tests/unit/adapters/llm/test_transport.py``'s
-identical technique for the E4-T08 precedent, ``_NoRedirectHandler`` in
-``adapters/llm/mrr/adapters/llm/transport.py``) — never a mock of
-``_open_url`` or ``_check_allowlisted`` themselves.
+Declared independently from
+``tests/unit/scripts/test_fetch_citation_resolutions_egress.py`` — no
+import between the two test modules, exactly mirroring
+``scripts/fetch_source_content.py`` and
+``scripts/fetch_citation_resolutions.py``'s own "decoupled read, declared
+independently" precedent (task-packets/S1-T02.yaml explicitly forbids a
+shared module for ``scripts/`` and, by the same reasoning, for these tests).
+
+Every test here drives the REAL, unpatched ``urlopen()`` and the REAL
+opener ``scripts.fetch_source_content`` installs at import time
+(:class:`_NoRedirectHandler`), with only
+``urllib.request.AbstractHTTPHandler.do_open`` — the connection-layer seam
+— monkeypatched (mirrors ``tests/unit/adapters/llm/test_transport.py``'s
+identical technique for the E4-T08 precedent,
+``adapters/llm/mrr/adapters/llm/transport.py::_NoRedirectHandler``) — never
+a mock of ``_open_url`` or ``_check_allowlisted`` themselves.
 
 No test in this module makes a real network call.
 """
@@ -38,137 +42,15 @@ from http.client import HTTPMessage
 
 import pytest
 
-from scripts.fetch_citation_resolutions import (
-    ALLOWED_HOSTS,
+from scripts.fetch_source_content import (
     REQUEST_TIMEOUT_SECONDS,
-    USER_AGENT,
     EgressRefusedError,
     FetchScriptError,
     RedirectRefusedError,
     ResponseTooLargeError,
-    _check_allowlisted,
     _NoRedirectHandler,
     _open_url,
 )
-
-
-def _fail_if_called(*_args: object, **_kwargs: object) -> object:
-    raise AssertionError(
-        "urllib.request.urlopen was called — the egress guard did not refuse first"
-    )
-
-
-@pytest.fixture(autouse=True)
-def _poison_urlopen(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Applied to EVERY test in this module: any call to
-    ``urllib.request.urlopen`` fails the test immediately.
-    """
-    monkeypatch.setattr(urllib.request, "urlopen", _fail_if_called)
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        "http://export.arxiv.org/api/query?id_list=2511.02824",
-        "http://api.crossref.org/works/10.1038/s41586-026-10265-5",
-    ],
-)
-def test_non_https_scheme_is_refused_before_any_socket_opens(url: str) -> None:
-    with pytest.raises(EgressRefusedError, match="not https"):
-        _open_url(url)
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://evil.example.com/api/query?id_list=2511.02824",
-        "https://arxiv.org/api/query?id_list=2511.02824",  # real domain, wrong host
-        "https://export.arxiv.org.attacker.example/api/query",  # lookalike suffix
-    ],
-)
-def test_non_allowlisted_host_is_refused_before_any_socket_opens(url: str) -> None:
-    with pytest.raises(EgressRefusedError, match="not in the allowlist"):
-        _open_url(url)
-
-
-def test_userinfo_trick_url_resolves_by_real_hostname_not_by_substring() -> None:
-    """A URL that superficially CONTAINS an allowlisted host name in its
-    userinfo component (``user@host``) must still be refused: the guard uses
-    ``urlsplit(...).hostname`` (the REAL destination host), never a
-    substring/prefix check on the raw string.
-    """
-    url = "https://export.arxiv.org@evil.example.com/api/query?id_list=2511.02824"
-    with pytest.raises(EgressRefusedError, match="not in the allowlist"):
-        _open_url(url)
-
-
-def test_unexpected_scheme_relative_url_is_refused() -> None:
-    with pytest.raises(EgressRefusedError):
-        _open_url("export.arxiv.org/api/query?id_list=2511.02824")
-
-
-@pytest.mark.parametrize("host", sorted(ALLOWED_HOSTS))
-def test_check_allowlisted_accepts_https_and_the_two_allowlisted_hosts(host: str) -> None:
-    """The positive case for :func:`_check_allowlisted` alone (not
-    :func:`_open_url`, since this test intentionally does NOT want the
-    poisoned ``urlopen`` to matter either way — it only checks the gate
-    function raises nothing for a legitimate URL).
-    """
-    _check_allowlisted(f"https://{host}/some/path")
-
-
-def test_allowed_hosts_is_exactly_the_two_documented_hosts() -> None:
-    assert frozenset({"export.arxiv.org", "api.crossref.org"}) == ALLOWED_HOSTS
-
-
-def test_user_agent_is_descriptive_and_carries_no_credential_marker() -> None:
-    lowered = USER_AGENT.lower()
-    assert "meridian" in lowered
-    for forbidden_marker in ("token", "key=", "authorization", "bearer", "secret"):
-        assert forbidden_marker not in lowered
-
-
-def test_request_sends_no_authorization_header(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Proves ``_open_url`` never attaches an ``Authorization`` header (or
-    any credential) to the outgoing request — captured via a fake opener
-    that records the ``Request`` object instead of ever touching the
-    network.
-    """
-    captured: list[urllib.request.Request] = []
-
-    class _FakeResponse:
-        def __enter__(self) -> _FakeResponse:
-            return self
-
-        def __exit__(self, *_exc_info: object) -> None:
-            return None
-
-        def read(self, amt: int | None = None) -> bytes:
-            return b"<feed xmlns='http://www.w3.org/2005/Atom'></feed>"
-
-    def _fake_urlopen(request: urllib.request.Request, timeout: float) -> _FakeResponse:
-        captured.append(request)
-        return _FakeResponse()
-
-    monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
-
-    _open_url("https://export.arxiv.org/api/query?id_list=2511.02824")
-
-    assert len(captured) == 1
-    request = captured[0]
-    header_names = {name.lower() for name in request.headers}
-    assert "authorization" not in header_names
-    assert request.get_header("User-agent") == USER_AGENT
-
-
-# ---------------------------------------------------------------------------
-# task-packets/S1-T02.yaml: redirects are refused, unconditionally — even to
-# ANOTHER allowlisted host. Everything below drives the REAL urlopen() and
-# the REAL process opener installed by scripts.fetch_citation_resolutions at
-# import time, with only urllib.request.AbstractHTTPHandler.do_open
-# monkeypatched (see the module docstring above for why this seam, not
-# urlopen itself, is what proves the real wiring rather than a mock of it).
-# ---------------------------------------------------------------------------
 
 
 def _fake_headers(pairs: list[tuple[str, str]]) -> HTTPMessage:
@@ -259,10 +141,11 @@ def _install_fake_do_open(
     ``HTTPHandler.http_open`` and ``HTTPSHandler.https_open``) with a fake
     that looks up a canned response by the request's full URL, and returns
     the list every call's URL is appended to — so a test can assert exactly
-    how many requests were made, and to which URLs. A request for a URL with
-    no scripted response fails the test immediately: this is how the
-    redirect-target-never-requested guarantee is proven below, exactly as in
-    ``tests/unit/adapters/llm/test_transport.py`` for the E4-T08 precedent.
+    how many requests were made, and to which URLs. A request for a URL
+    with no scripted response fails the test immediately: this is how the
+    redirect-target-never-requested guarantee is proven below, exactly as
+    in ``tests/unit/adapters/llm/test_transport.py`` for the E4-T08
+    precedent.
     """
     calls: list[str] = []
 
@@ -309,29 +192,17 @@ class TestNoRedirectHandler:
 
 
 class TestRedirectIsRefusedEndToEnd:
-    @pytest.fixture(autouse=True)
-    def _poison_urlopen(self) -> None:
-        """Overrides the module-level autouse fixture of the identical name
-        for every test in this class (pytest fixture shadowing: a fixture
-        defined closer to the test wins over one of the same name defined
-        further out, autouse or not). Every test below drives the REAL
-        ``urllib.request.urlopen()`` — routed through the real opener
-        installed at import time — deliberately, per this module's own
-        docstring; a poisoned stand-in would defeat the entire point of
-        proving the redirect refusal end-to-end.
-        """
-        return None
-
     def test_redirect_between_two_allowlisted_hosts_is_refused(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """THE SHARP CASE (task-packets/S1-T02.yaml acceptance_criteria): a
-        302 from one allowlisted host to ANOTHER allowlisted host is refused
-        all the same — the guarantee is "no redirect", not "no redirect off
-        the allowlist" (see :class:`RedirectRefusedError`'s own docstring).
-        The target host below (``api.crossref.org``) IS in
-        :data:`ALLOWED_HOSTS`; a follow-and-recheck strategy would let this
-        one through, which is exactly the strategy this packet rejects.
+        302 from one allowlisted host to ANOTHER allowlisted host is
+        refused all the same — the guarantee is "no redirect", not "no
+        redirect off the allowlist" (see :class:`RedirectRefusedError`'s
+        own docstring). The target host below (``api.crossref.org``) IS in
+        :data:`scripts.fetch_source_content.ALLOWED_HOSTS`; a
+        follow-and-recheck strategy would let this one through, which is
+        exactly the strategy this packet rejects.
         """
         original_url = "https://export.arxiv.org/api/query?id_list=2511.02824"
         target_url = "https://api.crossref.org/works/10.1038/never-reached"
@@ -350,8 +221,8 @@ class TestRedirectIsRefusedEndToEnd:
     ) -> None:
         """The obvious case: a redirect OFF the allowlist is refused too —
         by the identical mechanism as the sharp case above, since neither
-        case ever consults :data:`ALLOWED_HOSTS` at all (no redirect is
-        ever followed, allowlisted target or not).
+        case ever consults ``ALLOWED_HOSTS`` at all (no redirect is ever
+        followed, allowlisted target or not).
         """
         original_url = "https://export.arxiv.org/api/query?id_list=2511.02824"
         target_url = "https://evil.example.com/steal-the-bytes"
@@ -435,10 +306,10 @@ class TestRedirectRefusedErrorIsDistinctFromEgressRefusedError:
     def test_target_host_is_none_not_a_fabricated_placeholder_when_location_is_absent(
         self,
     ) -> None:
-        """A redirect response with no ``Location`` header at all is a real,
-        if unusual, possibility (task-packets/S1-T02.yaml's own AGENTS.md
-        discipline: no placeholders). ``None`` records that honestly rather
-        than inventing a host name.
+        """A redirect response with no ``Location`` header at all is a
+        real, if unusual, possibility (AGENTS.md discipline: no
+        placeholders). ``None`` records that honestly rather than inventing
+        a host name.
         """
         error = RedirectRefusedError("https://export.arxiv.org/x", 302, None)
         assert error.target_host is None
@@ -447,21 +318,13 @@ class TestRedirectRefusedErrorIsDistinctFromEgressRefusedError:
 # ---------------------------------------------------------------------------
 # Existing guarantees, demonstrably intact after the redirect-refusal change
 # (task-packets/S1-T02.yaml acceptance_criteria) — proven here through the
-# REAL opener/urlopen, complementing the untouched allowlist/size-limit
-# coverage above and in tests/unit/scripts/test_script_edge_hardening.py.
+# REAL opener/urlopen, complementing the untouched allowlist coverage in
+# tests/unit/scripts/test_fetch_source_content.py and the untouched
+# size-limit coverage in tests/unit/scripts/test_script_edge_hardening.py.
 # ---------------------------------------------------------------------------
 
 
 class TestExistingGuaranteesStillHoldThroughTheRealOpener:
-    @pytest.fixture(autouse=True)
-    def _poison_urlopen(self) -> None:
-        """Overrides the module-level autouse fixture of the identical name
-        — see ``TestRedirectIsRefusedEndToEnd``'s identical override for
-        why: both tests below drive the REAL ``urllib.request.urlopen()``
-        deliberately.
-        """
-        return None
-
     def test_configured_timeout_is_still_forwarded_to_the_real_opener(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

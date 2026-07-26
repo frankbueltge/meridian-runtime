@@ -1,0 +1,92 @@
+task_id: S1-T02
+title: >-
+  Close the redirect gap in the two fetching scripts: the allowlist is checked only on
+  the REQUESTED url, and urllib silently follows redirects — so an allowlisted host can
+  hand the fetch to any other host, whose bytes then become anchored source content.
+  Redirects become a typed refusal, never a silent hop.
+status: approved
+epic: S1
+reviewer_resolution: >-
+  Approved 2026-07-27 by the main session as reviewing instance. The occasion is a
+  present, documented defect named in the S1 derivation and left open there, verified
+  first-hand tonight: scripts/fetch_source_content.py:372-374 and
+  scripts/fetch_citation_resolutions.py:309-311 both call _check_allowlisted(url) BEFORE
+  urllib.request.urlopen and never inspect the FINAL url afterwards, while urllib's
+  default opener installs HTTPRedirectHandler and follows 30x hops silently. Load-bearing
+  choices: (1) REFUSE REDIRECTS, DO NOT RE-CHECK AND FOLLOW — a refused hop fails loudly
+  and is recorded ("Feststellung entfaellt"), whereas following a re-checked hop would
+  still silently change WHICH document was fetched under the same recorded url. Fail
+  closed matches this repository's own discipline that source failures are noted, never
+  silently bridged. (2) THE PRECEDENT IS TONIGHT'S OWN — adapters/llm/mrr/adapters/llm/
+  transport.py::_NoRedirectHandler (E4-T08) already implements exactly this by
+  overriding redirect_request to return None. (3) DUPLICATED, NOT SHARED — each script
+  keeps its own handler and its own allowlist, exactly as fetch_source_content.py's
+  docstring already argues for its allowlist ("never imported from T02a; this script's
+  allowlist is its own, so it stays correct even if T02a's ever changed"). scripts/ has
+  no shared module and this packet does not create one. (4) WHY THIS MATTERS MORE HERE
+  THAN IN A GENERIC FETCHER — the bytes these scripts return become the content behind
+  EvidenceAnchors. A silent redirect does not merely fetch the wrong page; it puts
+  unverified bytes behind a hash that the archive presents as an anchored source.
+depends_on: [S1-T01]
+derivation: >-
+  Derived 2026-07-27 from the open redirect item in
+  docs/design/2026-07-26-s1-derivation-script-edge-security.md, re-verified first-hand
+  against the current code. Fact base: both scripts define the identical
+  ALLOWED_HOSTS frozenset({"export.arxiv.org", "api.crossref.org"});
+  _check_allowlisted uses urlsplit(...).hostname (not a substring check) and raises
+  EgressRefusedError before any socket is opened; neither script inspects response.url,
+  response.geturl(), or any redirect chain after urlopen returns; and neither installs a
+  custom opener, so urllib's default HTTPRedirectHandler is active. Also verified: these
+  scripts are NOT invoked from packages/ or services/ — they are operator tools outside
+  the run machinery, so no RunManifest currently records a false network_permitted while
+  they fetch. The network-policy honesty question is therefore prospective and is
+  deliberately NOT part of this packet.
+objective: >-
+  After this packet, both scripts install an opener that refuses HTTP redirects outright.
+  A 30x response raises a typed, named refusal carrying the status code and the target
+  host, no body is read, and no partially-followed fetch can return bytes. The existing
+  allowlist, size bound and timeout behaviour are unchanged.
+allowed_paths:
+  - scripts/fetch_source_content.py
+  - scripts/fetch_citation_resolutions.py
+  - tests/unit/scripts/test_fetch_source_content_egress.py
+  - tests/unit/scripts/test_fetch_citation_resolutions_egress.py
+forbidden_changes:
+  - packages/**
+  - services/**
+  - adapters/**
+  - schemas/**
+  - corpora/**
+  - archive/**
+  - pyproject.toml
+  - task-packets/S1-T01.yaml
+acceptance_criteria:
+  - THE SHARP CASE - a 302 from an allowlisted host to a NON-allowlisted host is refused
+    with a typed error, and no body is returned. Driven through the real urllib opener
+    with a monkeypatched connection layer, not by asserting on a mock of the script's
+    own helper.
+  - A 302 from an allowlisted host to ANOTHER ALLOWLISTED host is ALSO refused - the
+    guarantee is "no redirect", not "no redirect off the allowlist", so the recorded url
+    and the fetched document can never diverge.
+  - The refusal names the status code and the target host, and is distinct from
+    EgressRefusedError (which means "we never opened a socket") - the two failure modes
+    stay separate, never collapsed.
+  - No body is read on a refused redirect - asserted by a connection double that fails
+    the test if a body read is attempted after the 30x.
+  - The existing guarantees are demonstrably intact - the allowlist still refuses a
+    non-allowlisted host and a non-https scheme before any socket, the MAX_RESPONSE_BYTES
+    bound still caps a bounded read, and the timeout is still passed.
+  - Both scripts are covered - the same four assertions hold for each, with each script's
+    own handler and its own tests; neither imports the other.
+  - NO automated test performs real network I/O.
+  - make format-check, lint, typecheck, test, test-contract and security-check pass, and
+    the bandit nosec justifications on the urlopen lines are updated to state that
+    redirects are refused as well.
+explicitly_not:
+  - No shared egress module for scripts/ - the deliberate duplication is kept and named.
+  - No change to ALLOWED_HOSTS, to the size bound, to the timeout, or to any parsing.
+  - No follow-and-recheck strategy - refusing is the chosen guarantee, see
+    reviewer_resolution (1).
+  - No touching of the network-policy/RunManifest question - these scripts run outside
+    the run machinery, verified, and that question is prospective.
+  - No new dependency, no migration.
