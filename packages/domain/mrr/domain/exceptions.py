@@ -1730,3 +1730,34 @@ class MethodProtocolNotFoundError(DomainError):
     def __init__(self, method_protocol_id: str) -> None:
         self.method_protocol_id = method_protocol_id
         super().__init__(f"no MethodProtocol found for id {method_protocol_id!r}")
+
+
+class EnvelopePayloadMissingContentHashError(DomainError):
+    """Raised by ``mrr.domain.envelope_signing.build_signed_envelope``
+    (task-packets/E5-T10.yaml) when the caller-supplied payload carries no
+    own ``content_hash`` field at all (``payload.get("content_hash")`` is
+    ``None``, whether because the key is absent or explicitly ``None``).
+
+    ``mrr.domain.envelope_validation.validate_inbound_envelope``'s own
+    condition 3 (``EnvelopePayloadContentHashMismatchError``) treats
+    ``envelope.payload_content_hash`` as a CONSISTENCY check against exactly
+    this carried field — never an independent recomputation. A payload with
+    no ``content_hash`` of its own could therefore never pass that check no
+    matter what ``payload_content_hash`` were set to, so
+    ``build_signed_envelope`` refuses to construct such an envelope at all,
+    checked FIRST, before any cryptographic operation runs: the sender
+    refuses, at build time, exactly what the receiver would refuse to accept
+    at validation time. Carries ``payload_kind`` (the caller's own declared
+    kind for the refused payload) — never the payload itself, which may be
+    large or restricted.
+    """
+
+    def __init__(self, payload_kind: str) -> None:
+        self.payload_kind = payload_kind
+        super().__init__(
+            f"cannot build a NodeMessageEnvelope for payload_kind {payload_kind!r}: the "
+            "payload carries no own 'content_hash' field, so "
+            "validate_inbound_envelope's condition 3 "
+            "(EnvelopePayloadContentHashMismatchError) could never pass for any envelope "
+            "built from it — refusing to build one"
+        )
