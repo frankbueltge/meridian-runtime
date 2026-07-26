@@ -1,0 +1,96 @@
+task_id: E5-T10
+title: >-
+  The envelope edge: a pure, payload-agnostic `build_signed_envelope` in the domain —
+  the exact sibling of the existing `envelope_validation` — plus
+  `mrr federation envelope sign`, so any archive object carrying its own content_hash
+  can be wrapped into a signed NodeMessageEnvelope. Refuses to build what the receiver
+  would refuse to accept.
+status: approved
+epic: E5
+reviewer_resolution: >-
+  Approved 2026-07-26 by the main session as reviewing instance, on the owner's release
+  of point 1 of the corridor map (docs/design/2026-07-26-wegkarte-erster-ecology-
+  austausch.md) the same day. The occasion is a documented defect, not a specification
+  item: between "I have a payload" and "I have a signed envelope" no path exists.
+  Load-bearing choices CONFIRMED at derivation against the real code: (1) THE SENDER
+  MUST REFUSE WHAT THE RECEIVER WOULD REJECT — validate_inbound_envelope's condition 3
+  is a CONSISTENCY check between envelope.payload_content_hash and the payload's own
+  carried content_hash, explicitly NOT an independent recomputation, so the hash is
+  READ FROM THE PAYLOAD, never computed and never a free caller parameter; a payload
+  without its own content_hash is a typed refusal at build time, because such an
+  envelope could never pass condition 3. (2) EXACT SIBLING OF THE VALIDATING MODULE —
+  pure, payload-agnostic, no CorrectionNotification import, no closed set of payload
+  kinds; the domain->contracts import is not a new cycle, envelope_validation.py:104
+  already does exactly this. (3) THE SIGNING PROCEDURE IS LIFTED VERBATIM from the
+  correction service's private _build_and_sign_envelope (placeholder signature ->
+  model_dump_json(exclude_none=True) -> sign_object -> replace -> re-validate); only
+  its three correction-specific bindings become parameters. (4) THE CORRECTION SERVICE
+  IS NOT REFACTORED — it has a working, tested path; the resulting duplication is named
+  in the derivation rather than hidden, and deduplication is its own packet if ever
+  needed (precedent E9-T00b).
+depends_on: [E5-T08]
+derivation: >-
+  Derived 2026-07-26 from docs/design/2026-07-26-e5-t10-derivation-envelope-kante.md.
+  Fact base verified first-hand: `mrr federation` exposes only outbox and inbox;
+  `outbox write --envelope` documents "already-signed" and federation_main.py:199 is
+  named _load_envelope; build_outbox_bundle takes Sequence[NodeMessageEnvelope]; the
+  only builder in the repository is the private _build_and_sign_envelope in
+  correction/service.py, bound to CorrectionNotification; the only payload_kind in
+  practice is "CorrectionNotification"; there is no `correction` CLI command either;
+  and corpora/model-collapse/verification/verification-ulysses-hammond.json is a
+  VerificationResult carrying its own content_hash sha256:ba90ee1821e241e3a…, so the
+  intended first payload can travel once this edge exists.
+objective: >-
+  After this packet, `mrr federation envelope sign --payload <file> --payload-kind <k>
+  --sender-node-id … --sender-practice-id … --recipient-node-id … --sent-at …
+  --expires-at … --message-id … --key-file … --key-id … --output <file>` writes a
+  signed NodeMessageEnvelope JSON that `mrr federation outbox write` accepts unchanged,
+  and that the unchanged validate_inbound_envelope accepts when the receiver trusts the
+  signing key.
+allowed_paths:
+  - packages/domain/mrr/domain/envelope_signing.py
+  - packages/domain/mrr/domain/exceptions.py
+  - services/control_plane/mrr/services/cli/federation_main.py
+  - services/control_plane/mrr/services/cli/main.py
+  - tests/unit/domain/test_envelope_signing.py
+  - tests/unit/services/test_federation_envelope_cli.py
+  - tests/integration/services/test_envelope_to_bundle_roundtrip.py
+forbidden_changes:
+  - packages/domain/mrr/domain/envelope_validation.py
+  - packages/domain/mrr/domain/offline_bundle.py
+  - packages/domain/mrr/domain/transfer_trust.py
+  - packages/domain/mrr/domain/key_management.py
+  - packages/contracts/**
+  - services/control_plane/mrr/services/correction/**
+  - schemas/**
+  - corpora/**
+  - archive/**
+acceptance_criteria:
+  - THE SHARP CASE - the real Hammond dissent travels the whole path against UNCHANGED
+    receiver code - verification-ulysses-hammond.json -> signed envelope ->
+    build_outbox_bundle -> file -> read back -> validate_inbound_bundle ->
+    validate_inbound_envelope, accepted under a test key the receiver trusts. This is
+    the first evidence that a real archive object can traverse the federation at all.
+  - A payload without its own content_hash is a typed refusal at build time, and no
+    envelope is produced.
+  - A payload_content_hash tampered with after signing makes the receiver fail
+    condition 3 with EnvelopePayloadContentHashMismatchError - proving the consistency
+    check was not weakened.
+  - One flipped byte in the envelope body yields SignatureVerificationError.
+  - Reproducibility - identical inputs, including message_id and sent_at, produce a
+    byte-identical envelope. No wall clock and no randomness anywhere in the module.
+  - Payload agnosticism is demonstrated, not asserted - a test drives a SECOND, different
+    payload kind through the same function.
+  - The module imports no CorrectionNotification and declares no closed set of payload
+    kinds.
+  - Exit semantics mirror the existing federation CLI; refusals are typed and named.
+  - make format-check, lint, typecheck, test, test-contract and security-check pass.
+explicitly_not:
+  - No refactor of the correction service; the duplication is named in the derivation.
+  - No invented identity - no Practice, no key, no node id minted for Meridian and
+    certainly none for Ulysses. This packet builds the edge, it performs no exchange.
+  - No network, no database, no model, no new dependency, no migration, no schemas/**.
+  - No change to envelope_validation.py, offline_bundle.py or any committed corpus
+    artifact.
+  - No recomputation of a payload's content_hash - the receiver compares against what
+    the payload itself carries, and the sender must do the same.
