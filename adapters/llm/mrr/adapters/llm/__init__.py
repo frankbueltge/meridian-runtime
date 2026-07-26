@@ -1,4 +1,6 @@
-"""Provider-neutral structured-generation layer (task-packets/E4-T02.yaml).
+"""Provider-neutral structured-generation layer (task-packets/E4-T02.yaml),
+plus the package's first concrete ``ModelAdapter`` (task-packets/
+E4-T08.yaml).
 
 ``mrr.adapters.llm.structured_generation`` is the first module under this
 root — a higher-level function that USES an injected ``mrr.domain.
@@ -10,14 +12,36 @@ parsed proposal plus an ordered audit trail, not a single
 
 This root is registered in the same import-linter "framework- and
 provider-free" contract (MRR-NFR-004, MRR-NFR-010, pyproject.toml) as the
-other core packages and ``mrr.adapters.object_store`` — safe here because
-nothing under it imports a model-provider SDK, network client, or web/
-workflow framework; it operates SOLELY through the injected port. A future
-concrete vendor-SDK adapter (e.g. an Anthropic- or OpenAI-backed
-``ModelAdapter`` implementation) would live under its own namespace root
-(e.g. ``adapters/llm_anthropic/mrr/adapters/llm_anthropic/``) and would need
-its own contract treatment at that point, since it would legitimately need a
-provider SDK the current contract forbids — that root is deliberately not
-created here (task-packets/E4-T02.yaml forbidden_changes: "a concrete vendor-
-SDK adapter is a LATER task in its own separate package, not created here").
+other core packages and ``mrr.adapters.object_store``. This might look like
+tension with ``mrr.adapters.llm.gemini`` (below) making a real HTTP call —
+it is not: the contract forbids specific PROVIDER SDKs and web/workflow
+FRAMEWORKS (``openai, anthropic, boto3, botocore, fastapi, starlette,
+temporalio``, pyproject.toml), never the standard library, and
+``mrr.adapters.llm.gemini``/``mrr.adapters.llm.transport`` import nothing
+but ``urllib``/``json``/``os`` plus this repository's own ``mrr.domain``/
+``mrr.crypto`` (task-packets/E4-T08.yaml: "Kein SDK, keine neue
+Abhängigkeit"; enforced independently by
+tests/unit/architecture/test_llm_adapter_boundary.py's own
+``_FORBIDDEN_NETWORK_MODULE_PREFIXES`` check, which the AST scan already
+covers because it walks every ``.py`` file under this root, this package's
+two new modules included). A future concrete vendor-SDK adapter (e.g. one
+built on the ``google-generativeai``/``anthropic``/``openai`` Python SDKs
+rather than a raw HTTP call) would still need its own namespace root and its
+own contract treatment, precisely because it would need to import one of the
+modules this contract forbids — that is a different situation from
+``mrr.adapters.llm.gemini``'s stdlib-only HTTP call, which costs this
+contract nothing.
+
+``mrr.adapters.llm.transport`` is a narrow, provider-agnostic HTTP transport
+abstraction (a ``Protocol`` plus one ``urllib``-based implementation with
+redirects disabled and a set timeout) that any concrete provider adapter
+under this package can take as a constructor-injected dependency.
+``mrr.adapters.llm.gemini`` is the first such adapter: ``GeminiModelAdapter``
+implements the UNCHANGED ``mrr.domain.model_adapter.ModelAdapter`` Protocol
+against Google Gemini's ``generateContent`` REST endpoint, reads its API key
+from the environment only, and maps a call's outcome onto all five
+``TerminalStatus`` values honestly (never a generic ``"error"`` catch-all).
+This package builds the edge only — task-packets/E4-T08.yaml explicitly
+wires it into no orchestration; a run performing an actual model call is a
+separate, later task.
 """

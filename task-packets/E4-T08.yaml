@@ -1,0 +1,124 @@
+task_id: E4-T08
+title: >-
+  The model outer edge: the first concrete ModelAdapter — a Google Gemini adapter built
+  on the standard library alone, with an injected transport so no automated test ever
+  touches the network, and an honest mapping onto all five terminal statuses. The API
+  key travels in a header, never in a URL.
+status: approved
+epic: E4
+reviewer_resolution: >-
+  Approved 2026-07-26 by the main session as reviewing instance, on the owner's choice
+  of the provider-adapter strand and the two owner decisions taken the same evening
+  (provider = Google Gemini; redaction policy for the experiment = raw_permitted). The
+  occasion is a documented gap, not a specification item: five built E4 packages plus
+  the prompt registry and the benchmark runner have NEVER run against a real model,
+  because the concrete provider adapter fell between two exclusions — E4-T01 excluded
+  it pointing at E4-T02, and E4-T02 is itself provider-neutral. Load-bearing choices
+  CONFIRMED at derivation against the real code: (1) THIS PACKET WIRES NOTHING INTO A
+  RUN — the recorded network policy only becomes a false statement once a run actually
+  performs a model call; while the adapter exists unwired, every RunManifest stays
+  truthful. Wiring is a separate packet and REQUIRES the network-policy honesty package
+  first, because orchestration.py:417 and synthesis_orchestration.py:604 both hardcode
+  deny_all and run_manifest.py records it, while no enforcement exists anywhere
+  (isolation is documented as "the deferred OCI-executor adapter's responsibility", and
+  that adapter does not exist). Same shape as E5-T10/E5-T11: build the edge, perform no
+  act. (2) NO SDK, NO NEW DEPENDENCY — E4-T01 excluded provider SDKs by name; Gemini's
+  HTTP API is fully reachable from the standard library, so the seven production
+  dependencies stay unchanged and pip-audit gains no surface. (3) THE KEY TRAVELS IN
+  THE x-goog-api-key HEADER, NEVER IN THE URL — Google's API also accepts ?key=, which
+  would place the secret into every exception text, timeout message and URL log, exactly
+  where AGENTS rule 11 forbids it. (4) THE KEY COMES FROM THE ENVIRONMENT, NEVER FROM A
+  PARAMETER — following the 2026-07-25 custody decision; what cannot be passed cannot be
+  logged by a caller. A missing variable is a typed refusal BEFORE any network traffic,
+  not a 401 at the provider. (5) THE TRANSPORT IS INJECTED so tests stay hermetic
+  (AGENTS rule 11); the default is a urllib transport with REDIRECTS DISABLED and a set
+  timeout. (6) ALL FIVE TERMINAL STATUSES ARE MAPPED HONESTLY — a safety-filtered
+  response is content_filtered and NOT error; a model's own refusal is refused; a
+  timeout is timed_out and NOT error. AGENTS forbids collapsing distinct outcomes into
+  one generic error, and for an experiment ABOUT model failure the distinction is the
+  measurement.
+depends_on: [E4-T01, E4-T02]
+derivation: >-
+  Derived 2026-07-26 from docs/design/2026-07-26-e4-t08-ableitung-gemini-adapter.md,
+  fact-locked against docs/design/2026-07-26-fact-lock-provider-adapter.md. Fact base
+  verified first-hand: ModelAdapter is a runtime_checkable Protocol with exactly one
+  method, invoke(request) -> outcome; ModelInvocationOutcome enforces response_hash
+  present if and only if status == "completed", and refuses raw text when
+  redaction_policy is "hashes_only"; apply_redaction structurally cannot return raw text
+  under "hashes_only"; TerminalStatus holds five deliberately separate values; the seven
+  production dependencies are rfc8785, cryptography, python-ulid, pydantic, sqlalchemy,
+  psycopg and alembic, none of them an HTTP client; both orchestration paths hardcode
+  network_policy deny_all and run_manifest.py::_network_permitted only RECORDS it, with
+  no enforcement anywhere in packages/ or services/; and no workflow in the repository
+  references any secret yet.
+objective: >-
+  After this packet, a concrete GeminiModelAdapter satisfies the unchanged
+  mrr.domain.model_adapter.ModelAdapter Protocol: given a ModelInvocationRequest it
+  performs one Gemini generateContent call through an injected transport and returns a
+  ModelInvocationOutcome whose status is one of the five terminal values, chosen
+  honestly from the provider's own response shape, with token usage recorded, the
+  caller's redaction policy applied unchanged, and the API key present in no URL, no
+  exception, no return field and no console output.
+allowed_paths:
+  - adapters/llm/mrr/adapters/llm/gemini.py
+  - adapters/llm/mrr/adapters/llm/transport.py
+  - adapters/llm/mrr/adapters/llm/__init__.py
+  - tests/unit/adapters/llm/test_gemini_adapter.py
+  - tests/unit/adapters/llm/test_transport.py
+forbidden_changes:
+  - packages/**
+  - services/**
+  - adapters/llm/mrr/adapters/llm/structured_generation.py
+  - adapters/object_store/**
+  - adapters/federation/**
+  - adapters/prompts/**
+  - schemas/**
+  - corpora/**
+  - archive/**
+  - pyproject.toml
+  - scripts/**
+acceptance_criteria:
+  - THE SHARP CASE - each of the five terminal statuses is produced from its OWN
+    recorded provider response. A safety-filtered response (finishReason SAFETY or a
+    promptFeedback blockReason) yields content_filtered, NOT error. A timeout yields
+    timed_out, NOT error. A model's own in-content refusal yields refused. An HTTP or
+    parse failure yields error. A normal response yields completed. Five distinct
+    assertions, no generic error bucket.
+  - THE KEY NEVER LEAKS - across ALL FIVE paths, not only the happy one, the API key
+    appears in no assembled URL, no exception message, no returned field, and nothing
+    written to stdout or stderr. Asserted by scanning the actual strings, not by
+    inspecting the code.
+  - The key is read from the environment only - the adapter exposes no parameter, no
+    file path and no config entry for it, and a missing environment variable is a typed
+    refusal raised BEFORE the transport is called at all (asserted with a transport
+    double that fails the test if invoked).
+  - isinstance(adapter, ModelAdapter) holds against the UNCHANGED runtime_checkable
+    Protocol, and the port itself is not modified.
+  - response_hash is present exactly for completed and absent for every other status,
+    demonstrated per status.
+  - The caller's redaction policy is applied unchanged - under raw_permitted the raw
+    prompt and response text are carried; under hashes_only both are None while the
+    hashes are still present. The adapter never chooses the policy itself.
+  - Token usage is taken from the provider's own usage metadata; when the provider
+    reports none, the recorded usage is explicit rather than silently zero-filled.
+  - The default transport disables redirects and sets a timeout, proven by a test that
+    hands it a redirect response and asserts it is not followed.
+  - NO automated test performs real network I/O - every test drives an injected
+    transport double.
+  - No new dependency - pyproject.toml is untouched and only the standard library plus
+    existing packages are imported.
+  - make format-check, lint, typecheck, test, test-contract and security-check pass.
+explicitly_not:
+  - NO WIRING INTO ANY ORCHESTRATION. No run performs a model call as a result of this
+    packet. Wiring is a separate packet and REQUIRES the network-policy honesty package
+    first, because a run whose manifest records deny_all must not make a network call.
+  - No change to the ModelAdapter port, to structured_generation.py, to ModelProfile or
+    to any contract or schema.
+  - No real model call from any automated test; the first real call is a separate,
+    documented owner-run step.
+  - No SDK, no new dependency, no migration, no change to pyproject.toml.
+  - No fix for the scripts/ redirect gap - this adapter follows no redirects and does
+    not inherit it; that gap remains a separate, dated, open defect.
+  - No decision about raw-text retention inside the adapter - the policy comes from the
+    caller, per call.
+  - No secret written to any file, any log, or any recorded object.
