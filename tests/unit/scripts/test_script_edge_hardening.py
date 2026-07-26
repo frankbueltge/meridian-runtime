@@ -17,10 +17,19 @@ BOTH ``scripts/fetch_citation_resolutions.py`` and
    ``ResponseTooLargeError``) — an over-limit response body is refused, and
    the read itself is proven bounded (never "read everything, then
    measure").
-3. Exactly four local bandit suppressions across scripts/*.py, each naming
-   its test id (2x B310, 1x B404, 1x B603) with a written reason on the
-   line, and ZERO for B314/B405 — a grep-based check so a fifth suppression,
-   or a B314/B405 suppression, cannot appear unnoticed.
+3. Exactly EIGHT local bandit suppressions across scripts/*.py, each naming
+   its test id with a written reason on the line: 2x B310, 2x B314, 2x
+   B405, 1x B404, 1x B603 — a grep-based check so a ninth cannot appear
+   unnoticed. B314/B405 were corrected 2026-07-26 at the review from "zero
+   suppressions, fixed not silenced": that rested on a false premise —
+   bandit's B314/B405 are a purely static AST blacklist match on
+   ``ET.fromstring`` / ``import xml.etree.ElementTree`` with no
+   control-flow awareness, so a guard in front of the call can never clear
+   the finding. The VULNERABILITY is fixed and demonstrably so (proven by
+   (1) above); the static FINDING remains because the scanner cannot see
+   that, so B314/B405 carry the same kind of honest, guard-backed
+   suppression B310 already does for the allowlist — never a blanket or
+   unreasoned one.
 
 Also proves the real, already-committed arXiv Atom / Crossref JSON fixture
 shapes (tests/unit/scripts/fixtures/) still parse under the changed
@@ -341,14 +350,26 @@ def _scan_nosec_occurrences() -> list[tuple[str, int, str | None, str]]:
 
 
 class TestNosecSuppressionCount:
-    """task-packets/S1-T01.yaml acceptance_criteria: exactly four local
-    suppressions (2x B310, 1x B404, 1x B603), each with a named test id and
-    a written reason, and zero for B314/B405.
+    """task-packets/S1-T01.yaml acceptance_criteria (corrected 2026-07-26 at
+    the review): exactly EIGHT local suppressions — 2x B310, 2x B314, 2x
+    B405, 1x B404, 1x B603 — each with a named test id and a written reason.
+
+    B314/B405 were originally meant to carry ZERO suppressions ("fixed, not
+    silenced"), which turned out to rest on a false premise: bandit's
+    B314/B405 checks are a purely static AST blacklist match on
+    ``ET.fromstring`` / ``import xml.etree.ElementTree``, with no
+    control-flow awareness, so a guard in front of the call can never clear
+    the finding — verified empirically (a probe file with the identical
+    guard-before-call shape still triggers both). The VULNERABILITY is fixed
+    and demonstrably so (the entity bomb is refused before any parser sees
+    it); the static FINDING remains because the scanner cannot see that. A
+    suppression is honest when a real, tested guard stands behind it — B310
+    (the allowlist) and B314/B405 (the DTD guard) are both exactly that.
     """
 
-    def test_exactly_four_nosec_occurrences_in_scripts(self) -> None:
+    def test_exactly_eight_nosec_occurrences_in_scripts(self) -> None:
         occurrences = _scan_nosec_occurrences()
-        assert len(occurrences) == 4, occurrences
+        assert len(occurrences) == 8, occurrences
 
     def test_every_occurrence_names_a_specific_test_id_never_a_blanket_nosec(self) -> None:
         occurrences = _scan_nosec_occurrences()
@@ -357,16 +378,31 @@ class TestNosecSuppressionCount:
                 f"{file_name}:{lineno} blanket nosec with no test id: {line!r}"
             )
 
-    def test_suppressed_ids_are_exactly_2x_b310_1x_b404_1x_b603(self) -> None:
+    def test_suppressed_ids_are_exactly_2x_b310_2x_b314_2x_b405_1x_b404_1x_b603(self) -> None:
         occurrences = _scan_nosec_occurrences()
         ids = sorted(test_id for _f, _l, test_id, _line in occurrences if test_id)
-        assert ids == ["B310", "B310", "B404", "B603"]
+        assert ids == ["B310", "B310", "B314", "B314", "B404", "B405", "B405", "B603"]
 
-    def test_no_suppression_for_b314_or_b405_anywhere_in_scripts(self) -> None:
+    def test_b314_and_b405_suppressions_name_the_guard_function_and_its_test(self) -> None:
+        """task-packets/S1-T01.yaml: B314/B405 must name the guard function
+        AND the test that proves the parser is unreached on a bomb — not a
+        bare tag, so a later change removing the guard visibly invalidates
+        the written reason.
+        """
         occurrences = _scan_nosec_occurrences()
-        ids = {test_id for _f, _l, test_id, _line in occurrences if test_id}
-        assert "B314" not in ids
-        assert "B405" not in ids
+        guarded = [
+            (file_name, lineno, line)
+            for file_name, lineno, test_id, line in occurrences
+            if test_id in ("B314", "B405")
+        ]
+        assert len(guarded) == 4
+        for file_name, lineno, line in guarded:
+            assert "_refuse_if_dtd_declared" in line, (
+                f"{file_name}:{lineno} B314/B405 reason does not name the guard function: {line!r}"
+            )
+            assert "test_billion_laughs_is_refused_without_reaching_the_parser" in line, (
+                f"{file_name}:{lineno} B314/B405 reason does not name the proving test: {line!r}"
+            )
 
     def test_every_suppression_carries_a_written_reason_on_the_line(self) -> None:
         occurrences = _scan_nosec_occurrences()

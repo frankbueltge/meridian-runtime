@@ -117,7 +117,7 @@ def test_fetch_crossref_work_success_path_uses_the_response_body(
         def __exit__(self, *_exc_info: object) -> None:
             return None
 
-        def read(self) -> bytes:
+        def read(self, amt: int | None = None) -> bytes:
             return raw
 
     def _fake_urlopen(request: urllib.request.Request, timeout: float) -> _FakeResponse:
@@ -141,7 +141,7 @@ def test_fetch_crossref_work_url_quotes_the_doi(monkeypatch: pytest.MonkeyPatch)
         def __exit__(self, *_exc_info: object) -> None:
             return None
 
-        def read(self) -> bytes:
+        def read(self, amt: int | None = None) -> bytes:
             return b'{"message": {"title": ["X"]}}'
 
     def _fake_urlopen(request: urllib.request.Request, timeout: float) -> _FakeResponse:

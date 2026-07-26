@@ -122,7 +122,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405 # every call below is preceded by _refuse_if_dtd_declared, which refuses DOCTYPE/ENTITY before parsing; TestDtdRefusalInCitationResolutions::test_billion_laughs_is_refused_without_reaching_the_parser proves ET.fromstring is unreached on a bomb — remove that guard and this reason no longer holds
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -399,7 +399,7 @@ def parse_arxiv_atom(raw_xml: bytes, requested_ids: Sequence[str]) -> tuple[Arxi
     """
     _refuse_if_dtd_declared(raw_xml)
     try:
-        root = ET.fromstring(raw_xml)
+        root = ET.fromstring(raw_xml)  # nosec B314 # reached only because _refuse_if_dtd_declared above already refused any DOCTYPE/ENTITY; TestDtdRefusalInCitationResolutions::test_billion_laughs_is_refused_without_reaching_the_parser proves this — remove that guard call and this reason no longer holds
     except ET.ParseError as exc:
         raise UpstreamRefusedError(f"arXiv response is not valid XML/Atom: {exc}") from exc
 
