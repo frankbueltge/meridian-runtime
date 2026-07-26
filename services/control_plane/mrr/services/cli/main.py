@@ -55,6 +55,7 @@ from mrr.services.cli import (
     export_main,
     federation_main,
     field_observation_main,
+    practice_main,
     release_main,
     report_main,
     support_audit_main,
@@ -273,6 +274,12 @@ def build_parser() -> argparse.ArgumentParser:
     # immediately above; no other line in this file changes.
     federation_main.register_federation_subcommand(subparsers)
 
+    # Task-packets/E5-T11.yaml's one additive registration: a new "practice"
+    # subparser group ("mrr practice init") delegating entirely to
+    # mrr.services.cli.practice_main — mirrors the federation registration
+    # immediately above; no other line in this file changes.
+    practice_main.register_practice_subcommand(subparsers)
+
     return parser
 
 
@@ -424,6 +431,11 @@ def main(argv: list[str] | None = None) -> int:
         return field_observation_main.run_command(args)
     if args.command == "federation":
         return federation_main.run_command(args)
+    if args.command == "practice":
+        # Task-packets/E5-T11.yaml's one additive dispatch branch: route
+        # "practice" to its own module — every other command's dispatch
+        # above is unchanged.
+        return practice_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
