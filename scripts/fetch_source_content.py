@@ -125,6 +125,42 @@ clock — ``fetched_on`` is a given string, not computed inside it) and sorts
 its ``excerpts`` by ``citation_id``. :func:`render_snapshot_json` renders
 with ``sort_keys=True`` plus a trailing newline. Calling both twice over an
 equal set of already-fetched records produces byte-identical output.
+
+--- XML hardening: refuse a DTD before any parser sees it (task-packets/S1-T01.yaml) ---
+
+Every response :func:`parse_arxiv_summaries` parses is checked FIRST, by
+:func:`_refuse_if_dtd_declared`, for a ``<!DOCTYPE`` or ``<!ENTITY``
+declaration anywhere in the document — a pure, separately testable,
+case-insensitive scan of the raw bytes, run BEFORE ``ET.fromstring`` ever
+sees them (declared independently here, not imported from
+``scripts/fetch_citation_resolutions.py`` — mirrors that module's identical
+guard, see this module's own "decoupled read" precedent applied one level
+further). Verified empirically at the S1-T01 derivation
+(docs/design/2026-07-26-s1-derivation-script-edge-security.md): a 4-level
+"billion laughs" entity-expansion document EXPANDS to 30,000 characters on
+this interpreter (a real memory-exhaustion vector), while the real arXiv
+Atom response carries neither declaration at all (Atom never needs a DTD;
+Crossref's transport is JSON) — so a document that declares one is always
+anomalous at this edge, and refusing it outright is stricter than
+``defusedxml``'s safe-parse approach and needs no new dependency.
+
+This closes the entity-EXPANSION half of the XML-attack surface ONLY. On
+this interpreter, ``ET.fromstring`` already raises ``ParseError: undefined
+entity`` for an external-entity reference (e.g. ``file:///etc/passwd``)
+without resolving it — XXE is not reachable here to begin with, and this
+refusal makes no claim to have fixed it. Saying otherwise would be theatre.
+
+--- Response-size limit: a bounded read, not read-then-measure (task-packets/S1-T01.yaml) ---
+
+:func:`_open_url` reads at most :data:`MAX_RESPONSE_BYTES` + 1 bytes
+(``response.read(MAX_RESPONSE_BYTES + 1)``) and refuses with
+:class:`ResponseTooLargeError` if that many bytes came back. The read itself
+is bounded — never "read everything with a bare ``response.read()``, then
+measure a ``len()``", which would already have done the memory-exhaustion
+damage a compromised or spoofed allowlisted host could inflict before any
+check ran. A real arXiv response for one id is 5,426 bytes (measured at the
+S1-T01 derivation); the limit is a generous single-digit-megabyte module
+constant, not a literal buried in the call.
 """
 
 from __future__ import annotations
@@ -161,6 +197,14 @@ CROSSREF_WORKS_URL = "https://api.crossref.org/works/"
 
 #: Every request carries an explicit timeout.
 REQUEST_TIMEOUT_SECONDS = 30
+
+#: task-packets/S1-T01.yaml: a named module constant, not a literal buried in
+#: a call. A real arXiv response for one id is 5,426 bytes (measured at the
+#: S1-T01 derivation); a 20-id batch is in the low six figures. 8 MiB is a
+#: generous single-digit-megabyte limit — plenty for any real batch this
+#: script sends, and orders of magnitude below a multi-gigabyte body a
+#: compromised or spoofed allowlisted host could otherwise serve.
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 #: Descriptive, non-secret. No API key, token, or Authorization header is
 #: ever constructed anywhere in this module.
@@ -264,6 +308,36 @@ class UpstreamRefusedError(FetchScriptError):
     """
 
 
+class XmlDtdRefusedError(FetchScriptError):
+    """Raised by :func:`_refuse_if_dtd_declared`, BEFORE
+    ``xml.etree.ElementTree.fromstring`` ever sees the bytes, when a
+    response body declares a ``<!DOCTYPE`` or ``<!ENTITY`` (task-packets/
+    S1-T01.yaml). The real arXiv Atom response never carries either — a
+    document that does is always anomalous at this edge, structural refusal,
+    not a bomb-shaped heuristic.
+    """
+
+    def __init__(self, declaration: str) -> None:
+        self.declaration = declaration
+        super().__init__(
+            f"refusing to parse XML: document declares a <!{declaration} ...> — this edge "
+            "never legitimately receives one (task-packets/S1-T01.yaml)"
+        )
+
+
+class ResponseTooLargeError(FetchScriptError):
+    """Raised by :func:`_open_url` when a response body reaches
+    :data:`MAX_RESPONSE_BYTES` + 1 on a bounded read (task-packets/
+    S1-T01.yaml) — the read is capped before this error can even be raised,
+    never an unbounded read followed by a length check.
+    """
+
+    def __init__(self, url: str, limit: int) -> None:
+        self.url = url
+        self.limit = limit
+        super().__init__(f"refusing {url!r}: response body exceeds the {limit}-byte limit")
+
+
 # ---------------------------------------------------------------------------
 # The gate itself (byte-identical guard to T02a's, declared independently).
 # ---------------------------------------------------------------------------
@@ -288,12 +362,19 @@ def _check_allowlisted(url: str) -> None:
 def _open_url(url: str) -> bytes:
     """The ONLY function in this module that opens a socket. Enforces the
     https + host allowlist first (:func:`_check_allowlisted`); sends a
-    descriptive ``User-Agent`` and no credential of any kind.
+    descriptive ``User-Agent`` and no credential of any kind. Reads AT MOST
+    :data:`MAX_RESPONSE_BYTES` + 1 bytes (task-packets/S1-T01.yaml) — a
+    bounded ``response.read(n)``, not an unbounded read followed by a
+    length check, so the limit actually caps memory use rather than being
+    checked only after the damage is done.
     """
     _check_allowlisted(url)
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-        return response.read()  # type: ignore[no-any-return]
+    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:  # nosec B310 # scheme+host checked by _check_allowlisted above, tested
+        body: bytes = response.read(MAX_RESPONSE_BYTES + 1)
+    if len(body) > MAX_RESPONSE_BYTES:
+        raise ResponseTooLargeError(url, MAX_RESPONSE_BYTES)
+    return body
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +418,34 @@ def _normalize_excerpt_whitespace(text: str) -> str:
     text, applied here to excerpt text from either resolver.
     """
     return " ".join(text.split())
+
+
+# ---------------------------------------------------------------------------
+# XML hardening: refuse a DTD before any parser sees it (task-packets/
+# S1-T01.yaml) — see the module docstring's "XML hardening" section. Byte-
+# identical guard to fetch_citation_resolutions.py's, declared independently
+# here (mirrors this module's own "decoupled read" precedent).
+# ---------------------------------------------------------------------------
+
+#: Matches a ``<!DOCTYPE`` or ``<!ENTITY`` declaration ANYWHERE in the raw
+#: bytes — not anchored to the start, so leading whitespace before it never
+#: hides it — case-insensitively, so a lenient/lowercased variant is still
+#: caught even though the XML spec itself requires the uppercase form.
+_DTD_OR_ENTITY_DECLARATION_RE = re.compile(rb"<!\s*(DOCTYPE|ENTITY)\b", re.IGNORECASE)
+
+
+def _refuse_if_dtd_declared(raw_xml: bytes) -> None:
+    """Pure, separately testable (task-packets/S1-T01.yaml). Raises
+    :class:`XmlDtdRefusedError` if ``raw_xml`` carries a ``<!DOCTYPE`` or
+    ``<!ENTITY`` declaration anywhere, BEFORE any caller passes it to
+    ``ET.fromstring``. The real arXiv Atom response never carries either
+    (verified against the live API at the S1-T01 derivation) — this is a
+    structural refusal, not a bomb-shaped heuristic: a document carrying
+    only a bare ``<!DOCTYPE`` with no entity bomb at all is refused too.
+    """
+    match = _DTD_OR_ENTITY_DECLARATION_RE.search(raw_xml)
+    if match is not None:
+        raise XmlDtdRefusedError(match.group(1).decode("ascii").upper())
 
 
 # ---------------------------------------------------------------------------
@@ -402,7 +511,13 @@ def parse_arxiv_summaries(
     (never dropped, never back-filled). An entry that IS matched but carries
     no usable ``<summary>`` text becomes ``excerpt_available=False`` with
     reason ``"arxiv_summary_absent"``.
+
+    :func:`_refuse_if_dtd_declared` runs FIRST (task-packets/S1-T01.yaml):
+    a document declaring a ``<!DOCTYPE`` or ``<!ENTITY`` is refused before
+    ``ET.fromstring`` ever sees it — see the module docstring's "XML
+    hardening" section.
     """
+    _refuse_if_dtd_declared(raw_xml)
     try:
         root = ET.fromstring(raw_xml)
     except ET.ParseError as exc:
@@ -817,7 +932,13 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         records = fetch_all_excerpts(citations)
-    except (EgressRefusedError, UnresolvableManifestEntryError, UpstreamRefusedError) as exc:
+    except (
+        EgressRefusedError,
+        UnresolvableManifestEntryError,
+        UpstreamRefusedError,
+        XmlDtdRefusedError,
+        ResponseTooLargeError,
+    ) as exc:
         print(f"fetch_source_content: refused — {exc}", file=sys.stderr)
         return _EXIT_REFUSED
 

@@ -11,7 +11,7 @@ failure, not a silent pass.
 from __future__ import annotations
 
 import argparse
-import subprocess
+import subprocess  # nosec B404 # no shell=True anywhere in this module; see run_tier below
 import sys
 from pathlib import Path
 
@@ -64,7 +64,7 @@ def run_tier(tier: str, declared_empty: set[str]) -> int:
     result = subprocess.run(
         [sys.executable, "-m", "pytest", str(directory)],
         cwd=REPO_ROOT,
-        check=False,
+        check=False,  # nosec B603 # no shell=True; args from a closed set of known test tiers
     )
 
     if result.returncode == PYTEST_NO_TESTS_COLLECTED:

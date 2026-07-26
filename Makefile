@@ -37,7 +37,7 @@ security-check:
 	uv export --quiet --no-emit-project --format requirements.txt -o .security-check-requirements.txt
 	uv run pip-audit --strict -r .security-check-requirements.txt
 	rm -f .security-check-requirements.txt
-	uv run bandit -c pyproject.toml -r packages adapters services
+	uv run bandit -c pyproject.toml -r packages adapters services scripts
 
 archive-dump:
 	scripts/archive-dump.sh
