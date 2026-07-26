@@ -19,6 +19,15 @@ dist/
 htmlcov/
 .security-check-requirements.txt
 
+# Private key material — NEVER in this repository.
+# The public half travels in a Practice object (mrr practice init); the private
+# half lives in a GitHub Secret (docs/design/2026-07-25-entscheidung-
+# schluesselverwahrung.md) and is deleted locally after being entered there.
+*.pem
+*.key
+*_ed25519
+id_ed25519*
+
 # OS / editor
 .DS_Store
 .idea/
