@@ -43,6 +43,12 @@ objective: >-
   it; a response body larger than a declared maximum is refused with a typed error; and
   exactly four findings carry a local, reasoned suppression naming its test id.
 allowed_paths:
+  # extended 2026-07-26 at the review: the bounded read changes _open_url's call
+  # shape, so the fake-response mocks in these two pre-existing test files need the
+  # same one-line, behaviour-preserving signature fix. Reported by the builder as a
+  # blocking dependency (rule 13) rather than edited out of scope.
+  - tests/unit/scripts/test_fetch_citation_resolutions_arxiv.py
+  - tests/unit/scripts/test_fetch_citation_resolutions_crossref.py
   - Makefile
   - scripts/fetch_citation_resolutions.py
   - scripts/fetch_source_content.py
@@ -59,10 +65,25 @@ forbidden_changes:
   - pyproject.toml
 acceptance_criteria:
   - make security-check covers scripts and exits 0.
-  - Exactly four local suppressions, each naming its bandit test id AND carrying a
-    written reason on the line - 2x B310, 1x B404, 1x B603. A test or a grep-based
-    check asserts the count, so a fifth cannot appear unnoticed.
-  - ZERO suppressions for B314/B405 - those are fixed, not silenced.
+  - Exactly eight local suppressions, each naming its bandit test id AND carrying a
+    written reason on the line - 2x B310, 2x B314, 2x B405, 1x B404, 1x B603. A test
+    or a grep-based check asserts the count, so a ninth cannot appear unnoticed.
+    (Corrected 2026-07-26 from four - see the B314/B405 criterion below.)
+  - B314/B405 carry a local, reasoned suppression naming the guard function AND the
+    test that proves it, exactly like B310 does for the allowlist.
+    CORRECTED 2026-07-26 at the review. The packet originally demanded ZERO
+    suppressions here, "those are fixed, not silenced" - that rested on a false
+    premise and made the criteria mutually impossible, which the builder correctly
+    reported instead of picking a side (rule 14). Verified at the review: bandit's
+    B314/B405 are a purely static AST blacklist match on ET.fromstring / import
+    xml.etree.ElementTree, with no control-flow awareness, so a guard in front of the
+    call cannot clear the finding. Two things were conflated: the VULNERABILITY is
+    fixed and demonstrably so (the bomb is refused before any parser sees it), while
+    the FINDING remains because the scanner is static. A suppression is honest when a
+    real, tested guard stands behind it and dishonest when it merely silences - B310
+    and B314 are both the former, and treating them differently was inconsistent.
+    Dodging the blacklist by rewriting to ET.XML would be the theatre this packet
+    forbids elsewhere.
   - No blanket exclusion of scripts/ anywhere (not in the Makefile, not in
     pyproject.toml which is forbidden to touch anyway).
   - The derivation's billion-laughs document is refused with a typed error, proven by a
