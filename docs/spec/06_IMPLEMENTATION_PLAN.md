@@ -1,5 +1,21 @@
 # 06 — Implementation plan and backlog
 
+> **Historical backlog as of 2026-07-31 — not the current plan.** All 80 packets
+> it seeded are written and approved; the epic sequence below is a record of how
+> the system came to be, not a queue to work through. Capability growth is
+> frozen: new capability follows a real research question, not this list. Active
+> direction: `docs/design/2026-07-24-capability-roadmap-entwurf.md`.
+>
+> Two parts of this document are worth keeping in force rather than filing away.
+> §1's "vertical slices, not a framework first" was right and was honoured for
+> the first slice. §8's "what not to build early" was never violated in letter
+> but was in spirit: federation (14 packets), transfers (6) and the release
+> machinery were all built before anything needed them. Read §8 as a standing
+> caution, not as a completed checklist.
+>
+> The repository layout in §1 was never created, and the infrastructure it names
+> is now forbidden — see `docs/spec/README.md`'s status note.
+
 ## 1. Delivery strategy
 
 MRR must be implemented through vertical slices. Do not first build a large agent framework and add provenance later. The first useful slice must already contain identity, policy, execution, evidence, verification, and correction.

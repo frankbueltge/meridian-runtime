@@ -1,5 +1,16 @@
 # Start here with Codex or Claude Code — specification v0.1.1
 
+> **This file describes the START of the project (2026-07-17), not its current
+> state.** The system is built: 80 task packets, six test tiers, two real
+> research runs in the archive. Do not follow the first-invocation sequence
+> below against the existing repository — it seeds a greenfield.
+>
+> To work on MRR as it stands: read `AGENTS.md`, then
+> `docs/design/2026-07-31-mrr-review-und-integrationsrichtung.md` for where
+> things actually are, then the newest handoff in `docs/design/`. Use
+> `docs/spec/` for domain semantics only — its architecture is historical, see
+> the status note in `docs/spec/README.md`.
+
 Do not ask the coding agent to implement the whole system.
 
 ## Governance note

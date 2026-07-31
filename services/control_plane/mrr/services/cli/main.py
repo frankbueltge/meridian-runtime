@@ -52,6 +52,7 @@ from mrr.services.cli import (
     anchoring_integrity_main,
     artifact_presence_main,
     citation_audit_main,
+    correction_main,
     export_main,
     federation_main,
     field_observation_main,
@@ -280,6 +281,14 @@ def build_parser() -> argparse.ArgumentParser:
     # immediately above; no other line in this file changes.
     practice_main.register_practice_subcommand(subparsers)
 
+    # Task-packets/I1-T01.yaml's one additive registration: a new "correction"
+    # subparser group ("mrr correction record | impact | notify | status")
+    # delegating entirely to mrr.services.cli.correction_main — mirrors the
+    # practice registration immediately above; no other line in this file
+    # changes. It gives the already-complete CorrectionImpactService the
+    # command line it never had.
+    correction_main.register_correction_subcommand(subparsers)
+
     return parser
 
 
@@ -436,6 +445,10 @@ def main(argv: list[str] | None = None) -> int:
         # "practice" to its own module — every other command's dispatch
         # above is unchanged.
         return practice_main.run_command(args)
+    if args.command == "correction":
+        # Task-packets/I1-T01.yaml's one additive dispatch branch — every
+        # other command's dispatch above is unchanged.
+        return correction_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
