@@ -12,9 +12,7 @@
     "no abstract available in the pinned snapshot (excerpt_available == false)",
     "the abstract does not settle what the source itself contributes -- recorded unverifiable, never guessed"
   ],
-  "sensitivity_variations": [
-    "end-to-end-research-automation-v1"
-  ],
+  "sensitivity_variations": [],
   "planned_analyses": [
     "demonstration-vs-report-classification"
   ],
