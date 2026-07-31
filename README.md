@@ -78,15 +78,22 @@ Stated plainly, because a system built on verifiability has no business burying 
   two. Internal anchoring integrity is intact — the graph resolves without a single
   dangling reference — but that is anchoring *integrity*, not anchoring
   *redeemability*.
-- **No concrete model adapter exists.** `mrr.domain.model_adapter` is a port with no
-  implementation, and `mrr.adapters.llm` is provider-free by construction. The stance on
-  model use is therefore currently a design commitment, not a running configuration.
-- **The federation has no declared practice identity yet.** The path itself is
-  demonstrated: a real archived object — a `VerificationResult` recording a preserved
-  dissent — has been carried through envelope, bundle, file and back, and accepted by
-  the unchanged receiving validation. What is missing is identity: a `Practice` object
-  carrying a public key does not exist, so Meridian cannot yet introduce itself to
-  another practice. No exchange has taken place.
+- **A model adapter exists, but no run uses one.** `mrr.adapters.llm.gemini` is a
+  concrete `ModelAdapter` against a pinned model, and one real invocation has been made
+  and counter-checked — its first answer was wrong in a checkable way, which is recorded
+  rather than quietly dropped (`docs/design/2026-07-27-erster-realer-modellaufruf.md`).
+  What is still missing is composition: no research run invokes a model, because the
+  synthesis executor's optional model-assisted step is not wired to any adapter. And
+  that step proposes only extraction *prose* — the `supports`/`contradicts`
+  classification a claim rests on stays human and is never touched by a model.
+- **No exchange has taken place yet, though the path is now complete.** A real archived
+  object — a `VerificationResult` recording a preserved dissent — has been carried
+  through envelope, bundle, file and back, and accepted by the unchanged receiving
+  validation. Meridian's own `Practice` identity exists and is signed
+  (`practices/meridian.json`). Since I1-T01 a correction can also be recorded,
+  impact-analysed and notified from the command line, delivered offline as a
+  bundle-ready envelope. What remains is not code: a counterpart practice must agree its
+  node id and declare trust in Meridian's key.
 - **Claim-support checking reaches abstract level only.** `mrr audit support` verifies
   that a cited figure or verbatim quotation is present in the source's abstract, with
   anchor terms guarding against coincidental numeric matches. Measured coverage of the
@@ -146,6 +153,7 @@ uv run mrr --help
 | `mrr federation envelope sign` | Wrap any archive object that carries its own content hash into a signed transport envelope. Refuses a payload without one — such an envelope could never pass the receiver's consistency check. |
 | `mrr federation outbox` / `inbox` | Write and fail-closed validate signed offline bundles for exchange between practices. |
 | `mrr observe field` | Read-only field observation behind a fail-closed integrity gate. |
+| `mrr correction record` / `impact` / `notify` / `status` | Record a correction to a published result, compute which claims downstream it touches, and deliver a signed notification to each affected practice's outbox — offline, bundle-ready. A correction is always a new revision, never an overwrite. |
 
 The audit commands run read-only, without network or database access, over committed
 inputs behind fail-closed hash gates: if a declared input's bytes no longer match its

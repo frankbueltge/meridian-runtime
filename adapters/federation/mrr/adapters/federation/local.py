@@ -122,6 +122,7 @@ from pathlib import Path
 
 from mrr.contracts.offline_bundle import OfflineBundle
 from mrr.crypto.canonical import canonicalize
+from mrr.domain.envelope_transport import EnvelopeDeliveryOutcome, EnvelopeDeliveryRequest
 from pydantic import ValidationError
 
 __all__ = [
@@ -130,6 +131,7 @@ __all__ = [
     "BundleWriteConflictError",
     "FileBackedReplayLedger",
     "LocalFilesystemBundleTransport",
+    "LocalFilesystemEnvelopeTransport",
     "ReplayLedgerCorruptError",
     "ReplayLedgerError",
 ]
@@ -372,3 +374,110 @@ class FileBackedReplayLedger:
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(tmp_name)
             raise
+
+
+class LocalFilesystemEnvelopeTransport:
+    """The FIRST concrete ``mrr.domain.envelope_transport.EnvelopeTransport``
+    (task-packets/I1-T01.yaml) — an offline, store-and-forward delivery:
+    ``send`` writes one already-signed ``NodeMessageEnvelope`` to a file
+    under an outbox directory and reports ``"delivered"`` once its bytes are
+    on disk.
+
+    --- Why this adapter exists at all ---------------------------------
+
+    ``mrr.domain.envelope_transport``'s own docstring states that no
+    concrete implementation existed anywhere under ``packages/``/
+    ``adapters/`` and that "tests use only an in-test fake". That left
+    ``CorrectionImpactService.notify_affected_practices`` — which requires
+    an ``EnvelopeTransport`` — unreachable from any command, so the whole
+    correction lifecycle could only be driven from Python. This closes that
+    port exactly as ``mrr.adapters.llm.gemini`` closed ``ModelAdapter``'s,
+    and no further: the real mTLS client stays deferred
+    (docs/spec/04_SECURITY_AND_POLICY.md 4.1), and nothing here opens a
+    socket.
+
+    --- The endpoint is a directory, and that is a deliberate contract --
+
+    ``EnvelopeDeliveryRequest.recipient_endpoint`` is documented as an
+    OPAQUE address string whose shape "a concrete transport defines". This
+    transport defines it as a local outbox DIRECTORY; each envelope lands
+    at ``<recipient_endpoint>/<message_id>.json``. That filename is not
+    cosmetic — it is precisely what ``mrr federation outbox write
+    --envelope`` already consumes ("a path to an already-signed
+    NodeMessageEnvelope JSON file"), so a delivered envelope is
+    bundle-ready with no intermediate step and no re-serialisation.
+
+    --- Byte form matches the bundle transport's, for one reason -------
+
+    The same ADR-0004 ``exclude_none=True`` canonical bytes
+    ``LocalFilesystemBundleTransport.write_bundle`` writes, produced the
+    same way (``json.loads(model_dump_json(exclude_none=True))`` into the
+    existing ``canonicalize``). An envelope that round-trips through this
+    transport therefore still verifies against its own signature — a
+    transport that re-shaped the bytes would silently invalidate every
+    envelope it carried.
+
+    --- Failures are outcomes, never exceptions ------------------------
+
+    The port requires a conforming implementation to "report ``failed`` for
+    any transport-level problem rather than raising". Every filesystem
+    problem — unwritable directory, a name collision, a full disk — is
+    therefore caught and reported as ``status="failed"`` with the
+    envelope's own ``message_id``. This matters beyond tidiness:
+    ``notify_affected_practices`` reads a ``"failed"`` outcome as its cue to
+    drive the correction on to ``DELIVERY_PENDING``, so an exception here
+    would not merely be noisy, it would rob the lifecycle of a state it is
+    built to reach.
+
+    A collision (the target file already exists) is a failure, not an
+    overwrite: an envelope already delivered under that ``message_id`` is
+    not replaced by a second one, mirroring ``write_bundle``'s own
+    conflict refusal.
+
+    Holds no state — every ``send`` derives its path from its own request —
+    so a single instance may be reused freely.
+    """
+
+    def send(self, request: EnvelopeDeliveryRequest) -> EnvelopeDeliveryOutcome:
+        """Write ``request.envelope`` into the outbox directory named by
+        ``request.recipient_endpoint`` and report the outcome.
+
+        Never raises for a transport-level problem (see the class
+        docstring's "Failures are outcomes" section).
+        """
+        message_id = request.envelope.message_id
+        target = Path(request.recipient_endpoint) / f"{message_id}.json"
+
+        try:
+            canonical_bytes = canonicalize(
+                json.loads(request.envelope.model_dump_json(exclude_none=True))
+            )
+        except (TypeError, ValueError):
+            # A payload the canonical form cannot express is not a transport
+            # fault, but the port has exactly two outcomes and no channel to
+            # say more — so it is reported as a failed delivery, not raised.
+            return EnvelopeDeliveryOutcome(status="failed", message_id=message_id)
+
+        try:
+            if target.exists():
+                return EnvelopeDeliveryOutcome(status="failed", message_id=message_id)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp_name = tempfile.mkstemp(
+                dir=target.parent, prefix=f".{target.name}.", suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "wb") as tmp_file:
+                    tmp_file.write(canonical_bytes)
+                    tmp_file.flush()
+                    os.fsync(tmp_file.fileno())
+                if target.exists():
+                    raise FileExistsError(target)
+                os.replace(tmp_name, target)
+            except BaseException:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(tmp_name)
+                raise
+        except OSError:
+            return EnvelopeDeliveryOutcome(status="failed", message_id=message_id)
+
+        return EnvelopeDeliveryOutcome(status="delivered", message_id=message_id)
