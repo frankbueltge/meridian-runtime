@@ -1,5 +1,26 @@
 # Meridian Research Runtime (MRR) — Implementation Specification v0.1.1
 
+> **Status as of 2026-07-31: historical for architecture, normative for
+> semantics.** Read this package as the record of what was intended, not as a
+> build order.
+>
+> Still binding: the domain semantics — normative MUST/SHOULD/MAY requirements,
+> domain contracts, state machines, JSON Schemas, and the safety and provenance
+> invariants. Those are implemented and tested; changing them needs an ADR.
+>
+> No longer binding: the reference architecture and the delivery plan. The
+> implementation deliberately did not build the FastAPI control-plane services,
+> Temporal workflow coordination, S3 object storage, or the `workers/`/`infra/`
+> layout described here — and `fastapi`, `starlette`, `temporalio`, `boto3` and
+> `botocore` are now **forbidden modules** in the import-linter contract in
+> `pyproject.toml`, checked by `make lint`. What exists instead is a library
+> with a local `mrr` command line and a PostgreSQL database. Where this package
+> and the repository disagree about infrastructure, **the repository is right.**
+>
+> Active product direction:
+> `docs/design/2026-07-24-capability-roadmap-entwurf.md`. The reasoning behind
+> this status: `docs/design/2026-07-31-mrr-review-und-integrationsrichtung.md`.
+
 This repository-ready specification defines a new practice and software system for federated, auditable, evidence-first research automation.
 
 ## Strategic decision
