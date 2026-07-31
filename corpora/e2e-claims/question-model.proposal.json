@@ -1,0 +1,19 @@
+{
+  "raw_question": "Of the sources the /e2e-automation field survey cites as evidence about end-to-end AI research automation, which actually demonstrate an autonomous end-to-end research pipeline, and which instead evaluate, audit, benchmark or govern one?",
+  "claim_type_sought": "interpretive",
+  "scope": {
+    "population": "every citation in the pinned citation manifest of the published /e2e-automation survey (corpora/e2e-survey/citations.manifest.json, sha256:8a706a96500fcd8177ed048f4a81ac605fa5aabc67cea7b5fe1ef1e90855691b, 8 citations), classified against the pinned abstract snapshot fetched for them (corpora/e2e-survey/verification/content-snapshot.json, sha256:44671835a6e9c02e4e5d72aff20f4b57cb35aa07ef678e076f6e2a6debe9b1db, 8 of 8 abstracts available)",
+    "time": "citation manifest as published 2026-07-24; abstracts fetched 2026-08-01 from the open arXiv and Crossref metadata APIs",
+    "geography": null,
+    "conditions": [
+      "a source must be cited by the published survey itself, not merely related to its subject",
+      "classification is made against the source's own abstract, never against the survey's characterisation of it",
+      "an abstract that does not settle the question is recorded unverifiable, never guessed"
+    ]
+  },
+  "load_bearing_terms": [
+    "end-to-end research automation",
+    "demonstrates",
+    "reports on"
+  ]
+}

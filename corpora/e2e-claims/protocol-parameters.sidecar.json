@@ -1,0 +1,31 @@
+{
+  "protocol_id": "placeholder-overwritten-at-run-time-by-establish_and_run_synthesis",
+  "protocol_lock_content_hash": "placeholder-overwritten-at-run-time-by-establish_and_run_synthesis",
+  "inclusion_filter": {
+    "primary_secondary_derived": {
+      "allowed_values": [
+        "primary",
+        "secondary"
+      ]
+    }
+  },
+  "eligibility_rules": {
+    "supported": {
+      "min_independent_source_families": 2
+    },
+    "contested": {
+      "min_independent_source_families": 1
+    }
+  },
+  "kill_conditions": {
+    "stop_insufficient_evidence": {
+      "min_included_sources": 3
+    }
+  },
+  "non_applicability_conditions": [
+    "Findings characterize only the eight sources the published /e2e-automation survey itself cites (citation manifest sha256:8a706a96500fcd8177ed048f4a81ac605fa5aabc67cea7b5fe1ef1e90855691b). They say nothing about the state of end-to-end research automation as a field, and nothing about work the survey did not cite.",
+    "Classification rests on abstracts only (content snapshot sha256:44671835a6e9c02e4e5d72aff20f4b57cb35aa07ef678e076f6e2a6debe9b1db). An abstract may understate or overstate a paper's own contribution; a full-text reading could move an individual row.",
+    "The strict first-stage criterion in end-to-end-research-automation-v1 (the system must not be handed the research idea) is a local operationalization. Under a looser reading of 'end-to-end', rows classified as qualifies would move toward supports.",
+    "A source's classification here is about what it CONTRIBUTES, never a judgement of its quality or importance."
+  ]
+}

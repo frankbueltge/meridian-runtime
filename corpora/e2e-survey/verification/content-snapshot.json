@@ -1,0 +1,85 @@
+{
+  "excerpt_kind": "abstract",
+  "excerpts": [
+    {
+      "citation_id": "agent-laboratory",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:2533a39161b2f61c3b5f84aea4a5aea0f7272ebc3325940adf5d673b5759c2bb",
+      "excerpt_text": "Historically, scientific discovery has been a lengthy and costly process, demanding substantial time and resources from initial conception to final results. To accelerate scientific discovery, reduce research costs, and improve research quality, we introduce Agent Laboratory, an autonomous LLM-based framework capable of completing the entire research process. This framework accepts a human-provided research idea and progresses through three stages--literature review, experimentation, and report writing to produce comprehensive research outputs, including a code repository and a research report, while enabling users to provide feedback and guidance at each stage. We deploy Agent Laboratory with various state-of-the-art LLMs and invite multiple researchers to assess its quality by participating in a survey, providing human feedback to guide the research process, and then evaluate the final paper. We found that: (1) Agent Laboratory driven by o1-preview generates the best research outcomes; (2) The generated machine learning code is able to achieve state-of-the-art performance compared to existing methods; (3) Human involvement, providing feedback at each stage, significantly improves the overall quality of research; (4) Agent Laboratory significantly reduces research expenses, achieving an 84% decrease compared to previous autonomous research methods. We hope Agent Laboratory enables researchers to allocate more effort toward creative ideation rather than low-level coding and writing, ultimately accelerating scientific discovery.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "claim-level-auditability-aar",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:aebab274c6b2068ad6d8c48f5eb183239bfa62248b93cdffd76493a676ce586a",
+      "excerpt_text": "A deep research agent produces a fluent scientific report in minutes; a careful reader then tries to verify the main claims and discovers the real cost is not reading, but tracing: which sentence is supported by which passage, what was ignored, and where evidence conflicts. We argue that as research generation becomes cheap, auditability becomes the bottleneck, and the dominant risk shifts from isolated factual errors to scientifically styled outputs whose claim-evidence links are weak, missing, or misleading. This perspective proposes claim-level auditability as a first-class design and evaluation target for deep research agents, distills recurring long-horizon failure modes (objective drift, transient constraints, and unverifiable inference), and introduces the Auditable Autonomous Research (AAR) standard, a compact measurement framework that makes auditability testable via provenance coverage, provenance soundness, contradiction transparency, and audit effort. We then argue for semantic provenance with protocolized validation: persistent, queryable provenance graphs that encode claim--evidence relations (including conflicts) and integrate continuous validation during synthesis rather than after publication, with practical instrumentation patterns to support deployment at scale.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "deeptrace",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:2583d7350af3661c8c2c89148badc90edb2cc72fc3b937706878417321291795",
+      "excerpt_text": "Generative search engines and deep research LLM agents promise trustworthy, source-grounded synthesis, yet users regularly encounter overconfidence, weak sourcing, and confusing citation practices. We introduce DeepTRACE, a novel sociotechnically grounded audit framework that turns prior community-identified failure cases into eight measurable dimensions spanning answer text, sources, and citations. DeepTRACE uses statement-level analysis (decomposition, confidence scoring) and builds citation and factual-support matrices to audit how systems reason with and attribute evidence end-to-end. Using automated extraction pipelines for popular public models (e.g., GPT-4.5/5, You.com, Perplexity, Copilot/Bing, Gemini) and an LLM-judge with validated agreement to human raters, we evaluate both web-search engines and deep-research configurations. Our findings show that generative search engines and deep research agents frequently produce one-sided, highly confident responses on debate queries and include large fractions of statements unsupported by their own listed sources. Deep-research configurations reduce overconfidence and can attain high citation thoroughness, but they remain highly one-sided on debate queries and still exhibit large fractions of unsupported statements, with citation accuracy ranging from 40--80% across systems.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "independent-ai-scientist-eval",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:46f9702dca2cbfd93e21493fd435a322b85a9a6f54e7e6c7d44dc748a104e04a",
+      "excerpt_text": "A major step toward Artificial General Intelligence (AGI) and Super Intelligence is AI's ability to autonomously conduct research - what we term Artificial Research Intelligence (ARI). If machines could generate hypotheses, conduct experiments, and write research papers without human intervention, it would transform science. Sakana recently introduced the 'AI Scientist', claiming to conduct research autonomously, i.e. they imply to have achieved what we term Artificial Research Intelligence (ARI). The AI Scientist gained much attention, but a thorough independent evaluation has yet to be conducted. Our evaluation of the AI Scientist reveals critical shortcomings. The system's literature reviews produced poor novelty assessments, often misclassifying established concepts (e.g., micro-batching for stochastic gradient descent) as novel. It also struggles with experiment execution: 42% of experiments failed due to coding errors, while others produced flawed or misleading results. Code modifications were minimal, averaging 8% more characters per iteration, suggesting limited adaptability. Generated manuscripts were poorly substantiated, with a median of five citations, most outdated (only five of 34 from 2020 or later). Structural errors were frequent, including missing figures, repeated sections, and placeholder text like 'Conclusions Here'. Some papers contained hallucinated numerical results. Despite these flaws, the AI Scientist represents a leap forward in research automation. It generates full research manuscripts with minimal human input, challenging expectations of AI-driven science. Many reviewers might struggle to distinguish its work from human researchers. While its quality resembles a rushed undergraduate paper, its speed and cost efficiency are unprecedented, producing a full paper for USD 6 to 15 with 3.5 hours of human involvement, far outpacing traditional researchers.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "inspectable-ai-for-science",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:416f1f7edb7fb288f99a1b299ab3c52ec9717e39b3b902db8c527a99321c2543",
+      "excerpt_text": "This paper introduces AI as a Research Object (AI-RO), a paradigm for governing the use of generative AI in scientific research. Instead of debating whether AI is an author or merely a tool, we propose treating AI interactions as structured, inspectable components of the research process. Under this view, the legitimacy of an AI-assisted scientific paper depends on how model use is integrated into the workflow, documented, and made accountable. Drawing on Research Object theory and FAIR principles, we propose a framework for recording model configuration, prompts, and outputs through interaction logs and metadata packaging. These properties are particularly consequential in security and privacy (S&P) research, where provenance artifacts must satisfy confidentiality constraints, integrity guarantees, and auditability requirements that generic disclosure practices do not address. We implement a lightweight writing pipeline in which a language model synthesizes human-authored structured literature review notes under explicit constraints and produces a verifiable provenance record. We present this work as a position supported by an initial demonstrative workflow, arguing that governance of generative AI in science can be implemented as structured documentation, controlled disclosure, and integrity-preserving provenance capture. Based on this example, we outline and motivate a set of necessary future developments required to make such practices practical and widely adoptable.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "kosmos",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:6926a671b9cbd1807c3b40720a27f84604f7d44e7dd70c4d9b901af03c45558f",
+      "excerpt_text": "Data-driven scientific discovery requires iterative cycles of literature search, hypothesis generation, and data analysis. Substantial progress has been made towards AI agents that can automate scientific research, but all such agents remain limited in the number of actions they can take before losing coherence, thus limiting the depth of their findings. Here we present Kosmos, an AI scientist that automates data-driven discovery. Given an open-ended objective and a dataset, Kosmos runs for up to 12 hours performing cycles of parallel data analysis, literature search, and hypothesis generation before synthesizing discoveries into scientific reports. Unlike prior systems, Kosmos uses a structured world model to share information between a data analysis agent and a literature search agent. The world model enables Kosmos to coherently pursue the specified objective over 200 agent rollouts, collectively executing an average of 42,000 lines of code and reading 1,500 papers per run. Kosmos cites all statements in its reports with code or primary literature, ensuring its reasoning is traceable. Independent scientists found 79.4% of statements in Kosmos reports to be accurate, and collaborators reported that a single 20-cycle Kosmos run performed the equivalent of 6 months of their own research time on average. Furthermore, collaborators reported that the number of valuable scientific findings generated scales linearly with Kosmos cycles (tested up to 20 cycles). We highlight seven discoveries made by Kosmos that span metabolomics, materials science, neuroscience, and statistical genetics. Three discoveries independently reproduce findings from preprinted or unpublished manuscripts that were not accessed by Kosmos at runtime, while four make novel contributions to the scientific literature.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "sakana-nature",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:329fbb3d88e715346bceb4a6888224908444014dfd2e731f7cb008c9a1f42739",
+      "excerpt_text": "The automation of science is a long-standing ambition in artificial intelligence (AI) research 1,2 . Although the community has made substantial progress in automating individual components of the scientific process, a system that autonomously navigates the entire research life cycle\u2014from conception to publication\u2014has remained out of reach. Here we present a pipeline for automating the entire scientific process end to end. We present The AI Scientist, which creates research ideas, writes code, runs experiments, plots and analyses data, writes the entire scientific manuscript, and performs its own peer review. Its ideas, execution and presentation are of sufficient quality that the manuscript generated by this AI system passed the first round of peer review for a workshop of a top-tier machine learning conference. The workshop had an acceptance rate of 70%. Our system leverages modern foundation models 3\u20135 within a complex agentic system. We evaluate The AI Scientist in two settings: a focused mode using human-provided code templates as an initial scaffold for conducting research on a specific topic and a template-free, open-ended mode that leverages agentic search for wider scientific exploration 6,7 . Both settings produce diverse ideas and automatically test, report on and evaluate them. This achievement demonstrates the growing capacity of AI for making scientific contributions and signifies a potential paradigm shift in how research is conducted. As with any impactful new technology, there could be important risks, including taxing overwhelmed review systems and adding noise to the scientific literature. However, if developed responsibly, such autonomous systems could greatly accelerate scientific discovery.",
+      "resolver": "crossref",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "sciintegrity-bench",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:cf592bd6748288edc19c640be2d67a2e6b1badc5348fe338501939f520f52385",
+      "excerpt_text": "AI scientist systems are increasingly deployed for autonomous research, yet their academic integrity has never been systematically evaluated. We introduce SCIINTEGRITY-BENCH, the first benchmark designed around a dilemmatic evaluation paradigm: each of its 33 scenarios across 11 trap categories is constructed so that honest acknowledgment of failure is the only correct response, while task completion requires misconduct. Across 231 evaluation runs spanning 7 state-of-the-art LLMs, the overall integrity problem rate reaches 34.2%, and no model achieves zero failures. Most strikingly, across missing-data scenarios, all seven models generate synthetic data rather than acknowledging infeasibility, differing only in whether they disclose the substitution. A further prompt ablation study separates two drivers: removing explicit completion pressure sharply reduces undisclosed fabrication from 20.6% to 3.2%, while the underlying synthesis rate remains unchanged, revealing an intrinsic completion bias that persists independent of prompt-level instructions. These findings point to the absence of honest refusal as a trained disposition as the primary driver of observed failures. We release SCIINTEGRITY-BENCH at https://github.com/liuxingtong/Sci-Integrity-Bench.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    }
+  ],
+  "fetched_on": "2026-08-01",
+  "manifest": "../citations.manifest.json",
+  "note": "Point-in-time capture of the ABSTRACT ONLY for each cited identifier in citations.manifest.json (task-packets/N2-T03a.yaml) \u2014 the arXiv Atom 'summary' element, or the Crossref 'abstract' field (JATS-tag-stripped, a declared deterministic transformation) for the one Nature DOI. Re-runnable: the same batched id_list / per-DOI queries reproduce these results, so this snapshot is verifiable, not asserted. It records EXACTLY what the two APIs returned, after the declared JATS-stripping and whitespace-normalisation transformations only \u2014 no scoring, no supplementation, no repair of a missing abstract, no full-text retrieval of any kind (no PDF, no scraping). An abstract covers only a fraction of a paper's own claims (measured at the N2-T03 derivation at roughly 28 percent numeric-token coverage across this corpus) \u2014 this snapshot is the input a separate, offline, no-network audit (N2-T03b, 'mrr audit support') checks claims against; presence in the abstract is not substantive support, and absence from the abstract is not refutation. A citation whose abstract could not be retrieved is recorded here with excerpt_available=false and a typed unavailable_reason \u2014 never omitted, never filled with a placeholder.",
+  "resolvers": {
+    "arxiv": "arXiv API \u2014 https://export.arxiv.org/api/query?id_list=<id> (Atom 'summary' element; a requested id absent from the response, or an entry with no usable summary text, is recorded as excerpt_available=false with a typed reason)",
+    "crossref": "Crossref REST \u2014 https://api.crossref.org/works/<doi> (JSON 'abstract' field, JATS tags stripped per strip_jats_tags(); 404, or a work with no usable abstract field, is recorded as excerpt_available=false with a typed reason)"
+  },
+  "schema_version": "source-content-snapshot.v1"
+}

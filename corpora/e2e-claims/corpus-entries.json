@@ -1,0 +1,258 @@
+[
+  {
+    "entry_id": "sakana-nature",
+    "applies_to_analysis": "demonstration-vs-report-classification",
+    "claim_type": "interpretive",
+    "evidence_relation": "supports",
+    "verification_status": "verified",
+    "unverifiable_reason": null,
+    "claim_relevant_finding": "Presents its own pipeline for 'automating the entire scientific process end to end': the system creates research ideas, writes code, runs experiments, plots and analyses data, writes the entire manuscript, and performs its own peer review. A generated manuscript passed the first round of peer review at a workshop with a 70% acceptance rate.",
+    "extraction": {
+      "classification_basis": "Abstract states the contribution as a system executing the full life cycle including idea creation — the first stage end-to-end-research-automation-v1 makes load-bearing. Its own demonstration, not a report on others'. Classified supports."
+    },
+    "source_family_id": "sakana-ai-scientist",
+    "identifiers": {
+      "doi": "10.1038/s41586-026-10265-5",
+      "repository_id": null,
+      "archive_id": null,
+      "local_asset_id": "sakana-nature"
+    },
+    "title": "Towards end-to-end automation of AI research",
+    "creators": [
+      "Chris Lu et al."
+    ],
+    "publication_date": "2026",
+    "version": null,
+    "retrieval_timestamp": "2026-08-01T00:00:00Z",
+    "retrieval_method": "direct read of the pinned, hash-verified abstract snapshot at corpora/e2e-survey/verification/content-snapshot.json",
+    "source_type": "journal_article",
+    "primary_secondary_derived": "primary",
+    "derivation_evidence": null,
+    "accessibility": null,
+    "licensing": null
+  },
+  {
+    "entry_id": "kosmos",
+    "applies_to_analysis": "demonstration-vs-report-classification",
+    "claim_type": "interpretive",
+    "evidence_relation": "qualifies",
+    "verification_status": "verified",
+    "unverifiable_reason": null,
+    "claim_relevant_finding": "Presents its own system automating data-driven discovery: given an open-ended objective AND a dataset, it runs up to 12 hours over ~200 agent rollouts, executing an average of 42,000 lines of code and reading 1,500 papers per run, before synthesizing discoveries into scientific reports.",
+    "extraction": {
+      "classification_basis": "A real demonstration, but the abstract states the objective and the dataset are supplied to it. Under end-to-end-research-automation-v1 the conception stage is therefore human-supplied: this automates a long segment of research, not the life cycle. Classified qualifies, not supports."
+    },
+    "source_family_id": "kosmos",
+    "identifiers": {
+      "doi": null,
+      "repository_id": null,
+      "archive_id": null,
+      "local_asset_id": "kosmos"
+    },
+    "title": "Kosmos: An AI Scientist for Autonomous Discovery",
+    "creators": [
+      "per the pinned citation manifest; author list not recorded in the resolution snapshot"
+    ],
+    "publication_date": "2026",
+    "version": null,
+    "retrieval_timestamp": "2026-08-01T00:00:00Z",
+    "retrieval_method": "direct read of the pinned, hash-verified abstract snapshot at corpora/e2e-survey/verification/content-snapshot.json",
+    "source_type": "preprint",
+    "primary_secondary_derived": "primary",
+    "derivation_evidence": null,
+    "accessibility": null,
+    "licensing": null
+  },
+  {
+    "entry_id": "agent-laboratory",
+    "applies_to_analysis": "demonstration-vs-report-classification",
+    "claim_type": "interpretive",
+    "evidence_relation": "qualifies",
+    "verification_status": "verified",
+    "unverifiable_reason": null,
+    "claim_relevant_finding": "Presents its own framework completing literature review, experimentation and report writing — but the abstract states it 'accepts a human-provided research idea' and is built for 'enabling users to provide feedback and guidance at each stage'.",
+    "extraction": {
+      "classification_basis": "Both load-bearing conditions of end-to-end-research-automation-v1 fail by the abstract's own wording: the idea is human-provided, and human guidance at each stage is a designed-in feature rather than an option. A real system, deliberately human-in-the-loop. Classified qualifies."
+    },
+    "source_family_id": "agent-laboratory",
+    "identifiers": {
+      "doi": null,
+      "repository_id": null,
+      "archive_id": null,
+      "local_asset_id": "agent-laboratory"
+    },
+    "title": "Agent Laboratory: Using LLM Agents as Research Assistants",
+    "creators": [
+      "per the pinned citation manifest; author list not recorded in the resolution snapshot"
+    ],
+    "publication_date": "2025",
+    "version": null,
+    "retrieval_timestamp": "2026-08-01T00:00:00Z",
+    "retrieval_method": "direct read of the pinned, hash-verified abstract snapshot at corpora/e2e-survey/verification/content-snapshot.json",
+    "source_type": "preprint",
+    "primary_secondary_derived": "primary",
+    "derivation_evidence": null,
+    "accessibility": null,
+    "licensing": null
+  },
+  {
+    "entry_id": "independent-ai-scientist-eval",
+    "applies_to_analysis": "demonstration-vs-report-classification",
+    "claim_type": "interpretive",
+    "evidence_relation": "contradicts",
+    "verification_status": "verified",
+    "unverifiable_reason": null,
+    "claim_relevant_finding": "An independent evaluation of the AI Scientist reporting critical shortcomings: literature reviews produced poor novelty assessments, often misclassifying established concepts as novel; 42% of experiments failed due to coding errors, while others produced flawed or misleading results.",
+    "extraction": {
+      "classification_basis": "Contributes an evaluation of another team's system, not a demonstration — so 'reports on' per demonstrates-vs-reports-v1. Its findings bear directly against the demonstration claim it examines. Classified contradicts. Note: examines the same system as sakana-ai-scientist but is an independent author team and a separate work, so a distinct source family."
+    },
+    "source_family_id": "independent-ai-scientist-evaluation",
+    "identifiers": {
+      "doi": null,
+      "repository_id": null,
+      "archive_id": null,
+      "local_asset_id": "independent-ai-scientist-eval"
+    },
+    "title": "An Independent Evaluation of the AI Scientist",
+    "creators": [
+      "per the pinned citation manifest; author list not recorded in the resolution snapshot"
+    ],
+    "publication_date": "2025",
+    "version": null,
+    "retrieval_timestamp": "2026-08-01T00:00:00Z",
+    "retrieval_method": "direct read of the pinned, hash-verified abstract snapshot at corpora/e2e-survey/verification/content-snapshot.json",
+    "source_type": "preprint",
+    "primary_secondary_derived": "primary",
+    "derivation_evidence": null,
+    "accessibility": null,
+    "licensing": null
+  },
+  {
+    "entry_id": "sciintegrity-bench",
+    "applies_to_analysis": "demonstration-vs-report-classification",
+    "claim_type": "interpretive",
+    "evidence_relation": "contradicts",
+    "verification_status": "verified",
+    "unverifiable_reason": null,
+    "claim_relevant_finding": "A benchmark of academic integrity in AI scientist systems: across 231 runs over 7 state-of-the-art LLMs the overall integrity problem rate reaches 34.2%, no model achieves zero failures, and across missing-data scenarios ALL seven models generate synthetic data rather than acknowledging infeasibility.",
+    "extraction": {
+      "classification_basis": "Contributes a benchmark, not a demonstration — 'reports on' per demonstrates-vs-reports-v1. Its finding that every tested model fabricates data rather than reporting infeasibility bears against the reliability of autonomous end-to-end operation. Classified contradicts."
+    },
+    "source_family_id": "sciintegrity-bench",
+    "identifiers": {
+      "doi": null,
+      "repository_id": null,
+      "archive_id": null,
+      "local_asset_id": "sciintegrity-bench"
+    },
+    "title": "SciIntegrity-Bench",
+    "creators": [
+      "per the pinned citation manifest; author list not recorded in the resolution snapshot"
+    ],
+    "publication_date": "2026",
+    "version": null,
+    "retrieval_timestamp": "2026-08-01T00:00:00Z",
+    "retrieval_method": "direct read of the pinned, hash-verified abstract snapshot at corpora/e2e-survey/verification/content-snapshot.json",
+    "source_type": "preprint",
+    "primary_secondary_derived": "primary",
+    "derivation_evidence": null,
+    "accessibility": null,
+    "licensing": null
+  },
+  {
+    "entry_id": "deeptrace",
+    "applies_to_analysis": "demonstration-vs-report-classification",
+    "claim_type": "interpretive",
+    "evidence_relation": "contradicts",
+    "verification_status": "verified",
+    "unverifiable_reason": null,
+    "claim_relevant_finding": "An audit framework over eight measurable dimensions of answer text, sources and citations, applied to public generative search engines and deep-research configurations. Finds these systems frequently produce one-sided, highly confident responses on debate queries, alongside weak sourcing and confusing citation practice.",
+    "extraction": {
+      "classification_basis": "Contributes an audit framework and its results, not a demonstration — 'reports on' per demonstrates-vs-reports-v1. Findings bear against the trustworthiness of automated research output. Classified contradicts."
+    },
+    "source_family_id": "deeptrace",
+    "identifiers": {
+      "doi": null,
+      "repository_id": null,
+      "archive_id": null,
+      "local_asset_id": "deeptrace"
+    },
+    "title": "DeepTRACE",
+    "creators": [
+      "per the pinned citation manifest; author list not recorded in the resolution snapshot"
+    ],
+    "publication_date": "2025",
+    "version": null,
+    "retrieval_timestamp": "2026-08-01T00:00:00Z",
+    "retrieval_method": "direct read of the pinned, hash-verified abstract snapshot at corpora/e2e-survey/verification/content-snapshot.json",
+    "source_type": "preprint",
+    "primary_secondary_derived": "primary",
+    "derivation_evidence": null,
+    "accessibility": null,
+    "licensing": null
+  },
+  {
+    "entry_id": "claim-level-auditability-aar",
+    "applies_to_analysis": "demonstration-vs-report-classification",
+    "claim_type": "interpretive",
+    "evidence_relation": "contextualizes",
+    "verification_status": "verified",
+    "unverifiable_reason": null,
+    "claim_relevant_finding": "A perspective arguing that as research generation becomes cheap, auditability becomes the bottleneck, and proposing the Auditable Autonomous Research (AAR) standard — a measurement framework over provenance coverage, provenance soundness, contradiction transparency and audit effort.",
+    "extraction": {
+      "classification_basis": "Contributes a standard and a perspective, neither a demonstration nor an empirical evaluation of one — 'reports on' per demonstrates-vs-reports-v1, in its governance sense. It reframes the question rather than bearing for or against a demonstration. Classified contextualizes."
+    },
+    "source_family_id": "aar-auditability",
+    "identifiers": {
+      "doi": null,
+      "repository_id": null,
+      "archive_id": null,
+      "local_asset_id": "claim-level-auditability-aar"
+    },
+    "title": "Claim-level auditability for deep research agents (AAR)",
+    "creators": [
+      "per the pinned citation manifest; author list not recorded in the resolution snapshot"
+    ],
+    "publication_date": "2026",
+    "version": null,
+    "retrieval_timestamp": "2026-08-01T00:00:00Z",
+    "retrieval_method": "direct read of the pinned, hash-verified abstract snapshot at corpora/e2e-survey/verification/content-snapshot.json",
+    "source_type": "preprint",
+    "primary_secondary_derived": "primary",
+    "derivation_evidence": null,
+    "accessibility": null,
+    "licensing": null
+  },
+  {
+    "entry_id": "inspectable-ai-for-science",
+    "applies_to_analysis": "demonstration-vs-report-classification",
+    "claim_type": "interpretive",
+    "evidence_relation": "contextualizes",
+    "verification_status": "verified",
+    "unverifiable_reason": null,
+    "claim_relevant_finding": "Proposes AI as a Research Object (AI-RO), a paradigm treating AI interactions as structured, inspectable components of the research process, with model configuration, prompts and outputs recorded through interaction logs and metadata packaging.",
+    "extraction": {
+      "classification_basis": "Contributes a governance paradigm and a lightweight pipeline implementing it, not a demonstration of end-to-end research automation — 'reports on' in its governance sense. Bears on how such work should be documented, not on whether it has been achieved. Classified contextualizes."
+    },
+    "source_family_id": "ai-research-object",
+    "identifiers": {
+      "doi": null,
+      "repository_id": null,
+      "archive_id": null,
+      "local_asset_id": "inspectable-ai-for-science"
+    },
+    "title": "Inspectable AI for Science (AI-RO)",
+    "creators": [
+      "per the pinned citation manifest; author list not recorded in the resolution snapshot"
+    ],
+    "publication_date": "2026",
+    "version": null,
+    "retrieval_timestamp": "2026-08-01T00:00:00Z",
+    "retrieval_method": "direct read of the pinned, hash-verified abstract snapshot at corpora/e2e-survey/verification/content-snapshot.json",
+    "source_type": "preprint",
+    "primary_secondary_derived": "primary",
+    "derivation_evidence": null,
+    "accessibility": null,
+    "licensing": null
+  }
+]

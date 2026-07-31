@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "entry_id": "end-to-end-research-automation-v1",
+      "term": "end-to-end research automation",
+      "definition": "A single system carrying a research undertaking across the whole life cycle — from forming the question or hypothesis, through designing and executing experiments or analyses, to producing a written scientific report — without a human supplying the research idea and without human intervention required at the stage boundaries.",
+      "scope_note": "Local operationalization for this profile only. The load-bearing element is the FIRST stage: a system handed a human-authored objective, dataset or idea automates a segment of research, not the life cycle. This is deliberately stricter than colloquial 'AI scientist' usage, and the strictness is the point — the survey being examined turns on exactly that distinction."
+    },
+    {
+      "entry_id": "demonstrates-vs-reports-v1",
+      "term": "demonstrates",
+      "definition": "A source 'demonstrates' end-to-end research automation when it presents its OWN system executing the pipeline defined in end-to-end-research-automation-v1 and reports the result of running it. A source 'reports on' such automation when it evaluates, audits, benchmarks, or proposes governance for systems built by others, without itself running such a pipeline as its contribution.",
+      "scope_note": "The distinction is about what the source CONTRIBUTES, not what it is about. An independent evaluation of an end-to-end system is a report on the field, not a demonstration of it — and its findings bear on whether the demonstration holds. Applied to the eight citations of the published survey, fixed before classification."
+    }
+  ]
+}
