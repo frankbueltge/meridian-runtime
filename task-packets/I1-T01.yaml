@@ -1,0 +1,197 @@
+task_id: I1-T01
+title: >-
+  Korrektur-CLI und der eine fehlende Offline-Envelope-Transport: `mrr correction
+  record | impact | notify | status` reicht den VOLLSTÄNDIGEN, bereits getesteten
+  CorrectionImpactService an die Kommandozeile durch, und ein kleiner konkreter
+  EnvelopeTransport (Bündel-schreibend, offline) schließt den einen Port, der
+  `notify_affected_practices` heute unerreichbar macht. Ergebnis: eine Korrektur an
+  einem publizierten Claim ist per Kommando aufnehmbar, ihre Abhängigen sind markiert,
+  und eine signierte Benachrichtigung liegt versandfertig als Offline-Bündel — ohne
+  einen einzigen direkten Service-Aufruf. Erste vertikale Scheibe des
+  Integrationsprogramms vom 2026-07-31.
+status: proposed
+epic: I1
+epic_note: >-
+  NEUER Pakettyp: Integrationspaket. Seine Abnahme ist ein OPERATORWEG, kein Modul.
+  Begründung in docs/design/2026-07-31-mrr-review-und-integrationsrichtung.md §6: die
+  bestehende Paketlogik begünstigt lokale Fertigstellung, aber nicht die vertikale
+  Integration — viermal ist dieselbe Außenkante offen geblieben (ModelAdapter,
+  Föderationstransport, Envelope-Einfahrt, EnvelopeTransport). Regel 2 und 3 in
+  AGENTS.md schließen Kompositionsarbeit strukturell aus, weil sie kein
+  „Domänenverhalten aus der Spezifikation" ist. Dieser Pakettyp ist die Korrektur.
+reviewer_resolution: >-
+  NOCH NICHT REVIEWED. Dieses Paket ist als Entwurf committet, damit die Ableitung und
+  das Akzeptanz-Orakel VOR dem Bau feststehen (Ritual dieses Repositoriums). Es
+  erfordert eine ausdrückliche Owner-Freigabe, weil es einen Adapter für einen
+  deklarierten Port hinzufügt (siehe derived_decisions (a)) — das ist mehr als reine
+  Verdrahtung und wird deshalb nicht stillschweigend vollzogen.
+depends_on: []
+derivation: docs/design/2026-07-31-ableitung-korrektur-cli.md
+
+objective: >-
+  Den Korrektur-Lebenszyklus vom Service an den Operator bringen und die eine fehlende
+  Außenkante schließen, die verhindert, dass eine Korrektur das Haus verlässt. Kein
+  neues Domänenverhalten, kein neues Schema, keine Änderung am Correction-Service.
+
+source_of_truth:
+  - services/control_plane/mrr/services/correction/service.py   # unverändert, autoritativ
+  - packages/domain/mrr/domain/envelope_transport.py            # der zu schließende Port
+  - services/control_plane/mrr/services/cli/verification_main.py # Präzedenz (K1-T05)
+  - adapters/federation/mrr/adapters/federation/local.py         # Adapter-SHAPE-Präzedenz
+  - docs/design/2026-07-26-wegkarte-erster-ecology-austausch.md   # payload_kind-Befund
+
+requirements:
+  - id: R1
+    text: >-
+      `mrr correction record --correction-file <path>` nimmt einen CorrectionEvent aus
+      genau EINER Datei auf und ruft `CorrectionImpactService.record` unverändert auf.
+      Ein-Datei-Flag nach K1-T05-Präzedenz.
+  - id: R2
+    text: >-
+      `mrr correction impact --correction-id <urn>` ruft `propagate_impact` unverändert
+      auf und berichtet die markierten abhängigen Objekte.
+  - id: R3
+    text: >-
+      Ein konkreter, offline arbeitender `EnvelopeTransport` erfüllt das Protokoll
+      strukturell (`send(request) -> outcome`), schreibt das Envelope in ein Bündel und
+      meldet `delivered`, wenn die Bytes liegen. Er meldet `failed` bei jedem
+      Transportproblem und wirft NICHT — wie das Protokoll es verlangt.
+  - id: R4
+    text: >-
+      `mrr correction notify` ruft `notify_affected_practices` mit diesem Transport auf
+      und erzeugt ein signiertes Offline-Bündel. Signaturschlüssel, Praxis-ID und
+      Node-ID kommen vom Aufrufer, nie aus Voreinstellungen.
+  - id: R5
+    text: >-
+      `mrr correction status --correction-id <urn>` berichtet den persistierten Zustand
+      read-only. Statuswerte werden NIE kollabiert.
+  - id: R6
+    text: >-
+      Das CLI enthält KEINE Domänenlogik und KEINE Choreografie, die dem Service
+      gehört — es deserialisiert, ruft auf, berichtet. Regel-8-Verantwortung bleibt
+      vollständig beim Service.
+
+allowed_paths:
+  - services/control_plane/mrr/services/cli/correction_main.py   # neu
+  - services/control_plane/mrr/services/cli/main.py              # nur Registrierung
+  - adapters/federation/mrr/adapters/federation/local.py         # nur der neue Transport
+  - adapters/federation/mrr/adapters/federation/__init__.py
+  - tests/unit/services/cli/**
+  - tests/unit/adapters/federation/**
+  - tests/integration/services/cli/**
+  - tests/e2e/**
+  - README.md
+  - docs/design/**
+  - task-packets/I1-T01.yaml
+
+forbidden_changes:
+  - services/control_plane/mrr/services/correction/service.py    # NICHT anfassen
+  - packages/domain/**                                            # kein neues Schema, kein neues Objekt
+  - migrations/**
+  - schemas/**
+  - Jede Netz-Zustellung (mTLS, HTTP) — bleibt vertagt
+  - Jede Änderung an Ceiling-, Eligibility- oder Dissens-Regeln
+  - Der Modellarm (build_model_assisted_extraction_callable, GeminiModelAdapter)
+
+derived_decisions:
+  - id: a
+    decision: >-
+      Dieses Paket fügt EINEN Adapter für einen bereits deklarierten Port hinzu
+      (EnvelopeTransport), strukturell genau wie E4-T08 es für ModelAdapter tat. Das ist
+      ausdrücklich deklariert und nicht als „reine Integration" ausgegeben.
+    rationale: >-
+      Die minimale Fassung (nur record + impact) wäre reine Verdrahtung, würde aber
+      erneut einen Schritt VOR der Außenkante enden — der Fehler, den dieses Programm
+      behebt. Ein Paket, das das Muster reproduziert, ist wertlos.
+  - id: b
+    decision: >-
+      Der Transport ist bündel-schreibend und offline. Kein mTLS, kein HTTP.
+    rationale: >-
+      Der reale mTLS-Client ist laut Port-Docstring infrastrukturabhängig und
+      ausdrücklich vertagt. Ein Offline-Bündel genügt für Meridians Zug vollständig:
+      `build_outbox_bundle` braucht keinen Schlüssel der Gegenseite.
+  - id: c
+    decision: >-
+      Empfängerseite (`receive_correction_notification`, `record_response`) bleibt
+      draußen.
+    rationale: >-
+      Das ist Ulysses' Zug in Ulysses' eigener Session. Meridian erzeugt niemals
+      Schlüssel oder Node-ID für eine fremde Praxis.
+
+invariants:
+  - Eine Korrektur erzeugt eine NEUE REVISION; committete Archivstände werden nie überschrieben.
+  - Kein Executor verifiziert sein eigenes Ergebnis.
+  - Kein Envelope ohne Signatur und ohne `payload_content_hash` des exakt getragenen Objekts.
+  - Statuswerte werden nie kollabiert (delivered / failed / pending bleiben getrennt).
+  - Der Transport meldet Fehler als Outcome, er wirft nicht.
+
+acceptance_tests:
+  oracle_first: >-
+    Das Orakel wird VOR dem Bau festgelegt und von einer anderen Instanz geschrieben als
+    der Erbauer.
+  e2e:
+    - id: E2E-1
+      text: >-
+        Gegen echte Postgres: eine Korrektur an einem Claim eines der beiden
+        Archiv-Realläufe wird per `mrr correction record` aufgenommen, per `mrr
+        correction impact` fortgeschrieben, per `mrr correction notify` als signiertes
+        Envelope in ein Offline-Bündel geschrieben — VOLLSTÄNDIG über mrr-Kommandos,
+        ohne einen einzigen direkten Service-Aufruf im Test.
+    - id: E2E-2
+      text: >-
+        Das erzeugte Bündel besteht `mrr federation inbox`' fail-closed Validierung
+        unverändert. Der Weg ist damit von der Korrektur bis zur Annahme geschlossen.
+    - id: E2E-3
+      text: >-
+        Ein Transportfehler (nicht schreibbarer Pfad) führt zu Status `failed`, NICHT zu
+        einer Exception, und der Korrekturzustand bleibt konsistent.
+  unit:
+    - Strukturelle Protokoll-Konformität des neuen Transports (`isinstance(t, EnvelopeTransport)`).
+    - Das CLI reicht durch und rechnet nicht: ein Test belegt, dass keine Choreografie im CLI liegt.
+
+commands:
+  - make format-check
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - make test-integration
+  - make test-e2e
+  - make security-check
+
+specification_gaps:
+  - >-
+    Der reale Netz-Transport (mTLS) bleibt vertagt, wie der Port-Docstring es festhält.
+    Dieses Paket ändert daran nichts und behauptet nichts anderes.
+  - >-
+    `verification_disposition="verified"` auf einem rohen Modellvorschlag
+    (synthesis_executor.py:483/609) ist eine offene Spezifikationsfrage über Epistemik.
+    NICHT Gegenstand dieses Pakets; braucht eine eigene Owner-Vorlage.
+  - >-
+    Die neun Archivsignaturen der Realläufe sind gültig, aber nicht zurechenbar
+    (`node-key-1`/`origin-key-1` statt abgeleitetem kid). Offener, datierter Defekt aus
+    dem Handoff vom 2026-07-27; berührt dieses Paket nicht, darf aber nicht als
+    geschlossen gelten.
+
+required_output:
+  - Task-Identifier und knappe Umsetzungszusammenfassung.
+  - Beleg, dass alle Kommandos aus `commands` bestehen.
+  - Der Pfad des erzeugten Bündels und sein Validierungsergebnis gegen `federation inbox`.
+  - >-
+    README-Korrektur — die zwei überholten „Current limitations" (kein Modell-Adapter,
+    keine Praxis-Identität) sind seit 2026-07-26 falsch und werden in diesem Paket
+    richtiggestellt.
+
+stop_conditions:
+  - >-
+    Wenn `notify_affected_practices` mehr verlangt als ein Transport, ein Schlüssel und
+    Empfänger — Halt und Spezifikationsfrage, kein Erweitern des CLI-Scopes.
+  - >-
+    Wenn eine Korrektur einen committeten Archivstand überschreiben müsste — Halt. Die
+    Unantastbarkeit ist nicht verhandelbar; nur eine neue Revision ist zulässig.
+  - >-
+    Wenn der Offline-Transport Netzverhalten bräuchte — Halt. Dann ist der Zuschnitt
+    falsch und der mTLS-Transport ist ein eigenes Paket.
+  - >-
+    Wenn sich zeigt, dass der Transport doch Domänenlogik tragen muss — Halt. Er ist
+    ein Adapter, kein Dienst.
