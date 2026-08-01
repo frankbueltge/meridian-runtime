@@ -23,7 +23,19 @@
       "path": "benchmarks/meridianbench/fixtures/mb-cls-criteria.v2.json",
       "sha256": "sha256:f20a1cb8674b41b61bc9b790537412b19056dc25d47df20923c4e5d03f31e780",
       "frozen_on": "2026-08-01",
-      "note": "The criteria in force. Locked before any label is made; the order gate refuses a set labelled earlier."
+      "note": "The criteria in force. Locked before any label is made; the order gate refuses a set labelled earlier. SUPERSEDED by v3: its locked_at was two hours in the future of the act it licensed. Kept frozen — the error is only legible while the erroneous object is readable."
+    },
+    "mb-cls-criteria-v3": {
+      "path": "benchmarks/meridianbench/fixtures/mb-cls-criteria.v3.json",
+      "sha256": "sha256:46b2dfef753f9ba44b4da7567b2b3ffb7ad8c2a591456d814eced12680bd5e1c",
+      "frozen_on": "2026-08-01",
+      "note": "The criteria in force. v3 corrects a lock instant that was a wall-clock reading stamped as UTC — the defect the labelling practice found by refusing to move its own timestamp to pass the gate. Definitions byte-identical to v2 so the completed blind labelling stays valid."
+    },
+    "mb-cls-v3-synthetic": {
+      "path": "benchmarks/meridianbench/fixtures/mb-cls-v3.synthetic.json",
+      "sha256": "sha256:a5db239c293b02026b4552d70752c2ff63a2aa275433a24f4e13b6ad455ffa44",
+      "frozen_on": "2026-08-01",
+      "note": "The synthetic fixture re-issued against criteria v3. Labels and predictions unchanged from v2, so N1-T02 AT1's oracle still holds."
     }
   }
 }

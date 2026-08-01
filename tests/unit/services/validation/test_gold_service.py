@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from mrr.domain.agreement import MismatchedRatersError
 from mrr.services.validation.gold_service import (
+    GoldSetCriteriaDriftError,
     GoldSetFileError,
     GoldSetFrozenHashMismatchError,
     GoldSetLabelError,
@@ -22,9 +23,9 @@ from mrr.services.validation.gold_service import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-FIXTURE = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v2.synthetic.json"
+FIXTURE = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v3.synthetic.json"
 PREDICTIONS = (
-    REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v2.synthetic.predictions.json"
+    REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v3.synthetic.predictions.json"
 )
 
 CATEGORIES = ["supports", "contradicts", "qualifies", "contextualizes"]
@@ -75,7 +76,7 @@ def test_at2_loader_accepts_the_fixture_at_its_pinned_hash() -> None:
         FIXTURE, expected_sha256=pinned, allow_synthetic=True
     )
     assert gold_set.sha256 == pinned
-    assert gold_set.fixture_set_id == f"mb-cls-v2-synthetic@{pinned}"
+    assert gold_set.fixture_set_id == f"mb-cls-v3-synthetic@{pinned}"
     assert len(gold_set.cases) == 23  # 20 decidable + 3 undecidable
 
 
@@ -104,7 +105,7 @@ def test_at2_freeze_registry_matches_the_committed_fixture() -> None:
             encoding="utf-8"
         )
     )
-    entry = registry["frozen"]["mb-cls-v2-synthetic"]
+    entry = registry["frozen"]["mb-cls-v3-synthetic"]
     assert entry["sha256"] == compute_sha256((REPO_ROOT / entry["path"]).read_bytes())
 
 
@@ -292,3 +293,52 @@ def test_a_set_with_nothing_decidable_is_refused(tmp_path: Path) -> None:
     )
     with pytest.raises(GoldSetFileError, match="nothing to measure against"):
         GoldValidityService().load_gold_set(_write(tmp_path, document))
+
+
+# --- The drift check: the lock instant lives in two places -------------------
+
+
+CRITERIA_V3 = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-criteria.v3.json"
+
+
+def test_a_set_naming_its_criteria_file_loads_when_the_two_agree() -> None:
+    gold_set = GoldValidityService().load_gold_set(
+        FIXTURE, allow_synthetic=True, criteria_path=CRITERIA_V3
+    )
+    assert gold_set.criteria_version == "mb-cls-criteria-v3"
+
+
+def test_a_stale_lock_instant_in_the_set_is_refused(tmp_path: Path) -> None:
+    # The exact failure of 2026-08-01, as a test. The criteria file carried a
+    # wall-clock reading stamped as UTC; the gold set copied it; the order gate
+    # then refused an honestly-labelled set and the refusal looked like a
+    # finding about the labeller. Duplicated state that gates a decision must
+    # be checked against its source.
+    document = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    document["criteria_locked_at"] = "2026-08-01T21:30:00Z"  # the superseded value
+    path = _write(tmp_path, document, name="stale.json")
+    with pytest.raises(GoldSetCriteriaDriftError) as excinfo:
+        GoldValidityService().load_gold_set(path, allow_synthetic=True, criteria_path=CRITERIA_V3)
+    assert excinfo.value.field == "criteria_locked_at"
+    assert "refusing to guess which" in str(excinfo.value)
+
+
+def test_a_set_naming_the_wrong_criteria_file_is_refused(tmp_path: Path) -> None:
+    document = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    document["criteria_lock_content_hash"] = "sha256:" + "0" * 64
+    path = _write(tmp_path, document, name="wrong-criteria.json")
+    with pytest.raises(GoldSetCriteriaDriftError) as excinfo:
+        GoldValidityService().load_gold_set(path, allow_synthetic=True, criteria_path=CRITERIA_V3)
+    assert excinfo.value.field == "criteria_lock_content_hash"
+
+
+def test_the_corrected_lock_instant_is_earlier_than_the_one_it_replaced() -> None:
+    # Guards the direction of the correction. Moving a lock LATER can only make
+    # the gate stricter; moving it EARLIER — which is what happened — lets sets
+    # through that were previously refused, so the reason has to stay attached
+    # to the file rather than living in a commit message.
+    criteria = json.loads(CRITERIA_V3.read_text(encoding="utf-8"))
+    correction = criteria["locked_at_correction"]
+    assert criteria["locked_at"] < correction["superseded_value"]
+    assert correction["found_by"]
+    assert correction["why_this_value"]

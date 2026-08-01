@@ -105,6 +105,29 @@ class GoldSetFrozenHashMismatchError(DomainError):
         )
 
 
+class GoldSetCriteriaDriftError(DomainError):
+    """The gold set's copy of the criteria lock disagrees with the criteria
+    file it names. A REFUSAL (CLI exit 3).
+
+    This check exists because its absence cost a round trip. The criteria lock
+    instant lived in two places — the criteria file and every gold set's copy
+    of it — and on 2026-08-01 the two came apart: a wall-clock reading was
+    stamped as UTC, the order gate refused an honestly-labelled set, and the
+    refusal looked like a finding about the labeller when it was a defect in
+    the reference clock. Duplicated state that gates a decision has to be
+    checked against its source, or it will drift exactly when it matters.
+    """
+
+    def __init__(self, field: str, in_set: str, in_criteria: str) -> None:
+        self.field = field
+        self.in_set = in_set
+        self.in_criteria = in_criteria
+        super().__init__(
+            f"criteria drift on {field!r}: the gold set says {in_set!r}, the criteria file it "
+            f"names says {in_criteria!r}. One of them is stale; refusing to guess which."
+        )
+
+
 class GoldSetOrderGateError(DomainError):
     """``labelled_at`` is not strictly after ``criteria_locked_at``. A REFUSAL
     (CLI exit 3) — see the module docstring's second refusal.
@@ -298,6 +321,7 @@ class GoldValidityService:
         *,
         expected_sha256: str | None = None,
         allow_synthetic: bool = False,
+        criteria_path: Path | None = None,
     ) -> GoldLabelSet:
         """Load, verify and return the gold standard at ``path``.
 
@@ -308,6 +332,10 @@ class GoldValidityService:
             allow_synthetic: opt in to loading a set whose provenance marks it
                 a test fixture. Defaults to ``False`` — see the module
                 docstring's third refusal.
+            criteria_path: the criteria file the set names. When given, the
+                set's own copies of the criteria lock are checked against it
+                and any disagreement is a refusal. Optional only because older
+                sets predate the check; supply it whenever it exists.
 
         Raises:
             GoldSetFileError: unreadable, non-UTF-8, non-JSON, or wrong shape.
@@ -337,6 +365,25 @@ class GoldValidityService:
         criteria_locked_at = _require_str(document, "criteria_locked_at", path=path)
         criteria_lock_content_hash = _require_str(document, "criteria_lock_content_hash", path=path)
         labelled_at = _require_str(document, "labelled_at", path=path)
+
+        # --- Criteria drift, checked BEFORE the order gate, because a gate
+        #     evaluated against a stale copy of its own reference produces a
+        #     confident wrong answer rather than an honest refusal.
+        if criteria_path is not None:
+            criteria_document, criteria_bytes = _read_json_file(criteria_path)
+            criteria = _require_mapping(criteria_document, path=criteria_path, what="criteria")
+            actual_criteria_hash = compute_sha256(criteria_bytes)
+            if criteria_lock_content_hash != actual_criteria_hash:
+                raise GoldSetCriteriaDriftError(
+                    "criteria_lock_content_hash",
+                    criteria_lock_content_hash,
+                    actual_criteria_hash,
+                )
+            criteria_own_lock = criteria.get("locked_at")
+            if isinstance(criteria_own_lock, str) and criteria_own_lock != criteria_locked_at:
+                raise GoldSetCriteriaDriftError(
+                    "criteria_locked_at", criteria_locked_at, criteria_own_lock
+                )
 
         # --- The order gate. Strictly after, not merely "not before": labels
         #     stamped at the same instant as the lock cannot be shown to have
@@ -543,6 +590,7 @@ __all__ = [
     "SYNTHETIC_PRACTICE",
     "GoldLabelSet",
     "GoldSetFileError",
+    "GoldSetCriteriaDriftError",
     "GoldSetFrozenHashMismatchError",
     "GoldSetLabelError",
     "GoldSetOrderGateError",

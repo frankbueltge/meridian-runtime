@@ -22,7 +22,7 @@ from benchmarks.meridianbench.suites.mb_cls import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-FIXTURE = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v2.synthetic.json"
+FIXTURE = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v3.synthetic.json"
 
 
 def _cases() -> tuple[BenchmarkCase[MbClsInput, MbClsExpected], ...]:
