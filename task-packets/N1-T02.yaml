@@ -1,0 +1,337 @@
+task_id: N1-T02
+title: >-
+  The frozen gold standard and its validity measurement: a hash-pinned,
+  version-immutable evidence-classification gold set (MB-CLS) with structural
+  label isolation, a criteria-finalization-before-labelling order gate, and
+  `mrr validate gold` rendering a deterministic VALIDITY report against it —
+  confusion, accuracy beside its majority-class floor, Cohen's and weighted
+  kappa, Krippendorff's nominal alpha, per-category precision/recall/F1 and a
+  false-support rate — reusing the N1-T01 metric core unchanged, touching no
+  database, invoking no model, and refusing to report at all when the gold set
+  is absent or its hash does not match.
+status: approved
+epic: N1
+reviewer_resolution: >-
+  Approved 2026-08-01 by the main session as reviewing instance, under the
+  owner's explicit ordering the same day ("Zuerst der MASSSTAB ... Springe
+  nicht") and his two recorded decisions of that date: (1) a model proposal may
+  NEVER overwrite the curated justification and may never be called "verified"
+  — bears on N1-T03/step 2, recorded here because it constrains what this
+  packet's measured "system under test" is allowed to be; (2) the gold labels
+  AND the thresholds are set by an ENCOUNTER with another practice via The
+  Middle, not by the owner, not by the literature, and above all not by Meridian
+  itself. Load-bearing choices CONFIRMED at derivation: (a) VALIDITY, not
+  reliability — the reference rater is a gold standard set outside the measured
+  practice; a distinct report type is required because AgreementReport's
+  `measures_reliability_not_validity: Literal[True]` cannot be False by
+  construction and N1-T01's honesty boundary must not be weakened; (b) the gold
+  set is a committed, hash-pinned INPUT, never code, and never edited — a change
+  is a new version; (c) label isolation is inherited STRUCTURALLY from
+  E4-T07's BenchmarkCase/SystemUnderTest typing, not re-implemented; (d) the
+  metric core (packages/domain/mrr/domain/agreement.py) is reused UNCHANGED —
+  this packet adds no metric mathematics, only one derived rate; (e) thresholds
+  arrive from the encounter and stay `None` until then, and a `None` threshold
+  FAILS its check rather than passing provisionally; (f) fail-closed on a
+  missing or hash-mismatched gold set — a refusal, never a partial report.
+depends_on: [N1-T01, E4-T07]
+derivation: >-
+  Derived 2026-08-01 from docs/design/2026-08-01-n1-t02-ableitung-goldstandard.md,
+  which fact-locks four claims of the 2026-08-01 handoff against the code and
+  corrects them. Fact base verified first-hand at derivation, every citation a
+  line that was read:
+  (K1) `mrr federation envelope sign` is payload-agnostic
+  (federation_main.py:466 "no --payload-kind is special-cased", :483
+  "free-form, non-empty tag") — the handoff's and the 2026-07-31 review's claim
+  that the federation can carry only CorrectionNotification is OUTDATED since
+  E5-T10 + I1-T01, so the owner's encounter route is not transport-blocked.
+  (K2) the model-assisted step is synthesis_executor.py:431-488, NOT :710/713
+  (which is `_classify_analysis`), and its field set is data-driven from
+  MethodProtocol.extraction_fields (:974, :491-503) rather than fixed at two;
+  `evidence_relation` is nonetheless structurally unreachable for it, being a
+  top-level CorpusEntry field (:247) outside the `extraction` dict (:251) that
+  ExtractionOutcome (:413-421) cannot carry.
+  (K3) verification_disposition="verified" replaces the WHOLE extraction dict
+  and drops model-null fields (:478-482); the key is write-only (only :202
+  and :611 in the entire tree); it is a different field from
+  CorpusEntry.verification_status, and only that second one gates independence
+  counting (source_independence.py:98); claim prose is built from the curated
+  top-level field (:929-943). The live hazard is a name collision, not data
+  corruption.
+  (K4) the nightly research-run selection logic (research-run.yml:57-109) was
+  re-executed against the live tree and yields `pending = []` — both complete
+  corpora are in archive/answered.json, so the routine currently runs empty.
+  Reuse base verified: harness.py:38-63 (label isolation), promotion.py:63-91
+  and :119-134 (EvaluationProfile, fail-closed MetricsReport), targets.py
+  (ADR-updatable constants incl. an existing false-support target),
+  agreement.py:157/191/241/258/289/326/390/432/451 (the full metric core
+  including per-category PRF against a NAMED reference rater).
+objective: >-
+  After this packet, `mrr validate gold --gold-set <path> --predictions <path>`
+  renders a deterministic validity report (JSON and Markdown) of a set of
+  evidence-relation classifications against a frozen gold standard, computing:
+  the confusion matrix over {supports, contradicts, qualifies, contextualizes},
+  observed agreement (accuracy) ALWAYS printed beside the majority-class floor,
+  Cohen's kappa, linear- and quadratic-weighted kappa, Krippendorff's nominal
+  alpha, per-category precision/recall/F1 against gold as the named reference,
+  and the false-support rate (share of non-`supports` gold items read as
+  `supports`). The report header states in plain type: (a) this is VALIDITY
+  against a gold standard, naming that standard's provenance; (b) the gold
+  set's sha256 and version id; (c) the criteria version the labels were made
+  under, together with the order-gate evidence that criteria were locked BEFORE
+  labelling; (d) each category's n and a below-power flag when n/category < 20.
+  It reads only committed files, opens no database connection, invokes no
+  model, performs no network access, and writes only the given output path
+  (atomic os.replace). With no gold set present, or with a gold set whose bytes
+  do not hash to its declared id, it REFUSES — a named non-zero exit, never a
+  partial or provisional report.
+source_of_truth:
+  - docs/design/2026-08-01-n1-t02-ableitung-goldstandard.md        # this packet's derivation and fact-lock
+  - docs/design/2026-07-24-capability-roadmap-entwurf.md           # N1's own spec: >=20-30/category, kappa/F1, finalize-then-validate
+  - docs/design/2026-07-24-primaerquellen-selbstoptimierung.md     # why the evaluator must be frozen and outside the optimiser
+  - docs/design/2026-07-26-ableitung-eigenexperiment-orchestrierung.md  # rung 2: without a gold standard any arm comparison is worthless
+  - packages/domain/mrr/domain/agreement.py                        # the metric core — REUSED UNCHANGED
+  - packages/domain/mrr/domain/agreement_report.py                 # the reliability report this one is the deliberate counterpart to
+  - benchmarks/meridianbench/harness.py                            # structural label isolation, inherited not re-implemented
+  - benchmarks/meridianbench/promotion.py                          # EvaluationProfile + fail-closed MetricsReport
+  - benchmarks/meridianbench/targets.py                            # ADR-updatable threshold constants
+  - services/control_plane/mrr/services/cli/validation_main.py     # CLI pattern to mirror (exit 0/2/3, atomic os.replace)
+  - services/control_plane/mrr/services/cli/main.py                # +1 subcommand registration
+requirements:
+  - >-
+    R1 (gold set as data, schemas/gold-label-set.schema.json): a gold label set
+    is an externally visible data structure and MUST be schema-validated
+    (AGENTS rule 6). Required: `set_id` (e.g. "mb-cls-v1"), `criteria_version`,
+    `criteria_locked_at`, `criteria_lock_content_hash`, `label_provenance`
+    (who produced the labels, under which act — free text plus a machine field
+    naming the producing practice), `categories` (the declared label space),
+    and `cases[]`. Each case: `case_id`, `excerpt` (verbatim source text),
+    `excerpt_sha256`, `source_identifiers`, `claim_text`, `expected_relation`
+    (one of `categories`), `expected_rationale`, and free-text `metadata`.
+    `labelled_at` MUST be strictly after `criteria_locked_at` — a set that
+    violates this is REFUSED at load, not warned about.
+  - >-
+    R2 (MB-CLS suite, benchmarks/meridianbench/suites/mb_cls.py): expose the
+    gold set as `BenchmarkCase[MbClsInput, MbClsExpected]` values built by a
+    loader, where `MbClsInput` carries ONLY excerpt/claim/criteria and
+    `MbClsExpected` carries the relation and rationale. Label isolation is
+    inherited from harness.py and MUST NOT be re-implemented or worked around:
+    no scorer state on the input, no relation in `metadata`.
+  - >-
+    R3 (freeze, verifiable not asserted): `EvaluationProfile.fixture_set_id`
+    for an MB-CLS evaluation is the string `<set_id>@sha256:<hex>` where the
+    hex is the sha256 of the gold-set file's bytes. A loader recomputes it and
+    refuses on mismatch. A registry file records, per set_id, the sha256 that
+    version froze at; `scripts/check_gold_freeze.py` fails when a registered
+    version's bytes have changed, and CI runs it.
+  - >-
+    R4 (validity metrics, packages/domain/mrr/domain/gold_validity_report.py):
+    a Pydantic-validated PROJECTION (never a persisted object, never
+    authoritative — rule 7) computed ENTIRELY from agreement.py's existing
+    functions with gold as rater "a" and the system under test as rater "b",
+    reference="a" throughout. It carries: confusion matrix, observed agreement,
+    majority baseline, Cohen's/weighted kappa, Krippendorff's alpha,
+    per-category PRF, per-category n, below_power, the gold sha256, the
+    criteria version, and the label provenance. It carries
+    `measures_validity_against_gold: Literal[True]`, mirroring N1-T01's
+    inverse invariant. The ONLY new mathematics is `false_support_rate`,
+    derived from the confusion matrix: of all items whose gold label is not
+    `supports`, the share the system labelled `supports`; `None` with a stated
+    reason when no such item exists, never a fabricated 0.0.
+  - >-
+    R5 (thresholds from outside, targets.py + promotion.py): add
+    `GOLD_CLASSIFICATION_KAPPA_TARGET`, `GOLD_CLASSIFICATION_MACRO_F1_TARGET`
+    and `FALSE_SUPPORT_ON_MB_CLS_TARGET` as `float | None` constants, each
+    documented as set by the encounter and changeable only by an accepted
+    record of that encounter. They are `None` until the encounter delivers
+    them. `MetricsReport` gains the three matching fields; the existing
+    fail-closed rule then applies unchanged — a `None` metric fails its check.
+    A `None` TARGET must likewise fail its check, with a distinct stated
+    reason ("no threshold set by an encounter yet"), never pass by default.
+  - >-
+    R6 (`mrr validate gold`, services/control_plane/mrr/services/cli/): a
+    read-only, DB-free, network-free, model-free subcommand taking
+    `--gold-set`, `--predictions`, `--format {md,json}` and `--output` (must
+    not already exist). Ordering, exit codes and atomic write mirror
+    `mrr validate agreement`. Exit 2 for a missing/unparseable input; exit 3
+    for a refusal that is a RESULT (hash mismatch, order-gate violation,
+    misaligned item sets) with the reason named on stderr.
+  - >-
+    R7 (synthetic fixture only): `benchmarks/meridianbench/fixtures/
+    mb-cls-v1.synthetic.json` is a small, clearly-named SYNTHETIC set for
+    testing the apparatus. It is NOT the gold standard and MUST NOT be
+    promoted into one: its `label_provenance.producing_practice` is
+    `"synthetic-fixture"`, and the loader refuses to use a set with that
+    provenance for anything but tests, naming the refusal.
+allowed_paths:
+  - schemas/gold-label-set.schema.json
+  - packages/domain/mrr/domain/gold_validity_report.py
+  - benchmarks/meridianbench/suites/mb_cls.py
+  - benchmarks/meridianbench/fixtures/
+  - benchmarks/meridianbench/targets.py
+  - benchmarks/meridianbench/promotion.py
+  - benchmarks/meridianbench/tests/
+  - services/control_plane/mrr/services/validation/
+  - services/control_plane/mrr/services/cli/validation_main.py
+  - services/control_plane/mrr/services/cli/main.py                # registration only
+  - scripts/check_gold_freeze.py
+  - .github/workflows/ci.yml                                       # +1 step: the freeze check
+  - tests/unit/
+  - tests/contract/
+  - tests/property/
+  - docs/design/
+  - task-packets/N1-T02.yaml
+forbidden_changes:
+  - packages/domain/mrr/domain/agreement.py                        # the metric core is reused UNCHANGED
+  - packages/domain/mrr/domain/agreement_report.py                 # N1-T01's reliability boundary stays as it is
+  - benchmarks/meridianbench/harness.py                            # label isolation inherited, never re-implemented
+  - services/node_runtime/**                                       # no synthesis executor change; step 2 is a separate packet
+  - adapters/llm/**                                                # no model is invoked by this packet
+  - migrations/**                                                  # no persisted object
+  - packages/contracts/**                                          # the report is a projection, not a contract entity
+  - corpora/**                                                     # sealed inputs, read-only
+  - archive/**                                                     # never touched
+  - pyproject.toml                                                 # no new dependency
+  - uv.lock
+derived_decisions:
+  - >-
+    (a) Validity, not reliability — and a SEPARATE type, not a flag.
+    AgreementReport's `measures_reliability_not_validity: Literal[True]` is
+    N1-T01's central honesty boundary and cannot become False. Making validity
+    a second value of the same field would silently reopen exactly the claim
+    N1-T01 closed. Two types, one shared metric core.
+  - >-
+    (b) The gold set is a committed, hashed INPUT, not code — the same choice
+    N1-T01 made for its crosswalk, for the same reason: the standard against
+    which everything is judged must itself be contestable, citable and
+    diff-able, not compiled in.
+  - >-
+    (c) Four categories in the label space, two in the targets.
+    `_classify_analysis` counts only supports/contradicts
+    (synthesis_executor.py:192-197); qualifies/contextualizes move nothing. But
+    they stay in the label space because the most consequential error a
+    classifier can make is reading a `qualifies` as a `supports`, which inflates
+    corroboration and lifts the ceiling meant to cap the claim. Dropping them
+    would make the benchmark blind to its own worst failure.
+  - >-
+    (d) The order gate is data, not discipline. `labelled_at` after
+    `criteria_locked_at`, both carried in the set and checked at load. Without
+    it "frozen beforehand" is an assertion in a document; with it, a moved goal
+    post is a refused run.
+  - >-
+    (e) Thresholds absent means FAIL, not PASS. The encounter has not yet
+    delivered numbers. The alternative — a provisional default — would let a
+    self-modification claim success against a threshold nobody set, which is
+    precisely the failure mode the whole ordering exists to prevent.
+  - >-
+    (f) ~60 cases is below the roadmap's own >=20-30/category and is REPORTED as
+    below_power, following N1-T01's derived_decision (g). An under-powered
+    honest measurement is worth more than a well-powered fictional one, and the
+    flag prevents the number from being read as publication-grade.
+  - >-
+    (g) The synthetic fixture is quarantined by provenance, not by filename
+    convention alone. A filename can be copied; a provenance field the loader
+    refuses to accept for real evaluation cannot be promoted by accident.
+invariants:
+  - No database connection is opened and no repository is constructed anywhere in the runtime path.
+  - No model adapter is constructed and no network call is made, on any path.
+  - Nothing is written except the requested --output file (atomic os.replace); corpora and archive are never touched.
+  - No wall-clock timestamp in any rendered byte; identical inputs yield a byte-identical report and a stable content hash.
+  - A gold set whose recomputed sha256 differs from its declared id is REFUSED; no metric is computed from it.
+  - A gold set whose labelled_at is not strictly after criteria_locked_at is REFUSED at load.
+  - Accuracy is never rendered without the majority-class baseline beside it, in the same block.
+  - A target that is None fails its check with a stated reason; it never passes and is never omitted.
+  - A gold set with label_provenance.producing_practice == "synthetic-fixture" is refused for real evaluation, by name.
+  - agreement.py and agreement_report.py are byte-identical before and after this packet.
+acceptance_tests:
+  - >-
+    AT1 (hand-computed oracle, worked at derivation without importing the code
+    under test). The fixed 20-item matrix, rows = gold, columns = system, in
+    category order [supports, contradicts, qualifies, contextualizes]:
+    [[8,1,1,0], [1,3,1,0], [1,0,2,0], [1,0,0,1]].
+    Gold marginals [10,5,3,2]; system marginals [11,4,4,1]; diagonal 14.
+    Asserted as literals: observed agreement = 7/10 = 0.70 exactly; majority
+    baseline = 10/20 = 0.50 exactly; p_e = 144/400 = 9/25 = 0.36 exactly;
+    Cohen's kappa = (7/10 - 9/25)/(1 - 9/25) = 17/32 = 0.53125 EXACTLY — an
+    exact rational, so the assertion is equality, not a tolerance
+    (agreement.py computes in fractions.Fraction). False-support rate: of the
+    10 gold items that are not `supports`, 3 were labelled `supports`, so
+    exactly 3/10 = 0.30. Kappa here also lands just above the 0.5 the field
+    literature calls reachable for criterial classification, which makes this
+    fixture a useful shape for the apparatus without being a claim about any
+    real system.
+  - >-
+    AT2 (freeze is real): the loader accepts the fixture when its declared
+    `<set_id>@sha256:<hex>` matches the file bytes; flipping a single byte of
+    the fixture makes the loader refuse with exit 3 and the mismatch named;
+    `scripts/check_gold_freeze.py` fails for a registered version whose bytes
+    changed and passes when they did not.
+  - >-
+    AT3 (order gate): a gold set with labelled_at == criteria_locked_at is
+    refused; one with labelled_at before criteria_locked_at is refused; one
+    strictly after is accepted. All three asserted, the refusals naming the
+    violated order rather than a generic parse error.
+  - >-
+    AT4 (fail-closed on absence): invoking `mrr validate gold` with no
+    `--gold-set` path present exits non-zero and prints a reason naming the
+    missing standard; NO report file is created. With all three thresholds
+    None, `decide_promotion` returns `hold` and each TargetCheck carries the
+    "no threshold set by an encounter yet" reason — never `promote`.
+  - >-
+    AT5 (label isolation survives): a test asserts that `MbClsInput` has no
+    field carrying the expected relation, and that the value passed to a system
+    under test in the MB-CLS suite is an `MbClsInput` — mirroring
+    benchmarks/meridianbench/tests/test_harness_label_isolation.py, which must
+    continue to pass unchanged.
+  - >-
+    AT6 (determinism and non-interference): two renders of the same inputs are
+    byte-identical; `git diff --exit-code` over agreement.py and
+    agreement_report.py is empty after the packet; the existing meridianbench,
+    unit, property and contract tiers pass unmodified.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - uv run python scripts/run_test_tier.py meridianbench
+  - make security-check
+specification_gaps:
+  - >-
+    The gold labels themselves are NOT produced by this packet. They arrive from
+    an encounter with another practice via The Middle (owner decision
+    2026-08-01). Until then the apparatus runs on a synthetic fixture and
+    refuses to treat it as a standard. This is a declared, dated hole, not an
+    oversight.
+  - >-
+    The threshold values are likewise absent by design and their checks fail
+    closed. Setting them is an act of the encounter, recorded, not a code change
+    a builder may make.
+  - >-
+    Cryptographic attributability of the returned label sheet (a signed envelope
+    from Ulysses' own practice identity) requires Ulysses' node id and trust
+    declaration, which do not exist yet (Wegkarte 2026-07-26, points 8/9). The
+    first round therefore attributes by commit and journal entry. Named as a
+    retrofit, not as done.
+  - >-
+    Prompt-stability across paraphrases (Krippendorff's alpha over prompt
+    variants) remains N1-T03 and is untouched here; it needs a model arm, which
+    step 2 has not built.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding the exact
+    `mrr validate gold` invocation, the rendered Markdown report for the
+    synthetic fixture verbatim (confusion matrix, accuracy beside its majority
+    baseline, kappa, per-category PRF, false-support rate, below_power flag,
+    validity header), the gold-set sha256, and the `hold` promotion decision
+    with its three "no threshold set" reasons.
+stop_conditions:
+  - >-
+    If computing any required metric would need a change to agreement.py, STOP
+    and report — the metric core is reused unchanged by construction, and a
+    needed change means this packet's premise is wrong.
+  - >-
+    If satisfying label isolation would need a change to harness.py, STOP —
+    E4-T07's structural guarantee is inherited, never renegotiated.
+  - >-
+    If any plausible reading requires invoking a model or reaching the network to
+    produce the report, STOP — this packet is model-free and offline by
+    invariant, and such a reading means the scope has drifted into step 2.
