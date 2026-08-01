@@ -115,45 +115,88 @@ jobs:
             echo "here implies a change._"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Lay it before a human, never straight onto main
+      # --- Why this lands on main instead of opening a pull request -------
+      #
+      # The first version pushed a branch named for the date and left the
+      # register on it. That breaks the way this owner actually works: he
+      # starts the routine by hand, often more than once a day. The second run
+      # would find the register on main unchanged, report the same sources as
+      # new again, and collide with its own branch from the first run. A watch
+      # whose memory only advances when a human merges has no memory on the
+      # days it is used most.
+      #
+      # An observation is not a claim. It says what appeared; it says nothing
+      # about what any of it means, and its own file says so. research-run.yml
+      # keeps its pull request because a research RESULT is an assertion that
+      # deserves a human before it lands. This is the other kind of artefact,
+      # and treating them the same was a mistake of symmetry, not of caution.
+      - name: Record the night on main
         if: steps.check.outputs.new == 'true' && inputs.dry_run != true
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          branch="watch/field-${{ steps.sweep.outputs.today }}"
           git config user.name "Field Watch"
           git config user.email "watch@meridian-runtime.invalid"
-          git checkout -b "$branch"
           git add corpora/field-watch/
           git commit -m "Field watch ${{ steps.sweep.outputs.today }}: what appeared in the subject
 
           An observation, not a reading. The sweep ran the frozen search set
-          against arXiv, applied the frozen inclusion filter, and reports only
+          against arXiv, applied the frozen inclusion filter, and recorded only
           what was not already in the register.
 
           Nothing here has been classified. Nothing here implies a change to
-          any instrument or to the constitution — deciding that is the other
-          half of this routine, which needs a frozen evaluator and is not
-          built.
+          any instrument or to the constitution.
 
           No human started this run."
-          git push -u origin "$branch"
+          git push origin HEAD:main
 
-          # The pull request is the intended path. It fails when the repository
-          # setting 'Allow GitHub Actions to create and approve pull requests'
-          # is off — observed on 2026-08-01 in this repository. The branch is
-          # pushed either way, so no observation is ever lost.
-          if gh pr create \
-              --base main --head "$branch" \
-              --title "Field watch ${{ steps.sweep.outputs.today }}" \
-              --body "The nightly sweep found sources in this practice's subject that were not in the register. An observation, not a reading: nothing has been classified and nothing implies a change.
+      # --- The delivery, and why it exists --------------------------------
+      #
+      # An observation recorded here has no reader: the practice that would act
+      # on it is field-research, and its sessions are scoped to their own
+      # repository. Recording something true at an address nobody can open is
+      # the same mistake that stranded the labelling commission earlier the
+      # same day. So the observation is landed inside the receiving practice's
+      # own tree, exactly as the commission finally was.
+      #
+      # Degrades honestly: with no cross-repository token the observation stays
+      # recorded here and the job says the delivery did not happen, rather than
+      # passing quietly and leaving everyone to assume it did.
+      - name: Deliver it where the practice can read it
+        if: steps.check.outputs.new == 'true' && inputs.dry_run != true
+        env:
+          ECOLOGY_TOKEN: ${{ secrets.ECOLOGY_TOKEN }}
+        run: |
+          set -euo pipefail
+          today="${{ steps.sweep.outputs.today }}"
+          observation="corpora/field-watch/observations/$today.json"
 
-          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; then
-            echo "Pull request opened."
-          else
-            echo "::warning::Actions may not open pull requests here — filing an issue with a one-click link instead."
-            gh issue create \
-              --title "Field watch ${{ steps.sweep.outputs.today }} — waiting to be laid before you" \
-              --body "The sweep ran and the branch \`$branch\` is pushed. Open the pull request with one click: ${{ github.server_url }}/${{ github.repository }}/compare/main...$branch?expand=1"
+          if [ -z "${ECOLOGY_TOKEN:-}" ]; then
+            echo "::warning::ECOLOGY_TOKEN is not set — the observation is recorded here but NOT delivered to field-research, where the practice could read it. It has no reader until that secret exists."
+            exit 0
           fi
+
+          git clone --depth 1 \
+            "https://x-access-token:${ECOLOGY_TOKEN}@github.com/frankbueltge/field-research.git" \
+            /tmp/field-research
+
+          uv run python scripts/deliver_observation.py \
+            --observation "$observation" --into /tmp/field-research/watch
+
+          cd /tmp/field-research
+          if git diff --quiet; then
+            echo "Already delivered — nothing to push."
+            exit 0
+          fi
+          git config user.name "Field Watch"
+          git config user.email "watch@meridian-runtime.invalid"
+          git add watch/
+          git commit -m "Field watch $today: what the practice's own instrument saw
+
+          Delivered from meridian-runtime, the runtime this practice owns and
+          uses. An observation, not a reading: nothing here has been classified
+          and nothing here implies that anything should change.
+
+          It is delivered rather than merely recorded because a record written
+          where its reader cannot open it is not a record. This practice's
+          sessions are scoped to this repository."
+          git push origin HEAD:main
