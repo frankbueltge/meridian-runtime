@@ -1,0 +1,64 @@
+# THROWAWAY DIAGNOSTIC — delete before this branch merges.
+#
+# `error` is an honest but opaque status: the adapter maps a non-200 response,
+# a transport failure and an unexpected 200 shape all onto it, and under any
+# redaction policy it keeps no body. That is right for an artefact and useless
+# for a diagnosis, so this asks the provider directly, once, and prints what
+# comes back.
+#
+# It exists because the alternative was guessing, and the run it is diagnosing
+# had already contradicted one guess: a longer pause made `error` more common,
+# not less, so it is not the rate limit.
+
+name: zz probe gemini
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        type: string
+        default: 'gemini-2.5-flash-lite'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Which models does this key actually have
+        env:
+          KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/models.json -w '%{http_code}' \
+            -H "x-goog-api-key: ${KEY}" \
+            "https://generativelanguage.googleapis.com/v1beta/models")
+          echo "HTTP $code"
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/models.json'))
+          names = [m['name'] for m in d.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
+          print('generateContent-capable models:')
+          for n in sorted(names): print(' ', n)
+          " || head -c 2000 /tmp/models.json
+
+      - name: One generateContent call in the adapter's exact shape
+        env:
+          KEY: ${{ secrets.GEMINI_API_KEY }}
+          MODEL: ${{ inputs.model_name }}
+        run: |
+          set -euo pipefail
+          python3 -c "
+          import json
+          print(json.dumps({'contents': [{'parts': [{'text': 'Answer with a single JSON object and nothing else, no markdown fence: {\"relation\": \"qualifies\", \"rationale\": \"a sentence\", \"decided_by\": \"qualifies definition\", \"tie_with\": null}'}]}]}, sort_keys=True))
+          " > /tmp/body.json
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-goog-api-key: ${KEY}" \
+            -d @/tmp/body.json \
+            "https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent")
+          echo "HTTP $code"
+          head -c 4000 /tmp/resp.json
