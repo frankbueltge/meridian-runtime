@@ -86,3 +86,64 @@ def test_no_case_comes_from_a_corpus_that_was_already_run() -> None:
             )
     for case in _commission()["cases"]:
         assert case["source_identifiers"]["repository_id"] not in already_run
+
+
+# --- The re-stamped set: only the header moved -------------------------------
+
+RESTAMPED = BASE / "mb-cls-ulysses-v1-restamped.json"
+RETURNED = BASE / "mb-cls-ulysses-v1.returned.json"
+
+
+def test_not_one_label_was_touched_when_meridian_corrected_its_own_clock() -> None:
+    """The assertion the whole correction rests on.
+
+    Meridian's criteria v2 carried a lock instant two hours in the future of
+    the act it licensed, so the order gate refused sixty honestly-made labels.
+    The labelling practice declined to re-stamp — correctly: "the order gate
+    that refuses the set, and the labels themselves" belong to the issuing
+    side. So Meridian corrected its own header, and this test is what keeps
+    that from becoming a licence to touch the labels too.
+    """
+    returned = json.loads(RETURNED.read_text(encoding="utf-8"))
+    restamped = json.loads(RESTAMPED.read_text(encoding="utf-8"))
+
+    assert restamped["cases"] == returned["cases"]
+    assert restamped["labelled_at"] == returned["labelled_at"] == "2026-08-01T20:52:00Z"
+    assert restamped["notes"] == returned["notes"]
+
+    # Exactly the criteria pointer moved, and nothing else.
+    moved = {
+        key for key in set(returned) | set(restamped) if returned.get(key) != restamped.get(key)
+    }
+    assert moved == {
+        "set_id",
+        "criteria_version",
+        "criteria_lock_content_hash",
+        "criteria_locked_at",
+        "label_provenance",
+        "header_corrected_by_meridian",
+    }
+
+
+def test_the_correction_is_attributed_to_meridian_not_to_the_labeller() -> None:
+    restamped = json.loads(RESTAMPED.read_text(encoding="utf-8"))
+    correction = restamped["header_corrected_by_meridian"]
+
+    assert correction["corrected_by"] == "meridian (the issuing side)"
+    assert correction["returned_set_sha256"].startswith("sha256:")
+    # The labels stay the labelling practice's own, in the provenance a reader
+    # actually reads.
+    assert restamped["label_provenance"]["producing_practice"] == "ulysses"
+    assert "the labels are ulysses' own and unmodified" in (
+        restamped["label_provenance"]["account"].replace("’", "'").lower()
+    )
+
+
+def test_the_returned_set_is_committed_verbatim_beside_the_correction() -> None:
+    # A correction is only auditable while the thing corrected is readable.
+    returned = json.loads(RETURNED.read_text(encoding="utf-8"))
+    restamped = json.loads(RESTAMPED.read_text(encoding="utf-8"))
+    digest = "sha256:" + hashlib.sha256(RETURNED.read_bytes()).hexdigest()
+
+    assert returned["set_id"] == "mb-cls-ulysses-v1"
+    assert digest == restamped["header_corrected_by_meridian"]["returned_set_sha256"]
