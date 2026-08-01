@@ -44,21 +44,24 @@ jobs:
           for n in sorted(names): print(' ', n)
           " || head -c 2000 /tmp/models.json
 
-      - name: One generateContent call in the adapter's exact shape
+      - name: What daily quota does each candidate model have
         env:
           KEY: ${{ secrets.GEMINI_API_KEY }}
-          MODEL: gemini-2.5-flash-lite
         run: |
           set -euo pipefail
-          python3 -c "
-          import json
-          print(json.dumps({'contents': [{'parts': [{'text': 'Answer with a single JSON object and nothing else, no markdown fence: {\"relation\": \"qualifies\", \"rationale\": \"a sentence\", \"decided_by\": \"qualifies definition\", \"tie_with\": null}'}]}]}, sort_keys=True))
-          " > /tmp/body.json
-          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -H "x-goog-api-key: ${KEY}" \
-            -d @/tmp/body.json \
-            "https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent")
-          echo "HTTP $code"
-          head -c 4000 /tmp/resp.json
+          for m in gemini-2.0-flash gemini-2.0-flash-lite gemini-2.5-flash gemini-3.5-flash-lite gemini-flash-lite-latest; do
+            echo '{"contents":[{"parts":[{"text":"Reply with the single word: ok"}]}]}' > /tmp/b.json
+            code=$(curl -sS -o /tmp/r.json -w '%{http_code}' -X POST \
+              -H "Content-Type: application/json" -H "x-goog-api-key: ${KEY}" \
+              -d @/tmp/b.json \
+              "https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent")
+            quota=$(python3 -c "
+import json,sys
+try: d=json.load(open('/tmp/r.json'))
+except Exception: print('unparseable'); sys.exit()
+det=d.get('error',{}).get('details',[])
+vs=[v for x in det if x.get('@type','').endswith('QuotaFailure') for v in x.get('violations',[])]
+print('; '.join(f\"{v.get('quotaId')}={v.get('quotaValue')}\" for v in vs) or 'OK — call succeeded')
+")
+            echo "$m -> HTTP $code | $quota"
+          done
