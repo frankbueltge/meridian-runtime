@@ -1,0 +1,285 @@
+# Meridians Forschungslaeufe fahren von selbst, online, ohne die Maschine eines
+# Menschen und ohne dass jemand einen Knopf druecken muss.
+#
+# DER AUSLOESER IST EINE FRAGE, KEINE UHR.
+# Naechtlich wird geprueft: liegt unter corpora/ ein Korpus, der alle fuenf
+# Eingabedateien hat und fuer den noch KEIN Archiv-Dump existiert? Dann ist das
+# eine neue, noch nicht beantwortete Frage — und sie wird gefahren. Liegt keine
+# vor, tut dieser Workflow nichts und sagt das.
+#
+# Damit ist der naechtliche Lauf kein Placebo: `mrr synthesis run` ist
+# deterministisch, aber die EINGABE aendert sich, sobald die Praxis eine neue
+# Frage stellt. Ein Korpus zu committen IST das Stellen der Frage.
+#
+# Wer eine Frage stellt, stellt sie also per Pull Request auf dieses
+# Repository — nicht per Knopfdruck und nicht auf einer lokalen Maschine.
+name: Research run
+
+on:
+  schedule:
+    # 04:40 UTC — vor dem Drift-Waechter der Site (05:45 Berlin), damit ein
+    # frisches Ergebnis noch am selben Morgen sichtbar werden kann.
+    - cron: '40 4 * * *'
+  # Nur als Notausgang fuer die Fehlersuche, NICHT der vorgesehene Weg.
+  workflow_dispatch:
+    inputs:
+      only_corpus:
+        description: 'Nur diesen einen Korpus fahren (leer = wie naechtlich, alle offenen)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: research-run
+
+jobs:
+  # ——— 1. Gibt es eine offene Frage? ——————————————————————————————————————
+  scan:
+    name: Offene Fragen suchen
+    runs-on: ubuntu-latest
+    outputs:
+      pending: ${{ steps.find.outputs.pending }}
+      any: ${{ steps.find.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unbeantwortete Fragen finden
+        id: find
+        env:
+          ONLY: ${{ inputs.only_corpus }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, pathlib
+
+          REQUIRED = [
+              "question-model.proposal.json",
+              "concept-charter.proposal.json",
+              "method-protocol.proposal.json",
+              "corpus-entries.json",
+              "protocol-parameters.sidecar.json",
+          ]
+          only = os.environ.get("ONLY", "").strip()
+
+          # Das Register, nicht ein Namensmuster: die bestehenden Dumps heissen
+          # nach Paket-IDs (mrr_k1t04_real_run_v2 ...), nicht nach ihrem Korpus.
+          # Ein Muster haette sie nicht wiedererkannt und jede alte Frage jede
+          # Nacht erneut gefahren.
+          register = json.loads(pathlib.Path("archive/answered.json").read_text())
+          answered = set(register["answered"])
+          pending, skipped = [], []
+
+          for d in sorted(pathlib.Path("corpora").iterdir()):
+              if not d.is_dir():
+                  continue
+              if only and d.name != only:
+                  continue
+              missing = [f for f in REQUIRED if not (d / f).is_file()]
+              if missing:
+                  # Kein Synthese-Korpus (z. B. reine Audit-Eingaben) — kein Mangel.
+                  skipped.append((d.name, f"{len(missing)} Eingabe(n) fehlen"))
+                  continue
+              if d.name in answered and not only:
+                  dumps = ", ".join(register["answered"][d.name]["dumps"])
+                  skipped.append((d.name, f"schon beantwortet ({dumps})"))
+                  continue
+              pending.append(d.name)
+
+          print(f"pending={json.dumps(pending)}")
+          print(f"any={'true' if pending else 'false'}")
+
+          summary = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
+          with summary.open("a") as fh:
+              if pending:
+                  fh.write("## Offene Fragen\n\n")
+                  for name in pending:
+                      fh.write(f"- `corpora/{name}` — wird gefahren\n")
+              else:
+                  fh.write("## Keine offene Frage\n\nJeder vollstaendige Korpus "
+                           "hat seinen Archiv-Dump. Nichts zu tun.\n")
+              if skipped:
+                  fh.write("\n### Uebergangen\n\n")
+                  for name, why in skipped:
+                      fh.write(f"- `{name}` — {why}\n")
+          PY
+
+  # ——— 2. Jede offene Frage fahren ————————————————————————————————————————
+  run:
+    name: Lauf ${{ matrix.corpus }}
+    needs: scan
+    if: needs.scan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        corpus: ${{ fromJson(needs.scan.outputs.pending) }}
+    env:
+      DB_URL: postgresql+psycopg://mrr:mrr@localhost:5432/mrr_run
+      CORPUS_DIR: corpora/${{ matrix.corpus }}
+      PGPASSWORD: mrr
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mrr
+          POSTGRES_PASSWORD: mrr
+          POSTGRES_DB: mrr_run
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U mrr -d mrr_run"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked
+
+      - name: Werkzeugversionen sichtbar machen
+        run: |
+          # Ein Client, der aelter ist als der Server, laesst pg_dump scheitern.
+          # Lieber hier sichtbar als spaeter raetselhaft.
+          psql --version
+          pg_dump --version
+
+      - name: Schema anlegen
+        run: |
+          uv run python - <<'PY'
+          from alembic import command
+          from alembic.config import Config
+          cfg = Config("alembic.ini")
+          cfg.attributes["sqlalchemy_url"] = "postgresql+psycopg://mrr:mrr@localhost:5432/mrr_run"
+          command.upgrade(cfg, "head")
+          PY
+
+      - name: Lauf fahren
+        id: synthesis
+        run: |
+          mkdir -p /tmp/mrr-artifacts
+          set -o pipefail
+          uv run mrr synthesis run \
+            --database-url "$DB_URL" \
+            --artifact-root /tmp/mrr-artifacts \
+            --question-model-file "$CORPUS_DIR/question-model.proposal.json" \
+            --concept-charter-file "$CORPUS_DIR/concept-charter.proposal.json" \
+            --method-protocol-file "$CORPUS_DIR/method-protocol.proposal.json" \
+            --corpus-file "$CORPUS_DIR/corpus-entries.json" \
+            --protocol-parameters-file "$CORPUS_DIR/protocol-parameters.sidecar.json" \
+            --code-revision "${{ github.sha }}" \
+            --actor "urn:mrr:practice:01KYG3AY344T18D0479TG557KX" \
+            --policy-version "policy-scheduled-run-v1" \
+            --json | tee /tmp/run.json
+          echo "run_state=$(uv run python -c "import json;print(json.load(open('/tmp/run.json'))['run_state'])")" >> "$GITHUB_OUTPUT"
+
+      - name: Ergebnis berichten
+        run: |
+          uv run python - >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, os, subprocess
+
+          run = json.load(open("/tmp/run.json"))
+          corpus = os.environ["CORPUS_DIR"]
+          print(f"## `{corpus}` — Zustand **{run['run_state']}**\n")
+          print(f"- deterministisch: {run['is_deterministic']}")
+          print(f"- Output-Hash: `{run.get('output_hash')}`\n")
+
+          if not run["claim_ids"]:
+              print("Kein Claim entstanden. Die versiegelte Kiste nennt den Grund — "
+                    "ein fail-closed Abbruch ist ein Ergebnis, kein Werkzeugfehler.\n")
+
+          for cid in run["claim_ids"]:
+              row = subprocess.run(
+                  ["psql", "postgresql://mrr:mrr@localhost:5432/mrr_run", "-t", "-A", "-c",
+                   f"SELECT body FROM objects WHERE id='{cid}' ORDER BY revision DESC LIMIT 1;"],
+                  capture_output=True, text=True, check=True,
+              ).stdout.strip().splitlines()[0]
+              claim = json.loads(row)
+              print(f"### Claim **{claim['status']}**\n")
+              print(f"- dafuer: **{len(claim.get('evidence_relations', []))}**")
+              print(f"- dagegen: **{len(claim.get('counterevidence_relations', []))}**\n")
+              print("> " + claim.get("assertion", "")[:1200].replace("\n", " ") + "\n")
+          PY
+
+      - name: Lauf ins Archiv sichern und als beantwortet vermerken
+        run: |
+          pg_dump "postgresql://mrr:mrr@localhost:5432/mrr_run" \
+            --schema=public --no-owner --no-privileges \
+            > "archive/dumps/mrr_${{ matrix.corpus }}.sql"
+          ls -l "archive/dumps/mrr_${{ matrix.corpus }}.sql"
+          # Den Eintrag selbst nachtragen, sonst faehrt die naechste Nacht
+          # dieselbe Frage erneut.
+          python3 - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path("archive/answered.json")
+          reg = json.loads(p.read_text())
+          corpus = os.environ["CORPUS"]
+          reg["answered"][corpus] = {
+              "dumps": [f"mrr_{corpus}.sql"],
+              "note": f"Gefahren durch den Workflow 'Research run' am {os.environ['TODAY']}, "
+                      f"Zustand {os.environ['RUN_STATE']}, Code-Revision {os.environ['SHA'][:12]}.",
+          }
+          p.write_text(json.dumps(reg, indent=2, ensure_ascii=False) + "\n")
+          PY
+        env:
+          CORPUS: ${{ matrix.corpus }}
+          RUN_STATE: ${{ steps.synthesis.outputs.run_state }}
+          SHA: ${{ github.sha }}
+          TODAY: ${{ github.run_started_at }}
+
+      - name: Als Pull Request vorlegen, nie direkt auf main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branch="research/${{ matrix.corpus }}-$(date -u +%Y%m%d)"
+          # Maschinenidentitaet: kreditiert keine reale Person und keinen
+          # Produktnamen (Dauerregel des Repositoriums).
+          git config user.name "MRR Run"
+          git config user.email "run@meridian-runtime.invalid"
+          git checkout -b "$branch"
+          git add archive/dumps/ archive/answered.json
+          git commit -m "Lauf ${{ matrix.corpus }}: gefahren, Zustand ${{ steps.synthesis.outputs.run_state }}
+
+          Ausgeloest davon, dass corpora/${{ matrix.corpus }} vollstaendig war und
+          noch keinen Archiv-Dump hatte — eine gestellte, unbeantwortete Frage.
+          Kein Mensch hat diesen Lauf angestossen.
+
+          Code-Revision ${{ github.sha }}, frischer Laeufer, eigene PostgreSQL.
+          Der vollstaendige Datenbankzustand liegt als Dump im Archiv.
+
+          Ergebnis: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          git push -u origin "$branch"
+          gh pr create \
+            --title "Lauf ${{ matrix.corpus }} (${{ steps.synthesis.outputs.run_state }})" \
+            --body "\`corpora/${{ matrix.corpus }}\` war vollständig und hatte keinen Archiv-Dump — eine gestellte, unbeantwortete Frage. Dieser Lauf wurde von niemandem angestoßen.
+
+          Zustand: **${{ steps.synthesis.outputs.run_state }}**. Gefahren auf einem frischen Läufer mit eigener PostgreSQL, nicht auf einer lokalen Maschine.
+
+          **Das Ergebnis steht in der Lauf-Zusammenfassung:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Nichts geht ohne Freigabe auf \`main\`."
+
+  # ——— 3. Halten die Archive noch? ————————————————————————————————————————
+  integrity:
+    name: Archiv-Integritaet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+
+      # Ohne Netz, ohne Datenbank, hinter fail-closed Hash-Gates. Ein roter Lauf
+      # heisst: ein Beleg, auf den eine veroeffentlichte Aussage zeigt, ist nicht
+      # mehr da, wo er war. Das kann ohne Zutun passieren — deshalb wiederkehrend.
+      - name: Anker und Belege pruefen
+        run: |
+          uv run mrr audit anchoring \
+            --batch corpora/archive-integrity/anchoring-batch.v1.json \
+            | tee -a "$GITHUB_STEP_SUMMARY"
