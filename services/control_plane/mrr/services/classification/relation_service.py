@@ -117,6 +117,12 @@ You are classifying one source excerpt against one fixed claim, under a frozen \
 set of criteria. Apply the criteria as written. Do not smooth them, and do not \
 substitute your own judgement for a definition.
 
+Answer with a single JSON object and nothing else — no prose before or after \
+it, and no markdown code fence around it. It must validate against this JSON \
+schema exactly:
+
+{schema}
+
 THE CLAIM
 {claim_text}
 
@@ -166,6 +172,25 @@ class _RelationVerdict(BaseModel):
     rationale: str
     decided_by: str
     tie_with: Literal["supports", "contradicts", "qualifies", "contextualizes"] | None = None
+
+
+def _target_schema_json() -> str:
+    """The target model's JSON schema, canonically serialised.
+
+    Derived from :class:`_RelationVerdict` so the prompt's instruction and
+    the validation that judges the answer are the same object.
+    """
+    return json.dumps(_RelationVerdict.model_json_schema(), sort_keys=True)
+
+
+def prompt_contract_sha256() -> str:
+    """The sha256 of everything that decides what is asked: the template AND
+    the target schema interpolated into it.
+
+    Hashing the template alone would miss a changed schema, which changes the
+    ask as surely as a changed sentence does.
+    """
+    return _sha256((PROMPT_TEMPLATE + _target_schema_json()).encode("utf-8"))
 
 
 class ClassificationInputError(DomainError):
@@ -391,8 +416,17 @@ class RelationClassificationService:
         Takes a :class:`~mrr.domain.relation_proposal.RelationCase`, whose
         type cannot carry an expected relation — that is where the blindness
         of this path actually lives.
+
+        The target schema is interpolated from :class:`_RelationVerdict`
+        itself rather than restated in prose, so the instruction and the model
+        a response is validated against cannot drift apart. ``generate_
+        structured`` puts the schema into its REPAIR prompt only; the first
+        call gets whatever the caller wrote, so a caller that does not say
+        "return this JSON" is asking a language model for prose and then
+        failing it for not being JSON.
         """
         return PROMPT_TEMPLATE.format(
+            schema=_target_schema_json(),
             claim_text=criteria.claim_text,
             definitions=criteria.definitions,
             rules=criteria.rules,
@@ -424,10 +458,10 @@ class RelationClassificationService:
         verdict becomes a proposal carrying its distinct failure status, and
         what to do about that is the caller's decision.
         """
-        prompt_template_sha256 = _sha256(PROMPT_TEMPLATE.encode("utf-8"))
+        prompt_template_sha256 = prompt_contract_sha256()
         model_profile_id = derive_model_profile_urn(
             model_name=model_name,
-            prompt_template=PROMPT_TEMPLATE,
+            prompt_template=PROMPT_TEMPLATE + _target_schema_json(),
             criteria_sha256=criteria.criteria_sha256,
         )
         model_profile_hash = _sha256(
@@ -484,11 +518,27 @@ class RelationClassificationService:
             model_profile_hash=model_profile_hash,
             prompt_text=self.build_prompt(case, criteria),
             operation_kind="stochastic",
-            # hashes_only: the artefact records what was asked and what came
-            # back by hash, not verbatim. The prompt is reconstructible from
-            # the template and the committed inputs, so retaining it would add
-            # bulk without adding evidence.
-            redaction_policy="hashes_only",
+            # raw_permitted, and this is load-bearing rather than lax.
+            #
+            # `generate_structured` validates `outcome.raw_response_text`, and
+            # `ModelInvocationOutcome` forbids that field under "hashes_only"
+            # (MRR-FR-045, enforced in its __post_init__). So under
+            # "hashes_only" there is never any text to validate, the else
+            # branch at structured_generation.py:259-277 records "no response
+            # text available", and `status == "proposal"` is UNREACHABLE. The
+            # policy does not merely redact the evidence; it decides the
+            # outcome.
+            #
+            # This was found by running it: the first online run returned
+            # schema_invalid for every case that reached the provider at all.
+            #
+            # Nothing sensitive travels here — the prompt is a published
+            # criteria set plus a published abstract, and no participant data
+            # or secret can reach it (AGENTS.md rule 11 concerns secrets in
+            # prompts; there are none). The raw text stays in memory for the
+            # length of one validation and enters no artefact: the proposal
+            # set records hashes, per its own module docstring.
+            redaction_policy="raw_permitted",
         )
         result = generate_structured(
             adapter, request, _RelationVerdict, max_repair_attempts=max_repair_attempts
@@ -526,6 +576,7 @@ class RelationClassificationService:
 
 __all__ = [
     "PROMPT_TEMPLATE",
+    "prompt_contract_sha256",
     "CasesNotBlindError",
     "ClassificationInputError",
     "LoadedCases",

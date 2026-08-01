@@ -48,7 +48,7 @@ on:
       model_name:
         description: 'Concrete provider model id — recorded in the artefact. "Gemini" is not a measurable object.'
         type: string
-        default: 'gemini-2.0-flash'
+        default: 'gemini-2.5-flash-lite'
       dry_run:
         description: 'Classify and measure, but commit nothing'
         type: boolean
@@ -82,7 +82,7 @@ jobs:
   measure:
     name: Classify sixty cases, then measure them
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -108,7 +108,7 @@ jobs:
           # A push-triggered run carries no inputs. The fallback is a concrete,
           # committed model id rather than a vendor name, which is what the
           # "never defaulted" rule is actually about.
-          model="${MODEL_NAME:-gemini-2.0-flash}"
+          model="${MODEL_NAME:-gemini-2.5-flash-lite}"
           system_id="${model}@mb-cls-criteria-v3"
           expected="$(uv run python -c "
           import json, pathlib
@@ -146,6 +146,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
+          # 5s between cases keeps one call per case under the free tier's 15
+          # requests a minute. Deliberately NOT a retry loop on error: the
+          # derivation forbids repeating until it passes, because a run that
+          # retries away its own rate-limit failures cannot tell a quota wall
+          # from a model that would not answer.
           # No `|| true`: a run that could not classify every case refuses and
           # writes nothing, because a shorter predictions file measures a
           # subset as though it were the whole set.
@@ -157,7 +162,7 @@ jobs:
             --adapter gemini \
             --model-name "${{ steps.setup.outputs.model }}" \
             --max-repair-attempts 1 \
-            --pause-seconds 2 | tee /tmp/classify.json
+            --pause-seconds 5 | tee /tmp/classify.json
 
       - name: Measure against the frozen standard
         run: |

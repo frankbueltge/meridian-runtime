@@ -36,6 +36,7 @@ from mrr.services.classification.relation_service import (
     ClassificationInputError,
     RelationClassificationService,
     derive_model_profile_urn,
+    prompt_contract_sha256,
 )
 from mrr.services.cli import classification_main
 from mrr.services.validation.gold_service import GoldValidityService
@@ -518,8 +519,7 @@ def test_the_request_the_adapter_receives_pins_the_derived_profile(tmp_path: Pat
     assert request.model_profile_id == result.model_profile_id
     assert request.model_profile_hash == result.model_profile_hash
     assert request.operation_kind == "stochastic"
-    # No raw prompt or response is retained anywhere in the artefact.
-    assert request.redaction_policy == "hashes_only"
+    assert request.redaction_policy == "raw_permitted"
 
 
 # --- The service's own boundaries --------------------------------------------
@@ -598,3 +598,105 @@ def test_the_workflow_never_pushes_to_main() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "HEAD:main" not in text
     assert 'git push origin "HEAD:${GITHUB_REF_NAME}"' in text
+
+
+# --- The two defects the first online run exposed ----------------------------
+
+
+def test_the_request_permits_raw_text_because_otherwise_no_proposal_is_possible(
+    tmp_path: Path,
+) -> None:
+    """The defect the first online run found, pinned so it cannot come back.
+
+    `generate_structured` validates `outcome.raw_response_text`, and
+    `ModelInvocationOutcome` FORBIDS that field under "hashes_only"
+    (MRR-FR-045). So under "hashes_only" there is never text to validate,
+    structured_generation.py's else branch records "no response text
+    available", and `status == "proposal"` is unreachable. The redaction
+    policy does not merely redact the evidence — it decides the outcome.
+
+    The first online run returned schema_invalid for every case that reached
+    the provider, which is what that unreachability looks like from outside.
+    """
+    service = RelationClassificationService()
+    cases = service.load_cases(_cases_file(tmp_path, [_case_doc("c1")]))
+    adapter = _ScriptedFakeAdapter([_completed(_verdict("qualifies"))])
+
+    service.classify(
+        adapter=adapter,
+        cases=cases,
+        criteria=_criteria(),
+        model_name="fake-model",
+        system_id="test-system",
+    )
+
+    assert adapter.calls[0].redaction_policy == "raw_permitted"
+
+
+def test_a_hashes_only_request_can_never_yield_a_proposal() -> None:
+    """The mechanism itself, asserted directly rather than inferred.
+
+    This is what makes the test above a fact about the library and not a
+    preference of this module. It is also why the existing extraction arm in
+    synthesis_executor.py — which requests "hashes_only" and then branches on
+    `status == "proposal"` to stamp "verified" — can never reach that branch
+    against a conforming adapter.
+    """
+    from mrr.adapters.llm.structured_generation import generate_structured
+    from mrr.domain.model_adapter import ModelInvocationRequest as _Request
+
+    hashes_only_outcome = ModelInvocationOutcome(
+        status="completed",
+        prompt_config_hash=_VALID_HASH,
+        token_usage=TokenUsage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        redaction_policy="hashes_only",
+        response_hash=_VALID_HASH,
+    )
+    adapter = _ScriptedFakeAdapter([hashes_only_outcome, hashes_only_outcome])
+    request = _Request(
+        model_profile_id="urn:mrr:model-profile:01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        model_profile_hash=_VALID_HASH,
+        prompt_text="anything",
+        operation_kind="stochastic",
+        redaction_policy="hashes_only",
+    )
+
+    from mrr.services.classification.relation_service import _RelationVerdict
+
+    result = generate_structured(adapter, request, _RelationVerdict, max_repair_attempts=1)
+
+    assert result.status == "schema_invalid"
+    assert result.proposal is None
+    assert any("no response text available" in error for error in result.validation_errors)
+
+
+def test_the_prompt_states_the_target_schema_so_the_first_call_can_succeed() -> None:
+    """The other half of the same failure.
+
+    `generate_structured` puts the schema into its REPAIR prompt only. A
+    first call that never says "return this JSON" is asking a language model
+    for prose and then failing it for not being JSON. The schema is
+    interpolated from the target model itself, so the instruction and the
+    validation cannot drift apart.
+    """
+    service = RelationClassificationService()
+    case = RelationCase(
+        case_id="c1",
+        title="A source",
+        claim_text="a claim",
+        excerpt="An external solver checks each step.",
+        excerpt_sha256="sha256:" + "a" * 64,
+    )
+
+    prompt = service.build_prompt(case, _criteria())
+
+    assert "no markdown code fence" in prompt
+    for field in ("relation", "rationale", "decided_by", "tie_with"):
+        assert f'"{field}"' in prompt
+    assert "undecidable" in prompt
+
+
+def test_the_prompt_hash_covers_the_schema_not_only_the_template() -> None:
+    """A changed schema changes the ask as surely as a changed sentence."""
+    assert prompt_contract_sha256().startswith("sha256:")
+    assert prompt_contract_sha256() != "sha256:" + "0" * 64
