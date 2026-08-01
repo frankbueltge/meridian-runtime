@@ -5,7 +5,25 @@
       "path": "benchmarks/meridianbench/fixtures/mb-cls-v1.synthetic.json",
       "sha256": "sha256:dbceee2ed41638a43af5bcd83b8b0184dd596d0d9fdf5662c1a572c58a27d5b2",
       "frozen_on": "2026-08-01",
-      "note": "NOT a standard. The synthetic fixture that exercises the apparatus; its class distribution reproduces N1-T02 AT1's hand-computed oracle, so its bytes moving would silently invalidate that oracle. Registered for exactly that reason. Its label_provenance.producing_practice is 'synthetic-fixture', which the loader refuses for real evaluation unless --allow-synthetic is passed."
+      "note": "NOT a standard. The synthetic fixture that exercises the apparatus; its class distribution reproduces N1-T02 AT1's hand-computed oracle, so its bytes moving would silently invalidate that oracle. Registered for exactly that reason. Its label_provenance.producing_practice is 'synthetic-fixture', which the loader refuses for real evaluation unless --allow-synthetic is passed. SUPERSEDED by mb-cls-v2-synthetic, which the loader can read under criteria v2; this one predates decided_by and stays frozen as history."
+    },
+    "mb-cls-v2-synthetic": {
+      "path": "benchmarks/meridianbench/fixtures/mb-cls-v2.synthetic.json",
+      "sha256": "sha256:51573bd1b0dd560c927554bf02b721698763d1d8ca4fde5f33814309424fef76",
+      "frozen_on": "2026-08-01",
+      "note": "NOT a standard. The criteria-v2 synthetic fixture: mb-cls-v1-synthetic's twenty cases carried over unchanged (so N1-T02 AT1's oracle still holds) plus decided_by, three tie_with, and three undecidable cases. Registered because its bytes moving would silently invalidate that oracle."
+    },
+    "mb-cls-criteria-v1": {
+      "path": "benchmarks/meridianbench/fixtures/mb-cls-criteria.v1.json",
+      "sha256": "sha256:c1d3bc7b5896573527859ae1e96d0107dc7c3420c8db944148b0ddf0792627a4",
+      "frozen_on": "2026-08-01",
+      "note": "The criteria the 60 cases were drawn under. SUPERSEDED by v2 after Ulysses' objection, and deliberately still frozen: an objection is only legible if the thing objected to is still readable."
+    },
+    "mb-cls-criteria-v2": {
+      "path": "benchmarks/meridianbench/fixtures/mb-cls-criteria.v2.json",
+      "sha256": "sha256:f20a1cb8674b41b61bc9b790537412b19056dc25d47df20923c4e5d03f31e780",
+      "frozen_on": "2026-08-01",
+      "note": "The criteria in force. Locked before any label is made; the order gate refuses a set labelled earlier."
     }
   }
 }

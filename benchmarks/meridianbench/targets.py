@@ -41,26 +41,46 @@ FALSE_SUPPORT_ON_MB_CIT_COMPARATOR: Final[TargetComparator] = "<="
 
 # --- MB-CLS: the gold-standard classification targets -----------------------
 #
-# These three are `None`, and that is the whole point (task-packets/
-# N1-T02.yaml R5 / derived_decisions (e)).
+# These three are `None`, and that is now a stronger statement than it was.
 #
-# The three constants above came from docs/spec/05 section 4 — from outside
-# whoever was being measured. These three come from somewhere equally outside,
-# but not from the specification: the owner decided on 2026-08-01 that both the
-# gold labels AND the thresholds for MB-CLS are set by an ENCOUNTER with
-# another practice via The Middle. Not by Meridian, whose classification is
-# what gets measured; not by the builder of this file.
+# The owner decided on 2026-08-01 that both the gold labels AND the thresholds
+# for MB-CLS are set by an ENCOUNTER with another practice. The practice asked
+# — Ulysses, The Atelier — answered on the same day, and REFUSED to supply
+# three numbers. Its answer is recorded in
+# docs/design/2026-08-01-antwort-ulysses-und-was-daraus-folgt.md; the reasoning
+# is technical, not evasive, and it is why these constants must not be filled
+# in with plain floats even once the labels arrive:
 #
-# Until that encounter delivers numbers, they stay `None`, and
-# `promotion.decide_promotion` FAILS their checks with a stated reason rather
-# than passing them by default. A provisional default here would let a
-# self-modification report success against a threshold nobody set — which is
-# exactly the "practice that agrees with itself" the whole ordering exists to
-# prevent (docs/design/2026-07-24-primaerquellen-selbstoptimierung.md: the
-# documented failure mode is the optimiser attacking its own evaluator).
+#   * KAPPA cannot take a floor fixed before the marginals are known.
+#     Feinstein and Cicchetti (1990) showed high raw agreement can be driven to
+#     a low kappa by marginal imbalance, and that kappa moves with the ASYMMETRY
+#     of that imbalance. With four labels over sixty cases and an unknown class
+#     distribution, a kappa floor is partly a statement about the corpus's
+#     balance rather than about a classifier. A floor must therefore be stated
+#     CONDITIONAL on the realized marginals and reported beside them.
 #
-# Setting them is therefore an act of the encounter, recorded as such — not a
-# code change a builder may make on their own judgement.
+#   * MACRO F1 over four classes on sixty cases cannot carry two decimals —
+#     each class rests on roughly five to twenty cases. The target is an
+#     INTERVAL published next to the per-class counts, not a point.
+#
+#   * FALSE SUPPORT should not be a rate at all. Ulysses' own words: a rate
+#     needs a denominator that someone downstream will drop; a rule carries its
+#     own warrant into every place it travels. Their proposal, accepted:
+#     A `supports` THAT AN INDEPENDENT BLIND READER DOES NOT ALSO CALL
+#     `supports` DOES NOT COUNT TOWARD THE CAP.
+#     That is a governance rule about corroboration counting, not a benchmark
+#     threshold, and implementing it touches the synthesis executor — a
+#     separate packet, named here so the next builder finds it rather than
+#     reinventing a rate.
+#
+# So the honest state is not "waiting for three numbers". It is: the shape of
+# these three targets was refused by the practice entitled to set them, and the
+# constructions above replace them. `decide_gold_classification_promotion`
+# therefore still returns `hold`, and the reason it gives says which of the two
+# it is.
+#
+# Ulysses' own summary, which this file agrees with: "if you need three numbers
+# today, my answer is that you should not have three numbers today."
 
 #: Chance-corrected agreement with the gold standard (Cohen's kappa). Accuracy
 #: alone is not a target: with a 50% majority class, a constant classifier
@@ -88,7 +108,25 @@ FALSE_SUPPORT_ON_MB_CLS_COMPARATOR: Final[TargetComparator] = "<="
 #: list names ("collapsing unknown, not_found, contradicted, and failed into one
 #: generic error").
 NO_THRESHOLD_SET_REASON: Final[str] = (
-    "no threshold set by an encounter yet — this check cannot pass until one is"
+    "no threshold of this shape will be set: the practice entitled to set it refused a bare "
+    "number and specified a construction instead (kappa conditional on the realized marginals; "
+    "macro F1 as an interval beside the per-class counts; false support as a rule, not a rate). "
+    "See targets.py's own MB-CLS section. This check cannot pass until the construction is "
+    "implemented — it is not waiting for someone to type a float."
+)
+
+#: The corroboration rule Ulysses proposed in place of a false-support rate, on
+#: 2026-08-01, and which Meridian accepted. Recorded here rather than in prose
+#: alone because it is the one part of their answer that changes how a CLAIM is
+#: capped, not merely how a classifier is scored — and the place a future
+#: builder will look for it is beside the target it replaced.
+#:
+#: Implementing it belongs to a packet that may touch
+#: ``mrr.services.node_runtime.synthesis_executor``; N1-T02 forbids that path,
+#: deliberately, so this constant is a pointer and not a switch.
+CORROBORATION_RULE_FROM_THE_ENCOUNTER: Final[str] = (
+    "A `supports` that an independent blind reader does not also call `supports` does not count "
+    "toward the corroboration cap."
 )
 
 __all__ = [
@@ -100,6 +138,7 @@ __all__ = [
     "GOLD_CLASSIFICATION_KAPPA_TARGET",
     "GOLD_CLASSIFICATION_MACRO_F1_COMPARATOR",
     "GOLD_CLASSIFICATION_MACRO_F1_TARGET",
+    "CORROBORATION_RULE_FROM_THE_ENCOUNTER",
     "NO_THRESHOLD_SET_REASON",
     "NUMERIC_VERIFICATION_ACCURACY_COMPARATOR",
     "NUMERIC_VERIFICATION_ACCURACY_TARGET",

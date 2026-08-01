@@ -1,0 +1,29 @@
+{
+  "system_id": "synthetic-scripted-classifier",
+  "note": "Fixed predictions for mb-cls-v2.synthetic.json. Not the output of any real classifier. The twenty scored predictions are unchanged from v1 so AT1's oracle is preserved; the three undecidable cases carry a prediction too, which is dropped from the matrix rather than counted as an error — there is no correct answer to score it against.",
+  "predictions": {
+    "syn-supports-01": "supports",
+    "syn-supports-02": "supports",
+    "syn-supports-03": "supports",
+    "syn-supports-04": "supports",
+    "syn-supports-05": "supports",
+    "syn-supports-06": "supports",
+    "syn-supports-07": "supports",
+    "syn-supports-08": "supports",
+    "syn-supports-09": "contradicts",
+    "syn-supports-10": "qualifies",
+    "syn-contradicts-01": "supports",
+    "syn-contradicts-02": "contradicts",
+    "syn-contradicts-03": "contradicts",
+    "syn-contradicts-04": "contradicts",
+    "syn-contradicts-05": "qualifies",
+    "syn-qualifies-01": "supports",
+    "syn-qualifies-02": "qualifies",
+    "syn-qualifies-03": "qualifies",
+    "syn-contextualizes-01": "supports",
+    "syn-contextualizes-02": "contextualizes",
+    "syn-undecidable-01": "contextualizes",
+    "syn-undecidable-02": "contextualizes",
+    "syn-undecidable-03": "contextualizes"
+  }
+}

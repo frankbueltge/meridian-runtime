@@ -18,8 +18,8 @@ from mrr.services.validation.gold_service import compute_sha256
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 FIXTURES = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures"
-FIXTURE = FIXTURES / "mb-cls-v1.synthetic.json"
-PREDICTIONS = FIXTURES / "mb-cls-v1.synthetic.predictions.json"
+FIXTURE = FIXTURES / "mb-cls-v2.synthetic.json"
+PREDICTIONS = FIXTURES / "mb-cls-v2.synthetic.predictions.json"
 
 _EXIT_DEPENDENCY_UNAVAILABLE = 2
 _EXIT_REFUSED = 3
@@ -112,7 +112,7 @@ def test_a_successful_run_writes_the_report_and_a_json_confirmation(
     assert exit_code == 0
 
     confirmation = json.loads(capsys.readouterr().out)
-    assert confirmation["fixture_set_id"] == f"mb-cls-v1-synthetic@{pinned}"
+    assert confirmation["fixture_set_id"] == f"mb-cls-v2-synthetic@{pinned}"
     assert confirmation["n"] == 20
     assert confirmation["observed_agreement"] == 0.7
     assert confirmation["majority_baseline"] == 0.5

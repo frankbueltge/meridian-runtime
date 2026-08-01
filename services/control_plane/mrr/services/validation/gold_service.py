@@ -249,10 +249,42 @@ class GoldLabelSet:
         return f"{self.set_id}@{self.sha256}"
 
     def gold_labels(self) -> dict[str, str]:
-        """``case_id -> expected_relation``, the mapping passed to
-        :func:`mrr.domain.agreement.align_ratings` as rater "a".
+        """``case_id -> expected_relation`` for the DECIDABLE cases only — the
+        mapping passed to :func:`mrr.domain.agreement.align_ratings` as rater
+        "a".
+
+        Undecidable cases are absent by design (criteria v2,
+        ``R-undecidable-is-a-finding``). They are not scored, because there is
+        no correct answer to score against; they are counted instead, and the
+        count is reported. Folding them into the four labels would let a
+        criteria set that fails to decide look exactly like one that decides
+        well.
         """
-        return {str(case["case_id"]): str(case["expected_relation"]) for case in self.cases}
+        return {
+            str(case["case_id"]): str(case["expected_relation"])
+            for case in self.cases
+            if not case.get("undecidable", False)
+        }
+
+    def undecidable_case_ids(self) -> tuple[str, ...]:
+        """The cases the labelling practice could not decide under these
+        criteria, named rather than merely counted — coverage is a property of
+        the criteria, and which cases defeated them is the useful half.
+        """
+        return tuple(str(case["case_id"]) for case in self.cases if case.get("undecidable", False))
+
+    def tie_broken_case_ids(self) -> tuple[str, ...]:
+        """The cases where the conservative tie-break rule, rather than the
+        definitions, produced the label (criteria v2,
+        ``R-conservative-supports`` as amended).
+
+        This is the count Ulysses' objection exists to make visible: without
+        it the corroboration ceiling is a point estimate whose distance from
+        its own alternative cannot be recovered.
+        """
+        return tuple(
+            str(case["case_id"]) for case in self.cases if case.get("tie_with") is not None
+        )
 
 
 class GoldValidityService:
@@ -341,13 +373,53 @@ class GoldValidityService:
             if case_id in seen_case_ids:
                 raise GoldSetFileError(path, f"duplicate case_id {case_id!r}")
             seen_case_ids.add(case_id)
-            expected_relation = _require_str(case, "expected_relation", path=path)
-            if expected_relation not in categories:
-                raise GoldSetLabelError(case_id, "gold", expected_relation, categories)
             _require_str(case, "excerpt", path=path)
             _require_str(case, "claim_text", path=path)
-            _require_str(case, "expected_rationale", path=path)
+
+            # Criteria v2 R-record-the-decider: which rule or definition
+            # actually produced this label. Required on every case, decidable
+            # or not — "the criteria could not settle it" is itself a decider.
+            _require_str(case, "decided_by", path=path)
+
+            if case.get("undecidable", False):
+                # R-undecidable-is-a-finding. Not scored, but not silent
+                # either: an undecidable case without a stated reason would be
+                # indistinguishable from a lazy one.
+                _require_str(case, "undecidable_reason", path=path)
+                if case.get("expected_relation") is not None:
+                    raise GoldSetFileError(
+                        path,
+                        f"case {case_id!r} is marked undecidable but still carries an "
+                        "expected_relation — it is one or the other, never both",
+                    )
+            else:
+                expected_relation = _require_str(case, "expected_relation", path=path)
+                if expected_relation not in categories:
+                    raise GoldSetLabelError(case_id, "gold", expected_relation, categories)
+                _require_str(case, "expected_rationale", path=path)
+
+            # R-conservative-supports as amended: when the tie-break rule fired
+            # rather than the definitions, the runner-up is on the record. A
+            # tie_with outside the declared categories is a typo, not a label.
+            tie_with = case.get("tie_with")
+            if tie_with is not None:
+                if not isinstance(tie_with, str) or tie_with not in categories:
+                    raise GoldSetLabelError(case_id, "tie_with", str(tie_with), categories)
+                if tie_with == case.get("expected_relation"):
+                    raise GoldSetFileError(
+                        path,
+                        f"case {case_id!r}: tie_with equals the label itself — a tie is with "
+                        "the runner-up, not with the winner",
+                    )
+
             cases.append(case)
+
+        if not any(not case.get("undecidable", False) for case in cases):
+            raise GoldSetFileError(
+                path,
+                "every case is marked undecidable — there is nothing to measure against. "
+                "That is a finding about the criteria, not a gold standard.",
+            )
 
         return GoldLabelSet(
             path=path,
@@ -415,7 +487,18 @@ class GoldValidityService:
             if label not in gold_set.categories:
                 raise GoldSetLabelError(case_id, "system", label, gold_set.categories)
 
-        ratings = align_ratings(gold_labels, dict(predictions))
+        # A system may well have produced a label for a case the criteria could
+        # not settle. That prediction is not wrong — there is simply nothing to
+        # score it against — so it is dropped from the matrix rather than
+        # counted as an error. Dropped EXPLICITLY, by intersecting with the
+        # decidable set, so that align_ratings' own mismatch refusal still
+        # catches every other kind of coverage gap.
+        undecidable = set(gold_set.undecidable_case_ids())
+        scored_predictions = {
+            case_id: label for case_id, label in predictions.items() if case_id not in undecidable
+        }
+
+        ratings = align_ratings(gold_labels, scored_predictions)
         matrix = confusion_matrix(ratings, gold_set.categories)
 
         items = tuple(
@@ -451,6 +534,8 @@ class GoldValidityService:
             krippendorff_alpha=krippendorff_alpha_nominal(matrix),
             per_category=per_category_prf(matrix, gold_set.categories, reference="a"),
             items=items,
+            undecidable_case_ids=gold_set.undecidable_case_ids(),
+            tie_broken_case_ids=gold_set.tie_broken_case_ids(),
         )
 
 

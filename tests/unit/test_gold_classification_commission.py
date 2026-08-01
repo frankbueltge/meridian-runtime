@@ -27,8 +27,8 @@ from mrr.domain.hashing_policy import prepare_for_hash
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BASE = REPO_ROOT / "corpora" / "gold-classification"
-COMMISSION = BASE / "commission.v1.json"
-CRITERIA = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-criteria.v1.json"
+COMMISSION = BASE / "commission.v2.json"
+CRITERIA = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-criteria.v2.json"
 
 
 def _commission() -> dict[str, Any]:

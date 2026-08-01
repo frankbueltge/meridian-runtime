@@ -120,6 +120,19 @@ _BASELINE_NOTE = (
 )
 
 
+_COVERAGE_NOTE = (
+    "Two counts below are not scores and must not be read as ones. UNDECIDABLE cases are "
+    "cases the criteria failed to settle; they are excluded from the matrix because there is "
+    "no correct answer to score against, and their count measures the criteria's coverage "
+    "rather than any classifier's skill. TIE-BROKEN cases are cases where the conservative "
+    "rule, not the definitions, produced the label — every one of them could have gone the "
+    "other way, so the corroboration ceiling derived from this set is a point estimate with a "
+    "width, and the tie count is that width. Both counts exist because an outside practice "
+    "objected that the first version of these criteria produced a clean-looking output by "
+    "destroying the evidence of its own uncertainty. It was right."
+)
+
+
 def _below_power_note(threshold: int) -> str:
     return (
         f"below_power is set when a category has fewer than {threshold} gold labels. "
@@ -320,6 +333,23 @@ class GoldValidityReport(MRRModel):
     below_power_threshold: int = BELOW_POWER_THRESHOLD
     below_power_note: str = _below_power_note(BELOW_POWER_THRESHOLD)
 
+    # --- Criteria v2, both fields added because a sibling practice showed the
+    #     first version produced a tidy number by destroying the evidence of
+    #     its own uncertainty. Neither is scored; both are REPORTED, which is
+    #     the entire point.
+    #: Cases the labelling practice could not decide under the criteria. Not
+    #: scored — excluded from the matrix above — because there is no correct
+    #: answer to score against. Their COUNT is the measurement: coverage is a
+    #: property of a criteria set, invisible if every case is forced to a label.
+    undecidable_case_ids: tuple[str, ...] = ()
+    #: Cases where the conservative tie-break, rather than the definitions,
+    #: produced the label. Ulysses' objection in one number: without it the
+    #: corroboration ceiling is a point estimate whose distance from its own
+    #: alternative cannot be recovered. Their sentence — "the first thing a
+    #: conservative rule should be required to report is how often it fired."
+    tie_broken_case_ids: tuple[str, ...] = ()
+    coverage_note: str = _COVERAGE_NOTE
+
 
 def build_gold_validity_report(
     *,
@@ -345,6 +375,8 @@ def build_gold_validity_report(
     krippendorff_alpha: AlphaResult,
     per_category: Sequence[CategoryPrf],
     items: Sequence[ItemValidityRow],
+    undecidable_case_ids: Sequence[str] = (),
+    tie_broken_case_ids: Sequence[str] = (),
 ) -> GoldValidityReport:
     """Assemble the report from already-computed metric results.
 
@@ -409,6 +441,8 @@ def build_gold_validity_report(
         false_support=false_support_rate(confusion_matrix, categories),
         items=tuple(items),
         below_power=any(count < BELOW_POWER_THRESHOLD for count in gold_marginals),
+        undecidable_case_ids=tuple(undecidable_case_ids),
+        tie_broken_case_ids=tuple(tie_broken_case_ids),
     )
 
 
@@ -507,6 +541,23 @@ def render_markdown(report: GoldValidityReport) -> str:
         )
     lines.append("")
     lines.append(f"**below_power: {report.below_power}** — {report.below_power_note}")
+    lines.append("")
+    lines.append("### Coverage and ties — not scores")
+    lines.append("")
+    lines.append(report.coverage_note)
+    lines.append("")
+    lines.append("| | Count | Cases |")
+    lines.append("|---|---|---|")
+    lines.append(
+        f"| Undecidable under the criteria | {len(report.undecidable_case_ids)} | "
+        + (", ".join(report.undecidable_case_ids) or "—")
+        + " |"
+    )
+    lines.append(
+        f"| Decided by the conservative tie-break | {len(report.tie_broken_case_ids)} | "
+        + (", ".join(report.tie_broken_case_ids) or "—")
+        + " |"
+    )
     lines.append("")
     lines.append("### Case by case")
     lines.append("")
