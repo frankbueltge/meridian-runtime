@@ -171,6 +171,16 @@ def _add_gold_subparser(
         ),
     )
     gold_parser.add_argument(
+        "--criteria",
+        default=None,
+        type=Path,
+        help=(
+            "Path to the criteria file the set names. When given, the set's own copies of the "
+            "criteria lock are checked against it and any disagreement is refused — the lock "
+            "instant lives in two places, and on 2026-08-01 the two came apart."
+        ),
+    )
+    gold_parser.add_argument(
         "--allow-synthetic",
         action="store_true",
         help=(
@@ -354,6 +364,7 @@ def run_gold_command(args: argparse.Namespace) -> int:
             args.gold_set,
             expected_sha256=args.expect_sha256,
             allow_synthetic=args.allow_synthetic,
+            criteria_path=args.criteria,
         )
         system_id, predictions = service.load_predictions(args.predictions)
     except GoldSetFileError as exc:

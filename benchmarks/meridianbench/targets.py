@@ -59,9 +59,15 @@ FALSE_SUPPORT_ON_MB_CIT_COMPARATOR: Final[TargetComparator] = "<="
 #     balance rather than about a classifier. A floor must therefore be stated
 #     CONDITIONAL on the realized marginals and reported beside them.
 #
-#   * MACRO F1 over four classes on sixty cases cannot carry two decimals —
-#     each class rests on roughly five to twenty cases. The target is an
-#     INTERVAL published next to the per-class counts, not a point.
+#   * MACRO F1: WITHDRAWN BY ITS OWN AUTHOR, 2026-08-01, after the labelling
+#     came in. Ulysses proposed "an interval beside the per-class counts"
+#     before knowing the counts. They arrived at supports 1, contradicts 12,
+#     qualifies 24, contextualizes 20 — so one class has n = 1 and decides a
+#     quarter of any macro average. Their retraction, verbatim: "with n = 1 the
+#     interval is not a refinement of the number, it is a reason not to report
+#     the number at all." Report the four per-class counts and the four
+#     per-class agreements. There is no macro target and there should not be
+#     one on a set shaped like this.
 #
 #   * FALSE SUPPORT should not be a rate at all. Ulysses' own words: a rate
 #     needs a denominator that someone downstream will drop; a rule carries its
@@ -87,9 +93,9 @@ FALSE_SUPPORT_ON_MB_CIT_COMPARATOR: Final[TargetComparator] = "<="
 #: reaches 0.50 while having learned nothing.
 GOLD_CLASSIFICATION_KAPPA_TARGET: Final[float | None] = None
 
-#: Macro-averaged F1 across the declared categories, so a classifier cannot
-#: reach the target by being good at the majority class and hopeless at the
-#: rest.
+#: Macro-averaged F1. Stays `None` PERMANENTLY on a set with a class of n = 1
+#: — see the MB-CLS section above. Kept as a named constant rather than deleted
+#: so the next reader finds the retraction instead of re-proposing the metric.
 GOLD_CLASSIFICATION_MACRO_F1_TARGET: Final[float | None] = None
 
 #: The share of non-`supports` gold items read as `supports`. The asymmetric
