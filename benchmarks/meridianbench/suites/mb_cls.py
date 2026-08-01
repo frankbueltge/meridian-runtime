@@ -78,10 +78,17 @@ class MbClsInput:
 class MbClsExpected:
     """The gold answer for one case. Only a scorer ever sees this — see the
     module docstring's label-isolation section.
+
+    Both fields are ``None`` for a case the criteria could not settle
+    (criteria v2, ``R-undecidable-is-a-finding``): there is no gold answer, and
+    a placeholder would be a fabricated one. ``undecidable_reason`` carries
+    what the criteria failed to decide.
     """
 
-    relation: str
-    rationale: str
+    relation: str | None
+    rationale: str | None
+    undecidable: bool = False
+    undecidable_reason: str | None = None
 
 
 def load_cases(gold_set: GoldLabelSet) -> tuple[BenchmarkCase[MbClsInput, MbClsExpected], ...]:
@@ -110,8 +117,18 @@ def load_cases(gold_set: GoldLabelSet) -> tuple[BenchmarkCase[MbClsInput, MbClsE
                     criteria=dict(gold_set.criteria),
                 ),
                 expected=MbClsExpected(
-                    relation=str(raw["expected_relation"]),
-                    rationale=str(raw["expected_rationale"]),
+                    relation=(
+                        None if raw.get("undecidable", False) else str(raw["expected_relation"])
+                    ),
+                    rationale=(
+                        None if raw.get("undecidable", False) else str(raw["expected_rationale"])
+                    ),
+                    undecidable=bool(raw.get("undecidable", False)),
+                    undecidable_reason=(
+                        str(raw["undecidable_reason"])
+                        if raw.get("undecidable_reason") is not None
+                        else None
+                    ),
                 ),
                 metadata={
                     key: str(value)

@@ -22,7 +22,7 @@ from benchmarks.meridianbench.suites.mb_cls import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-FIXTURE = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v1.synthetic.json"
+FIXTURE = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v2.synthetic.json"
 
 
 def _cases() -> tuple[BenchmarkCase[MbClsInput, MbClsExpected], ...]:
@@ -87,12 +87,25 @@ def test_cases_carry_the_question_the_criteria_and_the_label_space() -> None:
     assert set(case.input.criteria) == set(case.input.categories)
 
 
-def test_every_expected_relation_is_a_declared_category() -> None:
+def test_every_expected_relation_is_a_declared_category_or_honestly_absent() -> None:
     cases = _cases()
-    assert len(cases) == 20
-    for case in cases:
+    assert len(cases) == 23
+    decidable = [c for c in cases if not c.expected.undecidable]
+    undecidable = [c for c in cases if c.expected.undecidable]
+    assert len(decidable) == 20
+    assert len(undecidable) == 3
+
+    for case in decidable:
         assert case.expected.relation in case.input.categories
         assert case.expected.rationale
+
+    for case in undecidable:
+        # No label, and no placeholder standing in for one. A stringified
+        # "None" here would be a fabricated answer — which is exactly the bug
+        # this assertion was written after finding.
+        assert case.expected.relation is None
+        assert case.expected.rationale is None
+        assert case.expected.undecidable_reason
 
 
 def test_the_committed_fixture_validates_against_the_gold_label_set_schema() -> None:

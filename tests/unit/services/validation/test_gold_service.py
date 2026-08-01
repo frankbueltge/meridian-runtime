@@ -22,9 +22,9 @@ from mrr.services.validation.gold_service import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-FIXTURE = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v1.synthetic.json"
+FIXTURE = REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v2.synthetic.json"
 PREDICTIONS = (
-    REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v1.synthetic.predictions.json"
+    REPO_ROOT / "benchmarks" / "meridianbench" / "fixtures" / "mb-cls-v2.synthetic.predictions.json"
 )
 
 CATEGORIES = ["supports", "contradicts", "qualifies", "contextualizes"]
@@ -52,6 +52,7 @@ def _minimal_set(**overrides: Any) -> dict[str, Any]:
                 "claim_text": "A claim.",
                 "expected_relation": "supports",
                 "expected_rationale": "Because.",
+                "decided_by": "definition:supports",
             }
         ],
     }
@@ -74,8 +75,8 @@ def test_at2_loader_accepts_the_fixture_at_its_pinned_hash() -> None:
         FIXTURE, expected_sha256=pinned, allow_synthetic=True
     )
     assert gold_set.sha256 == pinned
-    assert gold_set.fixture_set_id == f"mb-cls-v1-synthetic@{pinned}"
-    assert len(gold_set.cases) == 20
+    assert gold_set.fixture_set_id == f"mb-cls-v2-synthetic@{pinned}"
+    assert len(gold_set.cases) == 23  # 20 decidable + 3 undecidable
 
 
 def test_at2_one_flipped_byte_makes_the_loader_refuse(tmp_path: Path) -> None:
@@ -103,7 +104,7 @@ def test_at2_freeze_registry_matches_the_committed_fixture() -> None:
             encoding="utf-8"
         )
     )
-    entry = registry["frozen"]["mb-cls-v1-synthetic"]
+    entry = registry["frozen"]["mb-cls-v2-synthetic"]
     assert entry["sha256"] == compute_sha256((REPO_ROOT / entry["path"]).read_bytes())
 
 
@@ -213,3 +214,81 @@ def test_the_committed_fixture_and_predictions_reproduce_the_at1_oracle() -> Non
     # The fixture is honest about not being a standard, and the report says so.
     assert report.producing_practice == "synthetic-fixture"
     assert report.not_blind_warning is not None
+
+
+# --- Criteria v2: what Ulysses' two objections bought ------------------------
+
+
+def test_undecidable_cases_are_excluded_from_the_matrix_and_counted_instead() -> None:
+    # R-undecidable-is-a-finding. The oracle matrix is over the 20 decidable
+    # cases; the 3 undecidable ones must not swell it, must not be scored as
+    # errors, and must not disappear.
+    service = GoldValidityService()
+    gold_set = service.load_gold_set(FIXTURE, allow_synthetic=True)
+    system_id, predictions = service.load_predictions(PREDICTIONS)
+    report = service.build_report(gold_set, system_id=system_id, predictions=predictions)
+
+    assert len(gold_set.cases) == 23
+    assert report.n == 20
+    assert len(report.undecidable_case_ids) == 3
+    assert set(report.undecidable_case_ids) == {
+        "syn-undecidable-01",
+        "syn-undecidable-02",
+        "syn-undecidable-03",
+    }
+    # A prediction WAS supplied for each of them and is simply not scored.
+    assert all(case_id in predictions for case_id in report.undecidable_case_ids)
+    # The oracle survives untouched — that is the test that the exclusion is an
+    # exclusion and not a quiet reweighting.
+    assert report.observed_agreement == 0.7
+    assert report.cohen_kappa.value == 17 / 32
+
+
+def test_tie_broken_cases_are_named_so_the_ceiling_has_a_width() -> None:
+    # R-conservative-supports as amended. Ulysses' whole objection in one
+    # assertion: a fired tie-break must be recoverable from the record.
+    service = GoldValidityService()
+    gold_set = service.load_gold_set(FIXTURE, allow_synthetic=True)
+    system_id, predictions = service.load_predictions(PREDICTIONS)
+    report = service.build_report(gold_set, system_id=system_id, predictions=predictions)
+
+    assert set(report.tie_broken_case_ids) == {
+        "syn-contradicts-05",
+        "syn-qualifies-01",
+        "syn-qualifies-02",
+    }
+    rendered = json.loads(
+        __import__("mrr.domain.gold_validity_report", fromlist=["render_json"]).render_json(report)
+    )
+    assert rendered["tie_broken_case_ids"] == list(report.tie_broken_case_ids)
+
+
+def test_a_tie_with_the_label_itself_is_refused(tmp_path: Path) -> None:
+    document = _minimal_set()
+    document["cases"][0]["tie_with"] = "supports"  # same as its own label
+    with pytest.raises(GoldSetFileError, match="runner-up"):
+        GoldValidityService().load_gold_set(_write(tmp_path, document))
+
+
+def test_an_undecidable_case_carrying_a_label_is_refused(tmp_path: Path) -> None:
+    # One or the other, never both — otherwise "undecidable" becomes a note
+    # attached to a decision, which is not what it means.
+    document = _minimal_set()
+    document["cases"][0]["undecidable"] = True
+    document["cases"][0]["undecidable_reason"] = "the criteria do not settle it"
+    with pytest.raises(GoldSetFileError, match="one or the other"):
+        GoldValidityService().load_gold_set(_write(tmp_path, document))
+
+
+def test_a_set_with_nothing_decidable_is_refused(tmp_path: Path) -> None:
+    document = _minimal_set()
+    document["cases"][0].update(
+        {
+            "expected_relation": None,
+            "expected_rationale": None,
+            "undecidable": True,
+            "undecidable_reason": "the criteria do not settle it",
+        }
+    )
+    with pytest.raises(GoldSetFileError, match="nothing to measure against"):
+        GoldValidityService().load_gold_set(_write(tmp_path, document))

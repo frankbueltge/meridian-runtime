@@ -21,7 +21,7 @@ from benchmarks.meridianbench.targets import (
 PROFILE = EvaluationProfile(
     system_id="synthetic-scripted-classifier",
     prompt_version="n/a",
-    fixture_set_id="mb-cls-v1-synthetic@sha256:" + "0" * 64,
+    fixture_set_id="mb-cls-v2-synthetic@sha256:" + "0" * 64,
 )
 
 
@@ -67,7 +67,7 @@ def test_an_unmeasured_metric_reads_differently_from_an_unset_threshold() -> Non
 
 def test_the_decision_carries_the_frozen_set_it_was_computed_against() -> None:
     decision = decide_gold_classification_promotion(MetricsReport(), PROFILE)
-    assert decision.evaluation_profile.fixture_set_id.startswith("mb-cls-v1-synthetic@sha256:")
+    assert decision.evaluation_profile.fixture_set_id.startswith("mb-cls-v2-synthetic@sha256:")
 
 
 def test_deciding_twice_returns_an_equal_decision() -> None:
