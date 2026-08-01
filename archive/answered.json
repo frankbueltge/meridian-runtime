@@ -1,0 +1,18 @@
+{
+  "_note": "Welche Frage ist schon beantwortet, und von welchem Archiv-Dump. Der Workflow 'Research run' liest diese Datei, um zu entscheiden, was eine OFFENE Frage ist: ein vollstaendiger Korpus unter corpora/, der hier nicht steht. Ausdruecklich als Registerdatei gefuehrt und nicht aus Dateinamen geraten — die drei bestehenden Dumps tragen historisch gewachsene Namen (Paket-IDs, keine Korpusnamen), und ein Namensmuster haette sie nicht wiedererkannt. Beim Fahren einer neuen Frage traegt der Workflow ihren Eintrag selbst nach.",
+  "answered": {
+    "model-collapse": {
+      "dumps": [
+        "mrr_k1t04_real_run_v2.sql",
+        "mrr_run2_corroboration_floor_v1.sql"
+      ],
+      "note": "Lauf 1 (K1-T04) und Lauf 2 (K1-T04b, corroboration-floor-Variation). Gerendert auf frankbueltge.de/on-record."
+    },
+    "e2e-claims": {
+      "dumps": [
+        "mrr_run3_e2e_claims_v1.sql"
+      ],
+      "note": "Lauf 3, 2026-08-01: was die acht von /e2e-automation zitierten Quellen wirklich beitragen. Ergebnis contested. Befund auf der Seite selbst vermerkt."
+    }
+  }
+}
