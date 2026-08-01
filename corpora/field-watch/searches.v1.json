@@ -1,0 +1,29 @@
+{
+  "schema_version": "field-watch-searches.v1",
+  "_note": "The searches the nightly field watch runs, FROZEN. Frozen for the same reason the gold standard is: a watch that may change what it looks for cannot tell you the field changed — only that it looked elsewhere. Changing this set is a new version with a recorded reason, never an edit. These are the fourteen searches the MB-CLS candidate pool was drawn with, kept identical so the watch and that pool remain comparable.",
+  "frozen_on": "2026-08-01",
+  "subject": "end-to-end automation of AI research, and the checking of its outputs",
+  "host": "export.arxiv.org",
+  "inclusion": {
+    "_note": "Applied mechanically. Nothing here selects for what an abstract concludes.",
+    "min_abstract_chars": 400,
+    "must_mention_checking": "verif|review|check|validat|evaluat|judge|critic|audit|correct|assess",
+    "must_mention_automation": "agent|automat|autonom|scientist|discovery|pipeline|end-to-end|research process"
+  },
+  "queries": [
+    "abs:\"AI scientist\"",
+    "abs:\"automated scientific discovery\"",
+    "abs:\"autonomous research agent\"",
+    "abs:\"end-to-end\" AND abs:\"research automation\"",
+    "abs:\"research agent\" AND abs:\"evaluation\"",
+    "abs:\"hypothesis generation\" AND abs:\"language model\"",
+    "abs:\"self-verification\" AND abs:\"language model\"",
+    "abs:\"self-correction\" AND abs:\"large language model\"",
+    "abs:\"LLM-as-a-judge\"",
+    "abs:\"automated peer review\"",
+    "abs:\"scientific claim verification\"",
+    "abs:\"agentic\" AND abs:\"scientific discovery\"",
+    "abs:\"self-refine\" AND abs:\"language model\"",
+    "abs:\"verifier\" AND abs:\"reasoning\" AND abs:\"language model\""
+  ]
+}

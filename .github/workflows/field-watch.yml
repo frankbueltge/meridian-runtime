@@ -1,0 +1,142 @@
+# The field watch — the read-only half of Meridian's second nightly routine.
+#
+# The capability roadmap of 2026-07-24 named two nightly routines: (1) project
+# work, which is research-run.yml, and (2) meta-research on the practice's own
+# subject with a feedback into its own development. This is routine 2's FIRST
+# HALF, and only that half: it observes, it never reads, it never proposes, and
+# it never calls a model. The half that turns a finding into a change needs a
+# frozen evaluator with real labels and is not built.
+#
+# Runs at 03:40 UTC, one hour before research-run.yml at 04:40. The ordering is
+# deliberate and currently has no effect: once the literature channel exists, a
+# night's observation is what could produce the new question the research run
+# looks for, and a watch that ran afterwards would always be a day late.
+#
+# --- Silence has to mean something ------------------------------------------
+#
+# The script is fail-closed: any search that does not complete aborts the run
+# non-zero and writes nothing. A night that finds nothing writes no file, makes
+# no commit and opens no pull request — so "no PR this morning" means the field
+# was quiet, never that the fetch broke. That distinction is the entire value
+# of the routine and it is why there is no best-effort mode anywhere in it.
+#
+# --- Never credit a person or a product for a machine's run -----------------
+#
+# Same standing rule as research-run.yml: the committer is a machine identity
+# at an .invalid address.
+
+name: Field watch
+
+on:
+  schedule:
+    - cron: '40 3 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print the observation instead of committing it'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: field-watch
+
+jobs:
+  watch:
+    name: What appeared in the subject
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Sweep
+        id: sweep
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          today="$(date -u +%Y-%m-%d)"
+          echo "today=$today" >> "$GITHUB_OUTPUT"
+          args=(--today "$today")
+          if [ "${DRY_RUN:-false}" = "true" ]; then args+=(--dry-run); fi
+          # No `|| true` anywhere: a failed sweep must fail the job. Reporting
+          # a partial sweep as an observation would make every future "nothing
+          # new" ambiguous.
+          uv run python scripts/watch_field.py "${args[@]}" | tee /tmp/sweep.json
+
+      - name: Anything new?
+        id: check
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- corpora/field-watch/; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "The sweep completed and the field was quiet. Nothing to lay before anyone."
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Field watch — ${{ steps.sweep.outputs.today }}"
+            echo
+            if [ -s /tmp/sweep.json ]; then cat /tmp/sweep.json; fi
+            echo
+            echo "_An observation, not a reading. Nothing here has been classified and nothing"
+            echo "here implies a change._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Lay it before a human, never straight onto main
+        if: steps.check.outputs.new == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="watch/field-${{ steps.sweep.outputs.today }}"
+          git config user.name "Field Watch"
+          git config user.email "watch@meridian-runtime.invalid"
+          git checkout -b "$branch"
+          git add corpora/field-watch/
+          git commit -m "Field watch ${{ steps.sweep.outputs.today }}: what appeared in the subject
+
+          An observation, not a reading. The sweep ran the frozen search set
+          against arXiv, applied the frozen inclusion filter, and reports only
+          what was not already in the register.
+
+          Nothing here has been classified. Nothing here implies a change to
+          any instrument or to the constitution — deciding that is the other
+          half of this routine, which needs a frozen evaluator and is not
+          built.
+
+          No human started this run."
+          git push -u origin "$branch"
+
+          # The pull request is the intended path. It fails when the repository
+          # setting 'Allow GitHub Actions to create and approve pull requests'
+          # is off — observed on 2026-08-01 in this repository. The branch is
+          # pushed either way, so no observation is ever lost.
+          if gh pr create \
+              --base main --head "$branch" \
+              --title "Field watch ${{ steps.sweep.outputs.today }}" \
+              --body "The nightly sweep found sources in this practice's subject that were not in the register. An observation, not a reading: nothing has been classified and nothing implies a change.
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; then
+            echo "Pull request opened."
+          else
+            echo "::warning::Actions may not open pull requests here — filing an issue with a one-click link instead."
+            gh issue create \
+              --title "Field watch ${{ steps.sweep.outputs.today }} — waiting to be laid before you" \
+              --body "The sweep ran and the branch \`$branch\` is pushed. Open the pull request with one click: ${{ github.server_url }}/${{ github.repository }}/compare/main...$branch?expand=1"
+          fi

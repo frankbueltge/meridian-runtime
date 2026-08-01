@@ -351,8 +351,10 @@ def _scan_nosec_occurrences() -> list[tuple[str, int, str | None, str]]:
 
 class TestNosecSuppressionCount:
     """task-packets/S1-T01.yaml acceptance_criteria (corrected 2026-07-26 at
-    the review): exactly EIGHT local suppressions — 2x B310, 2x B314, 2x
-    B405, 1x B404, 1x B603 — each with a named test id and a written reason.
+    the review): exactly TEN local suppressions — 2x B310, 3x B314, 3x
+    B405, 1x B404, 1x B603 (raised from eight on 2026-08-01, when
+    scripts/watch_field.py joined as the third gated fetch script) — each
+    with a named test id and a written reason.
 
     B314/B405 were originally meant to carry ZERO suppressions ("fixed, not
     silenced"), which turned out to rest on a false premise: bandit's
@@ -367,9 +369,13 @@ class TestNosecSuppressionCount:
     (the allowlist) and B314/B405 (the DTD guard) are both exactly that.
     """
 
-    def test_exactly_eight_nosec_occurrences_in_scripts(self) -> None:
+    def test_exactly_ten_nosec_occurrences_in_scripts(self) -> None:
         occurrences = _scan_nosec_occurrences()
-        assert len(occurrences) == 8, occurrences
+        # 8 -> 10 on 2026-08-01, when scripts/watch_field.py joined as the
+        # third gated fetch script. It parses the same arXiv Atom responses
+        # behind the same _refuse_if_dtd_declared guard, so it carries the
+        # same B314/B405 pair for the same reason.
+        assert len(occurrences) == 10, occurrences
 
     def test_every_occurrence_names_a_specific_test_id_never_a_blanket_nosec(self) -> None:
         occurrences = _scan_nosec_occurrences()
@@ -378,10 +384,21 @@ class TestNosecSuppressionCount:
                 f"{file_name}:{lineno} blanket nosec with no test id: {line!r}"
             )
 
-    def test_suppressed_ids_are_exactly_2x_b310_2x_b314_2x_b405_1x_b404_1x_b603(self) -> None:
+    def test_suppressed_ids_are_exactly_2x_b310_3x_b314_3x_b405_1x_b404_1x_b603(self) -> None:
         occurrences = _scan_nosec_occurrences()
         ids = sorted(test_id for _f, _l, test_id, _line in occurrences if test_id)
-        assert ids == ["B310", "B310", "B314", "B314", "B404", "B405", "B405", "B603"]
+        assert ids == [
+            "B310",
+            "B310",
+            "B314",
+            "B314",
+            "B314",
+            "B404",
+            "B405",
+            "B405",
+            "B405",
+            "B603",
+        ]
 
     def test_b314_and_b405_suppressions_name_the_guard_function_and_its_test(self) -> None:
         """task-packets/S1-T01.yaml: B314/B405 must name the guard function
@@ -395,7 +412,7 @@ class TestNosecSuppressionCount:
             for file_name, lineno, test_id, line in occurrences
             if test_id in ("B314", "B405")
         ]
-        assert len(guarded) == 4
+        assert len(guarded) == 6
         for file_name, lineno, line in guarded:
             assert "_refuse_if_dtd_declared" in line, (
                 f"{file_name}:{lineno} B314/B405 reason does not name the guard function: {line!r}"
