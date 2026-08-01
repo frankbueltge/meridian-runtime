@@ -22,8 +22,16 @@ Acceptance-test mapping:
   full ``make test``/``make test-contract`` run, not a single test here;
   determinism itself -> ``test_two_markdown_renders_are_byte_identical``,
   ``test_two_json_renders_are_byte_identical``.
-- Both dump anchors match the pinned, committed sha256 ->
-  ``test_both_dump_file_anchors_match``.
+- Every declared dump anchor matches the pinned, committed sha256 ->
+  ``test_every_declared_dump_file_anchor_matches``; the batch declaring every
+  committed dump in the first place -> ``test_batch_descriptor_covers_every_
+  committed_dump`` (generalised 2026-08-01, see that test's own docstring for
+  the gap the old fixed pair concealed).
+
+AT1 and AT2 stay pinned to the two dumps their oracle was computed over.
+Their numbers were derived by hand at the N2-T02 derivation from those exact
+files; a third run has its own counts and does not belong in an oracle it was
+not part of.
 """
 
 from __future__ import annotations
@@ -53,20 +61,41 @@ def _dump(report: AnchoringIntegrityReport, schema_name: str) -> DumpAnchoringRe
     return next(dump for dump in report.dumps if dump.schema_name == schema_name)
 
 
-def test_batch_descriptor_exists_and_declares_both_real_dumps() -> None:
-    """Sanity check on the fixture itself (never edited by this packet,
-    task-packets/N2-T02b.yaml forbidden_changes) before asserting anything
-    about the service's own behavior over it."""
+def _committed_dump_names() -> set[str]:
+    return {path.stem for path in (REPO_ROOT / "archive" / "dumps").glob("*.sql")}
+
+
+def test_batch_descriptor_covers_every_committed_dump() -> None:
+    """Sanity check on the fixture itself before asserting anything about the
+    service's own behavior over it.
+
+    GENERALISED 2026-08-01. This test used to pin the batch to exactly the two
+    dumps that existed when it was written — and that pin concealed a real gap:
+    run 3 (e2e-claims) was produced on 2026-08-01, the batch had been frozen on
+    2026-07-25, and the nightly integrity job therefore reported green over two
+    thirds of the archive while this test agreed with it.
+
+    The assertion is now the one that was meant all along: **every dump
+    committed under archive/dumps/ is declared in the batch.** It fails when a
+    future run is archived and the batch is not extended, instead of passing in
+    silence.
+    """
     import json
 
     document = json.loads(BATCH_PATH.read_text(encoding="utf-8"))
-    schema_names = {entry["schema_name"] for entry in document["dumps"]}
-    assert schema_names == {"mrr_k1t04_real_run_v2", "mrr_run2_corroboration_floor_v1"}
+    declared = {entry["schema_name"] for entry in document["dumps"]}
+    committed = _committed_dump_names()
+    assert committed, "no committed dumps found — the archive cannot be empty"
+    assert declared == committed, (
+        "the anchoring batch and the committed archive have drifted apart: "
+        f"archived but undeclared {sorted(committed - declared)!r}, "
+        f"declared but not archived {sorted(declared - committed)!r}"
+    )
 
 
-def test_both_dump_file_anchors_match() -> None:
+def test_every_declared_dump_file_anchor_matches() -> None:
     report = _build_report()
-    assert len(report.dumps) == 2
+    assert {dump.schema_name for dump in report.dumps} == _committed_dump_names()
     for dump in report.dumps:
         assert dump.file_anchor.matched is True, (
             f"{dump.schema_name}: declared {dump.file_anchor.declared_sha256!r} != actual "
