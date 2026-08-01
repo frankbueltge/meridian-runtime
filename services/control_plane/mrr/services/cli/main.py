@@ -52,6 +52,7 @@ from mrr.services.cli import (
     anchoring_integrity_main,
     artifact_presence_main,
     citation_audit_main,
+    classification_main,
     correction_main,
     export_main,
     federation_main,
@@ -289,6 +290,15 @@ def build_parser() -> argparse.ArgumentParser:
     # command line it never had.
     correction_main.register_correction_subcommand(subparsers)
 
+    # Task-packets/N1-T04.yaml's one additive registration: a new "classify"
+    # subparser group ("mrr classify relations") delegating entirely to
+    # mrr.services.cli.classification_main — mirrors the correction
+    # registration immediately above; no other line in this file changes. It
+    # is a group of its own rather than a third sibling under "validate"
+    # because every member of that group is read-only and this one runs a
+    # model.
+    classification_main.register_classify_subcommand(subparsers)
+
     return parser
 
 
@@ -449,6 +459,10 @@ def main(argv: list[str] | None = None) -> int:
         # Task-packets/I1-T01.yaml's one additive dispatch branch — every
         # other command's dispatch above is unchanged.
         return correction_main.run_command(args)
+    if args.command == "classify":
+        # Task-packets/N1-T04.yaml's one additive dispatch branch — every
+        # other command's dispatch above is unchanged.
+        return classification_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1
