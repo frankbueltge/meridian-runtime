@@ -7,10 +7,27 @@
 # it never calls a model. The half that turns a finding into a change needs a
 # frozen evaluator with real labels and is not built.
 #
-# Runs at 03:40 UTC, one hour before research-run.yml at 04:40. The ordering is
-# deliberate and currently has no effect: once the literature channel exists, a
-# night's observation is what could produce the new question the research run
-# looks for, and a watch that ran afterwards would always be a day late.
+# Runs at 01:10 UTC. The time was 03:40 for exactly one day and was wrong on
+# both counts, which is worth writing down rather than quietly fixing.
+#
+# It collided: the Meridian practice's own nightly session opens between 03:36
+# and 03:42 UTC (observed 2026-07-27 and 2026-08-01 in field-research). Running
+# the watch into that minute buys nothing and risks reading a half-written
+# night.
+#
+# And the ordering rationale it carried was fiction. It said the watch runs
+# before research-run.yml "so a night's observation could produce the new
+# question" — but the practice that would read an observation is
+# field-research, and its sessions are scoped to their own repository
+# (journal/2026-07-26.md: "This session's repository access was scoped to
+# frankbueltge/field-research"). An observation committed here is invisible to
+# it. That is the same blocker that stopped the labelling commission on
+# 2026-08-01, rebuilt hours later in a different place.
+#
+# 01:10 is therefore chosen for the only reason that currently holds: it is
+# clear of every other scheduled act in the ecology, so a night's observation
+# is complete and settled before anything else starts. The delivery problem is
+# an ADDRESSING problem and no cron expression fixes it.
 #
 # --- Silence has to mean something ------------------------------------------
 #
@@ -29,7 +46,7 @@ name: Field watch
 
 on:
   schedule:
-    - cron: '40 3 * * *'
+    - cron: '10 1 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

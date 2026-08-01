@@ -11,6 +11,21 @@ It does NOT decide what they mean, does not classify them, does not propose a
 change, and never calls a model. Those belong to the routine's other half,
 which needs a frozen evaluator and is not built.
 
+--- Who reads this, and the fact that nobody does yet ---------------------
+
+An observation is written into THIS repository, and the practice that would
+act on it — field-research — cannot read this repository: its sessions are
+scoped to their own (`journal/2026-07-26.md`: "This session's repository access
+was scoped to frankbueltge/field-research"). So the watch currently produces a
+record with no reader, and that is stated here rather than left for someone to
+discover.
+
+It is the same gap that stopped the labelling commission on 2026-08-01, and it
+has the same shape of fix: an artefact has to be LANDED where its reader can
+open it, not merely produced somewhere true. Until that is decided, the watch
+is an honest instrument pointed at a wall — worth running, because the register
+it maintains is what makes a later delivery cheap, and worth saying plainly.
+
 --- Fail-closed, and why that is the load-bearing property -----------------
 
 A watch that reports "nothing new" when a fetch quietly failed is worse than no
