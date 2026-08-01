@@ -13,11 +13,11 @@
 name: zz probe gemini
 
 on:
-  workflow_dispatch:
-    inputs:
-      model_name:
-        type: string
-        default: 'gemini-2.5-flash-lite'
+  # push-triggered on its own path only: workflow_dispatch needs the file to
+  # exist on the default branch, and nothing goes to main without a go-ahead.
+  push:
+    paths:
+      - '.github/workflows/zz-probe-gemini.yml'
 
 permissions:
   contents: read
@@ -47,7 +47,7 @@ jobs:
       - name: One generateContent call in the adapter's exact shape
         env:
           KEY: ${{ secrets.GEMINI_API_KEY }}
-          MODEL: ${{ inputs.model_name }}
+          MODEL: gemini-2.5-flash-lite
         run: |
           set -euo pipefail
           python3 -c "
