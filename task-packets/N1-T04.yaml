@@ -1,0 +1,425 @@
+task_id: N1-T04
+title: >-
+  Model-assisted evidence-relation classification: the first system that can be
+  measured against the frozen gold standard. A `ModelAdapter`-driven classifier
+  over the blind commission's sixty cases, emitting a schema-validated proposal
+  set that is simultaneously a `mrr validate gold --predictions` input and its
+  own audit trail — every proposal `downgraded-to-proposal` and never
+  `verified`, on a NEW path that leaves `CorpusEntry.evidence_relation` and the
+  synthesis executor untouched, offline-testable against a scripted fake
+  adapter, and run end to end online by a workflow that classifies, measures
+  against a hash-pinned standard, and commits both.
+status: approved
+epic: N1
+reviewer_resolution: >-
+  Approved 2026-08-02 by the main session as reviewing instance, under the
+  owner's ordering of 2026-08-01 ("1. Maßstab -> 2. modellgestützte Einordnung
+  -> 3. Literaturkanal -> 4. Kopplung"), his epistemic decision of the same day
+  ("nie überschreiben, nie verified"), and his operating decision of 2026-08-02
+  ("ich will NIX lokal, alles läuft online und automatisch"). Load-bearing
+  choices CONFIRMED at derivation: (a) this completes a step the specification
+  already declares — docs/spec/08_RESEARCH_METHOD_KERNEL.md section 5 names
+  "extraction AND classification proposals" as the profile's model-assisted
+  steps, so this is an ordinary capability packet under rules 2/3 and needs no
+  integration-packet exemption; (b) "verified" is unreachable on this path BY
+  CONSTRUCTION, because MTH-016 defines it as verified against the anchored
+  source and this packet performs no such verification — the owner's "never
+  verified" is what the specification already says, not an added house rule;
+  (c) NO new disposition value is introduced: "schema-valid", as the handoff
+  and the N1-T02 derivation both proposed it, would extend MTH-016's closed
+  vocabulary and is refused under rule 4; (d) the system under test receives
+  the byte-identical blind commission and the byte-identical criteria the gold
+  labels were made under, generality fence and all, because a system judged
+  under different criteria than its standard measures nothing; (e) the gold
+  standard is registered in the freeze registry as part of this packet — the
+  first packet to produce a real measurement against it must not rest on a file
+  CI does not hold still; (f) online and automatic, but anlassgetrieben: a new
+  input triggers a new measurement, never a clock.
+depends_on: [N1-T02, E4-T02, E4-T08]
+derivation: >-
+  Derived 2026-08-02 from
+  docs/design/2026-08-02-n1-t04-ableitung-modellgestuetzte-einordnung.md, which
+  fact-locks the 2026-08-02 handoff against the code. Every claim in that
+  handoff that could be checked was RE-EXECUTED rather than re-read: the three
+  test tiers were run (2565 unit, 600 contract + 2 skipped, 48 benchmark, all
+  pass), scripts/check_gold_freeze.py was run (6 versions verified), the first
+  measurement was reproduced byte-for-byte from the committed files (accuracy
+  0.4211 = majority floor 0.4211, Cohen's kappa 0.0000, Krippendorff's alpha
+  -0.2662, false-support 0/56, n=57 with 3 undecidable), and research-run.yml's
+  selection logic was re-executed against the live tree (pending = []). Three
+  corrections, each a line that was read:
+  (K1) the gold standard ITSELF is not frozen. FROZEN.json's six entries are
+  the three criteria versions and the three SYNTHETIC fixtures;
+  mb-cls-ulysses-v1-restamped — the standard the first measurement used — is
+  absent, so the CI check built for exactly this does not cover it, and
+  --expect-sha256 is optional (validation_main.py:164-172), so nothing forces a
+  caller to pin it either. The handoff's "alle eingefroren ... 6 Versionen" is
+  literally true and reads as though the standard were held.
+  (K2) this step is specification-backed and neither the handoff nor the N1-T02
+  derivation says so. docs/spec/08_RESEARCH_METHOD_KERNEL.md section 5:
+  "Model-assisted steps (each per MTH-016): extraction AND CLASSIFICATION
+  PROPOSALS against protocol-declared fields, verified against the anchored
+  source or downgraded to marked proposals." The executor built the extraction
+  half (synthesis_executor.py:431-488); the classification half was never
+  built.
+  (K3) "die Disposition heißt schema-valid" would break MTH-016, whose
+  vocabulary is closed (verified / downgraded-to-proposal / rejected) and typed
+  as such (synthesis_executor.py:421). The real defect is the mirror image: the
+  existing arm stamps "verified" on a merely schema-valid response (:483),
+  which is the MTH-016 violation, since the same specification line defines
+  verified as verified AGAINST THE ANCHORED SOURCE.
+  Fact base confirmed unchanged: GeminiModelAdapter has zero production call
+  sites; evidence_relation is structurally unreachable from the extraction path
+  (CorpusEntry :247, extraction dict :251, ExtractionOutcome :413-421);
+  _verification_disposition is write-only (constant :202, write :611, no
+  reads); gold_service.py:488-511 tolerates extra top-level keys in a
+  predictions file and :525-529 propagates MismatchedRatersError unchanged; the
+  commission's union of case keys carries no label; GEMINI_API_KEY exists as a
+  meridian-runtime repository secret.
+objective: >-
+  After this packet, `mrr classify relations --cases <commission> --criteria
+  <criteria> --output <proposals>` drives an injected ModelAdapter over every
+  case of a blind commission and writes ONE schema-validated file that is both
+  a `mrr validate gold --predictions` input (`system_id` + `predictions`) and
+  the run's own audit trail (per case: rationale, decided_by, tie_with,
+  undecidable flag, verification disposition, response hash and per-attempt
+  status; globally: model profile id and hash, prompt hash, the commission's
+  sha256 and the criteria's sha256). Every proposal carries
+  verification_disposition == "downgraded-to-proposal"; "verified" is
+  unreachable on this path by construction. A case whose structured generation
+  does not yield a schema-valid proposal receives NO prediction and its
+  distinct failure status is recorded verbatim, never collapsed; the command
+  then REFUSES with a named non-zero exit listing the affected cases, rather
+  than emitting a partial set that would measure as though it were whole. A
+  case the model marks undecidable under R-undecidable-is-a-finding likewise
+  yields no prediction, is counted and reported, and is NOT a run failure. And
+  `.github/workflows/gold-classification.yml` runs the whole path online —
+  classify, then measure with `mrr validate gold --expect-sha256` against the
+  now-registered frozen standard, then commit predictions and report — on
+  workflow_dispatch and whenever one of its own inputs changes, never on a
+  clock.
+source_of_truth:
+  - docs/design/2026-08-02-n1-t04-ableitung-modellgestuetzte-einordnung.md  # this packet's derivation and fact-lock
+  - docs/spec/08_RESEARCH_METHOD_KERNEL.md                          # MRR-MTH-016 and the profile's declared model-assisted steps — the grounding for this packet
+  - docs/design/2026-08-01-n1-t02-ableitung-goldstandard.md         # the standard this packet's output is measured against
+  - docs/design/2026-08-02-stand-und-was-fehlt.md                   # the handoff this packet fact-locks
+  - ulysses/docs/research-notes/meridian-commission/RETURN-2026-08-01.md  # the labelling practice's three findings — the sharpest test of anything built next
+  - packages/domain/mrr/domain/model_adapter.py                     # the port — REUSED UNCHANGED
+  - adapters/llm/mrr/adapters/llm/structured_generation.py          # bounded schema repair and the closed failure vocabulary — REUSED UNCHANGED
+  - adapters/llm/mrr/adapters/llm/gemini.py                         # the one concrete adapter, until now with zero production call sites
+  - services/control_plane/mrr/services/validation/gold_service.py  # the predictions format this packet must emit, and the measurement it feeds
+  - services/control_plane/mrr/services/cli/validation_main.py      # CLI pattern to mirror (exit 0/2/3, atomic os.replace, output-conflict check first)
+  - benchmarks/meridianbench/fixtures/mb-cls-criteria.v3.json       # the criteria the gold labels were made under
+  - corpora/gold-classification/commission.v2.json                  # the blind input, label-free by construction
+  - .github/workflows/field-watch.yml                               # workflow pattern: machine committer at an .invalid address, fail-closed, honest degradation
+requirements:
+  - >-
+    R1 (the proposal set as data,
+    packages/domain/mrr/domain/relation_proposal.py): a Pydantic-validated
+    PROJECTION — never persisted, never authoritative (rule 7) — carrying, per
+    case: `case_id`, `proposed_relation` (one of the declared categories, or
+    None when undecidable), `rationale`, `decided_by`, `tie_with`,
+    `undecidable` + `undecidable_reason`, `verification_disposition`, the
+    attempt statuses in order, and the response hash of the deciding attempt.
+    Globally: `system_id`, `model_profile_id`, `model_profile_hash`,
+    `prompt_hash`, `commission_sha256`, `criteria_sha256`, `criteria_version`,
+    `categories`, and a `limitations` block naming, in plain type, that the
+    excerpts may have been in the model's training data. It renders to JSON
+    whose top level carries `system_id` and `predictions` so that
+    `mrr validate gold --predictions` reads it directly (gold_service.py
+    :488-511 tolerates the additional keys; the majority-baseline file already
+    relies on that).
+  - >-
+    R2 (`verified` unreachable, MRR-MTH-016): `verification_disposition` uses
+    MTH-016's CLOSED vocabulary unchanged and this path emits ONLY
+    `"downgraded-to-proposal"`. No new value is added — "schema-valid" is
+    refused under rule 4. `"verified"` is unreachable because this packet
+    performs no verification against the anchored source, which is what that
+    specification line defines the word to mean; `"rejected"` is likewise
+    unreachable, being reserved for a caller-side verification step this packet
+    does not build (the existing arm's own docstring says so). A test asserts
+    that no code path in this packet can produce either value.
+  - >-
+    R3 (label isolation, structural): the classifier's per-case input type
+    carries ONLY `case_id`, `title`, `claim_text`, `excerpt` and
+    `excerpt_sha256` — it has no field able to hold an expected relation, so a
+    label cannot reach the prompt even by mistake. This mirrors E4-T07's
+    BenchmarkCase/SystemUnderTest guarantee (harness.py:38-63) and N1-T02's
+    AT5: the isolation is a property of the type, not of the caller's care. The
+    loader reads the COMMISSION file, whose union of case keys is label-free,
+    and MUST refuse a cases file carrying any key from a stated forbidden set
+    (`expected_relation`, `expected_rationale`, `decided_by`, `tie_with`,
+    `undecidable`) rather than ignoring it — silently accepting a
+    label-carrying input is how a blind run stops being blind.
+  - >-
+    R4 (the classifier,
+    services/control_plane/mrr/services/classification/relation_service.py):
+    takes an INJECTED `ModelAdapter` (never constructs one), the criteria, and
+    the cases; calls `generate_structured` (E4-T02, unchanged) once per case
+    against a small Pydantic target model with `extra="forbid"`; and returns
+    the proposal set. The prompt carries the claim under classification, the
+    four category definitions and the rules verbatim from the criteria file,
+    plus the case's title and excerpt — nothing else. Every distinct failure
+    status E4-T02 surfaces (`schema_invalid`, `refused`, `content_filtered`,
+    `error`, `timed_out`) is recorded AS ITSELF and never collapsed into one
+    generic error (AGENTS prohibited shortcut). An optional injected sleep hook
+    throttles between calls; it is a parameter, never a wall-clock read inside
+    the domain.
+  - >-
+    R5 (`mrr classify relations`,
+    services/control_plane/mrr/services/cli/classification_main.py): a new
+    top-level `classify` group with one subcommand, mirroring
+    `mrr validate gold`'s ordering, exit-code map and atomic `os.replace`
+    write. Exit 2 for a missing/unparseable input (a DEPENDENCY problem);
+    exit 3 for a refusal that is a RESULT — a cases file carrying labels, an
+    output path that already exists, or incomplete coverage after the run.
+    `--adapter none` is the default and REFUSES with a named message rather
+    than doing anything by halves; `--adapter gemini` constructs the concrete
+    adapter with `UrllibHTTPTransport` and the model name given by
+    `--model-name`, which is required and never defaulted, because "Gemini" is
+    not a measurable object. `main.py` gains exactly one registration and one
+    dispatch branch.
+  - >-
+    R6 (the freeze gap, benchmarks/meridianbench/fixtures/FROZEN.json — K1):
+    register `mb-cls-ulysses-v1-restamped` with the sha256 of its bytes, so
+    `scripts/check_gold_freeze.py` — which CI already runs (ci.yml:71) — holds
+    the standard this packet is measured against. The script itself is NOT
+    modified; only its registry gains an entry. This is a deliberate,
+    argued-for reach into N1-T02's artefact, declared here rather than folded
+    in silently.
+  - >-
+    R7 (the online path, .github/workflows/gold-classification.yml): on
+    `workflow_dispatch` (with `model_name` and a `dry_run` input) AND on push
+    when one of its own inputs changes — the classifier, the commission, the
+    criteria, or the gold set. NEVER on a schedule: the handoff's standing
+    rules "kein Nightly, das dasselbe neu rechnet" and "keine dritte nächtliche
+    Routine" bind, and re-sending sixty frozen cases to a model every night
+    would burn quota and manufacture noise indistinguishable from a finding.
+    The job classifies, then measures with `mrr validate gold --expect-sha256`
+    against the registered hash, then commits predictions and report as a
+    machine identity at an `@meridian-runtime.invalid` address. It never
+    pushes to `main`: the result lands on the branch the run belongs to, and
+    the merge is an owner act. Absent `GEMINI_API_KEY` it fails loudly and
+    writes nothing.
+allowed_paths:
+  - packages/domain/mrr/domain/relation_proposal.py
+  - services/control_plane/mrr/services/classification/
+  - services/control_plane/mrr/services/cli/classification_main.py
+  - services/control_plane/mrr/services/cli/main.py                # registration + dispatch only
+  - benchmarks/meridianbench/fixtures/FROZEN.json                  # +1 registry entry — see R6
+  - .github/workflows/gold-classification.yml
+  - tests/unit/
+  - tests/contract/
+  - tests/property/
+  - docs/design/
+  - task-packets/N1-T04.yaml
+forbidden_changes:
+  - services/node_runtime/**                                       # the extraction arm keeps its wrong "verified"; repairing it is its own packet (derivation section 8)
+  - packages/domain/mrr/domain/model_adapter.py                    # the port is reused unchanged
+  - packages/domain/mrr/domain/agreement.py                        # the metric core stays byte-identical
+  - packages/domain/mrr/domain/agreement_report.py                 # N1-T01's reliability boundary
+  - packages/domain/mrr/domain/gold_validity_report.py             # the measurement side is finished; this packet feeds it
+  - services/control_plane/mrr/services/validation/                # likewise — no change to how measuring works
+  - adapters/llm/**                                                # generate_structured and the Gemini adapter are used as they are
+  - benchmarks/meridianbench/harness.py                            # label isolation inherited, never re-implemented
+  - benchmarks/meridianbench/fixtures/mb-cls-criteria.v*.json      # a criteria change retroactively devalues a finished blind labelling
+  - corpora/gold-classification/*.json                             # the commission, the returned set and the re-stamped set are sealed inputs
+  - scripts/check_gold_freeze.py                                   # only its registry gains an entry, never the script
+  - archive/**
+  - migrations/**
+  - packages/contracts/**                                          # the proposal set is a projection, not a governed entity
+  - pyproject.toml                                                 # no new dependency; services/control_plane is already a build root
+  - uv.lock
+derived_decisions:
+  - >-
+    (a) An ordinary capability packet, not an integration packet. The
+    specification declares the step ("extraction and classification
+    proposals", 08_RESEARCH_METHOD_KERNEL.md section 5), so rule 3 is satisfied
+    directly and no exemption is claimed. The distinction matters: an
+    integration packet may add one concrete port implementation and nothing
+    else, which would have been the wrong licence for a packet that adds a
+    domain projection and a service.
+  - >-
+    (b) No fourth disposition value. Both the handoff and the N1-T02
+    derivation proposed naming the disposition "schema-valid". That extends a
+    closed MUST vocabulary and is refused. The owner's intent — never call an
+    unverified proposal verified — is achieved by using MTH-016's own
+    "downgraded-to-proposal", which is exactly what an unverified proposal is.
+    The stronger result: "nie verified" needed no rule of its own, because the
+    specification already said it.
+  - >-
+    (c) The existing extraction arm is left broken on purpose. It stamps
+    "verified" without verifying (synthesis_executor.py:483) — a real MTH-016
+    violation, today without data consequence because the key is write-only and
+    claim prose comes from the curated field. Fixing it here would mix two
+    packets and touch services/node_runtime, which this packet forbids itself.
+    It is handed on as a named open finding, not quietly repaired and not
+    quietly ignored.
+  - >-
+    (d) The criteria go to the model WITH their known asymmetry. Ulysses'
+    finding 4.1 — a generality fence on `supports` and none on `contradicts` —
+    stands unrepaired by owner decision, because changing a definition
+    retroactively devalues sixty blind labels. A system classifying under
+    different criteria than its standard measures nothing, so the fence is part
+    of the task for as long as this standard is the standard. What this packet
+    adds is evidence about it: where a second independent reader hits the same
+    fences, the fence is the problem; where it does not, the reading was.
+  - >-
+    (e) Undecidable is a first-class outcome, not a failure. R-undecidable-is-
+    a-finding governs the standard; a system applying the same criteria must
+    have the same move available, or its coverage cannot be compared with the
+    standard's. An undecidable case yields no prediction, is counted, and does
+    not fail the run. The comparison of the two undecidable SETS is itself a
+    finding about the criteria.
+  - >-
+    (f) Incomplete coverage refuses. A case with no schema-valid proposal
+    yields no prediction and the command exits non-zero naming it, rather than
+    writing a shorter predictions file. `build_report` would otherwise raise
+    MismatchedRatersError anyway (gold_service.py:525-529) — refusing at the
+    point the gap is created reports it where it is diagnosable, and never lets
+    a partial run look like a whole one.
+  - >-
+    (g) One output file, two readers. The proposal set IS the predictions file.
+    Splitting them would create two artefacts that must be kept in agreement,
+    and the format already tolerates the extra keys — the majority-baseline
+    file uses that tolerance today for its `note`.
+  - >-
+    (h) No wall-clock byte in the artefact. N1-T02's invariant holds, and the
+    reason is on the record: a hand-typed timestamp inside something that
+    gates on time blocked its own gate within hours (handoff section 5). When
+    the run happened is a property of the commit and the workflow run, not of a
+    field that can drift away from the act it describes.
+  - >-
+    (i) Automatic means anlassgetrieben, not nightly. The owner asked for
+    everything online and automatic; the standing rules forbid a third nightly
+    routine and any nightly that recomputes the same thing. Both hold at once
+    by triggering on changed inputs, which is the philosophy research-run.yml
+    already runs on ("only a new question starts anything").
+  - >-
+    (j) The model name is required, never defaulted. A measurement whose system
+    under test is recorded as "Gemini" names no object that could be
+    re-measured. It is a workflow input and it is written into the artefact.
+invariants:
+  - No database connection is opened and no repository is constructed anywhere in this packet's runtime path.
+  - The domain projection module constructs no adapter, reads no environment variable, and performs no I/O.
+  - The service NEVER constructs a ModelAdapter; the adapter is injected, exactly as generate_structured requires of its own caller.
+  - No test in any tier performs a network call or reads GEMINI_API_KEY; every test drives a scripted fake adapter.
+  - verification_disposition is "downgraded-to-proposal" on every emitted proposal; "verified" and "rejected" are unreachable on this path.
+  - The per-case input type has no field capable of carrying an expected relation, and a cases file carrying one is refused rather than ignored.
+  - Nothing is written except the requested --output file (atomic os.replace); corpora, archive, criteria and the gold set are never touched.
+  - No wall-clock timestamp in any written byte; identical inputs and identical adapter responses yield a byte-identical artefact.
+  - Every distinct model failure status is recorded as itself; none is collapsed into a generic error.
+  - A run with any case lacking a schema-valid proposal exits non-zero and writes no predictions file.
+  - agreement.py, agreement_report.py, gold_validity_report.py, gold_service.py and synthesis_executor.py are byte-identical before and after this packet.
+  - The workflow has no `schedule:` trigger.
+acceptance_tests:
+  - >-
+    AT1 (the disposition is structurally honest): a test asserts that the
+    string "verified" appears in no emitted disposition across the whole
+    module, that the emitted value is always "downgraded-to-proposal", and that
+    the disposition type is MTH-016's three-value Literal — unextended. A
+    second assertion pins the reason in the test name: this path performs no
+    verification against the anchored source.
+  - >-
+    AT2 (label isolation survives, mirroring N1-T02 AT5): the per-case input
+    type has no field carrying an expected relation (asserted over its declared
+    fields, not by inspection of one instance); the value handed to the prompt
+    builder is that type; and loading a cases file that carries
+    `expected_relation` REFUSES with the offending key named, rather than
+    dropping it. Loading the real commission.v2.json succeeds and yields
+    exactly sixty cases.
+  - >-
+    AT3 (every failure kind survives as itself): a scripted fake adapter drives
+    one case into each of `schema_invalid`, `refused`, `content_filtered`,
+    `error` and `timed_out`; the artefact records five DISTINCT statuses, no
+    prediction is emitted for any of them, and the command exits 3 naming all
+    five case ids. A sixth case succeeding in the same run does not rescue the
+    exit code.
+  - >-
+    AT4 (undecidable is not a failure): a scripted adapter returns a
+    schema-valid proposal marked undecidable with a reason; the case yields no
+    prediction, is counted in the artefact's undecidable list, and the run
+    exits 0 provided every other case decided. This is the assertion that keeps
+    coverage comparable with the standard's own three undecidables.
+  - >-
+    AT5 (the artefact is a predictions file): the rendered JSON loads through
+    `GoldValidityService.load_predictions` unchanged and yields the system id
+    and the case-to-relation mapping — asserted by calling that method, not by
+    re-describing its format. On a synthetic gold set the whole chain then
+    produces a GoldValidityReport, proving the operator path end to end without
+    a model or a network.
+  - >-
+    AT6 (determinism and non-interference): two runs over identical inputs with
+    an identical scripted adapter render byte-identical artefacts and contain
+    no timestamp; `git diff --exit-code` over agreement.py, agreement_report.py,
+    gold_validity_report.py, gold_service.py and synthesis_executor.py is empty
+    after the packet; the existing unit, property, contract and meridianbench
+    tiers pass unmodified.
+  - >-
+    AT7 (the standard is now held): `scripts/check_gold_freeze.py` verifies
+    seven versions including `mb-cls-ulysses-v1-restamped`, and flipping one
+    byte of the re-stamped set makes it fail naming that set — asserted by
+    running the script, not by reading its registry.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - uv run python scripts/run_test_tier.py meridianbench
+  - uv run python scripts/check_gold_freeze.py
+  - make security-check
+specification_gaps:
+  - >-
+    MRR-MTH-016 also requires that a model-assisted step "records a
+    ModelInvocation". The persisted `mrr.contracts.model_invocation
+    .ModelInvocation` is a BaseObject requiring the database this packet is
+    forbidden to touch, and the node runtime already leaves
+    `run_manifest.model_invocations` empty as a declared E4 scope note
+    (run_manifest.py:223, :314). This packet therefore records the invocation
+    DATA — model profile id and hash, prompt hash, per-attempt status, response
+    hash — in its own artefact, and does not mint a persisted ModelInvocation.
+    Named as a dated hole, not as done.
+  - >-
+    Cryptographic attributability of this run is not built. The artefact is
+    attributed by commit and workflow run id, as the returned label sheet was.
+    Signing it through `mrr federation envelope sign` is possible today (the
+    payload is free-form and carries its own content hash) and is a retrofit,
+    not a blocker.
+  - >-
+    Training-data contamination cannot be excluded and is not estimated. The
+    sixty excerpts are arXiv abstracts that may have been in the model's
+    training corpus. This is stated in the artefact's own `limitations` block
+    and must be stated wherever a number from this run is reported. Measuring
+    it would need held-out material the pool does not contain.
+  - >-
+    The thresholds remain absent by design (N1-T02 R5) and their checks fail
+    closed. Nothing in this packet sets one, and a measured value clearing no
+    threshold is not a pass.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding the exact
+    `mrr classify relations` and `mrr validate gold` invocations, the rendered
+    validity report for the model run verbatim (confusion matrix, accuracy
+    beside its majority baseline, kappa, per-category PRF, false-support rate,
+    below_power flag), the artefact's model profile and prompt hashes, the
+    gold-set sha256 it was measured against, and the undecidable and
+    tie-break counts beside the standard's own.
+stop_conditions:
+  - >-
+    If emitting an honest disposition appears to require a fourth value beyond
+    MTH-016's three, STOP and report — that vocabulary is a MUST and the packet
+    premise (b) says an unverified proposal is already exactly
+    "downgraded-to-proposal".
+  - >-
+    If satisfying any requirement appears to need a change to
+    synthesis_executor.py, evidence_relation, or the measurement side, STOP —
+    this is a new path by construction, and such a reading means the scope has
+    drifted into the repair packet described in the derivation's section 8.
+  - >-
+    If label isolation appears to need care from the caller rather than a
+    property of the type, STOP — E4-T07's structural guarantee is the precedent
+    and a convention that can be forgotten is not the same object.
+  - >-
+    If the run cannot complete without a schedule trigger or a local API key,
+    STOP — both are excluded by the owner's operating decision and by the
+    standing rules on nightly routines.
