@@ -31,6 +31,9 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Fuer den Rueckfallweg, wenn Actions in diesem Repository keine Pull
+  # Requests anlegen darf — siehe den Schritt "Als Pull Request vorlegen".
+  issues: write
 
 concurrency:
   group: research-run
@@ -254,15 +257,47 @@ jobs:
 
           Ergebnis: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           git push -u origin "$branch"
-          gh pr create \
-            --title "Lauf ${{ matrix.corpus }} (${{ steps.synthesis.outputs.run_state }})" \
-            --body "\`corpora/${{ matrix.corpus }}\` war vollständig und hatte keinen Archiv-Dump — eine gestellte, unbeantwortete Frage. Dieser Lauf wurde von niemandem angestoßen.
 
-          Zustand: **${{ steps.synthesis.outputs.run_state }}**. Gefahren auf einem frischen Läufer mit eigener PostgreSQL, nicht auf einer lokalen Maschine.
+          body=$(cat <<EOF
+          \`corpora/${{ matrix.corpus }}\` war vollständig und stand nicht als beantwortet im Register — eine gestellte, unbeantwortete Frage. **Dieser Lauf wurde von niemandem angestoßen.**
 
-          **Das Ergebnis steht in der Lauf-Zusammenfassung:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          Zustand: **${{ steps.synthesis.outputs.run_state }}**. Gefahren auf einem frischen Läufer mit eigener PostgreSQL, nicht auf einer lokalen Maschine. Code-Revision \`${{ github.sha }}\`.
 
-          Nichts geht ohne Freigabe auf \`main\`."
+          **Das Ergebnis steht in der Lauf-Zusammenfassung:**
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Branch: \`$branch\`
+          EOF
+          )
+
+          # Der PR ist der gewuenschte Weg. Er scheitert aber, wenn in den
+          # Repo-Einstellungen "Allow GitHub Actions to create and approve pull
+          # requests" aus ist — belegt am 2026-08-01:
+          # "GitHub Actions is not permitted to create or approve pull requests".
+          # Der Zweig ist dann trotzdem schon gepusht, das Ergebnis also nicht
+          # verloren. Damit es niemandem entgeht, wird in diesem Fall ein Issue
+          # geoeffnet (das darf Actions) — mit dem Ein-Klick-Link zum PR.
+          # Kein stilles Scheitern, und keine Einstellung, die erst jemand
+          # umlegen muss.
+          if gh pr create \
+               --title "Lauf ${{ matrix.corpus }} (${{ steps.synthesis.outputs.run_state }})" \
+               --body "$body
+
+          Nichts geht ohne Freigabe auf \`main\`." 2>/tmp/pr-error; then
+            echo "Pull Request angelegt."
+          else
+            echo "::warning::Actions darf hier keinen PR anlegen — Issue mit Ein-Klick-Link stattdessen. Grund: $(cat /tmp/pr-error)"
+            gh issue create \
+              --title "Lauf ${{ matrix.corpus }} (${{ steps.synthesis.outputs.run_state }}) — wartet auf Vorlage" \
+              --body "$body
+
+          Der Zweig ist gepusht, das Ergebnis liegt sicher. Ein Pull Request konnte nicht automatisch entstehen (Actions ist das in diesem Repository nicht erlaubt).
+
+          **Pull Request mit einem Klick öffnen:**
+          ${{ github.server_url }}/${{ github.repository }}/compare/main...$branch?expand=1
+
+          Wer das dauerhaft automatisch will, schaltet in *Settings → Actions → General → Workflow permissions* die Option *Allow GitHub Actions to create and approve pull requests* ein. Nötig ist das nicht — dieser Weg funktioniert auch ohne."
+          fi
 
   # ——— 3. Halten die Archive noch? ————————————————————————————————————————
   integrity:
