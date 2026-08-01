@@ -1,0 +1,388 @@
+{
+  "set_id": "mb-cls-v1-synthetic",
+  "categories": [
+    "supports",
+    "contradicts",
+    "qualifies",
+    "contextualizes"
+  ],
+  "criteria_version": "synthetic-criteria-v1",
+  "criteria_locked_at": "2026-08-01T00:00:00Z",
+  "criteria_lock_content_hash": "sha256:d6e865f7074192623b0a7e82b7c843e6c1275b04489bac7fa82d26f712dbb886",
+  "criteria": {
+    "supports": "The excerpt asserts, from its own evidence, that the claim holds: an independent verification step exists and is separate from the producing component.",
+    "contradicts": "The excerpt asserts, from its own evidence, that the claim does not hold: verification is absent, or is performed by the same component that produced the output.",
+    "qualifies": "The excerpt narrows the claim's scope or states a condition under which it holds, without either asserting or denying it in general.",
+    "contextualizes": "The excerpt bears on the subject matter but takes no position on the claim: background, definition, or a related measurement."
+  },
+  "labelled_at": "2026-08-01T12:00:00Z",
+  "label_provenance": {
+    "producing_practice": "synthetic-fixture",
+    "account": "NOT A GOLD STANDARD. Twenty invented excerpts written to exercise the measurement apparatus of task-packets/N1-T02.yaml: no real source, no real author, no DOI, nothing retrievable. Its class distribution is fixed to reproduce that packet's hand-computed acceptance oracle (AT1). The real standard is set by an encounter with another practice (owner decision 2026-08-01) and will arrive as its own file.",
+    "encounter_id": null,
+    "blind_to_measured_labels": false
+  },
+  "notes": "Distribution: supports 10, contradicts 5, qualifies 3, contextualizes 2. Scored against fixtures/mb-cls-v1.synthetic.predictions.json it yields the confusion matrix [[8,1,1,0],[1,3,1,0],[1,0,2,0],[1,0,0,1]], accuracy 0.70, majority baseline 0.50, Cohen's kappa exactly 17/32, false-support rate 0.30. Every category is below power; that is the point of the flag, not a defect of the fixture.",
+  "cases": [
+    {
+      "case_id": "syn-supports-01",
+      "excerpt": "Every generated result passed through a checking stage run by a separate component; the generating module had no access to the checker's verdict.",
+      "excerpt_sha256": "sha256:5770e2b4e57c38a7ddb2747a34fd874f324a40144b6d79cebbd46b3d22a477f5",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-01"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-supports-02",
+      "excerpt": "We report that outputs are validated by an independent reviewer process before they are admitted to the record.",
+      "excerpt_sha256": "sha256:bf88f2daf521340298bc052275afa8b042969aecafe827bdeea5aa5350b13c56",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-02"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-supports-03",
+      "excerpt": "The verification module is architecturally separated from the generator and cannot be invoked by it.",
+      "excerpt_sha256": "sha256:8ad896d1a1b8e1646ec056863ff9845c0fa568bf84b3cb8f0a319d33ae2715c6",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-03"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-supports-04",
+      "excerpt": "Results were confirmed by a second, independently configured instance before publication.",
+      "excerpt_sha256": "sha256:4014ad08cd802729b49df765ae1349fdf289857a4b34e83a5b833738c0544362",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-04"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-supports-05",
+      "excerpt": "A distinct adjudication step, not the producing agent, assigns the final status to each output.",
+      "excerpt_sha256": "sha256:633816f339cfc7d76d739fcea0d2bfaa24189711e76bdd5b14696d92738512fe",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-05"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-supports-06",
+      "excerpt": "Our measurements show the checking component rejected 12 percent of the generator's own outputs, which it could not have done had the two been the same process.",
+      "excerpt_sha256": "sha256:509b897445736aeb67f5d802f3cc888fe483637b5d87f0d49720e71bb8a5ebd8",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-06"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-supports-07",
+      "excerpt": "Independent verification is a required stage: no artefact leaves the pipeline without it.",
+      "excerpt_sha256": "sha256:f478aec64134fba632e68e9316d64cca8c7720ef42aa1c1e351087e7eb27c529",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-07"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-supports-08",
+      "excerpt": "The pipeline routes each claim to an external validator whose result the producer cannot override.",
+      "excerpt_sha256": "sha256:cfe0555a3709ca4d7f97a5fc31882a2f383ffef0eabc7079a69edf546c3bd71b",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-08"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-supports-09",
+      "excerpt": "Verification is performed by a component that is instantiated separately from the generator for each run.",
+      "excerpt_sha256": "sha256:4c42353187685a85cf8e9188f47cc5ab20bf83615f816394afe29257ce6be6cb",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-09"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-supports-10",
+      "excerpt": "The system's outputs are checked independently, and we observed this to hold across all runs we conducted.",
+      "excerpt_sha256": "sha256:0eb21b89d0abc065787ea75c12782765b81accf5fbe4d0644db3b2e4356efe53",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-supports-10"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "supports",
+      "expected_rationale": "The excerpt asserts from its own evidence that a verification step exists and is separate from the producing component — criterion 'supports'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "supports"
+      }
+    },
+    {
+      "case_id": "syn-contradicts-01",
+      "excerpt": "The same model both produces the draft and issues the review verdict on it; we found no separation between the two roles.",
+      "excerpt_sha256": "sha256:dbf21c417b95c0e1c85352ce08a343de4c8047128aba82b1112e5dc05c4c97d9",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-contradicts-01"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "contradicts",
+      "expected_rationale": "The excerpt asserts from its own evidence that verification is absent or is performed by the producing component itself — criterion 'contradicts'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "contradicts"
+      }
+    },
+    {
+      "case_id": "syn-contradicts-02",
+      "excerpt": "Self-review is the only checking stage present: the generating model scores its own work.",
+      "excerpt_sha256": "sha256:caaa1102ab6e60fcd8dbdad50516bfc6c9c9ef86f456ec7e118fde28af4c2e94",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-contradicts-02"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "contradicts",
+      "expected_rationale": "The excerpt asserts from its own evidence that verification is absent or is performed by the producing component itself — criterion 'contradicts'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "contradicts"
+      }
+    },
+    {
+      "case_id": "syn-contradicts-03",
+      "excerpt": "We could identify no verification step at all between generation and publication.",
+      "excerpt_sha256": "sha256:924532bdc046c29771d878fe4fcda41fa2e9f9d667b2dafd33c8c5ea56939f27",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-contradicts-03"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "contradicts",
+      "expected_rationale": "The excerpt asserts from its own evidence that verification is absent or is performed by the producing component itself — criterion 'contradicts'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "contradicts"
+      }
+    },
+    {
+      "case_id": "syn-contradicts-04",
+      "excerpt": "The reported acceptance figures were produced by the system evaluating itself, without an external check.",
+      "excerpt_sha256": "sha256:ec26aa49dd1b2d15890166571e231854a7e8c02e8a96807ba7d7f40a4ab1be5a",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-contradicts-04"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "contradicts",
+      "expected_rationale": "The excerpt asserts from its own evidence that verification is absent or is performed by the producing component itself — criterion 'contradicts'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "contradicts"
+      }
+    },
+    {
+      "case_id": "syn-contradicts-05",
+      "excerpt": "Where a checking stage exists, it shares weights and prompt context with the generator, so it is not independent in any useful sense.",
+      "excerpt_sha256": "sha256:b38ec67f53482cda9834f9d7164bf993cea5c581e59227d3f109ec031886ce75",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-contradicts-05"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "contradicts",
+      "expected_rationale": "The excerpt asserts from its own evidence that verification is absent or is performed by the producing component itself — criterion 'contradicts'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "contradicts"
+      }
+    },
+    {
+      "case_id": "syn-qualifies-01",
+      "excerpt": "Independent verification holds for numeric results, but not for the interpretive sections, which remain unchecked.",
+      "excerpt_sha256": "sha256:a75132b1f0207fc632b1f03063213c4305bd4d433d639cbf64be0e75c2a6bcc9",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-qualifies-01"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "qualifies",
+      "expected_rationale": "The excerpt narrows the claim to a scope or condition without asserting or denying it in general — criterion 'qualifies'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "qualifies"
+      }
+    },
+    {
+      "case_id": "syn-qualifies-02",
+      "excerpt": "The separation described applies only to the citation-checking stage; other stages were out of scope for this evaluation.",
+      "excerpt_sha256": "sha256:c0eebce92b654eb77422e15b25e899a4767ebb11afa80e6101fe88d8c72b4d6d",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-qualifies-02"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "qualifies",
+      "expected_rationale": "The excerpt narrows the claim to a scope or condition without asserting or denying it in general — criterion 'qualifies'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "qualifies"
+      }
+    },
+    {
+      "case_id": "syn-qualifies-03",
+      "excerpt": "This property was observed under the single benchmark configuration we tested and we make no claim beyond it.",
+      "excerpt_sha256": "sha256:ff8f7bde16a2822b8546c6104642856f2b870a814d43934f05e789f3290061b1",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-qualifies-03"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "qualifies",
+      "expected_rationale": "The excerpt narrows the claim to a scope or condition without asserting or denying it in general — criterion 'qualifies'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "qualifies"
+      }
+    },
+    {
+      "case_id": "syn-contextualizes-01",
+      "excerpt": "We define an end-to-end research system as one covering ideation, execution, analysis and write-up in a single pipeline.",
+      "excerpt_sha256": "sha256:f64c28f0cb50db0953dffda693e715841ddc51af40ded0515a2f5fbc2d8a0645",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-contextualizes-01"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "contextualizes",
+      "expected_rationale": "The excerpt bears on the subject but takes no position on the claim — criterion 'contextualizes'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "contextualizes"
+      }
+    },
+    {
+      "case_id": "syn-contextualizes-02",
+      "excerpt": "The literature on automated research has grown from 4 to 61 published systems over the period surveyed.",
+      "excerpt_sha256": "sha256:dcc0510fc3212b3937dbed431d4302d71a3a4ff93185ac707be88e2c45377bfd",
+      "source_identifiers": {
+        "doi": null,
+        "repository_id": null,
+        "archive_id": null,
+        "local_asset_id": "syn-contextualizes-02"
+      },
+      "claim_text": "Systems that automate the full research cycle end to end verify their own outputs independently of the component that produced them.",
+      "expected_relation": "contextualizes",
+      "expected_rationale": "The excerpt bears on the subject but takes no position on the claim — criterion 'contextualizes'.",
+      "metadata": {
+        "category": "synthetic",
+        "gold_class": "contextualizes"
+      }
+    }
+  ]
+}

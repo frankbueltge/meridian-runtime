@@ -1,0 +1,54 @@
+{
+  "criteria_version": "mb-cls-criteria-v1",
+  "_note": "The classification criteria for MB-CLS, locked as a standalone, hashable document BEFORE any case is drawn and before any label is made. Its sha256 becomes `criteria_lock_content_hash` in the gold set that follows. Locking first is not ceremony: task-packets/N1-T02.yaml's order gate refuses any set whose labelled_at is not strictly after its criteria_locked_at, and criteria written after the cases are criteria fitted to the cases. Never edited — a change is mb-cls-criteria-v2.",
+  "locked_at": "2026-08-01T15:00:00Z",
+  "claim_under_classification": {
+    "_note": "Every case asks about ONE claim. Without a fixed claim, 'supports' has no object, and two raters would be answering different questions while appearing to disagree about the same one. The claim is deliberately one the field genuinely disputes — see docs/design/2026-07-23-recherche-e2e-research-automation.md and the contested outcome of run 3.",
+    "text": "Systems that automate the research cycle end to end verify their own outputs independently of the component that produced them."
+  },
+  "categories": ["supports", "contradicts", "qualifies", "contextualizes"],
+  "definitions": {
+    "supports": "The excerpt asserts, from the source's OWN evidence or its own system's behaviour, that the claim holds: some verification step exists and is separate from the component whose output it checks. A general assertion, not one fenced to a named subset.",
+    "contradicts": "The excerpt asserts, from the source's OWN evidence, that the claim does not hold: either no verification step exists, or the checking is performed by the same component (or the same model, or the same process) that produced the output. Self-review counts as contradicting, because the claim is about independence, not about the existence of review.",
+    "qualifies": "The excerpt neither asserts nor denies the claim in general, but narrows it: it holds for a named subset (some outputs, some stages, some configuration), or under a stated condition, or only as far as the source's own evidence reaches. A finding hedged to its own test conditions belongs here.",
+    "contextualizes": "The excerpt bears on the subject matter but takes no position on the claim: a definition, a background measurement, a count, a description of the field, or a statement about something adjacent."
+  },
+  "rules": [
+    {
+      "id": "R-own-evidence",
+      "rule": "Classify what the SOURCE establishes, never what it reports of others. An excerpt that says 'others have shown X' is not evidence for X; it is at most `contextualizes`. This mirrors corpora/README.md's standing rule that every claim-relevant finding must be evidenced from the source itself, not from a third party's description of it."
+    },
+    {
+      "id": "R-excerpt-only",
+      "rule": "Judge the excerpt as given. Do not supply what you know about the paper, the authors, or the system from elsewhere. If the excerpt does not carry it, it is not there — that is a property of the case, not a gap to fill."
+    },
+    {
+      "id": "R-conservative-supports",
+      "rule": "When genuinely torn between `supports` and `qualifies`, choose `qualifies`. THIS IS A DELIBERATE ASYMMETRY AND IT IS CONTESTABLE — state it in the return so it can be argued with. Its reason: only `supports` and `contradicts` move the corroboration count that caps what a claim may say (mrr.services.node_runtime.synthesis_executor). Over-calling `supports` inflates corroboration and lifts that ceiling; over-calling `qualifies` merely withholds. The costs are not symmetric, so the tie-break is not either."
+    },
+    {
+      "id": "R-no-abstention",
+      "rule": "Every case gets one of the four labels. There is no 'unclear' — a case you find unclear is information about the case, so label it and say in the rationale that it was close and why. An abstention would silently shrink the denominator."
+    },
+    {
+      "id": "R-rationale-required",
+      "rule": "Every label carries a rationale naming which definition or rule decided it. A label without a reason cannot be argued with, and a gold standard that cannot be argued with is an assertion."
+    }
+  ],
+  "inclusion": {
+    "_note": "What may be drawn as a case at all. Stated here, with the criteria, so the sampling frame is fixed before anyone sees which sources it produces.",
+    "must": [
+      "The excerpt is verbatim from the source, retrievable, and hash-anchored.",
+      "The excerpt bears on the subject matter of the claim in some way — otherwise it is not a hard case, only an irrelevant one.",
+      "The source is outside every corpus already run (model-collapse, e2e-claims). Measuring on cases the practice has already curated would measure on its own training set."
+    ],
+    "must_not": [
+      "Excerpts drawn to make a target easy to hit. If the set is easy, the number is worthless.",
+      "Excerpts whose classification the commissioning practice has already published, in any form."
+    ]
+  },
+  "open_question": {
+    "_note": "Named rather than resolved, because resolving it silently would be the more comfortable mistake.",
+    "question": "R-conservative-supports encodes a judgement about asymmetric cost into the criteria themselves, which means the gold standard is not neutral — it is conservative by construction. A rater who disagrees with that asymmetry will produce a different standard, and would be right to. The labelling practice is asked to say whether it accepts the rule; if it does not, its objection is recorded and the criteria go to v2 rather than the objection being overridden."
+  }
+}

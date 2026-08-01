@@ -3,7 +3,7 @@
   "batch_id": "archive-anchoring-2026-07-25",
   "observation_kind": "archive-anchoring-integrity",
   "audit_target": "The two committed MRR archive dumps — the only versioned, byte-stable form the authoritative archive of the two real runs exists in.",
-  "provenance": "Written 2026-07-25 at the N2-T02 derivation. Each sha256 below was computed at derivation from the committed file's real bytes and is pinned as a fail-closed integrity anchor: if a dump is regenerated (make archive-dump) or edited, the anchor stops matching and the audit refuses rather than reporting over changed data. Git is authoritative for these committed bytes.",
+  "provenance": "Written 2026-07-25 at the N2-T02 derivation. Each sha256 below was computed at derivation from the committed file's real bytes and is pinned as a fail-closed integrity anchor: if a dump is regenerated (make archive-dump) or edited, the anchor stops matching and the audit refuses rather than reporting over changed data. Git is authoritative for these committed bytes. Extended 2026-08-01 (N1-T02 side finding): run 3 was produced after this batch was frozen on 2026-07-25 and had been sitting outside the nightly integrity check ever since — the check reported green over two thirds of the archive. Its anchor was computed the same way, from the committed file's real bytes.",
   "note_on_the_input_choice": "The audit reads these committed dumps and NOT the local PostgreSQL instance, although that instance was reachable at derivation (127.0.0.1:54329 accepted connections). That instance is explicitly a throwaway (docs/design/2026-07-22-nutzungsentscheidung-e9-vertagt.md, Befund 1 — artefact durability is still an open owner decision): auditing it would audit an ephemeral artefact nobody else can reproduce. The dumps are committed, hash-anchorable, and re-checkable by anyone holding the repository, and reading them requires no database connection at all.",
   "dumps": [
     {
@@ -17,6 +17,12 @@
       "path": "../../archive/dumps/mrr_run2_corroboration_floor_v1.sql",
       "sha256": "sha256:79338a597d708fbe0d6d34f571bd880d961e6b4fc2289e47659354be9ebeb131",
       "describes": "The second run (corroboration floor), carrying the preserved Hammond dissent."
+    },
+    {
+      "schema_name": "mrr_run3_e2e_claims_v1",
+      "path": "../../archive/dumps/mrr_run3_e2e_claims_v1.sql",
+      "sha256": "sha256:01f8f37215bb0a025a4f51290c8d43cad0f35056946cd22b576e6fae58f3782e",
+      "describes": "The third real run (e2e-claims, 2026-08-01): what the eight sources cited by /e2e-automation actually contribute. Result contested."
     }
   ]
 }

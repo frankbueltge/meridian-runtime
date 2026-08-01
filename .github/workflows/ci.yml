@@ -63,5 +63,12 @@ jobs:
       - name: Benchmark tier
         run: make benchmark
 
+      # task-packets/N1-T02.yaml R3. A gold standard is only frozen if
+      # something checks. Fails when a registered version's bytes moved —
+      # which would silently change what every measurement ever recorded
+      # against that set_id means.
+      - name: Gold-standard freeze check
+        run: uv run python scripts/check_gold_freeze.py
+
       - name: Security check
         run: make security-check
