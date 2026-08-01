@@ -1,0 +1,26 @@
+{
+  "system_id": "synthetic-scripted-classifier",
+  "note": "Fixed predictions for the synthetic fixture. Not the output of any real classifier — a stub chosen so the resulting confusion matrix equals task-packets/N1-T02.yaml AT1's hand-computed oracle.",
+  "predictions": {
+    "syn-supports-01": "supports",
+    "syn-supports-02": "supports",
+    "syn-supports-03": "supports",
+    "syn-supports-04": "supports",
+    "syn-supports-05": "supports",
+    "syn-supports-06": "supports",
+    "syn-supports-07": "supports",
+    "syn-supports-08": "supports",
+    "syn-supports-09": "contradicts",
+    "syn-supports-10": "qualifies",
+    "syn-contradicts-01": "supports",
+    "syn-contradicts-02": "contradicts",
+    "syn-contradicts-03": "contradicts",
+    "syn-contradicts-04": "contradicts",
+    "syn-contradicts-05": "qualifies",
+    "syn-qualifies-01": "supports",
+    "syn-qualifies-02": "qualifies",
+    "syn-qualifies-03": "qualifies",
+    "syn-contextualizes-01": "supports",
+    "syn-contextualizes-02": "contextualizes"
+  }
+}

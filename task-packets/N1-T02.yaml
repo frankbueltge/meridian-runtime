@@ -98,9 +98,28 @@ source_of_truth:
   - services/control_plane/mrr/services/cli/main.py                # +1 subcommand registration
 requirements:
   - >-
-    R1 (gold set as data, schemas/gold-label-set.schema.json): a gold label set
-    is an externally visible data structure and MUST be schema-validated
-    (AGENTS rule 6). Required: `set_id` (e.g. "mb-cls-v1"), `criteria_version`,
+    R1 (gold set as data, benchmarks/meridianbench/fixtures/
+    gold-label-set.schema.json): a gold label set is an externally visible data
+    structure and MUST be schema-validated (AGENTS rule 6).
+    CORRECTED DURING THE BUILD, 2026-08-01: this requirement originally placed
+    the schema under `schemas/`. It does not belong there, and the repository
+    said so itself — tests/contract/test_examples.py::
+    test_every_schema_has_an_example_and_a_model asserts
+    `schema_entities == example_entities == set(ENTITY_MODELS)`, i.e. every file
+    in schemas/ must have a matching examples/*.example.json AND a
+    mrr.contracts Pydantic model. A gold label set is deliberately none of
+    those: no lifecycle, no object store, and this packet forbids
+    packages/contracts/** on purpose. Adding an example and a contract model to
+    satisfy the test would have made a governed entity out of something that
+    must stay an input file. The schema therefore lives beside the fixtures it
+    describes, following the CorpusEntry precedent
+    (synthesis_executor.py:205-208: "validated only here (not schematized under
+    schemas/)"), and is kept as JSON Schema — rather than only as Python —
+    because another practice has to produce one of these and needs a spec it
+    can check its own output against. Rule 6 is satisfied by EXECUTING it:
+    benchmarks/meridianbench/tests/test_mb_cls.py validates the committed
+    fixture against it and asserts it rejects a set with no label_provenance.
+    Required: `set_id` (e.g. "mb-cls-v1"), `criteria_version`,
     `criteria_locked_at`, `criteria_lock_content_hash`, `label_provenance`
     (who produced the labels, under which act — free text plus a machine field
     naming the producing practice), `categories` (the declared label space),
@@ -163,7 +182,7 @@ requirements:
     `"synthetic-fixture"`, and the loader refuses to use a set with that
     provenance for anything but tests, naming the refusal.
 allowed_paths:
-  - schemas/gold-label-set.schema.json
+  - benchmarks/meridianbench/fixtures/gold-label-set.schema.json   # NOT schemas/ — see R1's correction
   - packages/domain/mrr/domain/gold_validity_report.py
   - benchmarks/meridianbench/suites/mb_cls.py
   - benchmarks/meridianbench/fixtures/
@@ -181,6 +200,8 @@ allowed_paths:
   - docs/design/
   - task-packets/N1-T02.yaml
 forbidden_changes:
+  - schemas/**                                                     # a gold set is an input file, not a governed entity — see R1
+  - examples/**                                                    # follows from the above: no entity, no example
   - packages/domain/mrr/domain/agreement.py                        # the metric core is reused UNCHANGED
   - packages/domain/mrr/domain/agreement_report.py                 # N1-T01's reliability boundary stays as it is
   - benchmarks/meridianbench/harness.py                            # label isolation inherited, never re-implemented

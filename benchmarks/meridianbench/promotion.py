@@ -43,6 +43,13 @@ from typing import Literal
 from benchmarks.meridianbench.targets import (
     FALSE_SUPPORT_ON_MB_CIT_COMPARATOR,
     FALSE_SUPPORT_ON_MB_CIT_TARGET,
+    FALSE_SUPPORT_ON_MB_CLS_COMPARATOR,
+    FALSE_SUPPORT_ON_MB_CLS_TARGET,
+    GOLD_CLASSIFICATION_KAPPA_COMPARATOR,
+    GOLD_CLASSIFICATION_KAPPA_TARGET,
+    GOLD_CLASSIFICATION_MACRO_F1_COMPARATOR,
+    GOLD_CLASSIFICATION_MACRO_F1_TARGET,
+    NO_THRESHOLD_SET_REASON,
     NUMERIC_VERIFICATION_ACCURACY_COMPARATOR,
     NUMERIC_VERIFICATION_ACCURACY_TARGET,
     VALID_CITATION_ANCHOR_RESOLUTION_COMPARATOR,
@@ -89,19 +96,34 @@ class MetricsReport:
     valid_anchor_resolution_rate: float | None = None
     false_support_rate: float | None = None
 
+    # --- MB-CLS (task-packets/N1-T02.yaml R5). Same fail-closed rule as the
+    #     three above: ``None`` means the suite was not run, and its target
+    #     check fails rather than being skipped.
+    gold_classification_kappa: float | None = None
+    gold_classification_macro_f1: float | None = None
+    false_support_rate_mb_cls: float | None = None
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TargetCheck:
     """One target's pass/fail, alongside the exact target value and
     comparator it was checked against — enough to reconstruct the whole
     decision from this record alone, without re-reading ``targets.py``.
+
+    ``target_value`` is ``None`` when no threshold has been set for this
+    target yet, and ``reason`` then says so. That is a THIRD state, distinct
+    from both "measured and passed" and "measured and fell short": nobody has
+    yet said what good means. It fails, like every other non-pass — but it
+    fails legibly, because a decision that cannot distinguish "we fell short"
+    from "no one set a bar" is not a decision anyone can act on.
     """
 
     name: str
     metric_value: float | None
-    target_value: float
+    target_value: float | None
     comparator: TargetComparator
     passed: bool
+    reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -117,10 +139,21 @@ class PromotionDecision:
 
 
 def _check_target(
-    *, name: str, metric_value: float | None, target_value: float, comparator: TargetComparator
+    *,
+    name: str,
+    metric_value: float | None,
+    target_value: float | None,
+    comparator: TargetComparator,
 ) -> TargetCheck:
-    if metric_value is None:
+    reason: str | None = None
+    if target_value is None:
+        # No threshold has been set for this target yet. It fails — never
+        # passes by default, never silently disappears from the decision.
         passed = False
+        reason = NO_THRESHOLD_SET_REASON
+    elif metric_value is None:
+        passed = False
+        reason = "not measured: the suite producing this metric was not run"
     elif comparator == ">=":
         passed = metric_value >= target_value
     else:
@@ -131,6 +164,7 @@ def _check_target(
         target_value=target_value,
         comparator=comparator,
         passed=passed,
+        reason=reason,
     )
 
 
@@ -169,11 +203,68 @@ def decide_promotion(
     )
 
 
+def decide_gold_classification_promotion(
+    metrics: MetricsReport, evaluation_profile: EvaluationProfile
+) -> PromotionDecision:
+    """The MB-CLS promotion policy (task-packets/N1-T02.yaml R5): promote iff
+    every one of the three gold-classification targets is met. Pure and
+    side-effect-free, exactly like :func:`decide_promotion`.
+
+    --- Why this is a SEPARATE function, and not three more checks in
+        ``decide_promotion`` ---------------------------------------------
+
+    It answers a different question. ``decide_promotion`` asks whether the
+    numeric verifier and the citation anchoring meet the targets
+    docs/spec/05 section 4 set for them. This asks whether a CLASSIFIER is good
+    enough to be trusted with an evidence relation — a question that did not
+    exist when those targets were written, whose thresholds come from somewhere
+    else entirely (an encounter, per the owner's decision of 2026-08-01), and
+    whose suite may not have been run at all.
+
+    Folding them together would have a concrete and bad consequence: the
+    MB-CLS targets are ``None`` until the encounter sets them, so they fail by
+    construction, and a combined policy could therefore never return
+    ``promote`` for MB-NUM/MB-CIT again — an unrelated, unset threshold would
+    silently veto a fully measured result. Two questions, two decisions.
+
+    With no thresholds set, this function returns ``hold`` with all three
+    checks carrying
+    :data:`benchmarks.meridianbench.targets.NO_THRESHOLD_SET_REASON`. That is
+    the correct answer today, and it is meant to be read as "nobody has said
+    what better means yet", not as "the classifier failed".
+    """
+    target_checks = (
+        _check_target(
+            name="gold_classification_kappa",
+            metric_value=metrics.gold_classification_kappa,
+            target_value=GOLD_CLASSIFICATION_KAPPA_TARGET,
+            comparator=GOLD_CLASSIFICATION_KAPPA_COMPARATOR,
+        ),
+        _check_target(
+            name="gold_classification_macro_f1",
+            metric_value=metrics.gold_classification_macro_f1,
+            target_value=GOLD_CLASSIFICATION_MACRO_F1_TARGET,
+            comparator=GOLD_CLASSIFICATION_MACRO_F1_COMPARATOR,
+        ),
+        _check_target(
+            name="false_support_on_mb_cls",
+            metric_value=metrics.false_support_rate_mb_cls,
+            target_value=FALSE_SUPPORT_ON_MB_CLS_TARGET,
+            comparator=FALSE_SUPPORT_ON_MB_CLS_COMPARATOR,
+        ),
+    )
+    outcome: PromotionOutcome = "promote" if all(c.passed for c in target_checks) else "hold"
+    return PromotionDecision(
+        outcome=outcome, target_checks=target_checks, evaluation_profile=evaluation_profile
+    )
+
+
 __all__ = [
     "EvaluationProfile",
     "MetricsReport",
     "PromotionDecision",
     "PromotionOutcome",
     "TargetCheck",
+    "decide_gold_classification_promotion",
     "decide_promotion",
 ]

@@ -1,0 +1,11 @@
+{
+  "_note": "The freeze registry (task-packets/N1-T02.yaml R3). One entry per frozen version: the sha256 its bytes had when it was frozen. scripts/check_gold_freeze.py fails when a registered version's file no longer hashes to its pinned value, and CI runs it on every push. A gold set is never edited — a changed standard is a NEW set_id with a NEW entry, and the old entry stays so every past measurement remains interpretable. Adding an entry is how a set becomes frozen; removing or rewriting one is how a measurement quietly starts meaning something else, which is what this file exists to prevent.",
+  "frozen": {
+    "mb-cls-v1-synthetic": {
+      "path": "benchmarks/meridianbench/fixtures/mb-cls-v1.synthetic.json",
+      "sha256": "sha256:dbceee2ed41638a43af5bcd83b8b0184dd596d0d9fdf5662c1a572c58a27d5b2",
+      "frozen_on": "2026-08-01",
+      "note": "NOT a standard. The synthetic fixture that exercises the apparatus; its class distribution reproduces N1-T02 AT1's hand-computed oracle, so its bytes moving would silently invalidate that oracle. Registered for exactly that reason. Its label_provenance.producing_practice is 'synthetic-fixture', which the loader refuses for real evaluation unless --allow-synthetic is passed."
+    }
+  }
+}
