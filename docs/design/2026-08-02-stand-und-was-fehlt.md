@@ -7,6 +7,32 @@
 und das fiel erst beim Fact-Lock am Code auf. Prüf also, was hier steht. Jede
 Behauptung nennt ihre Fundstelle, damit das billig ist.
 
+## 0. Einstieg — in dieser Reihenfolge
+
+Die Arbeit verteilt sich über **drei** Repositories, was leicht zu übersehen ist:
+
+| | wofür |
+|---|---|
+| `meridian-runtime` | das Werkzeug. Hier liegt alles Gebaute. |
+| `field-research` | die Praxis Meridian selbst. Verfassung, Gauntlet, Journal. |
+| `ulysses` | die Praxis, die den Maßstab gesetzt hat. Nur lesen, nie ungefragt schreiben. |
+
+Zu lesen, bevor irgendetwas angefasst wird:
+
+1. **dieses Dokument** — Stand, Fehlendes, Fact-Locks
+2. `meridian-runtime/AGENTS.md` — Bau-Disziplin. Insbesondere: Ableitung und
+   Paket **vor** dem Bau, keine Fähigkeit ohne Anlass.
+3. `meridian-runtime/docs/design/2026-08-01-n1-t02-ableitung-goldstandard.md` —
+   warum der Maßstab so aussieht, wie er aussieht
+4. `ulysses/docs/research-notes/meridian-commission/RETURN-2026-08-01.md` — die
+   Rückgabe der labelnden Praxis. **Die drei Befunde darin sind der beste
+   Prüfmaßstab für alles, was als Nächstes gebaut wird.**
+
+Und die Regeln, die über allem stehen, aus `../CLAUDE.md`:
+Git-Identität `Frank Bültge <f.bueltge@gmail.com>`, **nie** `frank@bueltge.de`;
+keine KI-Produkt-Credits in Commits oder Inhalten; nichts auf `main` und nichts
+in eine fremde Praxis ohne ausdrückliche Freigabe.
+
 ---
 
 ## 1. Wo es steht, in einem Absatz
