@@ -101,6 +101,13 @@ from mrr.domain.relation_proposal import (
 )
 from pydantic import BaseModel, ConfigDict
 
+#: Statuses meaning NO ANSWER WAS OBTAINED AT ALL, as opposed to an answer
+#: that said no. A bounded retry is legitimate for exactly these two and for
+#: no others: ``refused`` and ``content_filtered`` ARE the model's answer, and
+#: retrying them until one comes out differently would launder a refusal into
+#: a result. ``schema_invalid`` already has its own bounded repair in E4-T02.
+NO_ANSWER_STATUSES: Final[frozenset[str]] = frozenset({"error", "timed_out"})
+
 #: Crockford base32 minus I, L, O and U — the exact alphabet
 #: ``mrr.domain.identity.URN_PATTERN`` accepts in a ULID position.
 _ULID_ALPHABET: Final = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -443,6 +450,7 @@ class RelationClassificationService:
         model_name: str,
         system_id: str,
         max_repair_attempts: int = 1,
+        max_transport_retries: int = 2,
         pause: Callable[[], None] | None = None,
     ) -> RelationProposalSet:
         """Classify every case and return the proposal set.
@@ -487,6 +495,8 @@ class RelationClassificationService:
                     model_profile_id=model_profile_id,
                     model_profile_hash=model_profile_hash,
                     max_repair_attempts=max_repair_attempts,
+                    max_transport_retries=max_transport_retries,
+                    pause=pause,
                 )
             )
 
@@ -512,6 +522,8 @@ class RelationClassificationService:
         model_profile_id: str,
         model_profile_hash: str,
         max_repair_attempts: int,
+        max_transport_retries: int = 0,
+        pause: Callable[[], None] | None = None,
     ) -> RelationProposal:
         request = ModelInvocationRequest(
             model_profile_id=model_profile_id,
@@ -540,9 +552,25 @@ class RelationClassificationService:
             # set records hashes, per its own module docstring.
             redaction_policy="raw_permitted",
         )
+        # A bounded retry, ONLY for the two statuses that mean no answer
+        # arrived. One dropped connection should not discard fifty-nine good
+        # classifications, and a quota wall still stops the run because every
+        # retry fails too. The count is recorded on the proposal, so a run
+        # that needed retries never looks like one that did not.
         result = generate_structured(
             adapter, request, _RelationVerdict, max_repair_attempts=max_repair_attempts
         )
+        transport_retries_used = 0
+        while (
+            result.status in NO_ANSWER_STATUSES and transport_retries_used < max_transport_retries
+        ):
+            if pause is not None:
+                pause()
+            transport_retries_used += 1
+            result = generate_structured(
+                adapter, request, _RelationVerdict, max_repair_attempts=max_repair_attempts
+            )
+
         attempts = tuple(
             AttemptRecord(status=outcome.status, response_hash=outcome.response_hash)
             for outcome in result.attempts
@@ -554,6 +582,7 @@ class RelationClassificationService:
                 generation_status=result.status,
                 attempts=attempts,
                 repair_attempts_used=result.repair_attempts_used,
+                transport_retries_used=transport_retries_used,
             )
 
         verdict = result.proposal
@@ -571,10 +600,12 @@ class RelationClassificationService:
             verification_disposition=DOWNGRADED_TO_PROPOSAL,
             attempts=attempts,
             repair_attempts_used=result.repair_attempts_used,
+            transport_retries_used=transport_retries_used,
         )
 
 
 __all__ = [
+    "NO_ANSWER_STATUSES",
     "PROMPT_TEMPLATE",
     "prompt_contract_sha256",
     "CasesNotBlindError",

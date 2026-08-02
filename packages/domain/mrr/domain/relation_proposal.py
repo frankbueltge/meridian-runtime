@@ -216,6 +216,12 @@ class RelationProposal(MRRModel):
     attempts: tuple[AttemptRecord, ...] = ()
     repair_attempts_used: int = Field(default=0, ge=0)
 
+    #: How many times the whole call was retried because no answer was
+    #: obtained at all (``error``/``timed_out``). Recorded rather than hidden:
+    #: a run that needed retries is a different observation from one that did
+    #: not, and a quota wall shows up here as every case needing them.
+    transport_retries_used: int = Field(default=0, ge=0)
+
     @property
     def has_proposal(self) -> bool:
         """True when the model returned a schema-valid verdict, whether that

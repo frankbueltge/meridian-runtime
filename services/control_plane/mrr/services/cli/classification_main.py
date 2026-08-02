@@ -179,6 +179,17 @@ def _add_relations_subparser(
         ),
     )
     parser.add_argument(
+        "--max-transport-retries",
+        type=int,
+        default=2,
+        help=(
+            "How often to re-issue a whole case when NO answer arrived at all "
+            "(error/timed_out). Never applied to 'refused' or 'content_filtered' — those "
+            "ARE the model's answer, and retrying them would launder a refusal into a "
+            "result. Each retry is counted in the artefact."
+        ),
+    )
+    parser.add_argument(
         "--pause-seconds",
         type=float,
         default=_DEFAULT_PAUSE_SECONDS,
@@ -286,6 +297,7 @@ def run_relations_command(args: argparse.Namespace, *, adapter: ModelAdapter | N
             model_name=args.model_name or "unnamed-model",
             system_id=args.system_id,
             max_repair_attempts=args.max_repair_attempts,
+            max_transport_retries=args.max_transport_retries,
             pause=_pause,
         )
     except (DomainError, ValueError) as exc:

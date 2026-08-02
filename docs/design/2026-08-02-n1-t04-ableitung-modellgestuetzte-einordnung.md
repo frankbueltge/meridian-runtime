@@ -307,6 +307,22 @@ eigenen Tests besteht.
    trifft, ist der Zaun das Problem, und wo nicht, war es die Lesart.
 4. **Kein stabiler Fingerabdruck eines Befunds** (Handoff §5) — unverändert
    offen und von diesem Paket nicht berührt.
+5. **`hashes_only` macht `generate_structured` ergebnislos.** Gefunden beim
+   ersten Online-Lauf: `generate_structured` prüft `raw_response_text`, und
+   `ModelInvocationOutcome` verbietet dieses Feld unter `hashes_only`
+   (MRR-FR-045). Unter dieser Policy ist `status == "proposal"` also
+   **strukturell unerreichbar**. Der bestehende Extraktions-Arm fordert genau
+   diese Policy und verzweigt dann auf `"proposal"`, um `verified` zu setzen —
+   der Zweig ist gegen jeden konformen Adapter toter Code. Sein Test besteht
+   nur, weil das Fake-Objekt `raw_permitted`-Outcomes zurückgibt, unabhängig
+   davon, was die Anfrage verlangt. Das schärft Befund 1: `verified` ist dort
+   nicht bloß semantisch falsch, es ist unerreichbar. Reparatur gehört ins
+   selbe eigene Paket.
+6. **Ein Guard, der nur getrackte Dateien sieht.** `git diff --quiet -- <pfad>`
+   übersieht neue Dateien. Im Workflow warf das eine fertige Messung weg und
+   meldete Erfolg. Behoben (erst stagen, dann fragen); `field-watch.yml` trägt
+   dasselbe Muster und ist heute unauffällig, weil seine Registerdatei bereits
+   existiert — ein eigener, kleiner Vorgang.
 
 ## 9. Offene Punkte dieses Pakets
 
@@ -317,5 +333,26 @@ eigenen Tests besteht.
    AI-Studio-Free-Tier ist ratenbegrenzt; der Dienst braucht daher eine
    Drosselung zwischen den Aufrufen und muss bei `error`/`timed_out` ehrlich
    scheitern statt zu wiederholen, bis es passt.
+
+   **Geändert 2026-08-02, nach dem Bau, aus einem Lauf gelernt.** Der Satz
+   oben zog die Linie an der falschen Stelle. Ein Lauf klassifizierte 59 von
+   60 Fällen und verwarf alles wegen eines einzigen `timed_out` — das ist
+   nicht Ehrlichkeit, das ist Sprödigkeit. Die tragfähige Unterscheidung ist
+   nicht „wiederholen ja/nein", sondern **wer geantwortet hat**:
+
+   - `refused` und `content_filtered` **sind** die Antwort des Modells.
+     Sie zu wiederholen, bis etwas anderes herauskommt, wäscht eine Weigerung
+     in ein Ergebnis um. Bleibt verboten.
+   - `schema_invalid` ist eine schlechte Antwort und hat mit E4-T02s
+     beschränkter Reparatur bereits ihren eigenen Mechanismus.
+   - `error` und `timed_out` heißen, dass **überhaupt keine Antwort ankam.**
+     Das ist eine Tatsache über den Transport, keine Aussage des Modells.
+
+   Für diese zwei — und nur diese zwei — gilt jetzt ein **beschränkter,
+   gezählter** Retry (`NO_ANSWER_STATUSES`, Standard 2). „Beschränkt und
+   gezählt" ist der Unterschied zu „bis es passt": eine Kontingentwand lässt
+   auch jeden Retry scheitern, der Lauf weigert sich weiterhin, und
+   `transport_retries_used` steht je Fall im Artefakt. Ein Lauf, der Retries
+   brauchte, sieht nie aus wie einer, der keine brauchte.
 3. **Ob der Lauf veröffentlicht wird.** Das Ergebnis landet als Commit im
    Branch, nicht auf `main`. Der Merge ist ein Owner-Akt, wie jeder andere auch.

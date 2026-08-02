@@ -288,6 +288,9 @@ def test_each_model_failure_keeps_its_own_name_and_none_is_collapsed(tmp_path: P
         model_name="fake-model",
         system_id="test-system",
         max_repair_attempts=1,
+        # Retries off: this test is about each failure keeping its own name,
+        # not about how often a no-answer is retried.
+        max_transport_retries=0,
     )
 
     assert [p.generation_status for p in result.proposals] == [
@@ -322,6 +325,7 @@ def test_the_command_refuses_on_incomplete_coverage_and_writes_nothing(tmp_path:
         adapter="none",
         model_name="fake-model",
         max_repair_attempts=0,
+        max_transport_retries=0,
         pause_seconds=0.0,
     )
     exit_code = classification_main.run_relations_command(args, adapter=adapter)
@@ -700,3 +704,85 @@ def test_the_prompt_hash_covers_the_schema_not_only_the_template() -> None:
     """A changed schema changes the ask as surely as a changed sentence."""
     assert prompt_contract_sha256().startswith("sha256:")
     assert prompt_contract_sha256() != "sha256:" + "0" * 64
+
+
+# --- The bounded transport retry ---------------------------------------------
+
+
+def test_a_timeout_is_retried_because_it_is_not_an_answer(tmp_path: Path) -> None:
+    """One dropped connection must not discard fifty-nine good classifications.
+
+    A `timed_out` means no answer arrived. That is a fact about the transport,
+    not a statement by the model, so obtaining it again is not laundering
+    anything. The retry is bounded and its count is recorded.
+    """
+    service = RelationClassificationService()
+    cases = service.load_cases(_cases_file(tmp_path, [_case_doc("c1")]))
+    adapter = _ScriptedFakeAdapter([_terminal("timed_out"), _completed(_verdict("qualifies"))])
+
+    result = service.classify(
+        adapter=adapter,
+        cases=cases,
+        criteria=_criteria(),
+        model_name="fake-model",
+        system_id="test-system",
+        max_repair_attempts=0,
+        max_transport_retries=2,
+    )
+
+    assert result.predictions() == {"c1": "qualifies"}
+    assert result.proposals[0].transport_retries_used == 1
+
+
+def test_a_refusal_is_never_retried_because_it_IS_the_answer(tmp_path: Path) -> None:
+    """The line the retry must not cross.
+
+    `refused` and `content_filtered` are the model answering. Retrying until
+    one of them comes out differently would turn a refusal into a result,
+    which is the exact dishonesty the derivation forbade when it ruled out
+    "repeat until it fits".
+    """
+    service = RelationClassificationService()
+    cases = service.load_cases(_cases_file(tmp_path, [_case_doc("c1")]))
+    adapter = _ScriptedFakeAdapter([_terminal("refused"), _completed(_verdict("qualifies"))])
+
+    result = service.classify(
+        adapter=adapter,
+        cases=cases,
+        criteria=_criteria(),
+        model_name="fake-model",
+        system_id="test-system",
+        max_repair_attempts=0,
+        max_transport_retries=2,
+    )
+
+    assert result.proposals[0].generation_status == "refused"
+    assert result.proposals[0].transport_retries_used == 0
+    assert len(adapter.calls) == 1
+
+
+def test_a_quota_wall_still_stops_the_run(tmp_path: Path) -> None:
+    """The retry must not paper over a real exhaustion.
+
+    Every retry fails too when the quota is gone, so the case still produces
+    no verdict, the run still refuses, and the retry count in the artefact
+    says the attempt was made.
+    """
+    service = RelationClassificationService()
+    cases = service.load_cases(_cases_file(tmp_path, [_case_doc("c1")]))
+    adapter = _ScriptedFakeAdapter([_terminal("error") for _ in range(3)])
+
+    result = service.classify(
+        adapter=adapter,
+        cases=cases,
+        criteria=_criteria(),
+        model_name="fake-model",
+        system_id="test-system",
+        max_repair_attempts=0,
+        max_transport_retries=2,
+    )
+
+    assert result.failed_case_ids() == ("c1",)
+    assert result.proposals[0].generation_status == "error"
+    assert result.proposals[0].transport_retries_used == 2
+    assert len(adapter.calls) == 3
