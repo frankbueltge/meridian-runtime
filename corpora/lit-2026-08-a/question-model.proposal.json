@@ -1,0 +1,17 @@
+{
+  "claim_type_sought": "interpretive",
+  "load_bearing_terms": [
+    "Systems that automate the research cycle end to end verify their own outputs independently of the component that produced them."
+  ],
+  "raw_question": "Of the sources drawn for literature batch 'lit-2026-08-a', which support the claim under examination, and which contradict, qualify or merely contextualize it?",
+  "scope": {
+    "conditions": [
+      "a source must be listed in the pinned batch manifest",
+      "classification is made against the source's own anchored abstract, never against any characterisation of it",
+      "the classification is a model proposal and is recorded as one; no entry claims a verified relation"
+    ],
+    "geography": null,
+    "population": "every source in the pinned batch manifest (manifest /tmp/lit-2026-08-a/citations.manifest.json (sha256:5f4b183c3cfac88a27c9740715bc2b115166254135eb9e20f64fd3cda1f1e965), abstracts pinned at /tmp/lit-2026-08-a/content-snapshot.json (sha256:e5607e7dfb417ec832dd4d431f364a4be2aec878fa5ada5640cd9fc9df66bc1f), fetched 2026-08-02); classified against the pinned abstract snapshot and nothing else",
+    "time": "batch drawn for lit-2026-08-a; abstracts fetched 2026-08-02"
+  }
+}
