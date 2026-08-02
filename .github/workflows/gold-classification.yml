@@ -35,6 +35,28 @@
 # one that failed, because the missing file looks like a result nobody got
 # round to reading.
 #
+# --- Which model, and why not the obvious one -------------------------------
+#
+# Measured, not assumed (a throwaway probe, deleted with this commit):
+#
+#   gemini-2.0-flash / -lite   429, free-tier daily quota None -- no allowance
+#   gemini-2.5-flash           404, "no longer available to new users"
+#   gemini-2.5-flash-lite      429, GenerateRequestsPerDayPerProjectPerModel=20
+#   gemini-3.5-flash-lite      200
+#
+# So the first run's sixty `error` statuses were not a rate limit and not a
+# bad request: 2.0-flash has no free-tier allowance at all on this key.
+#
+# 2.5-flash-lite is avoided deliberately even though it works: the sibling
+# project frankbueltge.de uses that exact model for its nightly Parallaxe run
+# and its /seed gate. If those share this Google project, spending sixty calls
+# here would take a quota another practice depends on. A daily cap is a shared
+# resource, and this is not the only tenant.
+#
+# `gemini-flash-lite-latest` also answers, and is NOT used: a moving alias
+# names no object that could be measured again next month, which is the same
+# rule that makes --model-name required.
+#
 # --- Never credit a person or a product for a machine's run -----------------
 #
 # Same standing rule as the other two workflows: the committer is a machine
@@ -48,7 +70,7 @@ on:
       model_name:
         description: 'Concrete provider model id — recorded in the artefact. "Gemini" is not a measurable object.'
         type: string
-        default: 'gemini-2.5-flash-lite'
+        default: 'gemini-3.5-flash-lite'
       dry_run:
         description: 'Classify and measure, but commit nothing'
         type: boolean
@@ -108,7 +130,7 @@ jobs:
           # A push-triggered run carries no inputs. The fallback is a concrete,
           # committed model id rather than a vendor name, which is what the
           # "never defaulted" rule is actually about.
-          model="${MODEL_NAME:-gemini-2.5-flash-lite}"
+          model="${MODEL_NAME:-gemini-3.5-flash-lite}"
           system_id="${model}@mb-cls-criteria-v3"
           expected="$(uv run python -c "
           import json, pathlib
