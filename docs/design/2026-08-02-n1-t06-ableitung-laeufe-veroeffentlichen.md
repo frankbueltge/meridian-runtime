@@ -41,9 +41,18 @@ Ein Nachtrag, der nur `:81` anfasst, lässt die Site an zwei Stellen falsch.
 | Dump | Claims | Verifikationen | Status-Verteilung |
 |---|---|---|---|
 | `mrr_k1t04_real_run_v2.sql` | 2 | 3 | 3 accepted, 1 contested, 13 draft |
-| `mrr_run2_corroboration_floor_v1.sql` | 4 | 9 | 3 accepted, 2 contested, 18 draft |
+| `mrr_run2_corroboration_floor_v1.sql` | 4 | **6** | 3 accepted, 2 contested, 18 draft |
 | `mrr_run3_e2e_claims_v1.sql` | 1 | 0 | 3 accepted, 1 contested, 11 draft |
-| **Summe** | **7** | **12** | |
+| **Summe** | **7** | **9** | |
+
+> **Korrigiert 2026-08-02, nach dem Export.** Diese Tabelle sagte zuerst 9 und
+> 12. Die Zahl kam aus einem `grep` über *erwähnte* `urn:mrr:verification:`-IDs
+> im SQL — und Lauf 2 erwähnt drei Verifikationen, die ihm nicht gehören:
+> `01KY4PZ13X…`, `01KY4PZ141…` und `01KY4RMN5C…` sind **Lauf 1s** (die letzte
+> ist genau die *fail*-Verifikation, die die Field-Tour der Site zitiert).
+> Als Objektkörper liegen in Lauf 2 sechs. Der Export ist die Autorität, nicht
+> der grep — derselbe Fehlermodus, vor dem der Owner bei der Zaun-Gegenprobe
+> gewarnt hat: gezählt, was ein Muster trifft, statt was ein Objekt ist.
 
 Veröffentlicht ist **Lauf 1**: `src/data/meridian/export/` hält
 `ro-crate-metadata.json` mit 89 Graph-Einträgen — davon 2 `mrr:Claim`,
@@ -51,7 +60,7 @@ Veröffentlicht ist **Lauf 1**: `src/data/meridian/export/` hält
 42 `File`. `parallax.json` bestätigt: `object_count: 42`, `artifact_count: 0`,
 Claim `…3RQFS`, `supporting: 1`, `contradicting: 13`, `verification_count: 2`.
 
-**Die Site zeigt also 2 von 7 Claims und 3 von 12 Verifikationen** und nennt das
+**Die Site zeigt also 2 von 7 Claims und 3 von 9 Verifikationen** und nennt das
 „a single run". Der Satz war am 22.07. richtig und ist es seit Lauf 2 nicht mehr.
 
 ### Der Engpass ist echt
