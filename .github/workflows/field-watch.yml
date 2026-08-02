@@ -130,6 +130,16 @@ jobs:
       # keeps its pull request because a research RESULT is an assertion that
       # deserves a human before it lands. This is the other kind of artefact,
       # and treating them the same was a mistake of symmetry, not of caution.
+      #
+      # CONFIRMED BY THE OWNER, 2026-08-02. Carried as an open question since
+      # the handoff of that date ("Bleibt der Direkt-Push der Wache auf
+      # main?") and now settled: it stays. Recorded here rather than only in a
+      # design note, because this is the line a reader doubts, and this is
+      # where they are standing when they doubt it.
+      #
+      # Still reversible, and the cost of reversing is named: a register that
+      # only advances when a human merges has no memory on the days the
+      # routine is started by hand more than once.
       - name: Record the night on main
         if: steps.check.outputs.new == 'true' && inputs.dry_run != true
         run: |
