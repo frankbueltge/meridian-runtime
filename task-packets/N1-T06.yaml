@@ -41,9 +41,12 @@ derivation: >-
   sentence whose other numbers ARE derived from parallax.json; and :83 ("In
   this run no source backs more than one classification") is likewise written
   for a single run. Editing only :81 leaves the page wrong twice.
-  (K2) THE ARCHIVE HOLDS 7 CLAIMS AND 12 VERIFICATIONS ACROSS THREE RUNS,
+  (K2) THE ARCHIVE HOLDS 7 CLAIMS AND 9 VERIFICATIONS ACROSS THREE RUNS,
   counted from the dumps: mrr_k1t04_real_run_v2 (2 claims, 3 verifications),
-  mrr_run2_corroboration_floor_v1 (4, 9), mrr_run3_e2e_claims_v1 (1, 0). The
+  mrr_run2_corroboration_floor_v1 (4, 6), mrr_run3_e2e_claims_v1 (1, 0) —
+  CORRECTED after the export: the first count came from a grep over MENTIONED
+  verification URNs, and run 2 mentions three of run 1's. The exported crates
+  are the authority. The
   committed crate at frankbueltge.de/src/data/meridian/export/ holds 89 graph
   entries of which 2 are mrr:Claim and 3 mrr:VerificationResult — run 1 alone.
   The site shows 2 of 7 and calls it "a single run".
@@ -226,10 +229,12 @@ acceptance_tests:
     read-only.
   - >-
     AT3 (the counts are real): the delivered crates contain 2, 4 and 1
-    mrr:Claim entries and 3, 9 and 0 mrr:VerificationResult entries
-    respectively — matching the counts taken from the dumps at derivation time.
-    A mismatch means the restore or the export lost something and fails the
-    packet.
+    mrr:Claim entries and 3, 6 and 0 mrr:VerificationResult entries
+    respectively. VERIFIED against the real export 2026-08-02: claims matched
+    the derivation exactly; verifications did NOT, and the derivation was
+    wrong — its grep counted mentioned URNs rather than object bodies, and run
+    2's dump mentions three of run 1's verifications. The export is the
+    authority and the derivation is corrected.
   - >-
     AT4 (the check is green and stronger): with all crates committed,
     `python pipelines/meridian/refresh.py` then
