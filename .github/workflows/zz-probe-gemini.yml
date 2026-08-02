@@ -1,23 +1,20 @@
 # THROWAWAY DIAGNOSTIC — delete before this branch merges.
 #
 # `error` is an honest but opaque status: the adapter maps a non-200 response,
-# a transport failure and an unexpected 200 shape all onto it, and under any
-# redaction policy it keeps no body. That is right for an artefact and useless
-# for a diagnosis, so this asks the provider directly, once, and prints what
-# comes back.
+# a transport failure and an unexpected 200 shape all onto it, and keeps no
+# body. Right for an artefact, useless for a diagnosis. So this asks the
+# provider directly and prints the number it refuses with.
 #
-# It exists because the alternative was guessing, and the run it is diagnosing
-# had already contradicted one guess: a longer pause made `error` more common,
-# not less, so it is not the rate limit.
+# push-triggered on its own paths only: workflow_dispatch needs the file to
+# exist on the default branch, and nothing goes to main without a go-ahead.
 
 name: zz probe gemini
 
 on:
-  # push-triggered on its own path only: workflow_dispatch needs the file to
-  # exist on the default branch, and nothing goes to main without a go-ahead.
   push:
     paths:
       - '.github/workflows/zz-probe-gemini.yml'
+      - 'scripts/zz_probe_quota.py'
 
 permissions:
   contents: read
@@ -27,41 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Which models does this key actually have
-        env:
-          KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          set -euo pipefail
-          code=$(curl -sS -o /tmp/models.json -w '%{http_code}' \
-            -H "x-goog-api-key: ${KEY}" \
-            "https://generativelanguage.googleapis.com/v1beta/models")
-          echo "HTTP $code"
-          python3 -c "
-          import json
-          d = json.load(open('/tmp/models.json'))
-          names = [m['name'] for m in d.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
-          print('generateContent-capable models:')
-          for n in sorted(names): print(' ', n)
-          " || head -c 2000 /tmp/models.json
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: What daily quota does each candidate model have
         env:
-          KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          set -euo pipefail
-          for m in gemini-2.0-flash gemini-2.0-flash-lite gemini-2.5-flash gemini-3.5-flash-lite gemini-flash-lite-latest; do
-            echo '{"contents":[{"parts":[{"text":"Reply with the single word: ok"}]}]}' > /tmp/b.json
-            code=$(curl -sS -o /tmp/r.json -w '%{http_code}' -X POST \
-              -H "Content-Type: application/json" -H "x-goog-api-key: ${KEY}" \
-              -d @/tmp/b.json \
-              "https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent")
-            quota=$(python3 -c "
-import json,sys
-try: d=json.load(open('/tmp/r.json'))
-except Exception: print('unparseable'); sys.exit()
-det=d.get('error',{}).get('details',[])
-vs=[v for x in det if x.get('@type','').endswith('QuotaFailure') for v in x.get('violations',[])]
-print('; '.join(f\"{v.get('quotaId')}={v.get('quotaValue')}\" for v in vs) or 'OK — call succeeded')
-")
-            echo "$m -> HTTP $code | $quota"
-          done
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python3 scripts/zz_probe_quota.py
