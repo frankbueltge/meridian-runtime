@@ -8,11 +8,12 @@ title: >-
   the site-side change that makes the method sheet COUNT the runs instead of
   spelling "two claims from a single run", so the next run is a committed
   directory and not a text edit.
-status: proposed
+status: approved
 epic: N1
 kind: integration
 reviewer_resolution: >-
-  PROPOSED 2026-08-02, awaiting the owner's approval. An INTEGRATION packet in
+  APPROVED by the owner 2026-08-02 ("Beide"), on the derivation and this packet as
+  laid before him. An INTEGRATION packet in
   the sense of AGENTS.md: it builds no capability. `mrr export ro-crate` was
   finished in E8-T01/E8-T06 and has never had a caller — exactly the fourth
   instance of the pattern that file's own table names, "a complete layer whose

@@ -8,10 +8,11 @@ title: >-
   finds `pending != []` for the first time since 2026-08-01. Offline-testable
   end to end against committed fixtures; run online by an event-driven
   workflow that never lands on `main` and never runs on a clock.
-status: proposed
+status: approved
 epic: N1
 reviewer_resolution: >-
-  PROPOSED 2026-08-02, awaiting the owner's approval. Under his ordering of
+  APPROVED by the owner 2026-08-02 ("Beide"), on the derivation and this packet as
+  laid before him. Under his ordering of
   2026-08-01 ("1. Maßstab -> 2. modellgestützte Einordnung -> 3. Literaturkanal
   -> 4. Kopplung") and his operating decision of 2026-08-02 ("nichts lokal,
   alles läuft online in GitHub Actions und automatisch — aber anlassgetrieben,

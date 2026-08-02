@@ -1,0 +1,341 @@
+# The literature channel: sources become a stated question.
+#
+# Step 3 of the owner's ordering (1. standard -> 2. model-assisted
+# classification -> 3. literature channel -> 4. coupling). It runs the five
+# links of the chain, of which only two are new:
+#
+#   1. scripts/draw_backlog.py          a batch manifest        (new, N1-T05)
+#   2. scripts/fetch_source_content.py  anchored excerpts       (unchanged)
+#   3. mrr literature commission        the blind commission    (new, N1-T05)
+#   4. mrr classify relations           the proposals           (unchanged, N1-T04)
+#   5. mrr literature build             the corpus directory    (new, N1-T05)
+#
+# Afterwards research-run.yml finds `pending != []` for the first time since
+# 2026-08-01 and answers the question on its next nightly, without anyone
+# pressing anything.
+#
+# --- Why there is no `schedule:` --------------------------------------------
+#
+# Two standing rules: "keine dritte naechtliche Routine" and "kein Nightly,
+# das dasselbe neu rechnet". There are already two (research-run.yml at 04:40
+# UTC, field-watch.yml at 01:10 UTC), and this workflow recomputes nothing --
+# it CREATES an input. A clock would either redraw the same batch every night
+# or draw a fresh one nightly, and the second is worse: it would fill the
+# corpora directory with questions nobody asked, each one costing a synthesis
+# run.
+#
+# So it fires on an occasion instead. Same philosophy as gold-classification.yml
+# and research-run.yml: only a new input starts anything.
+#
+# --- The two mouths ---------------------------------------------------------
+#
+# workflow_dispatch draws the BACKLOG deliberately. That is what
+# corpora/field-watch/seen.json says is the only honest way to use it:
+# "backlog is drawn deliberately (as the candidate pool was), never dribbled
+# in by a nightly pretending it is fresh."
+#
+# push on corpora/field-watch/observations/** takes what the WATCH found. It
+# is a real trigger, not a decoration, because the watch commits straight to
+# main (owner-confirmed 2026-08-02). It has never fired: the watch has run
+# twice, reported "new": 0 both times, and that directory is empty. It will
+# fire on the first night the field is not quiet.
+#
+# --- Never on main, and never a lost measurement ----------------------------
+#
+# A corpus is a stated question AND an assertion about what sources say. It
+# goes in front of a human as a pull request, exactly as a measured number
+# does. The default-branch bolt below is built in from the start rather than
+# retrofitted -- gold-classification.yml needed it added after the fact,
+# because "it pushes to the branch it belongs to" and "it never lands on main"
+# are only the same sentence off the default branch.
+#
+# And the corpus is staged BEFORE the guard asks whether anything changed. A
+# new corpus consists ENTIRELY of new files, so `git diff --quiet`, which sees
+# only tracked files, would report "nothing changed" and discard every run.
+# That exact bug once threw away a completed sixty-case measurement and
+# reported success. Here it would not be harmless; it would be total.
+#
+# --- Never credit a person or a product for a machine's run -----------------
+#
+# Same standing rule as the other three workflows: the committer is a machine
+# identity at an .invalid address.
+
+name: Literature channel
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: 'Batch name — becomes the corpus directory name.'
+        type: string
+        required: true
+      size:
+        description: 'How many sources to draw from the backlog.'
+        type: number
+        default: 16
+      model_name:
+        description: 'Concrete provider model id. "Gemini" is not a measurable object.'
+        type: string
+        default: 'gemini-3.5-flash-lite'
+      dry_run:
+        description: 'Build the corpus but commit nothing'
+        type: boolean
+        default: false
+  push:
+    paths:
+      - 'corpora/field-watch/observations/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: literature-channel-${{ github.ref }}
+
+env:
+  POOL: corpora/gold-classification/candidate-pool.v1.json
+  CRITERIA: benchmarks/meridianbench/fixtures/mb-cls-criteria.v3.json
+  CLAIM_TEXT: >-
+    Systems that automate the research cycle end to end verify their own outputs
+    independently of the component that produced them.
+
+jobs:
+  channel:
+    name: Draw, anchor, classify, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Settle the batch's names
+        id: setup
+        env:
+          BATCH_INPUT: ${{ inputs.batch }}
+        run: |
+          set -euo pipefail
+          # A push-triggered run carries no inputs: it is named after the
+          # observation that caused it, so the corpus directory says which
+          # night it came from.
+          if [ -n "${BATCH_INPUT:-}" ]; then
+            batch="$BATCH_INPUT"
+            observation=""
+          else
+            observation="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" \
+              -- 'corpora/field-watch/observations/*.json' | head -n1)"
+            if [ -z "$observation" ]; then
+              echo "::error::A push touched the observations directory but no observation file changed. Refusing to guess which batch to build."
+              exit 1
+            fi
+            batch="watch-$(basename "$observation" .json)"
+          fi
+          dir="corpora/$batch"
+          if [ -e "$dir" ]; then
+            echo "::error::$dir already exists. A corpus is never rewritten; pick another batch name."
+            exit 1
+          fi
+          {
+            echo "batch=$batch"
+            echo "dir=$dir"
+            echo "observation=$observation"
+            echo "manifest=/tmp/$batch/citations.manifest.json"
+            echo "snapshot=/tmp/$batch/content-snapshot.json"
+            echo "commission=/tmp/$batch/commission.json"
+            echo "proposals=/tmp/$batch/proposals.json"
+          } >> "$GITHUB_OUTPUT"
+          mkdir -p "/tmp/$batch"
+
+      - name: Refuse without a key
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Checked BEFORE the network work, so a missing secret costs nobody
+          # an arXiv fetch. A measurement that quietly did not happen is worse
+          # than one that failed.
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "::error::GEMINI_API_KEY is not set. Nothing was drawn, fetched or classified."
+            exit 1
+          fi
+
+      # --- 1. Draw ---------------------------------------------------------
+      - name: Draw the batch
+        env:
+          SIZE: ${{ inputs.size }}
+        run: |
+          set -euo pipefail
+          if [ -n "${{ steps.setup.outputs.observation }}" ]; then
+            uv run python scripts/draw_backlog.py \
+              --observation "${{ steps.setup.outputs.observation }}" \
+              --batch "${{ steps.setup.outputs.batch }}" \
+              --out "${{ steps.setup.outputs.manifest }}"
+          else
+            uv run python scripts/draw_backlog.py \
+              --pool "${POOL}" \
+              --batch "${{ steps.setup.outputs.batch }}" \
+              --size "${SIZE:-16}" \
+              --out "${{ steps.setup.outputs.manifest }}"
+          fi
+
+      # --- 2. Anchor -------------------------------------------------------
+      - name: Anchor every excerpt
+        run: |
+          set -euo pipefail
+          # The EXISTING fetch, with its existing two-host allowlist. No new
+          # egress surface is opened by this channel.
+          uv run python scripts/fetch_source_content.py \
+            --manifest "${{ steps.setup.outputs.manifest }}" \
+            --out "${{ steps.setup.outputs.snapshot }}"
+
+      # --- 3. Commission ---------------------------------------------------
+      - name: Build the blind commission
+        run: |
+          set -euo pipefail
+          uv run mrr literature commission \
+            --manifest "${{ steps.setup.outputs.manifest }}" \
+            --snapshot "${{ steps.setup.outputs.snapshot }}" \
+            --criteria "${CRITERIA}" \
+            --claim-text "${CLAIM_TEXT}" \
+            --batch "${{ steps.setup.outputs.batch }}" \
+            --output "${{ steps.setup.outputs.commission }}"
+
+      # --- 4. Classify -----------------------------------------------------
+      - name: Classify every source
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MODEL_NAME: ${{ inputs.model_name }}
+        run: |
+          set -euo pipefail
+          model="${MODEL_NAME:-gemini-3.5-flash-lite}"
+          # 5s between cases keeps one call per case under the free tier's 15
+          # requests a minute. No `|| true`: a run that could not classify
+          # every case refuses and writes nothing.
+          uv run mrr classify relations \
+            --cases "${{ steps.setup.outputs.commission }}" \
+            --criteria "${CRITERIA}" \
+            --output "${{ steps.setup.outputs.proposals }}" \
+            --system-id "${model}@mb-cls-criteria-v3" \
+            --adapter gemini \
+            --model-name "$model" \
+            --max-repair-attempts 1 \
+            --pause-seconds 5
+
+      # --- 5. Build --------------------------------------------------------
+      - name: Build the corpus
+        id: build
+        run: |
+          set -euo pipefail
+          uv run mrr literature build \
+            --manifest "${{ steps.setup.outputs.manifest }}" \
+            --snapshot "${{ steps.setup.outputs.snapshot }}" \
+            --proposals "${{ steps.setup.outputs.proposals }}" \
+            --batch "${{ steps.setup.outputs.batch }}" \
+            --claim-text "${CLAIM_TEXT}" \
+            --output-dir "${{ steps.setup.outputs.dir }}" | tee /tmp/build.json
+          # The inputs travel WITH the corpus. Without them nobody could check
+          # afterwards which sources were drawn or what the model actually
+          # said, and the entries' provenance strings would point at files
+          # that exist only inside a finished job.
+          cp "${{ steps.setup.outputs.manifest }}" \
+             "${{ steps.setup.outputs.snapshot }}" \
+             "${{ steps.setup.outputs.commission }}" \
+             "${{ steps.setup.outputs.proposals }}" \
+             "${{ steps.setup.outputs.dir }}/"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Literature channel — ${{ steps.setup.outputs.batch }}"
+            echo
+            if [ -s /tmp/build.json ]; then
+              echo '```json'; cat /tmp/build.json; echo '```'
+            fi
+            echo
+            echo "_Every \`evidence_relation\` in this corpus is a model PROPOSAL, not a"
+            echo "verified finding. The classifier's measured accuracy against the frozen"
+            echo "gold standard is 0.5439 (majority floor 0.4211, Cohen's kappa 0.3084), and"
+            echo "a second run over identical inputs returned 0.5263. Roughly every second"
+            echo "relation is wrong, and the eligibility thresholds count exactly these"
+            echo "relations._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # --- Lay it before a human -------------------------------------------
+      - name: Open it as a pull request, never on main
+        if: inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          batch="${{ steps.setup.outputs.batch }}"
+          branch="literature/$batch"
+          git config user.name "Literature Channel"
+          git config user.email "literature@meridian-runtime.invalid"
+          git checkout -b "$branch"
+          # Stage FIRST, then ask. `git diff --quiet -- <path>` sees only
+          # TRACKED files, and a new corpus is entirely new files — the guard
+          # would report "nothing changed" and throw away the whole run.
+          git add "${{ steps.setup.outputs.dir }}"
+          if git diff --cached --quiet; then
+            echo "::error::Nothing was staged. The corpus directory is missing or empty, which means the build step did not do what it reported."
+            exit 1
+          fi
+          git commit -m "Literature batch $batch: sources drawn, anchored, classified, asked
+
+          A batch of sources became a corpus, and therefore a stated question:
+          research-run.yml will find it open and answer it on its next nightly.
+
+          Every evidence_relation here is a model PROPOSAL under criteria v3,
+          never a verified finding. The classifier's measured accuracy against
+          the frozen gold standard is 0.5439 against a majority floor of 0.4211
+          (Cohen's kappa 0.3084); a second run over identical inputs returned
+          0.5263. Roughly every second relation is wrong, and the eligibility
+          thresholds count exactly these relations. Each entry says so in its
+          own extraction.classification_provenance, and so do the method
+          protocol and the parameters sidecar.
+
+          The excerpts are published arXiv abstracts that may have been in the
+          model's training data.
+
+          No human started this run."
+          git push -u origin "$branch"
+
+          body=$(cat <<EOF
+          Batch \`$batch\` — drawn, anchored, classified, and shaped into a corpus that hits \`CorpusEntry\` exactly.
+
+          **Merging this asks a question.** \`research-run.yml\` will find \`corpora/$batch\` complete and unanswered, and will run it on its next nightly.
+
+          **Every \`evidence_relation\` here is a model proposal**, not a verified finding. Measured accuracy against the frozen gold standard: **0.5439** against a majority-class floor of **0.4211** (Cohen's kappa 0.3084); a second run over identical frozen inputs returned 0.5263. Roughly every second relation is wrong, and the eligibility thresholds count exactly these relations — so the verdict of the run this triggers inherits that error rate.
+
+          The batch report, the manifest, the anchored snapshot, the blind commission and the raw proposals are all committed beside the corpus, so every entry can be checked against what the model actually said.
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+          )
+
+          # Actions may not be permitted to open pull requests in this
+          # repository (documented 2026-08-01). The branch is pushed either
+          # way, so the corpus is never lost; an issue with a one-click link
+          # takes its place. No silent failure.
+          if gh pr create --title "Literature batch $batch (model-proposed relations)" --body "$body
+
+          Nichts geht ohne Freigabe auf \`main\`." 2>/tmp/pr-error; then
+            echo "Pull Request angelegt."
+          else
+            echo "::warning::Actions darf hier keinen PR anlegen — Issue mit Ein-Klick-Link stattdessen. Grund: $(cat /tmp/pr-error)"
+            gh issue create \
+              --title "Literature batch $batch — wartet auf Vorlage" \
+              --body "$body
+
+          Der Zweig ist gepusht, der Korpus liegt sicher.
+
+          **Pull Request mit einem Klick öffnen:**
+          ${{ github.server_url }}/${{ github.repository }}/compare/main...$branch?expand=1"
+          fi
