@@ -25,17 +25,17 @@ This report measures VALIDITY against a frozen gold standard: a fixed set of cor
 
 | | |
 |---|---|
-| Accuracy (observed agreement) | 0.5439 |
+| Accuracy (observed agreement) | 0.5263 |
 | Majority-class baseline | 0.4211 |
 
 Accuracy is printed beside the majority-class baseline deliberately: a classifier that only predicts the gold standard's most frequent category reaches the baseline while having learned nothing. An accuracy above zero is not a result; an accuracy meaningfully above this floor is.
 
 | Statistic | Value |
 |---|---|
-| Cohen's kappa | 0.3084 |
-| Weighted kappa (linear) | 0.3426 |
-| Weighted kappa (quadratic) | 0.3964 |
-| Krippendorff's alpha (nominal) | 0.2465 |
+| Cohen's kappa | 0.2792 |
+| Weighted kappa (linear) | 0.3349 |
+| Weighted kappa (quadratic) | 0.4093 |
+| Krippendorff's alpha (nominal) | 0.2282 |
 | False-support rate | 0.0179 (1/56) |
 
 ### Confusion matrix (rows = gold, columns = system)
@@ -43,9 +43,9 @@ Accuracy is printed beside the majority-class baseline deliberately: a classifie
 | gold \ system | supports | contradicts | qualifies | contextualizes |
 |---|---|---|---|---|
 | supports | 1 | 0 | 0 | 0 |
-| contradicts | 0 | 3 | 2 | 7 |
+| contradicts | 0 | 3 | 3 | 6 |
 | qualifies | 1 | 1 | 7 | 15 |
-| contextualizes | 0 | 0 | 0 | 20 |
+| contextualizes | 0 | 0 | 1 | 19 |
 
 ### Per category, against gold
 
@@ -53,8 +53,8 @@ Accuracy is printed beside the majority-class baseline deliberately: a classifie
 |---|---|---|---|---|---|---|---|---|
 | supports | 1 | 1 | 1 | 0 | 0.5000 | 1.0000 | 0.6667 | True |
 | contradicts | 12 | 3 | 1 | 9 | 0.7500 | 0.2500 | 0.3750 | True |
-| qualifies | 24 | 7 | 2 | 17 | 0.7778 | 0.2917 | 0.4242 | False |
-| contextualizes | 20 | 20 | 22 | 0 | 0.4762 | 1.0000 | 0.6452 | False |
+| qualifies | 24 | 7 | 4 | 17 | 0.6364 | 0.2917 | 0.4000 | False |
+| contextualizes | 20 | 19 | 21 | 1 | 0.4750 | 0.9500 | 0.6333 | False |
 
 **below_power: True** — below_power is set when a category has fewer than 20 gold labels. Below that, a headline figure must not be read as publication-grade evidence (docs/design/2026-07-24-capability-roadmap-entwurf.md, N1: 20-30 labels per category).
 
@@ -80,11 +80,11 @@ Two counts below are not scores and must not be read as ones. UNDECIDABLE cases 
 | mbcls-2409.05258 | qualifies | qualifies | True |
 | mbcls-2501.16961 | qualifies | supports | False |
 | mbcls-2502.19613 | contradicts | contradicts | True |
-| mbcls-2503.22444 | contextualizes | contextualizes | True |
+| mbcls-2503.22444 | contextualizes | qualifies | False |
 | mbcls-2505.19897 | contextualizes | contextualizes | True |
 | mbcls-2505.21034 | qualifies | contextualizes | False |
 | mbcls-2505.21935 | contextualizes | contextualizes | True |
-| mbcls-2506.02918 | contradicts | contextualizes | False |
+| mbcls-2506.02918 | contradicts | qualifies | False |
 | mbcls-2506.08968 | qualifies | qualifies | True |
 | mbcls-2506.11237 | qualifies | qualifies | True |
 | mbcls-2506.11442 | contradicts | qualifies | False |

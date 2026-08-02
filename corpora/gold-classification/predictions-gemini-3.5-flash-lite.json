@@ -25,12 +25,12 @@
     "mbcls-2410.01440": "contradicts",
     "mbcls-2501.16961": "supports",
     "mbcls-2502.19613": "contradicts",
-    "mbcls-2503.22444": "contextualizes",
+    "mbcls-2503.22444": "qualifies",
     "mbcls-2505.12501": "qualifies",
     "mbcls-2505.19897": "contextualizes",
     "mbcls-2505.21034": "contextualizes",
     "mbcls-2505.21935": "contextualizes",
-    "mbcls-2506.02918": "contextualizes",
+    "mbcls-2506.02918": "qualifies",
     "mbcls-2506.08968": "qualifies",
     "mbcls-2506.11237": "qualifies",
     "mbcls-2506.11442": "qualifies",
@@ -70,7 +70,7 @@
     "mbcls-2606.07591": "contextualizes",
     "mbcls-2606.10402": "qualifies",
     "mbcls-2606.28756": "contextualizes",
-    "mbcls-2607.03863": "contextualizes",
+    "mbcls-2607.03863": "qualifies",
     "mbcls-2607.09195": "contextualizes",
     "mbcls-2607.10127": "contextualizes",
     "mbcls-2607.22553": "contextualizes",
@@ -81,7 +81,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:7f651bded0fe8590c5c481d4e6ea292f48aaa9700d5ab3e28635fb414cbf878e",
+          "response_hash": "sha256:310e0eafa99584f3c1be28cf9ed25b4ee2787fcb886bc98a8bfd31efdc010ea8",
           "status": "completed"
         }
       ],
@@ -89,7 +89,205 @@
       "decided_by": "qualifies",
       "generation_status": "proposal",
       "proposed_relation": "qualifies",
-      "rationale": "The excerpt describes a specific adversarial Generator-Verifier architecture within the LogiGAN framework rather than a general, end-to-end automated research cycle, fitting the definition of 'qualifies' for a named subset or configuration.",
+      "rationale": "The excerpt describes a specific Generator-Verifier architecture used within LogiGAN for adversarial pre-training rather than asserting a general, unconditional system for end-to-end research cycle verification.",
+      "repair_attempts_used": 0,
+      "tie_with": "supports",
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:ceb1bb0c38797db38ea9dcc00f3389c1591cde4175799fcd99130849e4bdcb8f",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2402.00559",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes the REVEAL dataset for benchmarking automatic verifiers of reasoning chains, but takes no position on whether end-to-end automated research systems verify their own outputs independently.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:313cd32fa9a6f8a4da27447e70cc2f762607c91a36e91d577a15dc4acb7c1d66",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2407.00466",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes background information on biomedical AI agents, evaluation benchmarks, and the proposed BioKGBench/BKGAgent, but takes no position on whether end-to-end research automation systems independently verify their own outputs.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:8ecbdb631ddb89243d667d263c6fd9f4e9983664956b7ff668835afaedb476ac",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2407.18367",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes a method (FactDetect) for enhancing automated claim verification using LLMs to extract and label facts, but it does not assert or deny whether the research cycle is automated end-to-end or whether outputs are independently verified by a separate component.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:206959150091e62a7f6fe82327d940230411593861d89a6ade07f84e424c207b",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2408.06292",
+      "decided_by": "contextualizes definition",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes the system and its automated review process as part of a general overview of the framework, taking no explicit position on whether outputs are verified independently of the producing component in the sense defined by the claim.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:45227d45241b4dd03c3f2b2d7e6d14e94f32d5ae45d07561450824aa05be63d6",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2409.04109",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt discusses research agents and mentions 'failures of LLM self-evaluation' but does not assert whether systems that automate the research cycle end to end verify their own outputs independently, making it background/contextual discussion under the contextualizes definition.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:ca4bc13938f4f58054e06bbfa7a2663b01894a3748a9f49af9fa426bb41f78bf",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2409.05258",
+      "decided_by": "qualifies",
+      "generation_status": "proposal",
+      "proposed_relation": "qualifies",
+      "rationale": "The excerpt establishes that validation occurs within its specific framework using a reward model and baseline evaluations, but it does not make a general assertion for all systems.",
+      "repair_attempts_used": 0,
+      "tie_with": "supports",
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:6cf17e5210e97cf159cc5504b7d25678c64f71707a703e44e786597f07aa1ee7",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2410.01440",
+      "decided_by": "contradicts",
+      "generation_status": "proposal",
+      "proposed_relation": "contradicts",
+      "rationale": "The excerpt explicitly asserts that the process is optimized without the need to curate additional verifiers, meaning no independent verification step exists to check outputs.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:0697e09814cf1ec6c604c51b260d9a3bc7a565fe5f105dfc6d34143a8563458d",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2501.16961",
+      "decided_by": "supports",
+      "generation_status": "proposal",
+      "proposed_relation": "supports",
+      "rationale": "The excerpt asserts from the source's own evidence that the system uses a distinct logical solver to verify the concrete instantiations produced by the model.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:fb019054b44a3d64eb860f6adadbd482680c5932ac966905720ac73a78f41091",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2502.19613",
+      "decided_by": "contradicts",
+      "generation_status": "proposal",
+      "proposed_relation": "contradicts",
+      "rationale": "The excerpt asserts that evaluation of correctness is performed by the same model that produced the outputs ('a single model to independently guide its reasoning process'), which contradicts the claim that verification is independent of the component that produced them.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:b78d5cd9bab660651e9e81e88879135348be3cbc78bba2e34bacf7808f02d3a9",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2503.22444",
+      "decided_by": "qualifies",
+      "generation_status": "proposal",
+      "proposed_relation": "qualifies",
+      "rationale": "The excerpt mentions incorporating 'internal reflection alongside external feedback' within an autonomous system, which narrows the verification process to specific internal and external mechanisms rather than providing a general assertion of independent output verification across all systems.",
+      "repair_attempts_used": 0,
+      "tie_with": "supports",
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:9bdb21867af5f185cc05fbeef931359fc2a439899ac68581e64e3b4b159e936a",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2505.12501",
+      "decided_by": "qualifies",
+      "generation_status": "proposal",
+      "proposed_relation": "qualifies",
+      "rationale": "The excerpt qualifies the claim by identifying the 'absence of self-verification' as a fundamental deficit of LLMs that the proposed system (ALAS) decomposes and addresses, rather than asserting that the claim universally holds for all systems.",
       "repair_attempts_used": 0,
       "tie_with": "contextualizes",
       "transport_retries_used": 0,
@@ -99,205 +297,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:121c7e52d81441f199c0638b44fa4e06f9c21aa9e7de032096eaae181366e48d",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2402.00559",
-      "decided_by": "contextualizes",
-      "generation_status": "proposal",
-      "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses automatic verifiers of reasoning chains and introduces a benchmark dataset, but it takes no position on whether the systems that automate the research cycle verify their own outputs independently.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:8661032089e0efa4d7a0ea782254dfb8c1e8741a1035d28a2a69d4da8af66acc",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2407.00466",
-      "decided_by": "contextualizes",
-      "generation_status": "proposal",
-      "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes background information on AI systems for biomedical science and evaluation benchmarks without taking any position on whether end-to-end research automation systems independently verify their own outputs.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:fa118bdc91d7d8fb26dbf6295f1c30c8ade24e67ae31c66ee013939489f450cb",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2407.18367",
-      "decided_by": "contextualizes definition",
-      "generation_status": "proposal",
-      "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a method (FactDetect) for enhancing automated claim verification using LLMs and fact extraction, but it takes no position on whether end-to-end research automation systems independently verify their own outputs.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:36bd7074b1802e3dcd9f39c9a59a8a1c6b4d7c52b9b4e7f922c88dbc3ff1a4dd",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2408.06292",
-      "decided_by": "contextualizes",
-      "generation_status": "proposal",
-      "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a framework for automated scientific discovery and mentions a simulated review process, but it takes no direct position on whether the verification step is performed independently of the component that produced the output.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:e7c8b1ad7f89208aebf194829d8c7ce64e1378ab884f6a749830e9c6ee4dfac4",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2409.04109",
-      "decided_by": "contextualizes",
-      "generation_status": "proposal",
-      "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses research agents and mentions 'failures of LLM self-evaluation' but takes no position on whether systems that automate the research cycle end to end verify their own outputs independently of the component that produced them.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:3d760c1206963bb505bbeda4e5f0bb1d5258a863adaf7cae207e2a242ab5f7aa",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2409.05258",
-      "decided_by": "qualifies",
-      "generation_status": "proposal",
-      "proposed_relation": "qualifies",
-      "rationale": "The excerpt states that the framework validates feasibility and evaluates performance, but these verification steps are described specifically for the framework's own generated components rather than as a general, unhedged assertion.",
-      "repair_attempts_used": 0,
-      "tie_with": "supports",
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:8e1ea5eeccda3f34181bdbbffc4642d1dc693fc1723bc679beff76cf41745e2a",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2410.01440",
-      "decided_by": "contradicts",
-      "generation_status": "proposal",
-      "proposed_relation": "contradicts",
-      "rationale": "Decided by the contradicts definition because the excerpt explicitly states the process can be optimized without curating additional verifiers or reward models, meaning verification is not independent.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:43a6af685d5b3401fc11b876c4a2f0723e5c28503af3fe844e0ede4028395f04",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2501.16961",
-      "decided_by": "supports",
-      "generation_status": "proposal",
-      "proposed_relation": "supports",
-      "rationale": "The excerpt asserts from the source's own evidence that verification is performed by a separate component (the logical solver) rather than the model that produced the output.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:ecd2831b7c955365cf1924564a0e1fb67c2d0857a0652c3afe3bcf479a2d400b",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2502.19613",
-      "decided_by": "contradicts",
-      "generation_status": "proposal",
-      "proposed_relation": "contradicts",
-      "rationale": "The excerpt asserts that the verification and evaluation of correctness are performed by the same single model that produces the output, which contradicts the claim that verification is independent of the component that produced it.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:1e10084f7fcef3ff8cad533e4132b4ca70b93c8929bcfde9a76639b83ec287b8",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2503.22444",
-      "decided_by": "contextualizes",
-      "generation_status": "proposal",
-      "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the concept of an autonomous generalist scientist (AGS) that automates the entire research lifecycle and incorporates 'internal reflection', but it takes no definitive position on whether verification is performed independently of the component that produced the output.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:024242dc3b22dee1fe8b7c7eebe568a34712da1cf1781a5ba54be1220492466e",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2505.12501",
-      "decided_by": "qualifies",
-      "generation_status": "proposal",
-      "proposed_relation": "qualifies",
-      "rationale": "The excerpt explicitly identifies the system's target as addressing the 'absence of self-verification' alongside other deficits, but states the solution relies on modularization and role-specialized agents with state tracking rather than an independent verification component verifying all outputs end to end.",
-      "repair_attempts_used": 0,
-      "tie_with": null,
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:ce6f07a310116fe8d79b962280660c18b32254b01b9136e7b60bcd7ef988335e",
+          "response_hash": "sha256:72bf9c1258e33d45423a309d7d093cf56c9abb9dcea0d0e46d6d79a73847a8c3",
           "status": "completed"
         }
       ],
@@ -305,7 +305,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt provides background and introduction for the ScienceBoard benchmark and agents without asserting anything about whether automated research systems verify their outputs independently of the component that produced them.",
+      "rationale": "The excerpt describes the ScienceBoard benchmark and evaluates LLM-based agents, but it takes no position on whether such systems verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -315,7 +315,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:08d8b7442bfcaecfe910aff15766e6e655511254025c9b8d012b0a656461a7f0",
+          "response_hash": "sha256:752bae3ca5727728975644be1a1a3972a9773e98b3aea299d8453409a3e268cf",
           "status": "completed"
         }
       ],
@@ -323,7 +323,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes an evolutionary framework using LLMs to generate and evaluate Bayesian optimization algorithms on benchmark functions, but it takes no position on whether outputs are verified independently of the component that produced them.",
+      "rationale": "The excerpt describes the use of LLMs to generate Bayesian optimization algorithms and evaluates them on a benchmark, but it does not assert whether the verification is performed independently of the component that produced them.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -333,7 +333,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:f8549f55bfd529a376e877b8275a89873496667a23818abd6450610677c920b2",
+          "response_hash": "sha256:6c9565ce4ffa6cf0a47bc15c6037209946696114a13e34fd4fbfd2d17d3769bb",
           "status": "completed"
         }
       ],
@@ -341,7 +341,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses survey methodology and objectives regarding LLM-based hypothesis discovery and validation without taking any specific position on whether automated research systems verify their outputs independently of the component that produced them, thus fitting the definition of contextualizes.",
+      "rationale": "The excerpt provides background and a survey scope on hypothesis discovery and validation in LLMs without making any assertion about whether systems automate the research cycle end-to-end or verify outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -351,15 +351,15 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:a052997a20dbe395f8662931b877f5e1c224a52f5165ba61caa1705b25e6d698",
+          "response_hash": "sha256:0eefe9a1a7f3f0c90360ed86b4b6dfb7a5b2055fe5a4b162c48092b1ead2ea28",
           "status": "completed"
         }
       ],
       "case_id": "mbcls-2506.02918",
-      "decided_by": "contextualizes",
+      "decided_by": "qualifies",
       "generation_status": "proposal",
-      "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes tool use, dynamics modelling, and self-verification sampling for language models, but does not assert whether the verification is independent of the component that produced the output, fitting the contextualizes category.",
+      "proposed_relation": "qualifies",
+      "rationale": "The excerpt establishes self-verification and state prediction through an internal model, but restricts these mechanisms to specific methods (DyMo and SVS) rather than asserting the claim for end-to-end research systems in general.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -369,11 +369,11 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:582aecafb824d0d7b17b239e5498a95a52877f7f42477b04e9b3c57a4c18f666",
+          "response_hash": "sha256:511e289da60402902e61415755d940d473aa2e41cc5f00f25fc4d0fae19ccfb5",
           "status": "completed"
         },
         {
-          "response_hash": "sha256:8eac6cb68f8de8bf18208b94a1760a52823d0695177bb0d2d79879b6611d6203",
+          "response_hash": "sha256:7b5fa26c24b8a8d104428205157fd6708df2ecbad052cf6a0caec014036d6881",
           "status": "completed"
         }
       ],
@@ -381,9 +381,9 @@
       "decided_by": "qualifies",
       "generation_status": "proposal",
       "proposed_relation": "qualifies",
-      "rationale": "The excerpt states that verification and refinement are handled internally via self-refinement and k-nearest-neighbor majority re-labeling within ADAM itself, narrowing the claim to a specific system-internal configuration rather than a general independent verification step.",
+      "rationale": "The excerpt states that verification and refinement (a self-refinement loop, visual cohesion analysis, and k-nearest-neighbor-based majority re-labeling) are applied specifically within ADAM's framework rather than establishing an end-to-end verification independent of components in general, thus narrowing the claim to this stated condition and framework.",
       "repair_attempts_used": 1,
-      "tie_with": "contradicts",
+      "tie_with": "supports",
       "transport_retries_used": 0,
       "undecidable": false,
       "verification_disposition": "downgraded-to-proposal"
@@ -391,7 +391,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:29d07a32807941326a8d7f9ce86a443c32738810928c078e047601fe90412f65",
+          "response_hash": "sha256:a21f4bb490a7dd6532a6010166fb2b5ee316f3ed70163d42a9ea9dfd1200f153",
           "status": "completed"
         }
       ],
@@ -399,7 +399,7 @@
       "decided_by": "qualifies",
       "generation_status": "proposal",
       "proposed_relation": "qualifies",
-      "rationale": "The excerpt narrows the verification approach to a specific implementation of LLM-as-a-Judge and reflection code agents evaluated under specific test conditions, thereby qualifying the general claim.",
+      "rationale": "The excerpt discusses a specific system (LLM-as-a-Judge and Reflection code agents for IT Automation using Bash code) rather than making a general assertion, meaning the claim holds only for this named subset under the source's test conditions.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -409,7 +409,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:5ec34b18c495c5a7d356b38237e7ca1108fa27d188aa82734c7e553c64edf77f",
+          "response_hash": "sha256:9f32eef5f13d03a58d0ff6a0046632e13b01fcfcd1fa6cb6be4133adade2415b",
           "status": "completed"
         }
       ],
@@ -417,7 +417,7 @@
       "decided_by": "qualifies",
       "generation_status": "proposal",
       "proposed_relation": "qualifies",
-      "rationale": "The excerpt narrows verification to a named subset and specific conditions (\u201cco-evolution of code and test generation\u201d and \u201cself-constructed tests and tool feedback\u201d) rather than a general assertion.",
+      "rationale": "The excerpt narrows the claim to a specific system, ReVeal, which uses self-verification and tool-based evaluation rather than asserting it as a universal property of all such systems.",
       "repair_attempts_used": 0,
       "tie_with": "supports",
       "transport_retries_used": 0,
@@ -427,7 +427,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:822b8f0edc7186b14b6b12117baf0c68408d40e6569e2009836b8f93c328ee3e",
+          "response_hash": "sha256:41c53170e49b0a353485f3b6ab5cda1491588242deabe8253b7055b7688b366c",
           "status": "completed"
         }
       ],
@@ -435,7 +435,7 @@
       "decided_by": "contradicts",
       "generation_status": "proposal",
       "proposed_relation": "contradicts",
-      "rationale": "Decided by the contradicts definition because the excerpt uses the same model type ('meta-repairer LM') to analyze and repair the outputs, and self-review contradicts the independence requirement in the claim.",
+      "rationale": "The excerpt asserts that the checking and repair are performed by the same model class or process ('invokes a meta-repairer LM that analyzes... and synthesizes a strategic instruction'), meaning verification is not independent of the component that produced the output.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -445,15 +445,15 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:07050fb7ad497cc0175dafdd4b0d8de32fa4d719db697fc0a8ad807012ff5509",
+          "response_hash": "sha256:a341386c11a8e0d443828cf11a31a83734d42fd7ee959aba3945155fdf48e1a4",
           "status": "completed"
         }
       ],
       "case_id": "mbcls-2507.17209",
-      "decided_by": "contextualizes",
+      "decided_by": "contextualizes definition",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the HypoChainer framework and its workflow for scientific discovery and validation, but it takes no position on whether the system verifies its outputs independently of the component that produced them.",
+      "rationale": "The excerpt describes the architecture and stages of HypoChainer for scientific discovery but takes no direct position on whether systems verify their own outputs independently of the component that produced them.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -463,7 +463,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:9406c80af57c49f7a86db28ee39d05a09d1f300df6c7607a2f32e7ee3d62b05d",
+          "response_hash": "sha256:8dc41b41204380c4a106a07f2927a56a76c23847c66c39d7fd5f5f643accbf2c",
           "status": "completed"
         }
       ],
@@ -471,9 +471,9 @@
       "decided_by": "qualifies",
       "generation_status": "proposal",
       "proposed_relation": "qualifies",
-      "rationale": "The excerpt states that verification (agentic constraint evaluation via an Agent-as-a-Judge) is incorporated for LARC specifically, narrowing the claim to this named framework rather than asserting it for all end-to-end research automation systems generally.",
+      "rationale": "The excerpt states that verification (constraint evaluation via an Agent-as-a-Judge) is performed for a named subset of tasks (constrained retrosynthesis planning) rather than the general end-to-end research cycle.",
       "repair_attempts_used": 0,
-      "tie_with": "supports",
+      "tie_with": null,
       "transport_retries_used": 0,
       "undecidable": false,
       "verification_disposition": "downgraded-to-proposal"
@@ -481,7 +481,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:073d2486f714fc6d13b78782874b753f5fa03d4ab734e7b3a4a42217a310ae9c",
+          "response_hash": "sha256:4ef097f1a8b4c01c1026cb3bbbe26f931085f767239658f8a76b8dca3154e077",
           "status": "completed"
         }
       ],
@@ -489,7 +489,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the features of the aiXiv platform and its multi-agent architecture for reviewing and refining research, but takes no position on whether the system verifies its own outputs independently of the component that produced them.",
+      "rationale": "The excerpt describes the features and multi-agent architecture of the aiXiv platform for AI-generated research without asserting whether outputs are verified independently of the producing component.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -499,7 +499,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:25840e2ad06534edb34ff3e02ee5ab28a48a2a6f61b7a484f02723f9273292d4",
+          "response_hash": "sha256:5667eb8f6eccb95e8c89455fe1f1cb6d5914278642a0ca285fbb2484d0d0336e",
           "status": "completed"
         }
       ],
@@ -507,7 +507,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses integrating LLMs into symbolic regression to incorporate domain knowledge and improve performance, but takes no position on whether the system verifies its own outputs independently of the component that produced them.",
+      "rationale": "The excerpt describes the integration of pre-trained LLMs into symbolic regression loss functions to automate knowledge incorporation, but it does not assert whether the research cycle is automated end-to-end nor whether outputs are verified independently of the producing component.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -517,7 +517,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:80aefc5db2f759bfec85e76edbc4b8cbf3275b494445d094142281776f62d8b0",
+          "response_hash": "sha256:f9d1662e7067a419732da9b7ab1f604785f0c567b747a40386b92ecd3c77a375",
           "status": "completed"
         }
       ],
@@ -525,7 +525,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the introduction of an evaluation framework for Deep Research Agents and their capabilities, but takes no position on whether systems that automate the research cycle verify their own outputs independently.",
+      "rationale": "The excerpt describes the introduction of an evaluation framework for deep research agents without asserting whether such systems independently verify their own outputs.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -535,7 +535,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:e53e6a84bf209beaa86efae78b27b0c04e9453a8dcfe6a54b5dce039798ef58e",
+          "response_hash": "sha256:d6fedddb441b490c8848c39836f1318a57d8b613f344b473cc2b10f0335c3ed0",
           "status": "completed"
         }
       ],
@@ -543,7 +543,7 @@
       "decided_by": "qualifies",
       "generation_status": "proposal",
       "proposed_relation": "qualifies",
-      "rationale": "The excerpt mentions self-verification as part of Surfer 2's specific architecture rather than establishing the claim as a general principle across all end-to-end research cycle systems, matching the qualifies category definition of being restricted to a named subset or system configuration.",
+      "rationale": "The excerpt mentions self-verification as part of the system's architecture, but confines this finding specifically to Surfer 2's test conditions and performance on named benchmarks, making it a finding hedged to its own test conditions under the qualifies definition.",
       "repair_attempts_used": 0,
       "tie_with": "supports",
       "transport_retries_used": 0,
@@ -553,7 +553,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:b54b4da076ef427f4ca50ea9d070d0ef794d889f3665238df2659133af1336e1",
+          "response_hash": "sha256:f85738191adf0acd0b75568b58eae3ddfcd78b2ee9fa7bc65a1f562589b54f31",
           "status": "completed"
         }
       ],
@@ -561,7 +561,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the workflow and evaluation methods of the Jr. AI Scientist system but does not establish whether verification steps are performed independently of the component that produced the outputs, thus taking no position on the claim.",
+      "rationale": "The excerpt describes the workflow and evaluation of Jr. AI Scientist but takes no explicit position on whether output verification is performed independently of the component that produced it.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -571,7 +571,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:125b508567581343279e3e18ac3b5897a94615948067015050f60c8c86dda00e",
+          "response_hash": "sha256:1e5b1510af062a38f6c436ec951a627ff22802023902595b27e841ec6c633b39",
           "status": "completed"
         }
       ],
@@ -579,7 +579,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the evaluation of the KOSMOS system and mentions that AI scientists require rigorous auditing, but it does not assert from its own evidence that the system's outputs are verified independently of the component that produced them.",
+      "rationale": "The excerpt describes the evaluation of an autonomous AI scientist and its need for auditing against null models, but takes no position on whether systems verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -589,7 +589,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:81c1fa3c56b8877c791905319053fc62b54d7dad2cbf01d83c8f5c3edc60bee6",
+          "response_hash": "sha256:176e113b4338928dac727af344e4d997090584c48d741f56ca0c901f1df67398",
           "status": "completed"
         }
       ],
@@ -597,7 +597,7 @@
       "decided_by": "qualifies",
       "generation_status": "proposal",
       "proposed_relation": "qualifies",
-      "rationale": "The excerpt asserts the claim for a specifically named system (SuperIntelliAgent) rather than making a general assertion.",
+      "rationale": "The excerpt narrows the claim to a specific agentic learning framework pairing a small diffusion model with a frozen large language model, rather than asserting it for all end-to-end research automation systems in general.",
       "repair_attempts_used": 0,
       "tie_with": "supports",
       "transport_retries_used": 0,
@@ -607,7 +607,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:3df9b19c988f3a0ece5574ca0817074cd74b4c080fc3222b9513b829a4f00f0d",
+          "response_hash": "sha256:712386f3a23875ab11d5b5fb574638ad700a6fb8810c2951905fd9856f2d3ee8",
           "status": "completed"
         }
       ],
@@ -615,7 +615,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes investigating hallucination-reduction techniques like Chain of Verification (CoVe) and Retrieval-Augmented Generation (RAG) and their effects on creativity, but takes no position on whether systems that automate the research cycle end to end verify their own outputs independently.",
+      "rationale": "The excerpt mentions Chain of Verification (CoVe) as a hallucination-reduction technique but does not assert whether the verification step is independent of the component that produced the output.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -625,7 +625,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:6edd285bb8e477ee63c7e522e21628d24f82cb764cd0ea0a923ea55dd7ae49e1",
+          "response_hash": "sha256:ef6d50e3473742ec7b707945a964cc97c2b92db6d29080f8e582bb5d2b08cdb0",
           "status": "completed"
         }
       ],
@@ -633,7 +633,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses using an LLM-as-a-judge framework for annotation in Diplomacy games, but takes no position on whether end-to-end automated research systems verify their own outputs independently.",
+      "rationale": "The excerpt describes the use of an LLM-as-a-judge framework to annotate datasets and study negotiation tactics, bearing on the subject matter of language models in research but taking no position on the independence of verification in automated research cycle systems.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -643,7 +643,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:e3eeacfe769919ca6eb52066ca3122ba9131ca01a27eab0628c31f2b92323ab2",
+          "response_hash": "sha256:164536cb5b126ba05fa4d859ca0dce8eb4cf96334201f20787ebf9471c733be4",
           "status": "completed"
         }
       ],
@@ -651,7 +651,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses the use of LLMs for automating scholarly peer review and evaluating their reliability, but it takes no position on whether systems that automate the research cycle verify their own outputs independently.",
+      "rationale": "The excerpt discusses the use of LLMs for automating scholarly peer review and evaluating their performance, but takes no position on whether systems that automate the research cycle end to end verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -661,7 +661,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:ea7044502025b21d6fc69ffd8ddc234b2563ef72ec1ab5ddf839efd4071a8b29",
+          "response_hash": "sha256:93ce0f7d59a1383306229dc53df63f3df1b4e82d184200a28865efceec60b866",
           "status": "completed"
         }
       ],
@@ -669,7 +669,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses intrinsic self-correction of models without external feedback and error detection/correction mechanisms, but takes no position on whether systems that automate the research cycle end to end verify their own outputs independently.",
+      "rationale": "The excerpt describes intrinsic self-correction within LLMs and its limitations, taking no position on end-to-end research automation systems verifying their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -679,7 +679,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:6caa4cb3d7508b1a4e31e2077030e386d88a59bf77f12add0903ffd8b0c9dae8",
+          "response_hash": "sha256:0a7e28a194c6e089d7a4b515e0b1cf0530810b85962e8589938e098cc03a1d66",
           "status": "completed"
         }
       ],
@@ -687,7 +687,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a pipeline of six LLM agents and recurring failure modes in autonomous research attempts, but does not assert whether outputs are verified independently of the component that produced them.",
+      "rationale": "The excerpt describes the architecture and failure modes of autonomous research systems but takes no position on whether they verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -697,7 +697,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:d10d46b251e60a3ab84d13c11c1628dee7cdce517060ba07f7f7ad7ad5c89132",
+          "response_hash": "sha256:d1ac6ccc1ffca0af943f881fb5c20e0d325924f59dbb45ad4a5bf08bad6794a6",
           "status": "completed"
         }
       ],
@@ -705,7 +705,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a benchmark and evaluation pipeline for deep research agents rather than asserting from its own system's behavior that an end-to-end automation system verifies its own outputs independently.",
+      "rationale": "The excerpt describes a benchmark and evaluation framework for Deep Research Agents rather than asserting that the systems themselves verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -715,15 +715,15 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:4f82c1f010d94a0820d02ce3e3e9278b0cbf302445ca162c1be4d64451144b74",
+          "response_hash": "sha256:4a3a90fdc352316b5beeec6572c6d1980526f9b9a07b8b0905971ec31cb96488",
           "status": "completed"
         }
       ],
       "case_id": "mbcls-2602.00521",
-      "decided_by": "contextualizes",
+      "decided_by": "contextualizes definition",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a diagnostic framework for evaluating LLM-as-a-Judge using Item Response Theory, which provides background information and methodology rather than asserting whether automated research systems verify their own outputs independently.",
+      "rationale": "The excerpt discusses assessing the reliability of LLM-as-a-Judge via Item Response Theory, providing background and measurement on evaluation tools without taking a position on end-to-end research automation or independent verification of outputs.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -733,15 +733,15 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:5ce1f7d607bc2f73a390c841bd1f06fb7d518500053cbc628cb9940fd99eaad5",
+          "response_hash": "sha256:a8b35436582d955c3c3a35b417a6fc0ab313657aaa0564c29f43e8366e43153b",
           "status": "completed"
         }
       ],
       "case_id": "mbcls-2602.04288",
-      "decided_by": "contextualizes definition",
+      "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses self-improvement pipelines, self-refinement, and self-verification, but takes no position on whether systems verify their own outputs independently of the component that produced them.",
+      "rationale": "The excerpt describes self-improvement pipelines and iterative self-refinement but does not assert whether outputs are verified independently of the producing component, thus taking no position on the claim under the contextualizes definition.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -751,7 +751,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:162e437f4e8027d6f4716bcad405e1ccfb2097aa43d14c8a345a276ba29e7af4",
+          "response_hash": "sha256:3c36a7423ddfeff0787c156dbb0345469cd5a92b7362706c94badaa6bc78dc26",
           "status": "completed"
         }
       ],
@@ -759,7 +759,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes an evaluation and scoring method (CLASE) for legal text rather than a system that automates the research cycle end to end and verifies its own outputs independently.",
+      "rationale": "The excerpt describes an evaluation and scoring method (CLASE) for legal text, but it does not assert or deny whether research cycle automation systems verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -769,7 +769,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:4a3a8f24583bb6ba3b98cef91dd4d750724ef903fe7123c1df10425ddbab2083",
+          "response_hash": "sha256:1294d737a9b6ad78135ad23aa19cf53b60e50dd78e72708c1a6c40591d10a9b6",
           "status": "completed"
         }
       ],
@@ -777,7 +777,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the DeepInnovator framework and its components for idea generation and evaluation, but takes no position on whether verification is performed independently of the component that produced the outputs.",
+      "rationale": "The excerpt describes the DeepInnovator framework for generating research ideas via iterative prediction, evaluation, and refinement, but takes no position on whether outputs are verified independently of the producing component.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -787,7 +787,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:e71fda54db6f2a28e98ee79f0ea45e66050c17b8c967e1071163fa40342f4512",
+          "response_hash": "sha256:8d713cdbf44d90f3464fca287894f4239f0dac60c0d47c2811f6c6f9ee04c44d",
           "status": "completed"
         }
       ],
@@ -805,7 +805,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:c38024054a8d80cfc56ca897b1f6db933aa84a96e75592fa206bf71764104c61",
+          "response_hash": "sha256:4f87bbd34f131d11baf650e6467de06bc802ffea32f4bf7ef6eb75188ba14f33",
           "status": "completed"
         }
       ],
@@ -813,7 +813,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the background, motivation, and development of an evaluation benchmark and framework for deep research agents without taking a position on whether such systems independently verify their own outputs.",
+      "rationale": "The excerpt describes the background and motivation for evaluating deep research agents and introduces a benchmark framework, but takes no position on whether systems that automate the research cycle end to end verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -823,7 +823,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:9f521b88b43c16814118afd5847f829014c1ab066e11f58564d5d32fabb86777",
+          "response_hash": "sha256:2a9b50658f6f1bbb04bdc7180c853577e172c42cef01177f130cf81b61d784d1",
           "status": "completed"
         }
       ],
@@ -831,7 +831,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a framework (DESRO) for inferring reasoning steps and training a model for molecule optimization, but it takes no position on whether systems that automate the research cycle end-to-end verify their own outputs independently.",
+      "rationale": "The excerpt describes the DESRO framework for inferring reasoning steps and training a model for molecule optimization, but does not take a position on whether automated research systems independently verify their own outputs.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -841,7 +841,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:692663ec6026af29c552efb21b6580411838a2677e71cb5ffee5442982051e7a",
+          "response_hash": "sha256:755d471107f1ada4043a7e9c43b0ea4f39877e028dabba40bd177eb42f833f00",
           "status": "completed"
         }
       ],
@@ -849,25 +849,7 @@
       "decided_by": "supports",
       "generation_status": "proposal",
       "proposed_relation": "supports",
-      "rationale": "The excerpt asserts from its own system's behavior (PhysVEC) that verification steps exist and are separate from the component producing the output, as it integrates programming and scientific verifiers to guarantee correctness and validity at each step.",
-      "repair_attempts_used": 0,
-      "tie_with": "qualifies",
-      "transport_retries_used": 0,
-      "undecidable": false,
-      "verification_disposition": "downgraded-to-proposal"
-    },
-    {
-      "attempts": [
-        {
-          "response_hash": "sha256:f21dd57c9ac6a635a78962a6f4474ca1d264aecff94570caf64702aed81d7c2d",
-          "status": "completed"
-        }
-      ],
-      "case_id": "mbcls-2604.00248",
-      "decided_by": "contextualizes definition",
-      "generation_status": "proposal",
-      "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a reinforcement-learning system for automated peer review using auxiliary context, but does not state whether its outputs are verified independently of the component that produced them.",
+      "rationale": "The excerpt asserts from its own system's behavior that PhysVEC seamlessly integrates programming and scientific verifiers to guarantee correctness and validity independently, satisfying the supports definition.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -877,7 +859,25 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:3e9b7c4d8637e3a074996ff5a275613e2eab71636c6d45192f902a3aaa7456da",
+          "response_hash": "sha256:94c7d33db64927fd86d216a1e884825a8caf57ce6462c05b7b52273790bacc55",
+          "status": "completed"
+        }
+      ],
+      "case_id": "mbcls-2604.00248",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes the REM-CTX automated review system and its correspondence rewards, but takes no position on whether the system verifies its own outputs independently of the component that produced them.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:088e6e8310fa397e2ed6708aed05eb5029facb240182910ca2f18f758278a84a",
           "status": "completed"
         }
       ],
@@ -885,7 +885,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the introduction and evaluation of Chronos-Extract for automated information extraction in historical research, but takes no position on whether the system verifies its own outputs independently of the component that produced them.",
+      "rationale": "The excerpt describes the introduction and evaluation of Chronos-Extract for automated information extraction from historical sources, but takes no position on whether the system verifies its outputs independently of the component that produced them.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -895,7 +895,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:9b614d2b59d090b2c2e8246577c33df58024b57c2436fe2fe016420ff84f3f7a",
+          "response_hash": "sha256:de9a46f8b835299c1d44f55247a739ac992d4a7814787e74722e48f6ea700d8e",
           "status": "completed"
         }
       ],
@@ -903,7 +903,7 @@
       "decided_by": "contradicts",
       "generation_status": "proposal",
       "proposed_relation": "contradicts",
-      "rationale": "The excerpt states that agents perform 'self-critique' to refine hypotheses across cycles, which means the verification/review is done by the same component or model that produced the output rather than independently.",
+      "rationale": "The excerpt states that EvoMaster employs 'self-critique' within the agent to iteratively refine hypotheses, which means the verification is performed by the same component/model that produced the output, falling under the contradicts definition.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -913,7 +913,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:fd14005b82d6c31bf9b24da4fc17ca22be7524f2481bb2171d92858959629e5d",
+          "response_hash": "sha256:7c395482db9d59c66c9d08345d8b4a4ca428feb5c597b847fce10c496cf77a64",
           "status": "completed"
         }
       ],
@@ -921,7 +921,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a benchmark and evaluation framework for deep research agents in medicine but takes no position on whether systems verify their own outputs independently.",
+      "rationale": "The excerpt describes a new benchmark and evaluation framework for deep research systems without asserting whether these systems verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -931,15 +931,15 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:48afac3cc4cd9194730f8bab1905f3934c740ed276d1ba7654fa47ea14d74502",
+          "response_hash": "sha256:99e55c06de44290a1fd2e0fd7117ddb660c69027e5e2d2e3687b4ab17b338a16",
           "status": "completed"
         }
       ],
       "case_id": "mbcls-2604.20441",
-      "decided_by": "contextualizes definition",
+      "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a domain-specific audit framework and evaluates its agreement with expert review, but does not take a position on whether systems that automate the research cycle end to end verify their own outputs independently.",
+      "rationale": "The excerpt discusses a pre-deployment audit framework evaluated against expert review rather than an end-to-end research automation system verifying its own outputs independently, making it background on adjacent methodology under contextualizes.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -949,7 +949,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:3fce52c7d07b1328bc718db2237f8f75b2b24e7f29c23bf01e3bccfe07917f77",
+          "response_hash": "sha256:1d2175f6496fc76e446a0e320aa401a2662d7dae278a92c14508f0a8a657784f",
           "status": "completed"
         }
       ],
@@ -957,7 +957,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a toolkit for evaluating biomedical deep research agents and decouples evaluation layers, but takes no position on whether systems verify their own outputs independently.",
+      "rationale": "The excerpt describes the BioMedArena toolkit for evaluating deep research agents and decoupling layers of evaluation, but takes no position on whether systems automate the research cycle end to end and verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -967,7 +967,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:291ca7e55746854d40d381f78ffd8dba8276a6993d640c5cbd5c643326721219",
+          "response_hash": "sha256:e8ea39e5c9181fb47136e500aaef65544dfd3c206e0ee815fa9d45eb35d0270b",
           "status": "completed"
         }
       ],
@@ -975,7 +975,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a multi-agent system that automates the topology optimization process and uses iterative self-refinement, but it does not assert or deny whether the verification of outputs is performed independently of the component that produced them.",
+      "rationale": "The excerpt provides background and a system description of a multi-agent topology optimization framework, but does not assert whether its verification steps are independent of the components producing the outputs.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -985,7 +985,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:bccce06ded91108c89d1d2a4e292a27fc60cfba3273d716c4a28c2a4289a2423",
+          "response_hash": "sha256:8d3bb2c5c1980049919f8418e4f27f3ec67a1907701518f15512a8c9b6a24eca",
           "status": "completed"
         }
       ],
@@ -993,7 +993,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses PRISM, a benchmark for evaluating automated peer reviewer systems, but does not assert whether systems that automate the research cycle verify their own outputs independently.",
+      "rationale": "The excerpt describes a benchmarking framework (PRISM) for evaluating automated peer reviewers and discusses their performance and limitations, taking no position on whether such systems independently verify their own outputs end-to-end.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -1003,7 +1003,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:5f88209fc1baefacd1537f2e5b1b1892ca7ec0ae03c3b0957420d2f511694518",
+          "response_hash": "sha256:b1d667c61de3c59d5e036978b1ce94040d05467b4a8965828ac6629f7422f688",
           "status": "completed"
         }
       ],
@@ -1011,7 +1011,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses representation selection and residue-level leakage artifacts for AI-for-science systems, but takes no position on whether systems that automate the research cycle verify their own outputs independently.",
+      "rationale": "The excerpt describes representation selection metrics and tasks for biological foundation models without asserting or denying whether end-to-end automated research systems independently verify their own outputs.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -1021,7 +1021,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:f1c559a588ead27adfc4e6326eb084486df3303cc1d997b70eddeb2497da18c0",
+          "response_hash": "sha256:801e9ec3fd9f30bb6ddbc7fca2501c6c593e196b43a6d4a227061189cc91ce40",
           "status": "completed"
         }
       ],
@@ -1029,7 +1029,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes a benchmark and evaluation protocol for autonomous research systems but takes no position on whether these systems independently verify their own outputs.",
+      "rationale": "The excerpt describes a benchmark and evaluation protocol for autonomous research systems rather than asserting whether such systems verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -1039,7 +1039,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:1e7fad7e3841b957ed49f24661c54f3fc5cec11b7a2379462f76a4ac65d0e248",
+          "response_hash": "sha256:bd6b139f9735c0b4be9cfefaaada1de0076db97a70b6417d18b21e678639d5b8",
           "status": "completed"
         }
       ],
@@ -1047,7 +1047,7 @@
       "decided_by": "qualifies",
       "generation_status": "proposal",
       "proposed_relation": "qualifies",
-      "rationale": "The excerpt describes a specific platform (EinsteinArena) where verification is provided externally via a solid verifier rather than the agents verifying their own outputs independently, thus narrowing the claim to this stated condition.",
+      "rationale": "The excerpt describes a specific platform (EinsteinArena) where agents interact with a solid verifier rather than presenting a general assertion that all end-to-end research automation systems do this.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -1057,7 +1057,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:7db98af637ebadab968077671085d7d63e00802b7dcd3d7ce4396a669b6f9f40",
+          "response_hash": "sha256:ee17746e40087cc649d46c33b3ae13686bc067a5b5cb855eb3f9e9158bcaac32",
           "status": "completed"
         }
       ],
@@ -1065,7 +1065,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses AI scientists and their ability to generate complete research papers, but takes no position on whether systems that automate the research cycle verify their own outputs independently.",
+      "rationale": "The excerpt describes the problem of identifying AI scientists and proposes a persistent identifier system (AICID), but it takes no position on whether end-to-end research automation systems independently verify their own outputs.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -1075,17 +1075,17 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:df29876b026e0e64ab313cf800c0957ca613137d411c8bec75b9867b1a4cbf1c",
+          "response_hash": "sha256:f8709de72c592d579fe554bb3e9cb140d0ade41dba0ae86fa1d2cd1f30725cea",
           "status": "completed"
         }
       ],
       "case_id": "mbcls-2607.03863",
-      "decided_by": "contextualizes definition",
+      "decided_by": "qualifies",
       "generation_status": "proposal",
-      "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the design and features of SCION and its Research Execution Plan (REP) mentioning verification checkpoints, but takes no position on whether the outputs are verified independently of the producing component.",
+      "proposed_relation": "qualifies",
+      "rationale": "The excerpt states that the system includes verification checkpoints in its execution plan and outperforms baselines in verification, but it narrows this verification functionality to the named SCION system and its specific configuration rather than asserting the claim as an unconditioned general property of all end-to-end research automation systems.",
       "repair_attempts_used": 0,
-      "tie_with": null,
+      "tie_with": "supports",
       "transport_retries_used": 0,
       "undecidable": false,
       "verification_disposition": "downgraded-to-proposal"
@@ -1093,7 +1093,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:63c418d5ba8d6f7aafdacbb2b0fc4f65b1c0fa36785893d4b3301c20b442902b",
+          "response_hash": "sha256:f0387817a06affa62cabaaeec54bbecddaeb515096f9429d63ec78fc9c2d8350",
           "status": "completed"
         }
       ],
@@ -1101,7 +1101,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the proposed Hypothesis Evolution Protocol for making agent reasoning auditable and inspectable, but takes no position on whether the system verifies its own outputs independently of the component that produced them.",
+      "rationale": "The excerpt describes the proposal of the Hypothesis Evolution Protocol (HEP) to make the research cycle auditable and inspectable, but it does not assert whether the verification of outputs is performed independently of the component that produced them.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -1111,7 +1111,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:5030d9e2f70391e08f76d99f134f302351ab1cb68ae244af01040cd11209aa66",
+          "response_hash": "sha256:896448f0c829b0d8b84aa5d19f75ce37521e3773c852a8251545294be9632198",
           "status": "completed"
         }
       ],
@@ -1119,7 +1119,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt describes the GAE framework and its three-pillar architecture for evolutionary program search, but takes no position on whether the system verifies its own outputs independently of the component that produced them.",
+      "rationale": "The excerpt describes the GAE framework for automated scientific discovery but provides no information or evidence regarding whether output verification is performed independently of the component that produced it.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -1129,7 +1129,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:eacefee428f678bf4b659b65ac756450c59526318abbfab98e2bd32e201637a3",
+          "response_hash": "sha256:72d8ea1422c4c9b61739f270aa39d2e306d1927c3b3977c44e18751de208983b",
           "status": "completed"
         }
       ],
@@ -1137,7 +1137,7 @@
       "decided_by": "contextualizes",
       "generation_status": "proposal",
       "proposed_relation": "contextualizes",
-      "rationale": "The excerpt discusses automated peer review and guideline design but takes no position on whether systems verify their own outputs independently.",
+      "rationale": "The excerpt discusses automated peer review and guidelines, but it never mentions whether the outputs are verified independently of the component that produced them, thus taking no position on the claim.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -1147,7 +1147,7 @@
     {
       "attempts": [
         {
-          "response_hash": "sha256:4159a4925f223a7442b50371480be0041b57581e977fe6fa3350b3964306937b",
+          "response_hash": "sha256:90e1cf1ac386bf70b3f6120070221831de71bba5de51a5a75833093510f9d934",
           "status": "completed"
         }
       ],
@@ -1155,7 +1155,7 @@
       "decided_by": "contradicts",
       "generation_status": "proposal",
       "proposed_relation": "contradicts",
-      "rationale": "The excerpt asserts that current autonomous research agents operate in a context where 'the verification gap between scientific output and our ability to check it is already widening' and lack independent verification, leading to 'experimental results that no person can verify' and accountability vacuums.",
+      "rationale": "Decided by the contradicts definition because the excerpt asserts the existence of a widening verification gap and dangerous failures where experimental results cannot be verified, directly conflicting with the claim that systems verify their own outputs independently.",
       "repair_attempts_used": 0,
       "tie_with": null,
       "transport_retries_used": 0,
@@ -1167,12 +1167,13 @@
   "tie_broken_case_ids": [
     "mbcls-2205.08794",
     "mbcls-2409.05258",
+    "mbcls-2503.22444",
+    "mbcls-2505.12501",
     "mbcls-2506.08968",
     "mbcls-2506.11442",
-    "mbcls-2508.11860",
     "mbcls-2510.19949",
     "mbcls-2511.23436",
-    "mbcls-2604.00149"
+    "mbcls-2607.03863"
   ],
   "undecidable_case_ids": []
 }
