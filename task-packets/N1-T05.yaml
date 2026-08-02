@@ -1,0 +1,430 @@
+task_id: N1-T05
+title: >-
+  The literature channel: new sources become a stated question. A deterministic
+  draw from the committed backlog (or a field-watch observation), anchored
+  through the existing keyless fetch, classified by N1-T04's measured
+  classifier, and converted into a corpus that hits `CorpusEntry` exactly —
+  plus the four sibling inputs `research-run.yml` requires, so the nightly run
+  finds `pending != []` for the first time since 2026-08-01. Offline-testable
+  end to end against committed fixtures; run online by an event-driven
+  workflow that never lands on `main` and never runs on a clock.
+status: approved
+epic: N1
+reviewer_resolution: >-
+  APPROVED by the owner 2026-08-02 ("Beide"), on the derivation and this packet as
+  laid before him. Under his ordering of
+  2026-08-01 ("1. Maßstab -> 2. modellgestützte Einordnung -> 3. Literaturkanal
+  -> 4. Kopplung") and his operating decision of 2026-08-02 ("nichts lokal,
+  alles läuft online in GitHub Actions und automatisch — aber anlassgetrieben,
+  nie auf einer Uhr"). Two load-bearing choices were put to the owner on
+  2026-08-02 with their costs stated, and he decided both:
+  (i) MATERIAL — the field watch has produced NOTHING (two successful runs,
+  `"new": 0` each, `corpora/field-watch/observations/` empty on main), so the
+  first corpus is drawn DELIBERATELY from the committed backlog. This is the
+  path `corpora/field-watch/seen.json` itself names as the only honest one:
+  "backlog is drawn deliberately (as the candidate pool was), never dribbled in
+  by a nightly pretending it is fresh."
+  (ii) CLASSIFICATION — the model proposal DRIVES DIRECTLY: the channel commits
+  the corpus and `research-run.yml` runs it, with no human classification gate
+  in between. Chosen by the owner over a proposal-plus-merge-gate alternative,
+  with the objection stated in the choice itself. Its cost is recorded, not
+  softened: at Cohen's kappa 0.3084 and accuracy 0.5439 against a majority
+  floor of 0.4211, roughly every second proposed relation is wrong, and
+  `_classify_analysis` computes the supported/contested thresholds from exactly
+  those relations (synthesis_executor.py:709-724). The resulting claim inherits
+  that error rate. See derived_decisions (c) and specification_gaps.
+depends_on: [N1-T02, N1-T04, N2-T03a, E4-T02, E4-T08]
+derivation: >-
+  Derived 2026-08-02 from
+  docs/design/2026-08-02-n1-t05-ableitung-literaturkanal.md, which fact-locks
+  both handoff documents against the code. Every checkable claim was
+  RE-EXECUTED: research-run.yml's selection logic was re-run against the live
+  tree (pending = [], with e2e-claims and model-collapse skipped as answered
+  and five directories skipped for missing inputs); the two measurement reports
+  were read from their commits (run 1 accuracy 0.5439 / kappa 0.3084; run 2
+  cc6df74 accuracy 0.5263 / kappa 0.2792 — a 1.76 percentage-point spread over
+  byte-identical frozen inputs); `gh secret list` confirmed ECOLOGY_TOKEN
+  (2026-08-01T22:22:28Z); export_main.py's `--database-url required=True` was
+  read at :185 and its reachability check at :316-327.
+  Four corrections, each a line that was read:
+  (K1) THE CHANNEL HAS NO MATERIAL. The owner's premise "die neuen Quellen
+  kommen von dort" does not hold today: field-watch.yml ran twice (30721188911,
+  30732647866), both succeeded, both reported `{"new": 0, "note": "sweep
+  completed, nothing new — no observation written"}`, and
+  corpora/field-watch/observations/ is empty on origin/main. Checked for the
+  failure mode that would look identical: watch_field.py:219-228 queries with
+  sortBy=submittedDate&sortOrder=descending, so the watch is NOT structurally
+  blind to new papers — the field was genuinely quiet, and watch_from
+  ("2026-08-01", :247/:261) is thirty hours old.
+  (K2) A CORPUS ENTRY IS A CLASSIFIED SOURCE, NOT A BARE ONE. CorpusEntry
+  requires evidence_relation (:247), claim_relevant_finding (:250) and
+  claim_type (:246); its own docstring calls it "human-curated" (:224). That is
+  WHY step 3 follows step 2 in the owner's ordering: the channel's missing
+  organ is exactly what N1-T04 built.
+  (K3) verification_status IS THE SOURCE-ANCHORING AXIS, NOT THE
+  CLASSIFICATION AXIS. MRR-MTH-015, quoted at
+  packages/contracts/mrr/contracts/evidence_matrix.py:8-11: "every EvidenceMatrix
+  row MUST anchor a resolvable source with a verification status and a source
+  family". The existing corpora confirm the reading in their own
+  retrieval_method ("direct read of the pinned, hash-verified abstract
+  snapshot"). So an entry may be `verified` on the strength of its anchored
+  excerpt while its relation is a model proposal — that is what the field
+  means, not a workaround.
+  (K4) MIXING THOSE AXES FAILS SILENTLY. synthesis_executor.py:688-707 gates on
+  `verification_status == "verified"` against min_included_sources (3 in the
+  e2e-claims sidecar) and returns `insufficient_evidence` below it — but
+  :709-714 builds supporting/contradicting rows from ALL group_rows, verified or
+  not. A corpus that confuses the two axes produces a wrong verdict without
+  any diagnostic.
+  Fact base confirmed unchanged: there is NO JSON schema for CorpusEntry
+  (31 files under schemas/, none for a corpus entry) — the Pydantic model with
+  extra="forbid" (:242) is the only definition, and
+  tests/unit/corpora/test_model_collapse_fixtures.py:121 is the only existing
+  precedent for asserting a fixture hits it; candidate-pool.v1.json holds 353
+  candidates of which 60 are drawn and 293 are not; gold-classification.yml
+  carries the default-branch bolt at :222-235 and the stage-then-ask guard at
+  :243-248; field-watch.yml still carries the unfixed diff guard at :98-106.
+objective: >-
+  After this packet, one `workflow_dispatch` produces a complete, committed
+  corpus directory `corpora/<batch>/` containing all five files
+  `research-run.yml:63-70` requires, whose `corpus-entries.json` validates
+  entry-for-entry against `CorpusEntry` with zero errors under `extra="forbid"`
+  — asserted by calling `CorpusEntry.model_validate`, never by re-describing
+  the field list. Each entry's excerpt is anchored: fetched through the
+  existing keyless two-host allowlist, hashed, and committed as a
+  `source-content-snapshot.v1` beside the corpus, so `verification_status`
+  states an anchoring fact and nothing else. Each entry's `evidence_relation`
+  is N1-T04's model proposal, and each entry's `extraction` dict carries the
+  proposal's rationale AND its provenance — model name, prompt hash, the
+  proposal artefact's path, and the measured accuracy beside its majority floor
+  — so no reader of the corpus can mistake a proposal for a finding. The batch
+  lands as a pull request, never on `main`; `research-run.yml` then finds
+  `pending = ["<batch>"]` on its next nightly and answers it without anyone
+  pressing anything.
+source_of_truth:
+  - docs/design/2026-08-02-n1-t05-ableitung-literaturkanal.md      # this packet's derivation and fact-lock
+  - docs/design/2026-08-02-n1-t04-ableitung-modellgestuetzte-einordnung.md  # the classifier this packet consumes, and its open findings
+  - docs/design/2026-08-02-stand-und-was-fehlt.md                  # the handoff, superseded in section 3.1 and fact-locked elsewhere
+  - services/node_runtime/mrr/services/node_runtime/synthesis_executor.py  # CorpusEntry :223-280 — the target shape; NEVER modified
+  - packages/contracts/mrr/contracts/evidence_matrix.py            # MRR-MTH-015, the meaning of verification_status
+  - tests/unit/corpora/test_model_collapse_fixtures.py             # the only precedent for asserting a fixture hits CorpusEntry (:121)
+  - scripts/fetch_source_content.py                                # the anchoring path — REUSED UNCHANGED, allowlist and all
+  - services/control_plane/mrr/services/cli/classification_main.py # `mrr classify relations` — REUSED UNCHANGED
+  - corpora/gold-classification/candidate-pool.v1.json             # the backlog and its reproducible, judgement-free draw rule
+  - corpora/field-watch/seen.json                                  # names deliberate drawing as the only honest backlog path
+  - corpora/e2e-claims/                                            # the shape of a complete corpus directory, all five files
+  - .github/workflows/research-run.yml                             # the consumer — its selection logic defines "a stated question" (:57-109)
+  - .github/workflows/gold-classification.yml                      # workflow pattern: no schedule, event triggers, default-branch bolt, stage-then-ask
+requirements:
+  - >-
+    R1 (the draw, scripts/draw_backlog.py): OUTSIDE the runtime, stdlib-only,
+    importing nothing from `mrr.*` — the placement `fetch_source_content.py`
+    established and argued for. Produces a batch of arXiv identifiers from one
+    of exactly two inputs: `--pool` (the committed candidate pool) or
+    `--observation` (a field-watch observation file). From the pool it draws by
+    a REPRODUCIBLE, JUDGEMENT-FREE rule modelled on the gold set's own
+    (`sorted by sha256(<batch-salt> + arxiv_id)`, first N taken), EXCLUDING
+    every id already marked `drawn` — the sixty gold cases must not reappear in
+    a corpus, because a run over the blind commission's own material would
+    entangle the standard with the thing measured against it. The script writes
+    the batch manifest and mutates nothing it read.
+  - >-
+    R2 (the anchoring, scripts/fetch_source_content.py — REUSED UNCHANGED): the
+    batch is anchored through the EXISTING script and its existing two-host
+    https allowlist. No new egress path, no new host, no key, no header. Its
+    output is a `source-content-snapshot.v1` committed beside the corpus. An id
+    for which no excerpt could be fetched does NOT silently vanish: it becomes
+    an entry with `verification_status: "unverifiable"` and a non-empty
+    `unverifiable_reason` (the model's own validator, :268-280, requires the
+    reason), or it is dropped with a named count in the batch manifest — never
+    both silently.
+  - >-
+    R3 (the classification, `mrr classify relations` — REUSED UNCHANGED): the
+    anchored excerpts are classified by N1-T04's command against the same
+    criteria file, producing its ordinary proposal artefact — every proposal
+    `downgraded-to-proposal`, per case a rationale, `decided_by`, `tie_with`,
+    undecidable flag and response hash. This packet adds NO classification
+    logic and NO prompt; it calls the built command and commits its artefact.
+    A case the model marks undecidable yields an entry classified
+    `contextualizes` ONLY if the model said so — never a substituted default;
+    an undecidable case is recorded as such in the manifest and excluded from
+    the corpus, because `CorpusEntry.evidence_relation` has no undecidable
+    value and inventing one would be a fabricated reading.
+  - >-
+    R4 (the converter,
+    services/control_plane/mrr/services/literature/corpus_builder.py): joins
+    snapshot and proposals into `corpus-entries.json`. DETERMINISTIC and
+    OFFLINE — no network, no clock, no model, no database. Per entry it sets:
+    `evidence_relation` from the proposal; `verification_status: "verified"`
+    exactly when the excerpt was fetched and hashed, `"unverifiable"` with a
+    reason otherwise, and NEVER `"pending"` for an anchored excerpt (K3/K4);
+    `retrieval_method` naming the pinned snapshot and its hash; and an
+    `extraction` dict carrying `classification_basis` (the proposal's rationale,
+    the key the existing corpora already use) AND `classification_provenance` —
+    model name, prompt hash, proposal artefact path, and the measured accuracy
+    beside its majority floor. `source_family_id` is the arXiv base id, so two
+    versions of one paper never count as independent evidence (MTH-015's
+    prohibition on counting copies).
+  - >-
+    R5 (the four siblings): the converter also writes
+    `question-model.proposal.json`, `concept-charter.proposal.json`,
+    `method-protocol.proposal.json` and `protocol-parameters.sidecar.json` from
+    committed templates, so the directory satisfies `research-run.yml`'s
+    five-file test (:63-70) and the batch becomes a STATED QUESTION rather than
+    a folder of sources. The method protocol declares in its own text that this
+    corpus's classifications are model-proposed and unverified; the sidecar's
+    `min_included_sources` is set with K4's gate in view.
+  - >-
+    R6 (`mrr literature build`,
+    services/control_plane/mrr/services/cli/literature_main.py): a new
+    top-level `literature` group with one subcommand, mirroring `mrr classify
+    relations`'s ordering, exit-code map and atomic `os.replace` write. Exit 2
+    for a missing or unparseable input (a DEPENDENCY problem); exit 3 for a
+    refusal that is a RESULT — an output directory that already exists, a batch
+    whose anchored count would fall below the sidecar's
+    `min_included_sources`, or a proposal artefact that does not cover every
+    anchored id. `main.py` gains exactly one registration and one dispatch
+    branch.
+  - >-
+    R7 (the online path, .github/workflows/literature-channel.yml): NO
+    `schedule:` trigger — two nightly routines exist and the standing rules
+    forbid a third and forbid any nightly that recomputes the same thing. Fires
+    on `workflow_dispatch` (batch name, batch size, model name, `dry_run`) AND
+    on `push` to `corpora/field-watch/observations/**`, which is a real trigger
+    because the watch commits straight to `main`. It NEVER commits on the
+    default branch — the bolt `gold-classification.yml:222-235` needed after the
+    fact is built in from the start. It stages BEFORE it asks
+    (`git add` then `git diff --cached --quiet`): a new corpus consists
+    entirely of new files, so the untracked-file guard bug of N1-T04 §8.6 would
+    not be harmless here but fatal. Absent `GEMINI_API_KEY` it fails loudly and
+    writes nothing. The batch is laid before a human as a pull request.
+allowed_paths:
+  - scripts/draw_backlog.py
+  - services/control_plane/mrr/services/literature/
+  - services/control_plane/mrr/services/cli/literature_main.py
+  - services/control_plane/mrr/services/cli/main.py                # registration + dispatch only
+  - .github/workflows/literature-channel.yml
+  - corpora/_templates/literature/                                 # the four sibling-input templates
+  - tests/unit/
+  - tests/unit/corpora/
+  - tests/contract/
+  - docs/design/
+  - task-packets/N1-T05.yaml
+forbidden_changes:
+  - services/node_runtime/**                                       # CorpusEntry is the TARGET; hitting it exactly is the objective, changing it defeats it
+  - packages/contracts/**                                          # MTH-015's vocabulary is not this packet's to extend
+  - scripts/fetch_source_content.py                                # reused unchanged — a new egress path is a new capability and needs its own packet
+  - scripts/watch_field.py                                         # the channel reads the watch's output; it never changes how the watch looks
+  - corpora/field-watch/searches.v1.json                           # frozen: a watch that may change what it looks for cannot report that the field changed
+  - corpora/field-watch/seen.json                                  # the watch's own memory, advanced only by the watch
+  - corpora/gold-classification/**                                 # commission, criteria copy, gold set and the drawn-flags are sealed
+  - benchmarks/meridianbench/**                                    # the standard and its registry
+  - packages/domain/mrr/domain/relation_proposal.py                # N1-T04's projection is consumed, never reshaped
+  - services/control_plane/mrr/services/classification/            # the classifier is used as built
+  - services/control_plane/mrr/services/validation/                # the measurement side is finished
+  - .github/workflows/research-run.yml                             # the consumer stays untouched; this packet feeds its existing selection logic
+  - .github/workflows/field-watch.yml                              # its guard bug is a separate, named, small packet
+  - archive/**
+  - migrations/**
+  - pyproject.toml                                                 # no new dependency
+  - uv.lock
+derived_decisions:
+  - >-
+    (a) The backlog is drawn, not awaited. The owner's premise that the sources
+    come from the watch does not hold today (K1) and the honest substitute was
+    already named by the watch's own register: backlog is drawn deliberately.
+    The draw rule is reproducible and judgement-free, copied in shape from the
+    gold set's own, so nobody can later ask whether the batch was picked to
+    produce an answer. The sixty already-drawn ids are excluded, because a
+    corpus built from the blind commission's own material would entangle the
+    standard with what is measured against it.
+  - >-
+    (b) Two inputs, one converter. The deliberate draw and a field-watch
+    observation produce the same thing — a list of arXiv ids — so they meet at
+    the batch manifest and everything downstream is shared. The watch trigger is
+    wired now even though it cannot fire today: wiring it later would mean
+    touching a workflow that by then has run, and the cost of an unreachable
+    branch here is one `on: push` path.
+  - >-
+    (c) The model proposal drives directly — OWNER DECISION, 2026-08-02, taken
+    with the objection in front of him. The alternative offered was a draft
+    corpus behind a merge gate; he chose the direct path. What this packet does
+    NOT do is make it look cheaper than it is: the error rate is stated in the
+    derivation, in this packet, in every entry's `classification_provenance`,
+    and in the method protocol's own text. At kappa 0.3084 roughly every second
+    relation is wrong and `_classify_analysis` computes its verdict from those
+    relations. That is the accepted cost of the chosen shape, recorded so that
+    the first surprising verdict is not a mystery.
+  - >-
+    (d) `verified` is set on the SOURCE axis and only there (K3). MTH-015 makes
+    verification_status a statement about anchoring a resolvable source, and the
+    existing corpora use it that way. An entry whose excerpt was fetched and
+    hashed IS verified in that sense, whatever its relation's standing. This is
+    deliberately NOT the same move as synthesis_executor.py:483, which stamps
+    `verified` on a merely schema-valid model response — there the word describes
+    the model output, here it describes the fetch. The distinction is the whole
+    reason K3 is written down.
+  - >-
+    (e) No JSON schema, therefore a test. CorpusEntry has no schema file, so
+    "hits it exactly" can only be asserted by validating against the model
+    itself. `extra="forbid"` makes that assertion sharp in both directions: a
+    missing field and a surplus field both fail. The precedent is
+    test_model_collapse_fixtures.py:121 and it is followed rather than invented.
+  - >-
+    (f) Undecidable cases leave the corpus rather than acquire a default.
+    `CorpusEntry.evidence_relation` has four values and none of them means
+    "undecidable". Mapping an undecidable proposal onto `contextualizes` would
+    manufacture a reading the model refused to give. The case is counted in the
+    manifest and excluded — the same treatment the gold standard gives its own
+    three (n=57 of 60).
+  - >-
+    (g) `source_family_id` is the arXiv base id. Two versions of one paper are
+    one family, so a revision cannot double as independent corroboration —
+    MTH-015 forbids counting copies as independent evidence, and the
+    independence calculation downstream trusts this field.
+  - >-
+    (h) The default-branch bolt and the stage-then-ask guard are built in, not
+    retrofitted. Both were learned the expensive way in N1-T04: one workflow
+    claimed "never lands on main" while its push target on main WAS main, and
+    one guard threw away a completed sixty-case measurement and reported
+    success. A new corpus is entirely new files, so the second bug would destroy
+    every run rather than none.
+  - >-
+    (i) No wall-clock byte in any written file. N1-T02's invariant, and its
+    reason is on the record: a hand-typed timestamp inside something that gates
+    on time blocked its own gate within hours. When the batch was drawn is a
+    property of the commit and the workflow run.
+invariants:
+  - synthesis_executor.py is byte-identical before and after this packet.
+  - Every entry of the produced corpus validates against CorpusEntry under extra="forbid" with zero errors.
+  - No entry carries verification_status "verified" without a matching hashed excerpt in the committed snapshot.
+  - No entry's excerpt text differs from the snapshot's excerpt for the same id; the sha256 is recomputed at build time and compared.
+  - The converter opens no socket, reads no clock, constructs no ModelAdapter and opens no database connection.
+  - No test in any tier performs a network call or reads GEMINI_API_KEY.
+  - Identical inputs produce a byte-identical corpus directory; no written byte is a wall-clock timestamp.
+  - No id marked `drawn` in candidate-pool.v1.json appears in a produced corpus.
+  - The workflow has no `schedule:` trigger and no step that can commit while GITHUB_REF_NAME is the default branch.
+  - corpora/field-watch/, corpora/gold-classification/ and benchmarks/ are untouched by any code path in this packet.
+acceptance_tests:
+  - >-
+    AT1 (the corpus hits the model exactly): every entry of a corpus built from
+    committed fixtures passes `CorpusEntry.model_validate` with zero errors —
+    asserted by calling it, following
+    tests/unit/corpora/test_model_collapse_fixtures.py:121. Two negative
+    assertions make it sharp: adding one surplus key to an entry fails under
+    `extra="forbid"`, and removing `claim_relevant_finding` fails on
+    `min_length`.
+  - >-
+    AT2 (the two axes stay apart): an entry whose excerpt was anchored carries
+    `verification_status: "verified"` even when its proposal's disposition is
+    `downgraded-to-proposal`; an entry whose fetch failed carries
+    `"unverifiable"` WITH a non-empty reason and is rejected by the model's own
+    validator when the reason is blanked. A test asserts that no code path sets
+    `verification_status` from any field of the proposal artefact.
+  - >-
+    AT3 (the run would not silently under-read): a fixture corpus with fewer
+    anchored entries than the sidecar's `min_included_sources` makes
+    `mrr literature build` exit 3 naming the shortfall, rather than writing a
+    corpus that `_classify_analysis` would answer with `insufficient_evidence`
+    two nights later. The number is read from the sidecar, never hard-coded.
+  - >-
+    AT4 (the question is complete): the produced directory satisfies
+    research-run.yml's own five-file test — asserted by RE-EXECUTING that
+    workflow's selection logic against a tree containing the fixture corpus and
+    an `answered.json` without it, and checking that `pending` contains exactly
+    the new batch. Not by re-describing the file list.
+  - >-
+    AT5 (the draw is reproducible and excludes the standard): the same salt and
+    size over the committed pool yield the same ids twice, byte-identically; no
+    produced id has `drawn: true`; and a batch size exceeding the undrawn
+    remainder (293) refuses rather than wrapping or repeating.
+  - >-
+    AT6 (undecidable does not acquire a default): a scripted proposal artefact
+    marking one case undecidable produces a corpus WITHOUT that entry, a
+    manifest that counts it, and no entry anywhere whose relation was
+    substituted.
+  - >-
+    AT7 (determinism and non-interference): two builds over identical inputs
+    produce byte-identical directories and contain no timestamp;
+    `git diff --exit-code` over synthesis_executor.py, the contracts package,
+    scripts/fetch_source_content.py, scripts/watch_field.py and
+    corpora/field-watch/ is empty after the packet; the existing unit,
+    contract, property and meridianbench tiers pass unmodified.
+  - >-
+    AT8 (the workflow cannot land on main): a test over the workflow file
+    asserts there is no `schedule:` key, that the commit step is guarded on
+    `GITHUB_REF_NAME` against the default branch, and that `git add` precedes
+    `git diff --cached`. Cheap, and both of these were real incidents rather
+    than hypotheticals.
+commands:
+  - make format
+  - make lint
+  - make typecheck
+  - make test
+  - make test-contract
+  - uv run python scripts/check_gold_freeze.py
+  - make security-check
+specification_gaps:
+  - >-
+    RULE 7 IS IN TENSION HERE AND IS NOT RESOLVED. "No model output may
+    directly become authoritative state." A corpus in git is an INPUT — the
+    stated question — and AGENTS' own source-of-truth table makes git
+    authoritative for inputs while the database holds the authoritative claim.
+    But the model-proposed `evidence_relation` flows through
+    `_classify_analysis` (synthesis_executor.py:709-724) into whether that claim
+    is `supported`, `contested` or `unsupported`. Model output therefore
+    co-determines authoritative state. The owner decided this shape on
+    2026-08-02 with the objection stated. It is recorded here, in the
+    derivation, in every entry's `classification_provenance` and in the method
+    protocol's own text — named as an accepted cost, never as solved.
+  - >-
+    The classification's error rate is known and large: accuracy 0.5439 against
+    a majority floor of 0.4211, Cohen's kappa 0.3084, and a second run over
+    byte-identical frozen inputs returned 0.5263 (kappa 0.2792). Any claim this
+    corpus produces inherits that. Wherever a number from such a run is
+    reported, the floor and the spread are reported beside it.
+  - >-
+    Training-data contamination cannot be excluded and is not estimated. The
+    excerpts are arXiv abstracts that may have been in the model's training
+    corpus — the same limit N1-T04 names, inherited unchanged.
+  - >-
+    An abstract is not a paper. scripts/fetch_source_content.py anchors the
+    ABSTRACT only, measured at roughly 28 percent of this corpus family's
+    numeric-token claims (docs/design/2026-07-25-n2-t03-derivation.md). The
+    snapshot names its own narrowness and this packet does not widen it; a
+    full-text channel is a different packet with a different egress argument.
+  - >-
+    The model declared zero of sixty cases undecidable where the gold standard
+    declared three, although R-undecidable-is-a-finding is in the prompt. AT6
+    ensures the channel handles undecidability correctly; it cannot make the
+    model use it. Carried forward as N1-T04's open finding.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding the exact
+    `scripts/draw_backlog.py`, `scripts/fetch_source_content.py`,
+    `mrr classify relations` and `mrr literature build` invocations; the batch
+    manifest verbatim (drawn ids, anchored count, unverifiable count with
+    reasons, undecidable count); the distribution of proposed relations beside
+    the gold standard's own distribution; and the re-executed research-run.yml
+    selection logic showing `pending` before and after.
+stop_conditions:
+  - >-
+    If hitting CorpusEntry appears to require changing CorpusEntry, STOP — the
+    objective is to hit it exactly, and a change to synthesis_executor.py is
+    forbidden by this packet and belongs to the repair packet named in N1-T04
+    §8.1.
+  - >-
+    If anchoring appears to require a new host, a key, or a second egress path,
+    STOP — scripts/fetch_source_content.py is reused unchanged, and a new
+    network capability is its own packet with its own gate argument.
+  - >-
+    If an entry cannot be honestly marked `verified` or `unverifiable` on the
+    strength of the fetch alone, STOP — that means the two axes of K3 have been
+    mixed, which is the failure this packet exists to avoid.
+  - >-
+    If the batch cannot reach the sidecar's min_included_sources, STOP and
+    report — a corpus that answers `insufficient_evidence` two nights later is
+    a question nobody asked, and the shortfall is diagnosable now.
+  - >-
+    If the run appears to need a schedule trigger, a local API key, or a
+    commit on the default branch, STOP — all three are excluded by the owner's
+    operating decision and by the standing rules.

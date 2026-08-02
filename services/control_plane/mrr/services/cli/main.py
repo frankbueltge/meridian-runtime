@@ -57,6 +57,7 @@ from mrr.services.cli import (
     export_main,
     federation_main,
     field_observation_main,
+    literature_main,
     practice_main,
     release_main,
     report_main,
@@ -299,6 +300,14 @@ def build_parser() -> argparse.ArgumentParser:
     # model.
     classification_main.register_classify_subcommand(subparsers)
 
+    # Task-packets/N1-T05.yaml's one additive registration: a new "literature"
+    # subparser group ("mrr literature commission" / "mrr literature build")
+    # delegating entirely to mrr.services.cli.literature_main — mirrors the
+    # classify registration immediately above; no other line in this file
+    # changes. It is the channel's two joins and nothing else: the draw, the
+    # anchoring and the classification are all existing commands.
+    literature_main.register_literature_subcommand(subparsers)
+
     return parser
 
 
@@ -463,6 +472,10 @@ def main(argv: list[str] | None = None) -> int:
         # Task-packets/N1-T04.yaml's one additive dispatch branch — every
         # other command's dispatch above is unchanged.
         return classification_main.run_command(args)
+    if args.command == "literature":
+        # Task-packets/N1-T05.yaml's one additive dispatch branch — every
+        # other command's dispatch above is unchanged.
+        return literature_main.run_command(args)
 
     parser.print_help()  # pragma: no cover - unreachable while "command" is required
     return 1

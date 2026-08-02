@@ -1,0 +1,269 @@
+# The archive becomes readable: every run in archive/dumps/ exported as a
+# self-contained RO-Crate and delivered to the site.
+#
+# An INTEGRATION job in the sense of AGENTS.md — it builds no capability.
+# `mrr export ro-crate` has existed since E8-T01 and has never had a caller
+# other than a human on a laptop. That is the fourth row of that file's own
+# table: a complete layer whose outer edge nobody owned. This workflow is the
+# missing caller and nothing else.
+#
+# --- Why a restore step exists --------------------------------------------
+#
+# export_main.py:185 makes --database-url required, and :316-327 refuses an
+# unreachable database rather than fabricating a substitute (MRR-NFR-012).
+# The archive, however, is SQL dumps. So the export needs a database that
+# does not exist until this job makes one.
+#
+# research-run.yml:120-165 already runs exactly this machinery forwards — a
+# postgres:16 service container with a healthcheck, alembic, then pg_dump
+# into archive/dumps/. This job runs the same path backwards with psql. The
+# database lives and dies inside the job; archive/ is opened read-only and is
+# never written back to, because the dumps ARE the record.
+#
+# --- Why there is no `schedule:` -------------------------------------------
+#
+# Two nightly routines exist and the standing rules forbid a third and forbid
+# any nightly that recomputes the same thing. This job recomputes nothing: a
+# dump is immutable, so re-exporting it every night would produce the same
+# crate forever. It fires when a NEW dump appears, which is the only moment
+# there is anything new to say.
+#
+# --- Why it delivers instead of merely exporting ---------------------------
+#
+# A crate committed here has no reader. The page that shows it is in
+# frankbueltge.de, and that repository has no way to reach into this one. The
+# same addressing problem stranded the labelling commission on 2026-08-01 and
+# the field observation hours later: recording something true at an address
+# nobody can open is not recording it.
+#
+# Degrades honestly, exactly as field-watch.yml does: with no cross-repository
+# token the crates are attached to the run as an artefact and the job SAYS the
+# delivery did not happen, rather than passing quietly.
+#
+# --- Never on main, on either side -----------------------------------------
+#
+# A crate is a published assertion about what a run found — the same class of
+# artefact as a measured number, which lands on a branch for exactly this
+# reason. Both sides get a pull request.
+#
+# --- Never credit a person or a product for a machine's run ----------------
+#
+# Same standing rule as the other workflows: the committer is a machine
+# identity at an .invalid address.
+
+name: Export crates
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Export the crates but deliver nothing'
+        type: boolean
+        default: false
+  push:
+    paths:
+      - 'archive/dumps/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: export-crates-${{ github.ref }}
+
+jobs:
+  # ——— 1. Which runs are in the archive? ————————————————————————————————
+  scan:
+    name: Find the runs
+    runs-on: ubuntu-latest
+    outputs:
+      runs: ${{ steps.find.outputs.runs }}
+      any: ${{ steps.find.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: List the dumps
+        id: find
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, pathlib
+          dumps = sorted(p.name for p in pathlib.Path("archive/dumps").glob("*.sql"))
+          # The run id is the dump's own name, minus the mrr_ prefix and the
+          # extension. It becomes the crate's directory on the site, so the
+          # site never has to invent a name for a run.
+          runs = [
+              {"dump": name, "run": name.removeprefix("mrr_").removesuffix(".sql")}
+              for name in dumps
+          ]
+          print(f"runs={json.dumps(runs)}")
+          print(f"any={'true' if runs else 'false'}")
+          PY
+
+  # ——— 2. Restore each run, export its claim graph ——————————————————————
+  export:
+    name: Export ${{ matrix.entry.run }}
+    needs: scan
+    if: needs.scan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJson(needs.scan.outputs.runs) }}
+    env:
+      PGPASSWORD: mrr
+      DB_URL: postgresql+psycopg://mrr:mrr@localhost:5432/mrr_export
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mrr
+          POSTGRES_PASSWORD: mrr
+          POSTGRES_DB: mrr_export
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U mrr -d mrr_export"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - run: uv sync --locked
+
+      - name: Show the tool versions
+        run: |
+          # A client older than the server fails obscurely. research-run.yml
+          # records the same reason for the same line.
+          psql --version
+
+      - name: Restore the run into a throwaway database
+        run: |
+          set -euo pipefail
+          # Read-only on the archive: the dump is the record. Everything this
+          # job creates lives in the service container and dies with the job.
+          psql "postgresql://mrr:mrr@localhost:5432/mrr_export" \
+            -v ON_ERROR_STOP=1 \
+            -f "archive/dumps/${{ matrix.entry.dump }}"
+
+      - name: Export the claim graph
+        run: |
+          set -euo pipefail
+          # --artifact-root is deliberately absent: export_main.py:276-296
+          # forbids it with --all-claims, because a claim-rooted export fetches
+          # no artifact bytes at all. The published crate's artifact_count: 0
+          # is that rule already visible in the data.
+          uv run mrr export ro-crate \
+            --database-url "$DB_URL" \
+            --all-claims \
+            --output-dir "/tmp/crates/${{ matrix.entry.run }}"
+
+      - name: Say what came out
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib, collections
+          crate = pathlib.Path("/tmp/crates/${{ matrix.entry.run }}/ro-crate-metadata.json")
+          graph = json.loads(crate.read_text())["@graph"]
+          kinds = collections.Counter(str(e.get("@type")) for e in graph)
+          print("## `${{ matrix.entry.run }}`\n")
+          print(f"- graph entries: **{len(graph)}**")
+          for kind, count in sorted(kinds.items()):
+              print(f"- `{kind}`: {count}")
+          PY
+
+      - name: Keep the crate
+        uses: actions/upload-artifact@v4
+        with:
+          name: crate-${{ matrix.entry.run }}
+          path: /tmp/crates/${{ matrix.entry.run }}
+          if-no-files-found: error
+
+  # ——— 3. Deliver every crate to the site, as one pull request ——————————
+  deliver:
+    name: Deliver to the site
+    needs: [scan, export]
+    if: needs.scan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Collect every crate
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/crates
+          pattern: crate-*
+
+      - name: Deliver, or say plainly that it did not happen
+        env:
+          ECOLOGY_TOKEN: ${{ secrets.ECOLOGY_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            echo "::notice::dry_run — the crates are attached to this run and nothing was delivered."
+            exit 0
+          fi
+
+          if [ -z "${ECOLOGY_TOKEN:-}" ]; then
+            echo "::warning::ECOLOGY_TOKEN is not set — the crates were exported and attached to this run, but NOT delivered to frankbueltge.de, where the page that shows them lives. They have no reader until that secret exists."
+            exit 0
+          fi
+
+          git clone --depth 1 \
+            "https://x-access-token:${ECOLOGY_TOKEN}@github.com/frankbueltge/frankbueltge.de.git" \
+            /tmp/site
+
+          cd /tmp/site
+          branch="meridian/crates-$(git rev-parse --short HEAD)"
+          git checkout -b "$branch"
+
+          # Each crate lands under its own run id. The site's view model reads
+          # whatever directories are here, so a fourth run is a directory and
+          # not a text edit — which is the whole point of this packet.
+          mkdir -p src/data/meridian/export
+          for dir in /tmp/crates/crate-*; do
+            run="$(basename "$dir" | sed 's/^crate-//')"
+            rm -rf "src/data/meridian/export/$run"
+            cp -R "$dir" "src/data/meridian/export/$run"
+          done
+
+          # The derived files must travel WITH the crates. The site's CI job
+          # "Meridian view model (derivation matches the committed export)"
+          # re-derives them and fails on any difference — which is exactly the
+          # drift it was built to catch, and a delivery that left it red would
+          # be reporting its own incompleteness as a site failure.
+          python3 -m venv /tmp/venv
+          /tmp/venv/bin/pip install --quiet -r pipelines/meridian/requirements.txt
+          /tmp/venv/bin/python pipelines/meridian/refresh.py
+
+          git config user.name "Meridian Export"
+          git config user.email "export@meridian-runtime.invalid"
+          git add src/data/meridian/
+          if git diff --cached --quiet; then
+            echo "Every crate is already delivered and the derivation matches — nothing to push."
+            exit 0
+          fi
+          git commit -m "Meridian: every run in the archive, exported
+
+          One RO-Crate per run in meridian-runtime's archive/dumps/, exported
+          by 'mrr export ro-crate --all-claims' against a database restored
+          from each dump, and the view model re-derived from all of them.
+
+          Until now the site published one run of three and described it as
+          'a single run'. The archive holds more, and the page should count
+          what is committed rather than assert a number in prose.
+
+          No human started this run."
+          git push -u origin "$branch"
+
+          echo "::notice::Delivered on branch $branch — open a pull request on frankbueltge.de."
+          {
+            echo "## Delivered"
+            echo
+            echo "Branch \`$branch\` on frankbueltge.de."
+            echo
+            echo "https://github.com/frankbueltge/frankbueltge.de/compare/main...$branch?expand=1"
+          } >> "$GITHUB_STEP_SUMMARY"
