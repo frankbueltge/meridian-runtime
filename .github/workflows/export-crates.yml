@@ -139,16 +139,55 @@ jobs:
           # records the same reason for the same line.
           psql --version
 
+      # --- The dumps are schema-namespaced, and not identically -------------
+      #
+      # Found by running this job (2026-08-02): all three exports failed with
+      # `relation "domain_events" does not exist`, although the restore itself
+      # had succeeded. The derivation assumed the shape research-run.yml
+      # produces (`pg_dump --schema=public`), but these three predate it and
+      # were made by scripts/archive-dump.sh, which dumps a NAMED archival
+      # schema per run — and they do not agree:
+      #
+      #   mrr_k1t04_real_run_v2.sql        -> schema mrr_k1t04_real_run_v2
+      #   mrr_run2_corroboration_floor_v1  -> schema mrr_run2_corroboration_floor_v1
+      #   mrr_run3_e2e_claims_v1           -> schema public
+      #
+      # Every dump also sets `search_path` to the empty string, so an
+      # unqualified `domain_events` resolves to nothing at all.
+      #
+      # The schema is therefore READ from each dump rather than assumed, and
+      # handed to the engine through the connection URL — the same mechanism
+      # scripts/archive-dump.sh:55 already uses to verify its own dumps. A
+      # hard-coded schema name would have worked for two runs of three and
+      # failed silently on the third, which is the worst of the available
+      # outcomes.
       - name: Restore the run into a throwaway database
+        id: restore
         run: |
           set -euo pipefail
+          dump="archive/dumps/${{ matrix.entry.dump }}"
           # Read-only on the archive: the dump is the record. Everything this
           # job creates lives in the service container and dies with the job.
           psql "postgresql://mrr:mrr@localhost:5432/mrr_export" \
-            -v ON_ERROR_STOP=1 \
-            -f "archive/dumps/${{ matrix.entry.dump }}"
+            -v ON_ERROR_STOP=1 -f "$dump"
+
+          schema="$(sed -n 's/^CREATE SCHEMA \([A-Za-z0-9_]*\);.*/\1/p' "$dump" | head -n1)"
+          if [ -z "$schema" ]; then
+            echo "::error::$dump declares no CREATE SCHEMA. Refusing to guess where its tables live — an export against the wrong search_path would either fail loudly or, worse, export an empty graph as though the run held nothing."
+            exit 1
+          fi
+          echo "schema=$schema" >> "$GITHUB_OUTPUT"
+          echo "restored ${{ matrix.entry.run }} into schema $schema"
+
+          # Prove the tables are actually reachable under that schema BEFORE
+          # the export runs, so a wrong search_path is a named failure here
+          # rather than a stack trace three steps later.
+          psql "postgresql://mrr:mrr@localhost:5432/mrr_export" \
+            -v ON_ERROR_STOP=1 -q -c "SET search_path TO $schema; SELECT count(*) FROM domain_events;"
 
       - name: Export the claim graph
+        env:
+          SCHEMA: ${{ steps.restore.outputs.schema }}
         run: |
           set -euo pipefail
           # --artifact-root is deliberately absent: export_main.py:276-296
@@ -156,7 +195,7 @@ jobs:
           # no artifact bytes at all. The published crate's artifact_count: 0
           # is that rule already visible in the data.
           uv run mrr export ro-crate \
-            --database-url "$DB_URL" \
+            --database-url "${DB_URL}?options=-c%20search_path%3D${SCHEMA}" \
             --all-claims \
             --output-dir "/tmp/crates/${{ matrix.entry.run }}"
 
