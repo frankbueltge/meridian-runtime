@@ -223,13 +223,19 @@ jobs:
         if: inputs.dry_run != true
         run: |
           set -euo pipefail
-          if git diff --quiet -- corpora/gold-classification/; then
+          git config user.name "Gold Classification"
+          git config user.email "classification@meridian-runtime.invalid"
+          # Stage FIRST, then ask. `git diff --quiet -- <path>` only sees
+          # TRACKED files, so on the first run — when the artefacts are brand
+          # new and therefore untracked — it reports "nothing changed" and
+          # throws away the measurement it was guarding. That happened once,
+          # after a complete sixty-case run, and the run looked like a
+          # success while committing nothing.
+          git add corpora/gold-classification/
+          if git diff --cached --quiet; then
             echo "Nothing changed — the same model returned the same answers."
             exit 0
           fi
-          git config user.name "Gold Classification"
-          git config user.email "classification@meridian-runtime.invalid"
-          git add corpora/gold-classification/
           git commit -m "Gold classification: ${{ steps.setup.outputs.model }} against mb-cls-ulysses-v1-restamped
 
           A model classified the sixty blind cases under criteria v3, and the
