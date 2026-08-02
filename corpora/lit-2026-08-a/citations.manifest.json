@@ -1,0 +1,152 @@
+{
+  "audit_target": "Literature-channel batch 'lit-2026-08-a' — sources drawn for a synthesis corpus.",
+  "citations": [
+    {
+      "citation_id": "lit-2602.20117",
+      "cited_as": "ReSyn: Autonomously Scaling Synthetic Environments for Reasoning Models",
+      "cited_url": "https://arxiv.org/abs/2602.20117",
+      "claimed_title": "ReSyn: Autonomously Scaling Synthetic Environments for Reasoning Models",
+      "identifiers": {
+        "arxiv": "2602.20117"
+      }
+    },
+    {
+      "citation_id": "lit-2605.00927",
+      "cited_as": "BioVeil MATRIX: Uncovering and categorizing vulnerabilities of agentic biological AI scientists",
+      "cited_url": "https://arxiv.org/abs/2605.00927",
+      "claimed_title": "BioVeil MATRIX: Uncovering and categorizing vulnerabilities of agentic biological AI scientists",
+      "identifiers": {
+        "arxiv": "2605.00927"
+      }
+    },
+    {
+      "citation_id": "lit-2607.02329",
+      "cited_as": "Grounded autonomous research: a fault-tolerant LLM pipeline from corpus to manuscript in frontier computational physics",
+      "cited_url": "https://arxiv.org/abs/2607.02329",
+      "claimed_title": "Grounded autonomous research: a fault-tolerant LLM pipeline from corpus to manuscript in frontier computational physics",
+      "identifiers": {
+        "arxiv": "2607.02329"
+      }
+    },
+    {
+      "citation_id": "lit-2603.12226",
+      "cited_as": "Sparking Scientific Creativity via LLM-Driven Interdisciplinary Inspiration",
+      "cited_url": "https://arxiv.org/abs/2603.12226",
+      "claimed_title": "Sparking Scientific Creativity via LLM-Driven Interdisciplinary Inspiration",
+      "identifiers": {
+        "arxiv": "2603.12226"
+      }
+    },
+    {
+      "citation_id": "lit-2406.17873",
+      "cited_as": "Improving Arithmetic Reasoning Ability of Large Language Models through Relation Tuples, Verification and Dynamic Feedback",
+      "cited_url": "https://arxiv.org/abs/2406.17873",
+      "claimed_title": "Improving Arithmetic Reasoning Ability of Large Language Models through Relation Tuples, Verification and Dynamic Feedback",
+      "identifiers": {
+        "arxiv": "2406.17873"
+      }
+    },
+    {
+      "citation_id": "lit-2607.18249",
+      "cited_as": "MechAInistic: An LLM-guided Multi-Agent System for Reasoning over Genome-Scale Constraint-Based Metabolic Models",
+      "cited_url": "https://arxiv.org/abs/2607.18249",
+      "claimed_title": "MechAInistic: An LLM-guided Multi-Agent System for Reasoning over Genome-Scale Constraint-Based Metabolic Models",
+      "identifiers": {
+        "arxiv": "2607.18249"
+      }
+    },
+    {
+      "citation_id": "lit-2601.04853",
+      "cited_as": "RAAR: Retrieval Augmented Agentic Reasoning for Cross-Domain Misinformation Detection",
+      "cited_url": "https://arxiv.org/abs/2601.04853",
+      "claimed_title": "RAAR: Retrieval Augmented Agentic Reasoning for Cross-Domain Misinformation Detection",
+      "identifiers": {
+        "arxiv": "2601.04853"
+      }
+    },
+    {
+      "citation_id": "lit-2603.19782",
+      "cited_as": "Embodied Science: Closing the Discovery Loop with Agentic Embodied AI",
+      "cited_url": "https://arxiv.org/abs/2603.19782",
+      "claimed_title": "Embodied Science: Closing the Discovery Loop with Agentic Embodied AI",
+      "identifiers": {
+        "arxiv": "2603.19782"
+      }
+    },
+    {
+      "citation_id": "lit-2506.09443",
+      "cited_as": "LLMs Cannot Reliably Judge (Yet?): A Comprehensive Assessment on the Robustness of LLM-as-a-Judge",
+      "cited_url": "https://arxiv.org/abs/2506.09443",
+      "claimed_title": "LLMs Cannot Reliably Judge (Yet?): A Comprehensive Assessment on the Robustness of LLM-as-a-Judge",
+      "identifiers": {
+        "arxiv": "2506.09443"
+      }
+    },
+    {
+      "citation_id": "lit-2511.16997",
+      "cited_as": "MirrorMind: Empowering OmniScientist with the Expert Perspectives and Collective Knowledge of Human Scientists",
+      "cited_url": "https://arxiv.org/abs/2511.16997",
+      "claimed_title": "MirrorMind: Empowering OmniScientist with the Expert Perspectives and Collective Knowledge of Human Scientists",
+      "identifiers": {
+        "arxiv": "2511.16997"
+      }
+    },
+    {
+      "citation_id": "lit-2503.08979",
+      "cited_as": "Agentic AI for Scientific Discovery: A Survey of Progress, Challenges, and Future Directions",
+      "cited_url": "https://arxiv.org/abs/2503.08979",
+      "claimed_title": "Agentic AI for Scientific Discovery: A Survey of Progress, Challenges, and Future Directions",
+      "identifiers": {
+        "arxiv": "2503.08979"
+      }
+    },
+    {
+      "citation_id": "lit-2505.13400",
+      "cited_as": "Robin: A multi-agent system for automating scientific discovery",
+      "cited_url": "https://arxiv.org/abs/2505.13400",
+      "claimed_title": "Robin: A multi-agent system for automating scientific discovery",
+      "identifiers": {
+        "arxiv": "2505.13400"
+      }
+    },
+    {
+      "citation_id": "lit-2004.09677",
+      "cited_as": "Approximate exploitability: Learning a best response in large games",
+      "cited_url": "https://arxiv.org/abs/2004.09677",
+      "claimed_title": "Approximate exploitability: Learning a best response in large games",
+      "identifiers": {
+        "arxiv": "2004.09677"
+      }
+    },
+    {
+      "citation_id": "lit-2604.05550",
+      "cited_as": "AutoSOTA: An End-to-End Automated Research System for State-of-the-Art AI Model Discovery",
+      "cited_url": "https://arxiv.org/abs/2604.05550",
+      "claimed_title": "AutoSOTA: An End-to-End Automated Research System for State-of-the-Art AI Model Discovery",
+      "identifiers": {
+        "arxiv": "2604.05550"
+      }
+    },
+    {
+      "citation_id": "lit-2507.23276",
+      "cited_as": "How Far Are AI Scientists from Changing the World?",
+      "cited_url": "https://arxiv.org/abs/2507.23276",
+      "claimed_title": "How Far Are AI Scientists from Changing the World?",
+      "identifiers": {
+        "arxiv": "2507.23276"
+      }
+    },
+    {
+      "citation_id": "lit-2604.24618",
+      "cited_as": "Evaluating whether AI models would sabotage AI safety research",
+      "cited_url": "https://arxiv.org/abs/2604.24618",
+      "claimed_title": "Evaluating whether AI models would sabotage AI safety research",
+      "identifiers": {
+        "arxiv": "2604.24618"
+      }
+    }
+  ],
+  "cited_by": "corpora/lit-2026-08-a/",
+  "provenance": "Drawn by scripts/draw_backlog.py from corpora/gold-classification/candidate-pool.v1.json with salt 'lit-2026-08-a', size 16. Draw rule: sorted by sha256(salt + arxiv_id), first N taken — reproducible from this file, no judgement, no selection for an expected relation. Candidates already drawn for the blind commission are excluded, so no source appears both as the yardstick and as the evidence. Abstracts are fetched, hashed and committed by scripts/fetch_source_content.py against arXiv only; this manifest names WHICH sources, never what they say.",
+  "schema_version": "citations.manifest.v1"
+}

@@ -1,0 +1,334 @@
+{
+  "categories": [
+    "supports",
+    "contradicts",
+    "qualifies",
+    "contextualizes"
+  ],
+  "claim_text": "Systems that automate the research cycle end to end verify their own outputs independently of the component that produced them.",
+  "commission_sha256": "sha256:d17cc98e5f82143b3626e503633b1bcc97ca03e50871caf6a8c2848fd6bda40f",
+  "criteria_sha256": "sha256:46b2dfef753f9ba44b4da7567b2b3ffb7ad8c2a591456d814eced12680bd5e1c",
+  "criteria_version": "mb-cls-criteria-v3",
+  "disposition_note": "Every proposal here is 'downgraded-to-proposal' (MRR-MTH-016). Nothing was verified against its anchored source, which is what that specification defines 'verified' to mean, so 'verified' is unreachable on this path by construction rather than by policy. These are proposals; the curated record remains authoritative.",
+  "limitations": "The excerpts classified here are published arXiv abstracts and may have been in this model's training data. Nothing in this run distinguishes a criteria-following reading from a recollection, and no attempt was made to estimate the difference \u2014 measuring it would need held-out material this pool does not contain. Any figure computed from this file carries that limitation with it.",
+  "model_name": "gemini-3.5-flash-lite",
+  "model_profile_hash": "sha256:3d89b7fe579706d73e1e872cea830db148ab514d3441735eaf86841fd68cb5a0",
+  "model_profile_id": "urn:mrr:model-profile:P5XPBCXCWTSSRX1QGVYKYT3QBG",
+  "predictions": {
+    "lit-2004.09677": "contextualizes",
+    "lit-2406.17873": "qualifies",
+    "lit-2503.08979": "contextualizes",
+    "lit-2505.13400": "contextualizes",
+    "lit-2506.09443": "contextualizes",
+    "lit-2507.23276": "contextualizes",
+    "lit-2511.16997": "contextualizes",
+    "lit-2601.04853": "supports",
+    "lit-2602.20117": "contextualizes",
+    "lit-2603.12226": "contextualizes",
+    "lit-2603.19782": "contextualizes",
+    "lit-2604.05550": "contextualizes",
+    "lit-2604.24618": "contextualizes",
+    "lit-2605.00927": "contextualizes",
+    "lit-2607.02329": "qualifies",
+    "lit-2607.18249": "qualifies"
+  },
+  "prompt_template_sha256": "sha256:e7a96e7aefd56418e8abf3b5fd53bdb231d05ce8bfeba87a92b5ce03adfded7d",
+  "proposals": [
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:485f18370a897df4cec30d679514cdc27fea9c18243b39ff3ca1c4952d870e41",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2602.20117",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes the ReSyn pipeline for generating reasoning environments and verifiers to train models with RLVR, but it takes no position on whether the resulting systems verify their own outputs independently of the component that produced them.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:7da5910083802ce0a86b6762f1cc2313698e5634eb712dbf22cefe45c45a2fa4",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2605.00927",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes the risks, vulnerabilities, and capabilities of agentic AI scientists in the life sciences but takes no position on whether systems that automate the research cycle verify their own outputs independently.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:0f1deebbd89ab9ff462f7335c184bbb8761627ef849d4d2dd043468677152dff",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2607.02329",
+      "decided_by": "qualifies",
+      "generation_status": "proposal",
+      "proposed_relation": "qualifies",
+      "rationale": "The excerpt states that fault tolerance and adversarial review catch what any single session misses, thereby narrowing verification to a specific multi-session configuration rather than asserting a general independent verification step across all end-to-end autonomous research systems.",
+      "repair_attempts_used": 0,
+      "tie_with": "supports",
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:d349b1575363a8618acb4045a2ef54ca1a47cbeb2172ca34baa0bfeac9bae28e",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2603.12226",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes a framework for generating interdisciplinary ideas and brainstorming, but provides no statements regarding whether the system verifies its own outputs independently.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:c18062014d2d8b0c436bc09e85e00ef1bfea64381a62699465efbebedecf1712",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2406.17873",
+      "decided_by": "qualifies",
+      "generation_status": "proposal",
+      "proposed_relation": "qualifies",
+      "rationale": "The excerpt establishes that verification is performed by a specific local code interpreter on a semi-structured relation-tuple representation, narrowing the claim to a specific configuration and test condition.",
+      "repair_attempts_used": 0,
+      "tie_with": "supports",
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:6bea3ba50478c8513fcbbeb699758a10e0ecfedc690d95412c31c952ec9843ee",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2607.18249",
+      "decided_by": "qualifies",
+      "generation_status": "proposal",
+      "proposed_relation": "qualifies",
+      "rationale": "The excerpt establishes that verification is handled by a specific 'Architect-Reviewer pattern' within the system rather than an unconstrained or universal mechanism, thereby narrowing the claim to a named subset or configuration.",
+      "repair_attempts_used": 0,
+      "tie_with": "supports",
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:a7533a565645b5ce1bd5b7c31d869822d9398b0d0594035f0f52a5d47e3b27ad",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2601.04853",
+      "decided_by": "supports",
+      "generation_status": "proposal",
+      "proposed_relation": "supports",
+      "rationale": "The excerpt asserts from its own system's behaviour that the summary agent integrates analyses under verifier guidance and trains a separate multi-task verifier, thereby satisfying the supports definition.",
+      "repair_attempts_used": 0,
+      "tie_with": "qualifies",
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:9ca4e72dcaa86ee65231eeb7ead387f7ffb19062557ef426fea0907fbffd879f",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2603.19782",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt provides background and a general framework for embodied science and autonomous discovery systems without asserting whether these systems independently verify their own outputs.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:193be0a8b8bd29a3750145450b9c1e181354e972a8ca86a87e9e021ae84e04bf",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2506.09443",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt discusses the evaluation and robustness of LLM-as-a-Judge systems rather than end-to-end research automation systems that independently verify their own outputs, making it background subject matter that takes no position on the claim.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:2c605a3fcb4fa880beefeda59c31af804da0965b94f65065514f826468b39bf5",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2511.16997",
+      "decided_by": "contextualizes definition",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes the architecture and evaluation of MirrorMind for social and cognitive modeling in scientific discovery, taking no position on whether outputs are independently verified.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:860c45bbe3579696900b7640bd76cc0fd848dcca13561850f7802d00adc95477",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2503.08979",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt provides a general overview and survey of Agentic AI in scientific discovery without making any assertions regarding whether or how these systems independently verify their own outputs.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:2ac673c4cd954e39906071f21cec30d9210013c4ecbb6a532a13974f88cbf8fb",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2505.13400",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes Robin's end-to-end automation of the research cycle and mentions that it validated a candidate, but it takes no position on whether outputs are verified independently of the component that produced them.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:de685c8f7a7a52e316ae3061339ac39b1a99f686625ad97e4c4667487ff38a65",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2004.09677",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes introducing ISMCTS-BR to approximate worst-case performance against agents, taking no position on whether research automation systems verify their own outputs independently.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:ec64d7275d2c3ffbe49d9de32bc74e799197a057a73bbc460caa2ab01d4fe852",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2604.05550",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes the AutoSOTA system and mentions that it supervises validity, but it provides no evidence regarding whether outputs are verified independently of the component that produced them, taking no direct position on the claim.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:160600b8936f259c7e74ef1c3f75269a8027d328d90783bf0b4c1b7f40288673",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2507.23276",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt provides background and a survey scope regarding AI Scientist systems without taking any position on whether they verify their outputs independently.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    },
+    {
+      "attempts": [
+        {
+          "response_hash": "sha256:a07bbe0f7e6129d4ba9df797b437a9c54f0f94df115d9a5a19386748b0a0420c",
+          "status": "completed"
+        }
+      ],
+      "case_id": "lit-2604.24618",
+      "decided_by": "contextualizes",
+      "generation_status": "proposal",
+      "proposed_relation": "contextualizes",
+      "rationale": "The excerpt describes evaluations of AI research agents for sabotage and mentions a custom scaffold, but takes no position on whether research-automating systems independently verify their own outputs.",
+      "repair_attempts_used": 0,
+      "tie_with": null,
+      "transport_retries_used": 0,
+      "undecidable": false,
+      "verification_disposition": "downgraded-to-proposal"
+    }
+  ],
+  "system_id": "gemini-3.5-flash-lite@mb-cls-criteria-v3",
+  "tie_broken_case_ids": [
+    "lit-2607.02329",
+    "lit-2406.17873",
+    "lit-2607.18249",
+    "lit-2601.04853"
+  ],
+  "undecidable_case_ids": []
+}

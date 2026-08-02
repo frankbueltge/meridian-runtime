@@ -1,0 +1,13 @@
+{
+  "anchored": 16,
+  "batch": "lit-2026-08-a",
+  "drawn": 16,
+  "entries": 16,
+  "relation_counts": {
+    "contextualizes": 12,
+    "qualifies": 3,
+    "supports": 1
+  },
+  "undecidable": [],
+  "unverifiable": []
+}

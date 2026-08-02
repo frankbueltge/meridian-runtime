@@ -1,0 +1,10 @@
+{
+  "entries": [
+    {
+      "definition": "How one source's own anchored excerpt stands to the claim: it supports the claim generally, contradicts it, qualifies it by narrowing it to a named subset or condition, or merely contextualizes it by bearing on the subject without taking a position.",
+      "entry_id": "lit-2026-08-a-evidence-relations-v1",
+      "scope_note": "Taken verbatim from the frozen criteria mb-cls-criteria-v3 (sha256:46b2dfef753f9ba44b4da7567b2b3ffb7ad8c2a591456d814eced12680bd5e1c), so this corpus is classified under the same definitions the gold standard was labelled under — including their KNOWN asymmetry: 'supports' carries a generality requirement and 'contradicts' does not. The asymmetry is part of the task for as long as that standard is the standard; re-deriving what it costs is docs/design/2026-08-02-zaun-gegenprobe-re-ableitung.md.",
+      "term": "evidence relation"
+    }
+  ]
+}

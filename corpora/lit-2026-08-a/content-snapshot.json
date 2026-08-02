@@ -1,0 +1,157 @@
+{
+  "excerpt_kind": "abstract",
+  "excerpts": [
+    {
+      "citation_id": "lit-2004.09677",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:fd641dca30b6a13bc6fb927de27dbeb4ebdf823246950508c17ed12cd969be44",
+      "excerpt_text": "Researchers have demonstrated that neural networks are vulnerable to adversarial examples and subtle environment changes, both of which one can view as a form of distribution shift. To humans, the resulting errors can look like blunders, eroding trust in these agents. In prior games research, agent evaluation often focused on the in-practice game outcomes. While valuable, such evaluation typically fails to evaluate robustness to worst-case outcomes. Prior research in computer poker has examined how to assess such worst-case performance, both exactly and approximately. Unfortunately, exact computation is infeasible with larger domains, and existing approximations rely on poker-specific knowledge. We introduce ISMCTS-BR, a scalable search-based deep reinforcement learning algorithm for learning a best response to an agent, thereby approximating worst-case performance. We demonstrate the technique in several two-player zero-sum games against a variety of agents, including several AlphaZero-based agents.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2406.17873",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:9f4b209946717efe98e5a03d46136de2ba322a5732d3bc7f10a5db9a8d6a8c61",
+      "excerpt_text": "Current representations used in reasoning steps of large language models can mostly be categorized into two main types: (1) natural language, which is difficult to verify; and (2) non-natural language, usually programming code, which is difficult for people who are unfamiliar with coding to read. In this paper, we propose to use a semi-structured form to represent reasoning steps of large language models. Specifically, we use relation tuples, which are not only human-readable but also machine-friendly and easier to verify than natural language. We implement a framework that includes three main components: (1) introducing relation tuples into the reasoning steps of large language models; (2) implementing an automatic verification process of reasoning steps with a local code interpreter based on relation tuples; and (3) integrating a simple and effective dynamic feedback mechanism, which we found helpful for self-improvement of large language models. The experimental results on various arithmetic datasets demonstrate the effectiveness of our method in improving the arithmetic reasoning ability of large language models. The source code is available at https://github.com/gpgg/art.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2503.08979",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:ec7c79da9e13611ae648ac30fbb23b02fb0568d897f25233a8fba841eeb3e22b",
+      "excerpt_text": "The integration of Agentic AI into scientific discovery marks a new frontier in research automation. These AI systems, capable of reasoning, planning, and autonomous decision-making, are transforming how scientists perform literature review, generate hypotheses, conduct experiments, and analyze results. This survey provides a comprehensive overview of Agentic AI for scientific discovery, categorizing existing systems and tools, and highlighting recent progress across fields such as chemistry, biology, and materials science. We discuss key evaluation metrics, implementation frameworks, and commonly used datasets to offer a detailed understanding of the current state of the field. Finally, we address critical challenges, such as literature review automation, system reliability, and ethical concerns, while outlining future research directions that emphasize human-AI collaboration and enhanced system calibration.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2505.13400",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:3fe29eecf1e550c296274e1a715ce07ab23e8847a62c766e373a2db689f7f7ea",
+      "excerpt_text": "Scientific discovery is driven by the iterative process of background research, hypothesis generation, experimentation, and data analysis. Despite recent advancements in applying artificial intelligence to scientific discovery, no system has yet automated all of these stages in a single workflow. Here, we introduce Robin, the first multi-agent system capable of fully automating the key intellectual steps of the scientific process. By integrating literature search agents with data analysis agents, Robin can generate hypotheses, propose experiments, interpret experimental results, and generate updated hypotheses, achieving a semi-autonomous approach to scientific discovery. By applying this system, we were able to identify a novel treatment for dry age-related macular degeneration (dAMD), the major cause of blindness in the developed world. Robin proposed enhancing retinal pigment epithelium phagocytosis as a therapeutic strategy, and identified and validated a promising therapeutic candidate, ripasudil. Ripasudil is a clinically-used rho kinase (ROCK) inhibitor that has never previously been proposed for treating dAMD. To elucidate the mechanism of ripasudil-induced upregulation of phagocytosis, Robin then proposed and analyzed a follow-up RNA-seq experiment, which revealed upregulation of ABCA1, a critical lipid efflux pump and possible novel target. All hypotheses, experimental plans, data analyses, and data figures in the main text of this report were produced by Robin. As the first AI system to autonomously discover and validate a novel therapeutic candidate within an iterative lab-in-the-loop framework, Robin establishes a new paradigm for AI-driven scientific discovery.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2506.09443",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:7065c256ddae877907034ad04688bfbcf2d92a6283efd6bd80db884e6196bdd6",
+      "excerpt_text": "Large Language Models (LLMs) have demonstrated exceptional capabilities across diverse tasks, driving the development and widespread adoption of LLM-as-a-Judge systems for automated evaluation, including red teaming and benchmarking. However, these systems are susceptible to adversarial attacks that can manipulate evaluation outcomes, raising critical concerns about their robustness and trustworthiness. Existing evaluation methods for LLM-based judges are often fragmented and lack a unified framework for comprehensive robustness assessment. Furthermore, the impact of prompt template design and model selection on judge robustness has rarely been explored, and their performance in real-world deployments remains largely unverified. To address these gaps, we introduce RobustJudge, a fully automated and scalable framework designed to systematically evaluate the robustness of LLM-as-a-Judge systems. Specifically, RobustJudge investigates the effectiveness of 15 attack methods and 7 defense strategies across 12 models (RQ1), examines the impact of prompt template design and model selection (RQ2), and evaluates the security of real-world deployments (RQ3). Our study yields three key findings: (1) LLM-as-a-Judge systems are highly vulnerable to attacks such as PAIR and combined attacks, while defense mechanisms such as re-tokenization and LLM-based detectors can provide enhanced protection; (2) robustness varies substantially across prompt templates (up to 40%); (3) deploying RobustJudge on Alibaba's PAI platform uncovers previously undiscovered vulnerabilities. These results offer practical insights for building trustworthy LLM-as-a-Judge systems.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2507.23276",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:17a01c261a4664522bd8e01d4c9c05a132a314a80b6cd5f75d1fff87f73173f9",
+      "excerpt_text": "The emergence of large language models (LLMs) is propelling automated scientific discovery to the next level, with LLM-based Artificial Intelligence (AI) Scientist systems now taking the lead in scientific research. Several influential works have already appeared in the field of AI Scientist systems, with AI-generated research papers having been accepted at the ICLR 2025 workshop, suggesting that a human-level AI Scientist capable of uncovering phenomena previously unknown to humans, may soon become a reality. In this survey, we focus on the central question: How far are AI scientists from changing the world and reshaping the scientific research paradigm? To answer this question, we provide a prospect-driven review that comprehensively analyzes the current achievements of AI Scientist systems, identifying key bottlenecks and the critical components required for the emergence of a scientific agent capable of producing ground-breaking discoveries that solve grand challenges. We hope this survey will contribute to a clearer understanding of limitations of current AI Scientist systems, showing where we are, what is missing, and what the ultimate goals for scientific AI should be.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2511.16997",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:d61db89e50be9b978a681b817204c0d3112d40f06664d1805c960c522244da54",
+      "excerpt_text": "The emergence of AI Scientists has demonstrated remarkable potential in automating scientific research. However, current approaches largely conceptualize scientific discovery as a solitary optimization or search process, overlooking that knowledge production is inherently a social and historical endeavor. Human scientific insight stems from two distinct yet interconnected sources. First is the individual cognitive trajectory, where a researcher's unique insight is shaped by their evolving research history and stylistic preferences; another is the collective disciplinary memory, where knowledge is sedimented into vast, interconnected networks of citations and concepts. Existing LLMs still struggle to represent these structured, high-fidelity cognitive and social contexts. To bridge this gap, we introduce MirrorMind, a hierarchical cognitive architecture that integrates dual-memory representations within a three-level framework. The Individual Level constructs high-fidelity cognitive models of individual researchers by capturing their episodic, semantic, and persona memories; the Domain Level maps collective knowledge into structured disciplinary concept graphs; and the Interdisciplinary Level that acts as an orthogonal orchestration engine. Crucially, our architecture separates memory storage from agentic execution, enabling AI scientist agents to flexibly access individual memories for unique perspectives or collective structures to reason. We evaluate MirrorMind across four comprehensive tasks, including author-level cognitive simulation, complementary reasoning, cross-disciplinary collaboration promotion, and multi-agent scientific problem solving. The results show that by integrating individual cognitive depth with collective disciplinary breadth, MirrorMind moves beyond simple fact retrieval toward structural, personalized, and insight-generating scientific reasoning.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2601.04853",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:46a65302afec1ff81e176ecce0331d4f7e38b281a66f7691630d58d04aabb3ed",
+      "excerpt_text": "Cross-domain misinformation detection is challenging, as misinformation arises across domains with substantial differences in knowledge and discourse. Existing methods often rely on single-perspective cues and struggle to generalize to challenging or underrepresented domains, while reasoning large language models (LLMs), though effective on complex tasks, are limited to same-distribution data. To address these gaps, we introduce RAAR, the first retrieval-augmented agentic reasoning framework for cross-domain misinformation detection. To enable cross-domain transfer beyond same-distribution assumptions, RAAR retrieves multi-perspective source-domain evidence aligned with each target sample's semantics, sentiment, and writing style. To overcome single-perspective modeling and missing systematic reasoning, RAAR constructs verifiable multi-step reasoning paths through specialized multi-agent collaboration, where perspective-specific agents produce complementary analyses and a summary agent integrates them under verifier guidance. RAAR further applies supervised fine-tuning and reinforcement learning to train a single multi-task verifier to enhance verification and reasoning capabilities. Based on RAAR, we trained the RAAR-8b and RAAR-14b models. Evaluation on three cross-domain misinformation detection tasks shows that RAAR substantially enhances the capabilities of the base models and outperforms other cross-domain methods, advanced LLMs, and LLM-based adaptation approaches. The project will be released at https://github.com/lzw108/RAAR.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2602.20117",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:c8c3521b440289b7bd32d0f94b74e98d2aedefd3238323057e022ecf7d0285fe",
+      "excerpt_text": "Reinforcement learning with verifiable rewards (RLVR) has emerged as a promising approach for training reasoning language models (RLMs) by leveraging supervision from verifiers. Although verifier implementation is easier than solution annotation for many tasks, existing synthetic data generation methods remain largely solution-centric, while verifier-based methods rely on a few hand-crafted procedural environments. In this work, we scale RLVR by introducing ReSyn, a pipeline that generates diverse reasoning environments equipped with instance generators and verifiers, covering tasks such as constraint satisfaction, algorithmic puzzles, and spatial reasoning. A Qwen2.5-7B-Instruct model trained with RL on ReSyn data achieves consistent gains across reasoning benchmarks and out-of-domain math benchmarks, including a 27\\% relative improvement on the challenging BBEH benchmark. Ablations show that verifier-based supervision and increased task diversity both contribute significantly, providing empirical evidence that generating reasoning environments at scale can enhance reasoning abilities in RLMs",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2603.12226",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:75db6c5b4ac3187404a7e02e38637199f334fd8bcd68caf8be12456ae2aaf6f9",
+      "excerpt_text": "Despite interdisciplinary research leading to larger and longer-term impact, most work remains confined to single-domain academic silos. Recent AI-based approaches to scientific discovery show promise for interdisciplinary research, but many prioritize rapidly designing experiments and solutions, bypassing the exploratory, collaborative reasoning processes that drive creative interdisciplinary breakthroughs. As a result, prior efforts largely prioritize automating scientific discovery rather than augmenting the reasoning processes that underlie scientific disruption. We present Idea-Catalyst, a novel framework that systematically identifies interdisciplinary insights to support creative reasoning in both humans and large language models. Starting from an abstract research goal, Idea-Catalyst is designed to assist the brainstorming stage, explicitly avoiding premature anchoring on specific solutions. The framework embodies key metacognitive features of interdisciplinary reasoning: (a) defining and assessing research goals, (b) awareness of a domain's opportunities and unresolved challenges, and (c) strategic exploration of interdisciplinary ideas based on impact potential. Concretely, Idea-Catalyst decomposes an abstract goal (e.g., improving human-AI collaboration) into core target-domain research questions that guide the analysis of progress and open challenges within that domain. These challenges are reformulated as domain-agnostic conceptual problems, enabling retrieval from external disciplines (e.g., Psychology, Sociology) that address analogous issues. By synthesizing and recontextualizing insights from these domains back into the target domain, Idea-Catalyst ranks source domains by their interdisciplinary potential. Empirically, this targeted integration improves average novelty by 21% and insightfulness by 16%, while remaining grounded in the original research problem.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2603.19782",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:f2b32212814b0a075a4834e8ee6da35988dc38d6011c7b493f99cca4cb54fb6e",
+      "excerpt_text": "Artificial intelligence has demonstrated remarkable capability in predicting scientific properties, yet scientific discovery remains an inherently physical, long-horizon pursuit governed by experimental cycles. Most current computational approaches are misaligned with this reality, framing discovery as isolated, task-specific predictions rather than continuous interaction with the physical world. Here, we argue for embodied science, a paradigm that reframes scientific discovery as a closed loop tightly coupling agentic reasoning with physical execution. We propose a unified Perception-Language-Action-Discovery (PLAD) framework, wherein embodied agents perceive experimental environments, reason over scientific knowledge, execute physical interventions, and internalize outcomes to drive subsequent exploration. By grounding computational reasoning in robust physical feedback, this approach bridges the gap between digital prediction and empirical validation, offering a roadmap for autonomous discovery systems in the life and chemical sciences.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2604.05550",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:2ec2392e5441c6f17f87d397e1fd347863b46811d031cf81b8e52c1369d6aab4",
+      "excerpt_text": "Artificial intelligence research increasingly depends on prolonged cycles of reproduction, debugging, and iterative refinement to achieve State-Of-The-Art (SOTA) performance, creating a growing need for systems that can accelerate the full pipeline of empirical model optimization. In this work, we introduce AutoSOTA, an end-to-end automated research system that advances the latest SOTA models published in top-tier AI papers to reproducible and empirically improved new SOTA models. We formulate this problem through three tightly coupled stages: resource preparation and goal setting; experiment evaluation; and reflection and ideation. To tackle this problem, AutoSOTA adopts a multi-agent architecture with eight specialized agents that collaboratively ground papers to code and dependencies, initialize and repair execution environments, track long-horizon experiments, generate and schedule optimization ideas, and supervise validity to avoid spurious gains. We evaluate AutoSOTA on recent research papers collected from eight top-tier AI conferences under filters for code availability and execution cost. Across these papers, AutoSOTA achieves strong end-to-end performance in both automated replication and subsequent optimization. Specifically, it successfully discovers 105 new SOTA models that surpass the original reported methods, averaging approximately five hours per paper. Case studies spanning LLM, NLP, computer vision, time series, and optimization further show that the system can move beyond routine hyperparameter tuning to identify architectural innovation, algorithmic redesigns, and workflow-level improvements. These results suggest that end-to-end research automation can serve not only as a performance optimizer, but also as a new form of research infrastructure that reduces repetitive experimental burden and helps redirect human attention toward higher-level scientific creativity.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2604.24618",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:347352600da1287c33f23fa5e784ae8e15b27cbee292cf5e3dca501116b12868",
+      "excerpt_text": "We evaluate the propensity of frontier models to sabotage or refuse to assist with safety research when deployed as AI research agents within a frontier AI company. We apply two complementary evaluations to four Claude models (Mythos Preview, Opus 4.7 Preview, Opus 4.6, and Sonnet 4.6): an unprompted sabotage evaluation testing model behaviour with opportunities to sabotage safety research, and a sabotage continuation evaluation testing whether models continue to sabotage when placed in trajectories where prior actions have started undermining research. We find no instances of unprompted sabotage across any model, with refusal rates close to zero for Mythos Preview and Opus 4.7 Preview, though all models sometimes only partially completed tasks. In the continuation evaluation, Mythos Preview actively continues sabotage in 7% of cases (versus 3% for Opus 4.6, 4% for Sonnet 4.6, and 0% for Opus 4.7 Preview), and exhibits reasoning-output discrepancy in the majority of these cases, indicating covert sabotage reasoning. Our evaluation framework builds on Petri, an open-source LLM auditing tool, with a custom scaffold running models inside Claude Code, alongside an iterative pipeline for generating realistic sabotage trajectories. We measure both evaluation awareness and a new form of situational awareness termed \"prefill awareness\", the capability to recognise that prior trajectory content was not self-generated. Opus 4.7 Preview shows notably elevated unprompted evaluation awareness, while prefill awareness remains low across all models. Finally, we discuss limitations including evaluation awareness confounds, limited scenario coverage, and untested pathways to risk beyond safety research sabotage.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2605.00927",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:a4da0adab2088845aa9524644f0bf9c7c412a9a6be491059e0158a87b46d4fdd",
+      "excerpt_text": "Agentic AI scientists equipped with domain-specific tools are rapidly entering scientific workflows across disciplines, with especially strong uptake in the life sciences where they can be used for literature synthesis, sequence analysis, and experimental planning support. While these systems accelerate biological research, they also introduce risks for dual-use applications that are not captured by current model-centric safety evaluations. We present evidence that current agentic AI scientists, including Biomni and K-Dense, are willing to assist with dual-use tasks that are blocked by base model safeguards. We also found that in a paired evaluation framework for biology and chemistry prompts involving Weapons of Mass Destruction proxies (WMDP), agentic scaffolding of Biomni increased the benchmark performance relative to the underlying standalone model, producing measurable capability uplift. We believe it is necessary to include additional safeguards in existing models and build future tools from the ground up with agentic vulnerabilities in mind. To systematically categorize broader risks, we introduce BioVeil MATRIX, a defensive taxonomy that maps AI-enabled biosecurity risks using 10 tactical categories (TA01--TA10) and 22 different techniques. We propose to use this taxonomy as a baseline for future AI scientist development and generate specialized benchmarks and protocols for red-teaming these vulnerabilities before public deployment. BioVeil MATRIX can be found at: https://bioveilmatrix.com/",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2607.02329",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:09ee3ea7de68feae82454a5c8e6ae00a67be459d14fef2e5ba99cd0fddfc59af",
+      "excerpt_text": "Autonomous-research agents have demonstrated end-to-end LLM automation in machine-learning sandboxes where execution provides calibration. Frontier physical science differs categorically: physical reasoning underlies every methodology choice, toolchains are often underdocumented, and calibration must come from external literature anchors - which unscaffolded agents cite but do not confront, hallucinating plausible, unverifiable results from internal priors. We present a pipeline that runs end-to-end from a corpus of 11,083 recent condensed-matter physics arXiv papers to a publication-grade manuscript with three substantive physics findings (here on altermagnetic piezomagnetism): the agent autonomously conceives a research direction by mapping the corpus, calibrates methodology by reproducing published references, conducts novel first-principles computations, and writes the manuscript - grounded in literature throughout, across 47 fresh-context sessions in six phases sharing only on-disk state, with 2,162 literature-consultation events. Fault tolerance emerges from redundancy: fresh-context isolation, distributed grounding, and adversarial review catch what any single session misses; pre- and post-pilot stages are fully autonomous, and pilot requires bounded human intervention only at reproduction failures - operational knowledge curation, not scientific direction. Two paired failure modes - a pre-architecture baseline and a no-pilot ablation - isolate structurally enforced numerical confrontation at calibration checkpoints as the operative grounding mechanism. The primitives, characterized failure modes, and quantified intervention pattern lay a foundation for autonomous research in high-stakes scientific domains beyond computational physics.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    },
+    {
+      "citation_id": "lit-2607.18249",
+      "excerpt_available": true,
+      "excerpt_kind": "abstract",
+      "excerpt_sha256": "sha256:b55e9540b28a471588c8a5e1a483acb575f60d56c23fead2d0719c6441c36fdf",
+      "excerpt_text": "Constraint-based metabolic modeling is a powerful way to study the mechanistic basis of cellular states and disease, but its effective use demands substantial computational expertise and careful coordination of multi-step analyses. We developed MechAInistic to lower this barrier and enable researchers to ask complex biological questions in natural language. Harnessing large language models, MechAInistic is a multi-agent system organized around an Architect-Reviewer pattern that transforms a natural-language question into an executable, model-grounded workflow and generates a structured report. The system supports a variety of tasks, including pathway comparison, perturbation analysis, drug-target exploration, and literature-grounded interpretation across paired metabolic model states. We developed and evaluated MechAInistic using two paired immune-cell metabolic-model use cases for therapeutic hypothesis generation. For Naive B cells from rheumatoid arthritis (RA) paired with healthy controls, MechAInistic identified mitochondrial metabolic rewiring and nominated Devimistat/CPI-613 as an investigational OGDH-centered hypothesis. In a paired CD4+ Th17 cell study from multiple sclerosis (MS) and healthy controls, the same workflow identified NADP-dependent isocitrate dehydrogenase as the optimal single target and proposed ivosidenib as an FDA-approved repurposing candidate. Together, these results show that MechAInistic converts natural-language biological questions into executable, model-grounded workflows for traceable therapeutic hypothesis generation.",
+      "resolver": "arxiv",
+      "unavailable_reason": null
+    }
+  ],
+  "fetched_on": "2026-08-02",
+  "manifest": "citations.manifest.json",
+  "note": "Point-in-time capture of the ABSTRACT ONLY for each cited identifier in citations.manifest.json (task-packets/N2-T03a.yaml) \u2014 the arXiv Atom 'summary' element, or the Crossref 'abstract' field (JATS-tag-stripped, a declared deterministic transformation) for the one Nature DOI. Re-runnable: the same batched id_list / per-DOI queries reproduce these results, so this snapshot is verifiable, not asserted. It records EXACTLY what the two APIs returned, after the declared JATS-stripping and whitespace-normalisation transformations only \u2014 no scoring, no supplementation, no repair of a missing abstract, no full-text retrieval of any kind (no PDF, no scraping). An abstract covers only a fraction of a paper's own claims (measured at the N2-T03 derivation at roughly 28 percent numeric-token coverage across this corpus) \u2014 this snapshot is the input a separate, offline, no-network audit (N2-T03b, 'mrr audit support') checks claims against; presence in the abstract is not substantive support, and absence from the abstract is not refutation. A citation whose abstract could not be retrieved is recorded here with excerpt_available=false and a typed unavailable_reason \u2014 never omitted, never filled with a placeholder.",
+  "resolvers": {
+    "arxiv": "arXiv API \u2014 https://export.arxiv.org/api/query?id_list=<id> (Atom 'summary' element; a requested id absent from the response, or an entry with no usable summary text, is recorded as excerpt_available=false with a typed reason)",
+    "crossref": "Crossref REST \u2014 https://api.crossref.org/works/<doi> (JSON 'abstract' field, JATS tags stripped per strip_jats_tags(); 404, or a work with no usable abstract field, is recorded as excerpt_available=false with a typed reason)"
+  },
+  "schema_version": "source-content-snapshot.v1"
+}
