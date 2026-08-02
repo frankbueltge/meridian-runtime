@@ -223,6 +223,17 @@ jobs:
         if: inputs.dry_run != true
         run: |
           set -euo pipefail
+          # Never main. The push target below is GITHUB_REF_NAME, which ON
+          # main IS main -- so "it pushes to the branch it belongs to" and
+          # "it never lands on main" are only the same sentence off the
+          # default branch. Found while preparing the merge, after the claim
+          # had already been written down. A measured number is an assertion
+          # and belongs in front of a human; on main there is no pull request
+          # left to be that human.
+          if [ "${GITHUB_REF_NAME}" = "${{ github.event.repository.default_branch }}" ]; then
+            echo "::notice::Ran on the default branch. The report is in this run's summary and was NOT committed -- a measured number lands via a pull request, not by a push to main."
+            exit 0
+          fi
           git config user.name "Gold Classification"
           git config user.email "classification@meridian-runtime.invalid"
           # Stage FIRST, then ask. `git diff --quiet -- <path>` only sees

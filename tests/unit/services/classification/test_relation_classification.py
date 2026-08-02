@@ -598,10 +598,17 @@ def test_the_workflow_never_pushes_to_main() -> None:
     """A measured number lands on its branch; a human decides if it joins the
     record. field-watch.yml lands on main because an observation is not a
     claim — this is the other kind of artefact.
+
+    The push target alone does NOT establish this, which is why the second
+    assertion exists. GITHUB_REF_NAME on the default branch IS "main", so
+    "pushes to the branch it belongs to" and "never lands on main" are the
+    same sentence only off main. The claim was written down before the guard
+    existed; the guard now makes it true and this test keeps it that way.
     """
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "HEAD:main" not in text
     assert 'git push origin "HEAD:${GITHUB_REF_NAME}"' in text
+    assert "github.event.repository.default_branch" in text
 
 
 # --- The two defects the first online run exposed ----------------------------
