@@ -1,0 +1,299 @@
+task_id: N1-T06
+title: >-
+  Publish the runs: an operator path from the SQL archive to the site. An
+  event-driven Actions job restores each dump in `archive/dumps/` into a
+  throwaway Postgres service container, exports its claim graph with the
+  already-built `mrr export ro-crate --all-claims`, and delivers the crates
+  across the repository boundary to frankbueltge.de as a pull request — plus
+  the site-side change that makes the method sheet COUNT the runs instead of
+  spelling "two claims from a single run", so the next run is a committed
+  directory and not a text edit.
+status: proposed
+epic: N1
+kind: integration
+reviewer_resolution: >-
+  PROPOSED 2026-08-02, awaiting the owner's approval. An INTEGRATION packet in
+  the sense of AGENTS.md: it builds no capability. `mrr export ro-crate` was
+  finished in E8-T01/E8-T06 and has never had a caller — exactly the fourth
+  instance of the pattern that file's own table names, "a complete layer whose
+  outer edge nobody owned". Its acceptance criterion is therefore a named
+  operator path that works end to end, never a module passing its own tests. It
+  adds no schema, no domain object and no general capability, and it declares
+  its one composition explicitly: nothing is invented, a restore step is put in
+  front of an export command that already exists.
+  Under the owner's instruction of 2026-08-02 ("Die Läufe veröffentlichen …
+  Trag NICHT nur Lauf 2 nach, sonst ist die Site sofort wieder veraltet") and
+  the site's binding currency rule (frankbueltge.de/CLAUDE.md, 2026-07-25). The
+  load-bearing choice is that the second half of that instruction, not the
+  first, is the actual requirement: the deliverable is a STRUCTURE that cannot
+  go stale, so the site counts what is committed instead of asserting a number
+  in prose.
+depends_on: [E8-T01, E8-T06, K1-T04]
+derivation: >-
+  Derived 2026-08-02 from
+  docs/design/2026-08-02-n1-t06-ableitung-laeufe-veroeffentlichen.md. Every
+  claim was checked at the code, and three of them correct or sharpen the
+  owner's brief:
+  (K1) THE SITE IS WRONG IN THREE PLACES, NOT ONE.
+  MethodenblattOnRecord.astro:81 carries the sentence the owner quotes ("two
+  claims from a single run"); :30 spells "the two claims" as a word inside a
+  sentence whose other numbers ARE derived from parallax.json; and :83 ("In
+  this run no source backs more than one classification") is likewise written
+  for a single run. Editing only :81 leaves the page wrong twice.
+  (K2) THE ARCHIVE HOLDS 7 CLAIMS AND 12 VERIFICATIONS ACROSS THREE RUNS,
+  counted from the dumps: mrr_k1t04_real_run_v2 (2 claims, 3 verifications),
+  mrr_run2_corroboration_floor_v1 (4, 9), mrr_run3_e2e_claims_v1 (1, 0). The
+  committed crate at frankbueltge.de/src/data/meridian/export/ holds 89 graph
+  entries of which 2 are mrr:Claim and 3 mrr:VerificationResult — run 1 alone.
+  The site shows 2 of 7 and calls it "a single run".
+  (K3) THE BOTTLENECK IS REAL AND ITS FIX IS ALREADY IN THE HOUSE.
+  export_main.py:185 makes --database-url required and :316-327 refuses an
+  unreachable database ("Refusing to fabricate a substitute result",
+  MRR-NFR-012). No workflow in the repository calls `mrr export` — checked
+  across all four. But research-run.yml:120-165 already runs the exact
+  machinery needed in reverse: a postgres:16 service container with a
+  healthcheck, `alembic upgrade head`, and pg_dump into archive/dumps/. This
+  packet runs that path backwards with psql.
+  (K4) THE DELIVERY IS SOLVED AND MUST NOT BE REINVENTED. ECOLOGY_TOKEN exists
+  (gh secret list, 2026-08-01T22:22:28Z) and field-watch.yml:137-186 is the
+  complete pattern including honest degradation when the secret is absent
+  (::warning:: plus exit 0, never a silent pass).
+  (K5) A BARE ADDITION RE-STALES THE SITE IMMEDIATELY.
+  pipelines/meridian/refresh.py:24 hard-wires ONE export directory and :88
+  picks exactly one feature claim and one context claim. Adding run 2 beside it
+  means retyping prose, and again at run 4 — which is what the owner forbade.
+objective: >-
+  After this packet, a push to `archive/dumps/` (or one `workflow_dispatch`)
+  restores every dump into a fresh throwaway database, exports each one's claim
+  graph via the existing `mrr export ro-crate --all-claims`, and opens a pull
+  request on frankbueltge.de carrying one crate directory per run under
+  `src/data/meridian/export/<run>/` together with the re-derived
+  `mrr-graph.ttl` and `parallax.json`. On the site, `parallax.json` gains a
+  `runs` array and MethodenblattOnRecord.astro derives its counts from it at
+  :30, :81 and :83, so no sentence on the page asserts a number that the
+  committed export does not carry. The CI job "Meridian view model (derivation
+  matches the committed export)" stays green and becomes strictly stronger: it
+  now proves the view model matches ALL committed crates. Adding a fourth run
+  requires committing a directory and nothing else.
+source_of_truth:
+  - docs/design/2026-08-02-n1-t06-ableitung-laeufe-veroeffentlichen.md  # this packet's derivation and fact-lock
+  - services/control_plane/mrr/services/cli/export_main.py         # the command that already exists — REUSED UNCHANGED (:185, :316-327)
+  - .github/workflows/research-run.yml                             # the postgres service container, alembic and dump pattern (:120-165), run backwards here
+  - .github/workflows/field-watch.yml                              # cross-repository delivery via ECOLOGY_TOKEN and honest degradation (:137-186)
+  - archive/dumps/                                                 # the three runs — READ ONLY, never modified
+  - AGENTS.md                                                      # the integration-packet definition and its four-row table of unowned outer edges
+  - frankbueltge.de/pipelines/meridian/refresh.py                  # the view model, hard-wired to one export (:24, :88)
+  - frankbueltge.de/src/components/pages/MethodenblattOnRecord.astro  # the three sentences that assert instead of count (:30, :81, :83)
+  - frankbueltge.de/.github/workflows/ci.yml                       # the check that must stay green (:73-87)
+requirements:
+  - >-
+    R1 (the restore, .github/workflows/export-crates.yml): a matrix over the
+    files in `archive/dumps/`, each job bringing up a `postgres:16` service
+    container with the same healthcheck options research-run.yml:130-137 uses,
+    creating a fresh database and restoring the dump with `psql`. Tool versions
+    are printed before use, for the reason research-run.yml already records: a
+    client older than the server fails obscurely. `archive/**` is opened
+    read-only; nothing writes back to it.
+  - >-
+    R2 (the export, `mrr export ro-crate` — REUSED UNCHANGED): invoked with
+    `--all-claims` and `--database-url` against the restored database, writing
+    into a per-run output directory. `--artifact-root` is NOT passed:
+    export_main.py forbids it with `--all-claims` (:276-296) because a
+    claim-rooted export fetches no artifact bytes. The command's own exit codes
+    are propagated; a failed export fails the job and delivers nothing for that
+    run, rather than delivering a partial crate.
+  - >-
+    R3 (the delivery, pattern field-watch.yml:137-186): clone frankbueltge.de
+    with `x-access-token:${ECOLOGY_TOKEN}`, place each crate at
+    `src/data/meridian/export/<run>/`, commit as a machine identity at an
+    `@meridian-runtime.invalid` address, and open a PULL REQUEST. Never a push
+    to `main` on either side. Absent ECOLOGY_TOKEN the crates are attached as a
+    workflow artefact and the job says loudly that the delivery did not happen
+    — never a silent pass.
+  - >-
+    R4 (event-driven, no clock): `workflow_dispatch` AND `push` on
+    `archive/dumps/**`. NO `schedule:` — two nightly routines exist and the
+    standing rules forbid a third and forbid any nightly that recomputes the
+    same thing. A new dump is a new crate; an unchanged night is nothing.
+  - >-
+    R5 (the site's view model, frankbueltge.de/pipelines/meridian/refresh.py):
+    iterate over every directory under `src/data/meridian/export/` instead of
+    reading one. `parallax.json` gains a `runs` array — per run: identifier,
+    object_count, claim count, verification count, date_published — and totals
+    derived from it. The existing top-level `claim`, `verifications`, `sources`
+    and `export_meta` keys keep their meaning for the FEATURE run, so
+    /on-record stays what it is: one parallax case shown thoroughly, not a
+    dashboard. Still deterministic: no network, no clock, no model.
+  - >-
+    R6 (the site's prose, MethodenblattOnRecord.astro): :81, :30 and :83 read
+    their numbers from the view model. The limitation at :81 stops saying "two
+    claims from a single run" and states the derived counts across runs plus
+    what is still thin. No sentence on the page may assert a count the
+    committed export does not carry — that is the property the owner asked for,
+    and it is what stops the next run from being a text edit.
+  - >-
+    R7 (the check stays green): after the change,
+    `python pipelines/meridian/refresh.py` followed by
+    `git diff --exit-code -- src/data/meridian/mrr-graph.ttl src/data/meridian/parallax.json`
+    is clean, with all crates committed. The CI job is NOT modified; it becomes
+    stronger by covering more crates.
+allowed_paths:
+  - .github/workflows/export-crates.yml
+  - docs/design/
+  - task-packets/N1-T06.yaml
+  - tests/unit/                                                    # workflow-shape assertions only
+  # --- in frankbueltge.de, a separate repository and a separate pull request:
+  - frankbueltge.de/pipelines/meridian/refresh.py
+  - frankbueltge.de/src/data/meridian/                             # the crates, mrr-graph.ttl, parallax.json — all derived or delivered
+  - frankbueltge.de/src/components/pages/MethodenblattOnRecord.astro
+forbidden_changes:
+  - archive/**                                                     # the dumps are the record; they are restored, never rewritten
+  - services/control_plane/mrr/services/cli/export_main.py         # the command is complete; this packet is its missing caller
+  - services/**                                                    # an integration packet composes, it does not build capability
+  - packages/**
+  - migrations/**
+  - corpora/**
+  - benchmarks/**
+  - .github/workflows/research-run.yml                             # its pattern is copied, not changed
+  - .github/workflows/field-watch.yml
+  - .github/workflows/gold-classification.yml
+  - pyproject.toml
+  - uv.lock
+  - frankbueltge.de/.github/workflows/ci.yml                       # the check must hold as it stands; changing it to pass would defeat it
+  - frankbueltge.de/src/pages/on-record*                           # the instrument keeps its single-case reading
+derived_decisions:
+  - >-
+    (a) An INTEGRATION packet, declared as such. `mrr export ro-crate` has
+    existed since E8-T01 and has never been called by anything but a human on a
+    laptop. That is the fourth row of AGENTS.md's own table — a finished layer
+    whose outer edge nobody owned — and the packet type exists precisely so
+    this work has somewhere to live. The one composition it performs (a restore
+    step in front of an existing export) is named here rather than folded into
+    a passthrough.
+  - >-
+    (b) The requirement is the second half of the owner's sentence. "Publish
+    the runs" alone would be satisfied by hand-exporting run 2 and retyping a
+    paragraph. "Do NOT just add run 2, or the site is out of date again
+    immediately" is the real specification, and it can only be met by making
+    the page COUNT rather than ASSERT. Everything else in this packet follows
+    from that one reading.
+  - >-
+    (c) Restore into a throwaway database, never into a durable one. The dumps
+    are the archive and archive/** is untouchable. A service container that
+    dies with the job cannot corrupt the record, and it is the same isolation
+    research-run.yml already relies on for the forward direction.
+  - >-
+    (d) A pull request on both sides, never a push to main. A crate is a
+    published assertion about what a run found — the same class of artefact as
+    a measured number, which gold-classification.yml lands on a branch for
+    exactly this reason. The watch's direct push to main is the OTHER case (an
+    observation is not a claim) and does not transfer here.
+  - >-
+    (e) /on-record stays a single-case instrument. The view model gains totals
+    but keeps its feature claim, because the page's subject is one preserved
+    disagreement shown thoroughly. Turning it into a run dashboard would answer
+    the currency problem by destroying the work.
+  - >-
+    (f) Run 3 is exported and counted although it has zero verifications. A
+    claim with no verification result is a real, unfinished archive state.
+    Hiding it would be the less honest option and the page is built to hold
+    unfinished states. It is shown as what it is.
+  - >-
+    (g) `--artifact-root` is deliberately absent. export_main.py:276-296
+    forbids it with `--all-claims`, since a claim-rooted export fetches no
+    artifact bytes — `artifact_count: 0` in the existing crate is that rule
+    already visible in the published data.
+invariants:
+  - archive/dumps/ is byte-identical before and after every run of the workflow.
+  - No step writes to the default branch of either repository.
+  - The workflow has no `schedule:` trigger.
+  - export_main.py and every module under services/ and packages/ are byte-identical after this packet.
+  - The restored database exists only inside the job's service container and is never persisted.
+  - refresh.py performs no network call, reads no clock and loads no model; two runs over identical crates produce byte-identical outputs.
+  - After delivery, `refresh.py` followed by `git diff --exit-code` on the two derived files is clean.
+  - No sentence in MethodenblattOnRecord.astro states a count that is not derived from the committed export.
+acceptance_tests:
+  - >-
+    AT1 (the operator path works end to end): the workflow, run on a branch,
+    restores all three dumps, exports three crates, and opens a pull request on
+    frankbueltge.de containing them. Evidence is the run id and the pull
+    request — an integration packet's acceptance criterion is the path, not a
+    unit test.
+  - >-
+    AT2 (the archive is untouched): `git diff --exit-code -- archive/` is empty
+    after a full run, and the job's own steps are asserted to open the dumps
+    read-only.
+  - >-
+    AT3 (the counts are real): the delivered crates contain 2, 4 and 1
+    mrr:Claim entries and 3, 9 and 0 mrr:VerificationResult entries
+    respectively — matching the counts taken from the dumps at derivation time.
+    A mismatch means the restore or the export lost something and fails the
+    packet.
+  - >-
+    AT4 (the check is green and stronger): with all crates committed,
+    `python pipelines/meridian/refresh.py` then
+    `git diff --exit-code -- src/data/meridian/mrr-graph.ttl src/data/meridian/parallax.json`
+    exits clean; deleting one crate directory and re-running makes it fail,
+    proving the check now covers every crate rather than one.
+  - >-
+    AT5 (the page cannot go stale): a test asserts that the strings "two
+    claims" and "a single run" appear nowhere in MethodenblattOnRecord.astro,
+    and that the counts at :30, :81 and :83 come from the view model. Adding a
+    fourth crate to a fixture and re-deriving changes the rendered numbers with
+    no edit to the component.
+  - >-
+    AT6 (honest degradation): with ECOLOGY_TOKEN unset the job still produces
+    the crates, attaches them as an artefact, emits a warning naming the
+    missing delivery, and does not fail silently or pretend it delivered.
+  - >-
+    AT7 (no clock): the workflow file contains no `schedule:` key, and
+    `date_published` in every crate remains the maximum `created_at` across
+    exported objects rather than a wall-clock read.
+commands:
+  - make lint
+  - make typecheck
+  # in frankbueltge.de:
+  - npm run check
+  - npm run test
+  - npm run build
+  - python pipelines/meridian/refresh.py
+specification_gaps:
+  - >-
+    Run 3 (e2e-claims) carries a claim with zero verification results. Nothing
+    in the specification says a claim must be verified before it may be
+    exported, and MRR-MTH-011 makes unfinished terminal states first-class. It
+    is published as what it is; whether the site should mark it visually is a
+    presentation question left to the owner (derivation section 4).
+  - >-
+    The crates are delivered unsigned. `mrr federation envelope sign` exists
+    and MERIDIAN_SIGNING_KEY is present in the repository, so signing the
+    delivery is a retrofit rather than a blocker. Named, not done.
+  - >-
+    Measurement run 2 (cc6df74, accuracy 0.5263, kappa 0.2792) is NOT on main —
+    it sits on origin/feat/n1-t04-modellgestuetzte-einordnung, pushed after PR
+    #85 merged. Anyone quoting the 1.76-point spread today quotes a branch.
+    This packet does not fix that, but the site must not print an accuracy
+    figure without the spread, so the two are entangled. Carried as N1-T05
+    §8.7.
+required_output:
+  - Packet report per AGENTS "Required delivery format", embedding the exact
+    psql/export invocations, the per-run claim and verification counts as
+    exported (against the derivation's counts from the dumps), the workflow run
+    id, the pull request URLs on both repositories, and the before/after of the
+    three sentences in MethodenblattOnRecord.astro.
+stop_conditions:
+  - >-
+    If publishing appears to require changing `mrr export ro-crate`, STOP —
+    this is an integration packet and a capability change belongs in its own
+    ordinary packet.
+  - >-
+    If any step appears to require writing into archive/, STOP — the dumps are
+    the record, and a restore that writes back is a corruption path.
+  - >-
+    If keeping the CI check green appears to require modifying that check,
+    STOP — the check is the whole point, and a check edited to pass is worse
+    than a red build.
+  - >-
+    If the honest fix appears to be "add run 2 and retype the paragraph", STOP
+    — that is the outcome the owner explicitly excluded, and the packet has
+    lost its objective.
