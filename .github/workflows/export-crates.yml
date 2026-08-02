@@ -166,10 +166,25 @@ jobs:
         run: |
           set -euo pipefail
           dump="archive/dumps/${{ matrix.entry.dump }}"
+          url="postgresql://mrr:mrr@localhost:5432/mrr_export"
+
+          # A fresh postgres:16 database ships with a `public` schema, and
+          # mrr_run3_e2e_claims_v1.sql declares `CREATE SCHEMA public;` — so
+          # the restore died on `schema "public" already exists` under
+          # ON_ERROR_STOP=1. Found on the second run of this job, after the
+          # schema fix made the other two succeed.
+          #
+          # Dropping it first makes the target genuinely empty, which is what
+          # "restore a dump" should mean: whatever the dump declares is what
+          # exists afterwards, named schema or public. The alternative —
+          # relaxing ON_ERROR_STOP — would have restored run 3 while hiding
+          # every other error in every other dump, which is the trade this
+          # apparatus exists to refuse.
+          psql "$url" -v ON_ERROR_STOP=1 -q -c "DROP SCHEMA IF EXISTS public CASCADE;"
+
           # Read-only on the archive: the dump is the record. Everything this
           # job creates lives in the service container and dies with the job.
-          psql "postgresql://mrr:mrr@localhost:5432/mrr_export" \
-            -v ON_ERROR_STOP=1 -f "$dump"
+          psql "$url" -v ON_ERROR_STOP=1 -f "$dump"
 
           schema="$(sed -n 's/^CREATE SCHEMA \([A-Za-z0-9_]*\);.*/\1/p' "$dump" | head -n1)"
           if [ -z "$schema" ]; then
@@ -182,8 +197,8 @@ jobs:
           # Prove the tables are actually reachable under that schema BEFORE
           # the export runs, so a wrong search_path is a named failure here
           # rather than a stack trace three steps later.
-          psql "postgresql://mrr:mrr@localhost:5432/mrr_export" \
-            -v ON_ERROR_STOP=1 -q -c "SET search_path TO $schema; SELECT count(*) FROM domain_events;"
+          psql "$url" -v ON_ERROR_STOP=1 -q \
+            -c "SET search_path TO $schema; SELECT count(*) FROM domain_events;"
 
       - name: Export the claim graph
         env:
