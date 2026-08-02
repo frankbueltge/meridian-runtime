@@ -1,18 +1,6 @@
 {
   "_note": "The freeze registry (task-packets/N1-T02.yaml R3). One entry per frozen version: the sha256 its bytes had when it was frozen. scripts/check_gold_freeze.py fails when a registered version's file no longer hashes to its pinned value, and CI runs it on every push. A gold set is never edited — a changed standard is a NEW set_id with a NEW entry, and the old entry stays so every past measurement remains interpretable. Adding an entry is how a set becomes frozen; removing or rewriting one is how a measurement quietly starts meaning something else, which is what this file exists to prevent.",
   "frozen": {
-    "mb-cls-v1-synthetic": {
-      "path": "benchmarks/meridianbench/fixtures/mb-cls-v1.synthetic.json",
-      "sha256": "sha256:dbceee2ed41638a43af5bcd83b8b0184dd596d0d9fdf5662c1a572c58a27d5b2",
-      "frozen_on": "2026-08-01",
-      "note": "NOT a standard. The synthetic fixture that exercises the apparatus; its class distribution reproduces N1-T02 AT1's hand-computed oracle, so its bytes moving would silently invalidate that oracle. Registered for exactly that reason. Its label_provenance.producing_practice is 'synthetic-fixture', which the loader refuses for real evaluation unless --allow-synthetic is passed. SUPERSEDED by mb-cls-v2-synthetic, which the loader can read under criteria v2; this one predates decided_by and stays frozen as history."
-    },
-    "mb-cls-v2-synthetic": {
-      "path": "benchmarks/meridianbench/fixtures/mb-cls-v2.synthetic.json",
-      "sha256": "sha256:51573bd1b0dd560c927554bf02b721698763d1d8ca4fde5f33814309424fef76",
-      "frozen_on": "2026-08-01",
-      "note": "NOT a standard. The criteria-v2 synthetic fixture: mb-cls-v1-synthetic's twenty cases carried over unchanged (so N1-T02 AT1's oracle still holds) plus decided_by, three tie_with, and three undecidable cases. Registered because its bytes moving would silently invalidate that oracle."
-    },
     "mb-cls-criteria-v1": {
       "path": "benchmarks/meridianbench/fixtures/mb-cls-criteria.v1.json",
       "sha256": "sha256:c1d3bc7b5896573527859ae1e96d0107dc7c3420c8db944148b0ddf0792627a4",
@@ -30,6 +18,23 @@
       "sha256": "sha256:46b2dfef753f9ba44b4da7567b2b3ffb7ad8c2a591456d814eced12680bd5e1c",
       "frozen_on": "2026-08-01",
       "note": "The criteria in force. v3 corrects a lock instant that was a wall-clock reading stamped as UTC — the defect the labelling practice found by refusing to move its own timestamp to pass the gate. Definitions byte-identical to v2 so the completed blind labelling stays valid."
+    },
+    "mb-cls-ulysses-v1-restamped": {
+      "path": "corpora/gold-classification/mb-cls-ulysses-v1-restamped.json",
+      "sha256": "sha256:f927deb1e569554276ee491543eb4353ddab94b76a8bdda3b058f01a1366ba1f",
+      "_note": "The real standard, registered by N1-T04. It was measured against on 2026-08-01 while absent from this registry: the other six entries are the three criteria versions and the three SYNTHETIC fixtures, so the CI check built to catch a moved standard did not cover the standard. The labels were guarded transitively by two unit tests; that is a good chain and it is not this mechanism. Registered by the first packet to produce a real measurement against it, because a measurement resting on a file CI does not hold still is a measurement that can change meaning without anyone touching it."
+    },
+    "mb-cls-v1-synthetic": {
+      "path": "benchmarks/meridianbench/fixtures/mb-cls-v1.synthetic.json",
+      "sha256": "sha256:dbceee2ed41638a43af5bcd83b8b0184dd596d0d9fdf5662c1a572c58a27d5b2",
+      "frozen_on": "2026-08-01",
+      "note": "NOT a standard. The synthetic fixture that exercises the apparatus; its class distribution reproduces N1-T02 AT1's hand-computed oracle, so its bytes moving would silently invalidate that oracle. Registered for exactly that reason. Its label_provenance.producing_practice is 'synthetic-fixture', which the loader refuses for real evaluation unless --allow-synthetic is passed. SUPERSEDED by mb-cls-v2-synthetic, which the loader can read under criteria v2; this one predates decided_by and stays frozen as history."
+    },
+    "mb-cls-v2-synthetic": {
+      "path": "benchmarks/meridianbench/fixtures/mb-cls-v2.synthetic.json",
+      "sha256": "sha256:51573bd1b0dd560c927554bf02b721698763d1d8ca4fde5f33814309424fef76",
+      "frozen_on": "2026-08-01",
+      "note": "NOT a standard. The criteria-v2 synthetic fixture: mb-cls-v1-synthetic's twenty cases carried over unchanged (so N1-T02 AT1's oracle still holds) plus decided_by, three tie_with, and three undecidable cases. Registered because its bytes moving would silently invalidate that oracle."
     },
     "mb-cls-v3-synthetic": {
       "path": "benchmarks/meridianbench/fixtures/mb-cls-v3.synthetic.json",

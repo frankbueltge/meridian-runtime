@@ -1,0 +1,263 @@
+# The model reads the sixty cases, and the standard measures what it said.
+#
+# This is step 2 of the owner's ordering (1. standard -> 2. model-assisted
+# classification -> 3. literature channel -> 4. coupling), and it is the first
+# time anything in this repository is measured against the frozen gold set
+# rather than compared with a floor.
+#
+# --- Why there is no `schedule:` --------------------------------------------
+#
+# The owner asked for everything to run online and automatically, and two
+# standing rules say a nightly is the wrong shape for it: "kein Nightly, das
+# dasselbe neu rechnet" and "keine dritte naechtliche Routine". Both are right
+# here. The sixty cases are frozen and the criteria are frozen, so a nightly
+# run would send identical input to a model every night, spend quota, and
+# produce a scatter of slightly different numbers that nobody could tell from
+# a finding.
+#
+# So this fires on a CHANGED INPUT instead: the classifier, the commission,
+# the criteria, or the gold set. A new input is a new measurement; an
+# unchanged night is nothing at all. That is the philosophy research-run.yml
+# already runs on -- only a new question starts anything.
+#
+# --- Why it never pushes to main --------------------------------------------
+#
+# field-watch.yml lands on main because an observation is not a claim. This is
+# the other kind of artefact: a measured number that people will quote. It
+# lands on the branch the run belongs to, and a human decides whether it
+# becomes part of the record. That distinction is the same one research-run.yml
+# draws when it opens a pull request instead of committing.
+#
+# --- Honest degradation ------------------------------------------------------
+#
+# No API key: the job fails loudly and writes nothing. No silent skip, and no
+# best-effort mode -- a measurement that quietly did not happen is worse than
+# one that failed, because the missing file looks like a result nobody got
+# round to reading.
+#
+# --- Which model, and why not the obvious one -------------------------------
+#
+# Measured, not assumed (a throwaway probe, deleted with this commit):
+#
+#   gemini-2.0-flash / -lite   429, free-tier daily quota None -- no allowance
+#   gemini-2.5-flash           404, "no longer available to new users"
+#   gemini-2.5-flash-lite      429, GenerateRequestsPerDayPerProjectPerModel=20
+#   gemini-3.5-flash-lite      200
+#
+# So the first run's sixty `error` statuses were not a rate limit and not a
+# bad request: 2.0-flash has no free-tier allowance at all on this key.
+#
+# 2.5-flash-lite is avoided deliberately even though it works: the sibling
+# project frankbueltge.de uses that exact model for its nightly Parallaxe run
+# and its /seed gate. If those share this Google project, spending sixty calls
+# here would take a quota another practice depends on. A daily cap is a shared
+# resource, and this is not the only tenant.
+#
+# `gemini-flash-lite-latest` also answers, and is NOT used: a moving alias
+# names no object that could be measured again next month, which is the same
+# rule that makes --model-name required.
+#
+# --- Never credit a person or a product for a machine's run -----------------
+#
+# Same standing rule as the other two workflows: the committer is a machine
+# identity at an .invalid address.
+
+name: Gold classification
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: 'Concrete provider model id — recorded in the artefact. "Gemini" is not a measurable object.'
+        type: string
+        default: 'gemini-3.5-flash-lite'
+      dry_run:
+        description: 'Classify and measure, but commit nothing'
+        type: boolean
+        default: false
+  push:
+    paths:
+      # Exactly the inputs that decide the answer. Deliberately NOT the whole
+      # corpora/gold-classification/ directory: this job writes its own output
+      # there, and a directory-wide trigger would make the run its own cause.
+      - 'packages/domain/mrr/domain/relation_proposal.py'
+      - 'services/control_plane/mrr/services/classification/**'
+      - 'services/control_plane/mrr/services/cli/classification_main.py'
+      - 'corpora/gold-classification/commission.v2.json'
+      - 'benchmarks/meridianbench/fixtures/mb-cls-criteria.v3.json'
+      - 'corpora/gold-classification/mb-cls-ulysses-v1-restamped.json'
+      - '.github/workflows/gold-classification.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gold-classification-${{ github.ref }}
+
+env:
+  GOLD_SET: corpora/gold-classification/mb-cls-ulysses-v1-restamped.json
+  CRITERIA: benchmarks/meridianbench/fixtures/mb-cls-criteria.v3.json
+  COMMISSION: corpora/gold-classification/commission.v2.json
+  REGISTRY: benchmarks/meridianbench/fixtures/FROZEN.json
+
+jobs:
+  measure:
+    name: Classify sixty cases, then measure them
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      # The standard must be held before it is used. This is the check K1
+      # added the registry entry for: before N1-T04 the real gold set was not
+      # registered, so this script passed while saying nothing about it.
+      - name: The standard has not moved
+        run: uv run python scripts/check_gold_freeze.py
+
+      - name: Settle the run's names and the pinned hash
+        id: setup
+        env:
+          MODEL_NAME: ${{ inputs.model_name }}
+        run: |
+          set -euo pipefail
+          # A push-triggered run carries no inputs. The fallback is a concrete,
+          # committed model id rather than a vendor name, which is what the
+          # "never defaulted" rule is actually about.
+          model="${MODEL_NAME:-gemini-3.5-flash-lite}"
+          system_id="${model}@mb-cls-criteria-v3"
+          expected="$(uv run python -c "
+          import json, pathlib
+          registry = json.loads(pathlib.Path('${REGISTRY}').read_text())
+          print(registry['frozen']['mb-cls-ulysses-v1-restamped']['sha256'])
+          ")"
+          {
+            echo "model=$model"
+            echo "system_id=$system_id"
+            echo "expected=$expected"
+            echo "predictions=corpora/gold-classification/predictions-${model}.json"
+            echo "report=corpora/gold-classification/report-${model}.md"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Refuse without a key
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "::error::GEMINI_API_KEY is not set. No classification ran and nothing was written. A measurement that quietly did not happen is worse than one that failed."
+            exit 1
+          fi
+
+      # A re-run supersedes its predecessor rather than writing beside it. The
+      # previous artefact is not lost: git is the archive, and the commit that
+      # produced it stays readable.
+      - name: Clear a superseded artefact
+        run: |
+          set -euo pipefail
+          rm -f "${{ steps.setup.outputs.predictions }}" "${{ steps.setup.outputs.report }}"
+
+      - name: Classify
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          # 5s between cases keeps one call per case under the free tier's 15
+          # requests a minute. Deliberately NOT a retry loop on error: the
+          # derivation forbids repeating until it passes, because a run that
+          # retries away its own rate-limit failures cannot tell a quota wall
+          # from a model that would not answer.
+          # No `|| true`: a run that could not classify every case refuses and
+          # writes nothing, because a shorter predictions file measures a
+          # subset as though it were the whole set.
+          uv run mrr classify relations \
+            --cases "${COMMISSION}" \
+            --criteria "${CRITERIA}" \
+            --output "${{ steps.setup.outputs.predictions }}" \
+            --system-id "${{ steps.setup.outputs.system_id }}" \
+            --adapter gemini \
+            --model-name "${{ steps.setup.outputs.model }}" \
+            --max-repair-attempts 1 \
+            --pause-seconds 5 | tee /tmp/classify.json
+
+      - name: Measure against the frozen standard
+        run: |
+          set -euo pipefail
+          # --expect-sha256 is what makes this a measurement against a NAMED,
+          # held standard rather than against whatever that path contains
+          # today. It is optional in the CLI; it is not optional here.
+          uv run mrr validate gold \
+            --gold-set "${GOLD_SET}" \
+            --predictions "${{ steps.setup.outputs.predictions }}" \
+            --criteria "${CRITERIA}" \
+            --expect-sha256 "${{ steps.setup.outputs.expected }}" \
+            --format md \
+            --output "${{ steps.setup.outputs.report }}"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Gold classification — ${{ steps.setup.outputs.model }}"
+            echo
+            if [ -s /tmp/classify.json ]; then
+              echo '```json'; cat /tmp/classify.json; echo '```'
+            fi
+            echo
+            if [ -f "${{ steps.setup.outputs.report }}" ]; then
+              cat "${{ steps.setup.outputs.report }}"
+            fi
+            echo
+            echo "_Every proposal in this run is 'downgraded-to-proposal'. Nothing was verified"
+            echo "against its anchored source, and no threshold was set by an encounter, so no"
+            echo "number here is a pass._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record the measurement on this branch
+        if: inputs.dry_run != true
+        run: |
+          set -euo pipefail
+          # Never main. The push target below is GITHUB_REF_NAME, which ON
+          # main IS main -- so "it pushes to the branch it belongs to" and
+          # "it never lands on main" are only the same sentence off the
+          # default branch. Found while preparing the merge, after the claim
+          # had already been written down. A measured number is an assertion
+          # and belongs in front of a human; on main there is no pull request
+          # left to be that human.
+          if [ "${GITHUB_REF_NAME}" = "${{ github.event.repository.default_branch }}" ]; then
+            echo "::notice::Ran on the default branch. The report is in this run's summary and was NOT committed -- a measured number lands via a pull request, not by a push to main."
+            exit 0
+          fi
+          git config user.name "Gold Classification"
+          git config user.email "classification@meridian-runtime.invalid"
+          # Stage FIRST, then ask. `git diff --quiet -- <path>` only sees
+          # TRACKED files, so on the first run — when the artefacts are brand
+          # new and therefore untracked — it reports "nothing changed" and
+          # throws away the measurement it was guarding. That happened once,
+          # after a complete sixty-case run, and the run looked like a
+          # success while committing nothing.
+          git add corpora/gold-classification/
+          if git diff --cached --quiet; then
+            echo "Nothing changed — the same model returned the same answers."
+            exit 0
+          fi
+          git commit -m "Gold classification: ${{ steps.setup.outputs.model }} against mb-cls-ulysses-v1-restamped
+
+          A model classified the sixty blind cases under criteria v3, and the
+          frozen standard measured what it said. The proposals are proposals:
+          every one is 'downgraded-to-proposal', because nothing here was
+          verified against its anchored source, which is what MTH-016 defines
+          that word to mean.
+
+          No threshold was set by an encounter, so no figure in the report is a
+          pass or a failure. The excerpts are published abstracts that may have
+          been in this model's training data, and the artefact says so itself.
+
+          No human started this run."
+          git push origin "HEAD:${GITHUB_REF_NAME}"
